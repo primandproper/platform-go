@@ -6,6 +6,7 @@ package identitymock
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/identity"
 
@@ -120,6 +121,9 @@ var _ identity.Store = &StoreMock{}
 //			MarkUserTwoFactorSecretVerifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 //				panic("mock out the MarkUserTwoFactorSecretVerified method")
 //			},
+//			MarkUsersAsIndexedFunc: func(ctx context.Context, tx database.Tx, ids []string) (int64, error) {
+//				panic("mock out the MarkUsersAsIndexed method")
+//			},
 //			RecordAccountSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, status identity.BillingStatus, planID string) error {
 //				panic("mock out the RecordAccountSubscription method")
 //			},
@@ -131,6 +135,9 @@ var _ identity.Store = &StoreMock{}
 //			},
 //			RemoveMembershipFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, accountID string) error {
 //				panic("mock out the RemoveMembership method")
+//			},
+//			ScanUsersForReindexFunc: func(ctx context.Context, q database.SQLQueryExecutor, cursor string, limit uint8) ([]string, error) {
+//				panic("mock out the ScanUsersForReindex method")
 //			},
 //			SearchUsersByUsernameFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, prefix string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.User], error) {
 //				panic("mock out the SearchUsersByUsername method")
@@ -150,7 +157,7 @@ var _ identity.Store = &StoreMock{}
 //			SetMembershipRolesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, accountID string, roles []string) error {
 //				panic("mock out the SetMembershipRoles method")
 //			},
-//			SetUserEmailAddressVerificationTokenFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error {
+//			SetUserEmailAddressVerificationTokenFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string, expiresAt time.Time) error {
 //				panic("mock out the SetUserEmailAddressVerificationToken method")
 //			},
 //			SetUserRequiresPasswordChangeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, requires bool) error {
@@ -280,6 +287,9 @@ type StoreMock struct {
 	// MarkUserTwoFactorSecretVerifiedFunc mocks the MarkUserTwoFactorSecretVerified method.
 	MarkUserTwoFactorSecretVerifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error)
 
+	// MarkUsersAsIndexedFunc mocks the MarkUsersAsIndexed method.
+	MarkUsersAsIndexedFunc func(ctx context.Context, tx database.Tx, ids []string) (int64, error)
+
 	// RecordAccountSubscriptionFunc mocks the RecordAccountSubscription method.
 	RecordAccountSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, status identity.BillingStatus, planID string) error
 
@@ -291,6 +301,9 @@ type StoreMock struct {
 
 	// RemoveMembershipFunc mocks the RemoveMembership method.
 	RemoveMembershipFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, accountID string) error
+
+	// ScanUsersForReindexFunc mocks the ScanUsersForReindex method.
+	ScanUsersForReindexFunc func(ctx context.Context, q database.SQLQueryExecutor, cursor string, limit uint8) ([]string, error)
 
 	// SearchUsersByUsernameFunc mocks the SearchUsersByUsername method.
 	SearchUsersByUsernameFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, prefix string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.User], error)
@@ -311,7 +324,7 @@ type StoreMock struct {
 	SetMembershipRolesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, accountID string, roles []string) error
 
 	// SetUserEmailAddressVerificationTokenFunc mocks the SetUserEmailAddressVerificationToken method.
-	SetUserEmailAddressVerificationTokenFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error
+	SetUserEmailAddressVerificationTokenFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string, expiresAt time.Time) error
 
 	// SetUserRequiresPasswordChangeFunc mocks the SetUserRequiresPasswordChange method.
 	SetUserRequiresPasswordChangeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, requires bool) error
@@ -717,6 +730,15 @@ type StoreMock struct {
 			// UserID is the userID argument value.
 			UserID string
 		}
+		// MarkUsersAsIndexed holds details about calls to the MarkUsersAsIndexed method.
+		MarkUsersAsIndexed []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Ids is the ids argument value.
+			Ids []string
+		}
 		// RecordAccountSubscription holds details about calls to the RecordAccountSubscription method.
 		RecordAccountSubscription []struct {
 			// Ctx is the ctx argument value.
@@ -770,6 +792,17 @@ type StoreMock struct {
 			UserID string
 			// AccountID is the accountID argument value.
 			AccountID string
+		}
+		// ScanUsersForReindex holds details about calls to the ScanUsersForReindex method.
+		ScanUsersForReindex []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Cursor is the cursor argument value.
+			Cursor string
+			// Limit is the limit argument value.
+			Limit uint8
 		}
 		// SearchUsersByUsername holds details about calls to the SearchUsersByUsername method.
 		SearchUsersByUsername []struct {
@@ -865,6 +898,8 @@ type StoreMock struct {
 			UserID string
 			// Token is the token argument value.
 			Token string
+			// ExpiresAt is the expiresAt argument value.
+			ExpiresAt time.Time
 		}
 		// SetUserRequiresPasswordChange holds details about calls to the SetUserRequiresPasswordChange method.
 		SetUserRequiresPasswordChange []struct {
@@ -1001,10 +1036,12 @@ type StoreMock struct {
 	lockMarkUserEmailAddressUnverified       sync.RWMutex
 	lockMarkUserEmailAddressVerified         sync.RWMutex
 	lockMarkUserTwoFactorSecretVerified      sync.RWMutex
+	lockMarkUsersAsIndexed                   sync.RWMutex
 	lockRecordAccountSubscription            sync.RWMutex
 	lockRecordAccountSubscriptionEnded       sync.RWMutex
 	lockRecordAgreement                      sync.RWMutex
 	lockRemoveMembership                     sync.RWMutex
+	lockScanUsersForReindex                  sync.RWMutex
 	lockSearchUsersByUsername                sync.RWMutex
 	lockSetAccountBillingStatus              sync.RWMutex
 	lockSetAccountPaymentProcessorCustomerID sync.RWMutex
@@ -2482,6 +2519,46 @@ func (mock *StoreMock) MarkUserTwoFactorSecretVerifiedCalls() []struct {
 	return calls
 }
 
+// MarkUsersAsIndexed calls MarkUsersAsIndexedFunc.
+func (mock *StoreMock) MarkUsersAsIndexed(ctx context.Context, tx database.Tx, ids []string) (int64, error) {
+	if mock.MarkUsersAsIndexedFunc == nil {
+		panic("StoreMock.MarkUsersAsIndexedFunc: method is nil but Store.MarkUsersAsIndexed was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Tx  database.Tx
+		Ids []string
+	}{
+		Ctx: ctx,
+		Tx:  tx,
+		Ids: ids,
+	}
+	mock.lockMarkUsersAsIndexed.Lock()
+	mock.calls.MarkUsersAsIndexed = append(mock.calls.MarkUsersAsIndexed, callInfo)
+	mock.lockMarkUsersAsIndexed.Unlock()
+	return mock.MarkUsersAsIndexedFunc(ctx, tx, ids)
+}
+
+// MarkUsersAsIndexedCalls gets all the calls that were made to MarkUsersAsIndexed.
+// Check the length with:
+//
+//	len(mockedStore.MarkUsersAsIndexedCalls())
+func (mock *StoreMock) MarkUsersAsIndexedCalls() []struct {
+	Ctx context.Context
+	Tx  database.Tx
+	Ids []string
+} {
+	var calls []struct {
+		Ctx context.Context
+		Tx  database.Tx
+		Ids []string
+	}
+	mock.lockMarkUsersAsIndexed.RLock()
+	calls = mock.calls.MarkUsersAsIndexed
+	mock.lockMarkUsersAsIndexed.RUnlock()
+	return calls
+}
+
 // RecordAccountSubscription calls RecordAccountSubscriptionFunc.
 func (mock *StoreMock) RecordAccountSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, status identity.BillingStatus, planID string) error {
 	if mock.RecordAccountSubscriptionFunc == nil {
@@ -2675,6 +2752,50 @@ func (mock *StoreMock) RemoveMembershipCalls() []struct {
 	mock.lockRemoveMembership.RLock()
 	calls = mock.calls.RemoveMembership
 	mock.lockRemoveMembership.RUnlock()
+	return calls
+}
+
+// ScanUsersForReindex calls ScanUsersForReindexFunc.
+func (mock *StoreMock) ScanUsersForReindex(ctx context.Context, q database.SQLQueryExecutor, cursor string, limit uint8) ([]string, error) {
+	if mock.ScanUsersForReindexFunc == nil {
+		panic("StoreMock.ScanUsersForReindexFunc: method is nil but Store.ScanUsersForReindex was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Cursor string
+		Limit  uint8
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Cursor: cursor,
+		Limit:  limit,
+	}
+	mock.lockScanUsersForReindex.Lock()
+	mock.calls.ScanUsersForReindex = append(mock.calls.ScanUsersForReindex, callInfo)
+	mock.lockScanUsersForReindex.Unlock()
+	return mock.ScanUsersForReindexFunc(ctx, q, cursor, limit)
+}
+
+// ScanUsersForReindexCalls gets all the calls that were made to ScanUsersForReindex.
+// Check the length with:
+//
+//	len(mockedStore.ScanUsersForReindexCalls())
+func (mock *StoreMock) ScanUsersForReindexCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Cursor string
+	Limit  uint8
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Cursor string
+		Limit  uint8
+	}
+	mock.lockScanUsersForReindex.RLock()
+	calls = mock.calls.ScanUsersForReindex
+	mock.lockScanUsersForReindex.RUnlock()
 	return calls
 }
 
@@ -2975,27 +3096,29 @@ func (mock *StoreMock) SetMembershipRolesCalls() []struct {
 }
 
 // SetUserEmailAddressVerificationToken calls SetUserEmailAddressVerificationTokenFunc.
-func (mock *StoreMock) SetUserEmailAddressVerificationToken(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error {
+func (mock *StoreMock) SetUserEmailAddressVerificationToken(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string, expiresAt time.Time) error {
 	if mock.SetUserEmailAddressVerificationTokenFunc == nil {
 		panic("StoreMock.SetUserEmailAddressVerificationTokenFunc: method is nil but Store.SetUserEmailAddressVerificationToken was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		Tx     database.Tx
-		Scope  tenancy.Scope
-		UserID string
-		Token  string
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		UserID    string
+		Token     string
+		ExpiresAt time.Time
 	}{
-		Ctx:    ctx,
-		Tx:     tx,
-		Scope:  scope,
-		UserID: userID,
-		Token:  token,
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		UserID:    userID,
+		Token:     token,
+		ExpiresAt: expiresAt,
 	}
 	mock.lockSetUserEmailAddressVerificationToken.Lock()
 	mock.calls.SetUserEmailAddressVerificationToken = append(mock.calls.SetUserEmailAddressVerificationToken, callInfo)
 	mock.lockSetUserEmailAddressVerificationToken.Unlock()
-	return mock.SetUserEmailAddressVerificationTokenFunc(ctx, tx, scope, userID, token)
+	return mock.SetUserEmailAddressVerificationTokenFunc(ctx, tx, scope, userID, token, expiresAt)
 }
 
 // SetUserEmailAddressVerificationTokenCalls gets all the calls that were made to SetUserEmailAddressVerificationToken.
@@ -3003,18 +3126,20 @@ func (mock *StoreMock) SetUserEmailAddressVerificationToken(ctx context.Context,
 //
 //	len(mockedStore.SetUserEmailAddressVerificationTokenCalls())
 func (mock *StoreMock) SetUserEmailAddressVerificationTokenCalls() []struct {
-	Ctx    context.Context
-	Tx     database.Tx
-	Scope  tenancy.Scope
-	UserID string
-	Token  string
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	UserID    string
+	Token     string
+	ExpiresAt time.Time
 } {
 	var calls []struct {
-		Ctx    context.Context
-		Tx     database.Tx
-		Scope  tenancy.Scope
-		UserID string
-		Token  string
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		UserID    string
+		Token     string
+		ExpiresAt time.Time
 	}
 	mock.lockSetUserEmailAddressVerificationToken.RLock()
 	calls = mock.calls.SetUserEmailAddressVerificationToken

@@ -164,11 +164,13 @@ INSERT INTO {{prefix}}identity_users (
 	two_factor_secret_verified_at,
 	email_address_verified_at,
 	email_address_verification_token_digest,
+	email_address_verification_token_expires_at,
 	account_status,
 	account_status_explanation,
 	last_accepted_terms_of_service,
 	last_accepted_privacy_policy
 ) VALUES (
+	?,
 	?,
 	?,
 	?,
@@ -275,13 +277,15 @@ const getArchivedUserMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.id = ?
 	AND {{prefix}}identity_users.scope = ?
@@ -374,13 +378,15 @@ const getUserMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.id = ?
@@ -401,13 +407,15 @@ const getUserByEmailAddressMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.email_address = ?
@@ -428,13 +436,15 @@ const getUserByEmailVerificationTokenDigestMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.email_address_verification_token_digest = ?
@@ -455,13 +465,15 @@ const getUserByUsernameMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.username = ?
@@ -496,13 +508,15 @@ const getUserIncludingArchivedMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.id = ?
 	AND {{prefix}}identity_users.scope = ?`
@@ -554,6 +568,7 @@ const listAccountMembersMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at AS user_two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at AS user_email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest AS user_email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at AS user_email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status AS user_account_status,
 	{{prefix}}identity_users.account_status_explanation AS user_account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service AS user_last_accepted_terms_of_service,
@@ -561,6 +576,7 @@ const listAccountMembersMySQL = `SELECT
 	{{prefix}}identity_users.created_at AS user_created_at,
 	{{prefix}}identity_users.last_updated_at AS user_last_updated_at,
 	{{prefix}}identity_users.archived_at AS user_archived_at,
+	{{prefix}}identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_memberships.id)
 		FROM {{prefix}}identity_memberships
@@ -632,6 +648,7 @@ const listAccountMembersDescendingMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at AS user_two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at AS user_email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest AS user_email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at AS user_email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status AS user_account_status,
 	{{prefix}}identity_users.account_status_explanation AS user_account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service AS user_last_accepted_terms_of_service,
@@ -639,6 +656,7 @@ const listAccountMembersDescendingMySQL = `SELECT
 	{{prefix}}identity_users.created_at AS user_created_at,
 	{{prefix}}identity_users.last_updated_at AS user_last_updated_at,
 	{{prefix}}identity_users.archived_at AS user_archived_at,
+	{{prefix}}identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_memberships.id)
 		FROM {{prefix}}identity_memberships
@@ -1362,6 +1380,7 @@ const listUsersMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
@@ -1369,6 +1388,7 @@ const listUsersMySQL = `SELECT
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
 	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_users.id)
 		FROM {{prefix}}identity_users
@@ -1423,13 +1443,15 @@ const listUsersByIDsMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.scope = ?
 	AND {{prefix}}identity_users.id IN (/*SLICE:ids*/?)
@@ -1450,6 +1472,7 @@ const listUsersDescendingMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
@@ -1457,6 +1480,7 @@ const listUsersDescendingMySQL = `SELECT
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
 	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_users.id)
 		FROM {{prefix}}identity_users
@@ -1506,6 +1530,7 @@ WHERE archived_at IS NULL
 const markUserEmailAddressProvenMySQL = `UPDATE {{prefix}}identity_users SET
 	email_address_verified_at = ?,
 	email_address_verification_token_digest = ?,
+	email_address_verification_token_expires_at = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = ?
@@ -1521,6 +1546,7 @@ WHERE archived_at IS NULL
 const markUserEmailAddressVerifiedMySQL = `UPDATE {{prefix}}identity_users SET
 	email_address_verified_at = ?,
 	email_address_verification_token_digest = ?,
+	email_address_verification_token_expires_at = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = ?
@@ -1535,6 +1561,10 @@ WHERE archived_at IS NULL
 	AND scope = ?
 	AND two_factor_secret <> ''
 	AND two_factor_secret_verified_at IS NULL`
+
+const markUsersAsIndexedMySQL = `UPDATE {{prefix}}identity_users SET
+	last_indexed_at = CURRENT_TIMESTAMP(6)
+WHERE id IN (/*SLICE:ids*/?)`
 
 const recordAccountSubscriptionMySQL = `UPDATE {{prefix}}identity_accounts SET
 	billing_status = ?,
@@ -1559,6 +1589,13 @@ WHERE archived_at IS NULL
 	AND id = ?
 	AND scope = ?`
 
+const scanUserIDsForReindexMySQL = `SELECT {{prefix}}identity_users.id
+FROM {{prefix}}identity_users
+WHERE {{prefix}}identity_users.archived_at IS NULL
+	AND CAST({{prefix}}identity_users.id AS BINARY) > ?
+ORDER BY CAST({{prefix}}identity_users.id AS BINARY)
+LIMIT ?`
+
 const searchUsersByUsernameMySQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
@@ -1574,13 +1611,15 @@ const searchUsersByUsernameMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.scope = ?
@@ -1604,13 +1643,15 @@ const searchUsersByUsernameDescendingMySQL = `SELECT
 	{{prefix}}identity_users.two_factor_secret_verified_at,
 	{{prefix}}identity_users.email_address_verified_at,
 	{{prefix}}identity_users.email_address_verification_token_digest,
+	{{prefix}}identity_users.email_address_verification_token_expires_at,
 	{{prefix}}identity_users.account_status,
 	{{prefix}}identity_users.account_status_explanation,
 	{{prefix}}identity_users.last_accepted_terms_of_service,
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.scope = ?
@@ -1643,6 +1684,7 @@ WHERE archived_at IS NULL
 
 const setUserEmailAddressVerificationTokenMySQL = `UPDATE {{prefix}}identity_users SET
 	email_address_verification_token_digest = ?,
+	email_address_verification_token_expires_at = ?,
 	email_address_verified_at = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
@@ -1687,6 +1729,7 @@ const updateUserMySQL = `UPDATE {{prefix}}identity_users SET
 	last_name = ?,
 	email_address_verified_at = ?,
 	email_address_verification_token_digest = ?,
+	email_address_verification_token_expires_at = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = ?
@@ -1800,9 +1843,11 @@ type mysqlQueries struct {
 	markUserEmailAddressUnverified           string
 	markUserEmailAddressVerified             string
 	markUserTwoFactorSecretVerified          string
+	markUsersAsIndexed                       string
 	recordAccountSubscription                string
 	recordUserPrivacyPolicyAgreement         string
 	recordUserTermsOfServiceAgreement        string
+	scanUserIDsForReindex                    string
 	searchUsersByUsername                    string
 	searchUsersByUsernameDescending          string
 	setAccountBillingStatus                  string
@@ -1886,9 +1931,11 @@ func newMySQL(prefix string) *mysqlQueries {
 		markUserEmailAddressUnverified:           strings.ReplaceAll(markUserEmailAddressUnverifiedMySQL, prefixMarker, prefix),
 		markUserEmailAddressVerified:             strings.ReplaceAll(markUserEmailAddressVerifiedMySQL, prefixMarker, prefix),
 		markUserTwoFactorSecretVerified:          strings.ReplaceAll(markUserTwoFactorSecretVerifiedMySQL, prefixMarker, prefix),
+		markUsersAsIndexed:                       strings.ReplaceAll(markUsersAsIndexedMySQL, prefixMarker, prefix),
 		recordAccountSubscription:                strings.ReplaceAll(recordAccountSubscriptionMySQL, prefixMarker, prefix),
 		recordUserPrivacyPolicyAgreement:         strings.ReplaceAll(recordUserPrivacyPolicyAgreementMySQL, prefixMarker, prefix),
 		recordUserTermsOfServiceAgreement:        strings.ReplaceAll(recordUserTermsOfServiceAgreementMySQL, prefixMarker, prefix),
+		scanUserIDsForReindex:                    strings.ReplaceAll(scanUserIDsForReindexMySQL, prefixMarker, prefix),
 		searchUsersByUsername:                    strings.ReplaceAll(searchUsersByUsernameMySQL, prefixMarker, prefix),
 		searchUsersByUsernameDescending:          strings.ReplaceAll(searchUsersByUsernameDescendingMySQL, prefixMarker, prefix),
 		setAccountBillingStatus:                  strings.ReplaceAll(setAccountBillingStatusMySQL, prefixMarker, prefix),
@@ -2112,6 +2159,7 @@ func (q *mysqlQueries) CreateUser(ctx context.Context, db DBTX, arg CreateUserPa
 		arg.TwoFactorSecretVerifiedAt,
 		arg.EmailAddressVerifiedAt,
 		arg.EmailAddressVerificationTokenDigest,
+		arg.EmailAddressVerificationTokenExpiresAt,
 		arg.AccountStatus,
 		arg.AccountStatusExplanation,
 		arg.LastAcceptedTermsOfService,
@@ -2288,6 +2336,7 @@ func (q *mysqlQueries) GetArchivedUser(ctx context.Context, db DBTX, arg GetArch
 		&i.TwoFactorSecretVerifiedAt,
 		&i.EmailAddressVerifiedAt,
 		&i.EmailAddressVerificationTokenDigest,
+		&i.EmailAddressVerificationTokenExpiresAt,
 		&i.AccountStatus,
 		&i.AccountStatusExplanation,
 		&i.LastAcceptedTermsOfService,
@@ -2295,6 +2344,7 @@ func (q *mysqlQueries) GetArchivedUser(ctx context.Context, db DBTX, arg GetArch
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2444,6 +2494,7 @@ func (q *mysqlQueries) GetUser(ctx context.Context, db DBTX, arg GetUserParams) 
 		&i.TwoFactorSecretVerifiedAt,
 		&i.EmailAddressVerifiedAt,
 		&i.EmailAddressVerificationTokenDigest,
+		&i.EmailAddressVerificationTokenExpiresAt,
 		&i.AccountStatus,
 		&i.AccountStatusExplanation,
 		&i.LastAcceptedTermsOfService,
@@ -2451,6 +2502,7 @@ func (q *mysqlQueries) GetUser(ctx context.Context, db DBTX, arg GetUserParams) 
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2480,6 +2532,7 @@ func (q *mysqlQueries) GetUserByEmailAddress(ctx context.Context, db DBTX, arg G
 		&i.TwoFactorSecretVerifiedAt,
 		&i.EmailAddressVerifiedAt,
 		&i.EmailAddressVerificationTokenDigest,
+		&i.EmailAddressVerificationTokenExpiresAt,
 		&i.AccountStatus,
 		&i.AccountStatusExplanation,
 		&i.LastAcceptedTermsOfService,
@@ -2487,6 +2540,7 @@ func (q *mysqlQueries) GetUserByEmailAddress(ctx context.Context, db DBTX, arg G
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2516,6 +2570,7 @@ func (q *mysqlQueries) GetUserByEmailVerificationTokenDigest(ctx context.Context
 		&i.TwoFactorSecretVerifiedAt,
 		&i.EmailAddressVerifiedAt,
 		&i.EmailAddressVerificationTokenDigest,
+		&i.EmailAddressVerificationTokenExpiresAt,
 		&i.AccountStatus,
 		&i.AccountStatusExplanation,
 		&i.LastAcceptedTermsOfService,
@@ -2523,6 +2578,7 @@ func (q *mysqlQueries) GetUserByEmailVerificationTokenDigest(ctx context.Context
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2552,6 +2608,7 @@ func (q *mysqlQueries) GetUserByUsername(ctx context.Context, db DBTX, arg GetUs
 		&i.TwoFactorSecretVerifiedAt,
 		&i.EmailAddressVerifiedAt,
 		&i.EmailAddressVerificationTokenDigest,
+		&i.EmailAddressVerificationTokenExpiresAt,
 		&i.AccountStatus,
 		&i.AccountStatusExplanation,
 		&i.LastAcceptedTermsOfService,
@@ -2559,6 +2616,7 @@ func (q *mysqlQueries) GetUserByUsername(ctx context.Context, db DBTX, arg GetUs
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2622,6 +2680,7 @@ func (q *mysqlQueries) GetUserIncludingArchived(ctx context.Context, db DBTX, ar
 		&i.TwoFactorSecretVerifiedAt,
 		&i.EmailAddressVerifiedAt,
 		&i.EmailAddressVerificationTokenDigest,
+		&i.EmailAddressVerificationTokenExpiresAt,
 		&i.AccountStatus,
 		&i.AccountStatusExplanation,
 		&i.LastAcceptedTermsOfService,
@@ -2629,6 +2688,7 @@ func (q *mysqlQueries) GetUserIncludingArchived(ctx context.Context, db DBTX, ar
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2721,6 +2781,7 @@ func (q *mysqlQueries) ListAccountMembers(ctx context.Context, db DBTX, arg List
 			&i.UserTwoFactorSecretVerifiedAt,
 			&i.UserEmailAddressVerifiedAt,
 			&i.UserEmailAddressVerificationTokenDigest,
+			&i.UserEmailAddressVerificationTokenExpiresAt,
 			&i.UserAccountStatus,
 			&i.UserAccountStatusExplanation,
 			&i.UserLastAcceptedTermsOfService,
@@ -2728,6 +2789,7 @@ func (q *mysqlQueries) ListAccountMembers(ctx context.Context, db DBTX, arg List
 			&i.UserCreatedAt,
 			&i.UserLastUpdatedAt,
 			&i.UserArchivedAt,
+			&i.UserLastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -2802,6 +2864,7 @@ func (q *mysqlQueries) ListAccountMembersDescending(ctx context.Context, db DBTX
 			&i.UserTwoFactorSecretVerifiedAt,
 			&i.UserEmailAddressVerifiedAt,
 			&i.UserEmailAddressVerificationTokenDigest,
+			&i.UserEmailAddressVerificationTokenExpiresAt,
 			&i.UserAccountStatus,
 			&i.UserAccountStatusExplanation,
 			&i.UserLastAcceptedTermsOfService,
@@ -2809,6 +2872,7 @@ func (q *mysqlQueries) ListAccountMembersDescending(ctx context.Context, db DBTX
 			&i.UserCreatedAt,
 			&i.UserLastUpdatedAt,
 			&i.UserArchivedAt,
+			&i.UserLastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3756,6 +3820,7 @@ func (q *mysqlQueries) ListUsers(ctx context.Context, db DBTX, arg ListUsersPara
 			&i.TwoFactorSecretVerifiedAt,
 			&i.EmailAddressVerifiedAt,
 			&i.EmailAddressVerificationTokenDigest,
+			&i.EmailAddressVerificationTokenExpiresAt,
 			&i.AccountStatus,
 			&i.AccountStatusExplanation,
 			&i.LastAcceptedTermsOfService,
@@ -3763,6 +3828,7 @@ func (q *mysqlQueries) ListUsers(ctx context.Context, db DBTX, arg ListUsersPara
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3820,6 +3886,7 @@ func (q *mysqlQueries) ListUsersByIDs(ctx context.Context, db DBTX, arg ListUser
 			&i.TwoFactorSecretVerifiedAt,
 			&i.EmailAddressVerifiedAt,
 			&i.EmailAddressVerificationTokenDigest,
+			&i.EmailAddressVerificationTokenExpiresAt,
 			&i.AccountStatus,
 			&i.AccountStatusExplanation,
 			&i.LastAcceptedTermsOfService,
@@ -3827,6 +3894,7 @@ func (q *mysqlQueries) ListUsersByIDs(ctx context.Context, db DBTX, arg ListUser
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3888,6 +3956,7 @@ func (q *mysqlQueries) ListUsersDescending(ctx context.Context, db DBTX, arg Lis
 			&i.TwoFactorSecretVerifiedAt,
 			&i.EmailAddressVerifiedAt,
 			&i.EmailAddressVerificationTokenDigest,
+			&i.EmailAddressVerificationTokenExpiresAt,
 			&i.AccountStatus,
 			&i.AccountStatusExplanation,
 			&i.LastAcceptedTermsOfService,
@@ -3895,6 +3964,7 @@ func (q *mysqlQueries) ListUsersDescending(ctx context.Context, db DBTX, arg Lis
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3930,6 +4000,7 @@ func (q *mysqlQueries) MarkUserEmailAddressProven(ctx context.Context, db DBTX, 
 	result, err := db.ExecContext(ctx, q.markUserEmailAddressProven,
 		arg.EmailAddressVerifiedAt,
 		arg.EmailAddressVerificationTokenDigest,
+		arg.EmailAddressVerificationTokenExpiresAt,
 		arg.ID,
 		arg.Scope,
 	)
@@ -3959,6 +4030,7 @@ func (q *mysqlQueries) MarkUserEmailAddressVerified(ctx context.Context, db DBTX
 	result, err := db.ExecContext(ctx, q.markUserEmailAddressVerified,
 		arg.EmailAddressVerifiedAt,
 		arg.EmailAddressVerificationTokenDigest,
+		arg.EmailAddressVerificationTokenExpiresAt,
 		arg.ID,
 		arg.Scope,
 		arg.CurrentEmailAddressVerificationTokenDigest,
@@ -3977,6 +4049,26 @@ func (q *mysqlQueries) MarkUserTwoFactorSecretVerified(ctx context.Context, db D
 		arg.ID,
 		arg.Scope,
 	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// MarkUsersAsIndexed runs the :execrows query against mysql.
+func (q *mysqlQueries) MarkUsersAsIndexed(ctx context.Context, db DBTX, arg MarkUsersAsIndexedParams) (int64, error) {
+	query := q.markUsersAsIndexed
+
+	args := make([]any, 0, len(arg.IDs))
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	result, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -4028,6 +4120,39 @@ func (q *mysqlQueries) RecordUserTermsOfServiceAgreement(ctx context.Context, db
 	return result.RowsAffected()
 }
 
+// ScanUserIDsForReindex runs the :many query against mysql.
+func (q *mysqlQueries) ScanUserIDsForReindex(ctx context.Context, db DBTX, arg ScanUserIDsForReindexParams) ([]ScanUserIDsForReindexRow, error) {
+	rows, err := db.QueryContext(ctx, q.scanUserIDsForReindex,
+		arg.ReindexCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ScanUserIDsForReindexRow
+
+	for rows.Next() {
+		var i ScanUserIDsForReindexRow
+
+		if err := rows.Scan(
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // SearchUsersByUsername runs the :many query against mysql.
 func (q *mysqlQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg SearchUsersByUsernameParams) ([]SearchUsersByUsernameRow, error) {
 	rows, err := db.QueryContext(ctx, q.searchUsersByUsername,
@@ -4062,6 +4187,7 @@ func (q *mysqlQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg S
 			&i.TwoFactorSecretVerifiedAt,
 			&i.EmailAddressVerifiedAt,
 			&i.EmailAddressVerificationTokenDigest,
+			&i.EmailAddressVerificationTokenExpiresAt,
 			&i.AccountStatus,
 			&i.AccountStatusExplanation,
 			&i.LastAcceptedTermsOfService,
@@ -4069,6 +4195,7 @@ func (q *mysqlQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg S
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4118,6 +4245,7 @@ func (q *mysqlQueries) SearchUsersByUsernameDescending(ctx context.Context, db D
 			&i.TwoFactorSecretVerifiedAt,
 			&i.EmailAddressVerifiedAt,
 			&i.EmailAddressVerificationTokenDigest,
+			&i.EmailAddressVerificationTokenExpiresAt,
 			&i.AccountStatus,
 			&i.AccountStatusExplanation,
 			&i.LastAcceptedTermsOfService,
@@ -4125,6 +4253,7 @@ func (q *mysqlQueries) SearchUsersByUsernameDescending(ctx context.Context, db D
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4186,6 +4315,7 @@ func (q *mysqlQueries) SetMembershipDefaultAccount(ctx context.Context, db DBTX,
 func (q *mysqlQueries) SetUserEmailAddressVerificationToken(ctx context.Context, db DBTX, arg SetUserEmailAddressVerificationTokenParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.setUserEmailAddressVerificationToken,
 		arg.EmailAddressVerificationTokenDigest,
+		arg.EmailAddressVerificationTokenExpiresAt,
 		arg.EmailAddressVerifiedAt,
 		arg.ID,
 		arg.Scope,
@@ -4258,6 +4388,7 @@ func (q *mysqlQueries) UpdateUser(ctx context.Context, db DBTX, arg UpdateUserPa
 		arg.LastName,
 		arg.EmailAddressVerifiedAt,
 		arg.EmailAddressVerificationTokenDigest,
+		arg.EmailAddressVerificationTokenExpiresAt,
 		arg.ID,
 		arg.Scope,
 	)
@@ -4420,24 +4551,25 @@ var (
 		ExpiresAt        time.Time
 	}(CreateInvitationParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
 	}(CreateUserParams{})
 	_ = struct {
 		InvitationID string
@@ -4515,27 +4647,29 @@ var (
 		Scope tenancy.Scope
 	}(GetArchivedUserParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(GetArchivedUserRow{})
 	_ = struct {
 		ID    string
@@ -4608,108 +4742,116 @@ var (
 		Scope tenancy.Scope
 	}(GetUserParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(GetUserRow{})
 	_ = struct {
 		EmailAddress string
 		Scope        tenancy.Scope
 	}(GetUserByEmailAddressParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(GetUserByEmailAddressRow{})
 	_ = struct {
 		EmailAddressVerificationTokenDigest string
 		Scope                               tenancy.Scope
 	}(GetUserByEmailVerificationTokenDigestParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(GetUserByEmailVerificationTokenDigestRow{})
 	_ = struct {
 		Username string
 		Scope    tenancy.Scope
 	}(GetUserByUsernameParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(GetUserByUsernameRow{})
 	_ = struct {
 		EmailAddress string
@@ -4732,27 +4874,29 @@ var (
 		Scope tenancy.Scope
 	}(GetUserIncludingArchivedParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(GetUserIncludingArchivedRow{})
 	_ = struct {
 		InvitationID string
@@ -4778,37 +4922,39 @@ var (
 		ResultLimit      int64
 	}(ListAccountMembersParams{})
 	_ = struct {
-		ID                                      string
-		Scope                                   tenancy.Scope
-		BelongsToUser                           string
-		BelongsToAccount                        string
-		DefaultAccount                          bool
-		CreatedAt                               time.Time
-		LastUpdatedAt                           *time.Time
-		ArchivedAt                              *time.Time
-		UserID                                  string
-		UserScope                               tenancy.Scope
-		UserUsername                            string
-		UserDisplayName                         string
-		UserEmailAddress                        string
-		UserFirstName                           string
-		UserLastName                            string
-		UserHashedPassword                      string
-		UserRequiresPasswordChange              bool
-		UserPasswordLastChangedAt               *time.Time
-		UserTwoFactorSecret                     string
-		UserTwoFactorSecretVerifiedAt           *time.Time
-		UserEmailAddressVerifiedAt              *time.Time
-		UserEmailAddressVerificationTokenDigest string
-		UserAccountStatus                       string
-		UserAccountStatusExplanation            string
-		UserLastAcceptedTermsOfService          *time.Time
-		UserLastAcceptedPrivacyPolicy           *time.Time
-		UserCreatedAt                           time.Time
-		UserLastUpdatedAt                       *time.Time
-		UserArchivedAt                          *time.Time
-		FilteredCount                           int64
-		TotalCount                              int64
+		ID                                         string
+		Scope                                      tenancy.Scope
+		BelongsToUser                              string
+		BelongsToAccount                           string
+		DefaultAccount                             bool
+		CreatedAt                                  time.Time
+		LastUpdatedAt                              *time.Time
+		ArchivedAt                                 *time.Time
+		UserID                                     string
+		UserScope                                  tenancy.Scope
+		UserUsername                               string
+		UserDisplayName                            string
+		UserEmailAddress                           string
+		UserFirstName                              string
+		UserLastName                               string
+		UserHashedPassword                         string
+		UserRequiresPasswordChange                 bool
+		UserPasswordLastChangedAt                  *time.Time
+		UserTwoFactorSecret                        string
+		UserTwoFactorSecretVerifiedAt              *time.Time
+		UserEmailAddressVerifiedAt                 *time.Time
+		UserEmailAddressVerificationTokenDigest    string
+		UserEmailAddressVerificationTokenExpiresAt *time.Time
+		UserAccountStatus                          string
+		UserAccountStatusExplanation               string
+		UserLastAcceptedTermsOfService             *time.Time
+		UserLastAcceptedPrivacyPolicy              *time.Time
+		UserCreatedAt                              time.Time
+		UserLastUpdatedAt                          *time.Time
+		UserArchivedAt                             *time.Time
+		UserLastIndexedAt                          *time.Time
+		FilteredCount                              int64
+		TotalCount                                 int64
 	}(ListAccountMembersRow{})
 	_ = struct {
 		CreatedAfter     *time.Time
@@ -4822,37 +4968,39 @@ var (
 		ResultLimit      int64
 	}(ListAccountMembersDescendingParams{})
 	_ = struct {
-		ID                                      string
-		Scope                                   tenancy.Scope
-		BelongsToUser                           string
-		BelongsToAccount                        string
-		DefaultAccount                          bool
-		CreatedAt                               time.Time
-		LastUpdatedAt                           *time.Time
-		ArchivedAt                              *time.Time
-		UserID                                  string
-		UserScope                               tenancy.Scope
-		UserUsername                            string
-		UserDisplayName                         string
-		UserEmailAddress                        string
-		UserFirstName                           string
-		UserLastName                            string
-		UserHashedPassword                      string
-		UserRequiresPasswordChange              bool
-		UserPasswordLastChangedAt               *time.Time
-		UserTwoFactorSecret                     string
-		UserTwoFactorSecretVerifiedAt           *time.Time
-		UserEmailAddressVerifiedAt              *time.Time
-		UserEmailAddressVerificationTokenDigest string
-		UserAccountStatus                       string
-		UserAccountStatusExplanation            string
-		UserLastAcceptedTermsOfService          *time.Time
-		UserLastAcceptedPrivacyPolicy           *time.Time
-		UserCreatedAt                           time.Time
-		UserLastUpdatedAt                       *time.Time
-		UserArchivedAt                          *time.Time
-		FilteredCount                           int64
-		TotalCount                              int64
+		ID                                         string
+		Scope                                      tenancy.Scope
+		BelongsToUser                              string
+		BelongsToAccount                           string
+		DefaultAccount                             bool
+		CreatedAt                                  time.Time
+		LastUpdatedAt                              *time.Time
+		ArchivedAt                                 *time.Time
+		UserID                                     string
+		UserScope                                  tenancy.Scope
+		UserUsername                               string
+		UserDisplayName                            string
+		UserEmailAddress                           string
+		UserFirstName                              string
+		UserLastName                               string
+		UserHashedPassword                         string
+		UserRequiresPasswordChange                 bool
+		UserPasswordLastChangedAt                  *time.Time
+		UserTwoFactorSecret                        string
+		UserTwoFactorSecretVerifiedAt              *time.Time
+		UserEmailAddressVerifiedAt                 *time.Time
+		UserEmailAddressVerificationTokenDigest    string
+		UserEmailAddressVerificationTokenExpiresAt *time.Time
+		UserAccountStatus                          string
+		UserAccountStatusExplanation               string
+		UserLastAcceptedTermsOfService             *time.Time
+		UserLastAcceptedPrivacyPolicy              *time.Time
+		UserCreatedAt                              time.Time
+		UserLastUpdatedAt                          *time.Time
+		UserArchivedAt                             *time.Time
+		UserLastIndexedAt                          *time.Time
+		FilteredCount                              int64
+		TotalCount                                 int64
 	}(ListAccountMembersDescendingRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
@@ -5231,56 +5379,60 @@ var (
 		ResultLimit     int64
 	}(ListUsersParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
-		FilteredCount                       int64
-		TotalCount                          int64
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
+		FilteredCount                          int64
+		TotalCount                             int64
 	}(ListUsersRow{})
 	_ = struct {
 		Scope tenancy.Scope
 		IDs   []string
 	}(ListUsersByIDsParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(ListUsersByIDsRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
@@ -5293,29 +5445,31 @@ var (
 		ResultLimit     int64
 	}(ListUsersDescendingParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
-		FilteredCount                       int64
-		TotalCount                          int64
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
+		FilteredCount                          int64
+		TotalCount                             int64
 	}(ListUsersDescendingRow{})
 	_ = struct {
 		LastPaymentProviderSyncedAt *time.Time
@@ -5323,10 +5477,11 @@ var (
 		Scope                       tenancy.Scope
 	}(MarkAccountBillingSyncedParams{})
 	_ = struct {
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		ID                                  string
-		Scope                               tenancy.Scope
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
 	}(MarkUserEmailAddressProvenParams{})
 	_ = struct {
 		EmailAddressVerifiedAt *time.Time
@@ -5336,6 +5491,7 @@ var (
 	_ = struct {
 		EmailAddressVerifiedAt                     *time.Time
 		EmailAddressVerificationTokenDigest        string
+		EmailAddressVerificationTokenExpiresAt     *time.Time
 		ID                                         string
 		Scope                                      tenancy.Scope
 		CurrentEmailAddressVerificationTokenDigest string
@@ -5345,6 +5501,9 @@ var (
 		ID                        string
 		Scope                     tenancy.Scope
 	}(MarkUserTwoFactorSecretVerifiedParams{})
+	_ = struct {
+		IDs []string
+	}(MarkUsersAsIndexedParams{})
 	_ = struct {
 		BillingStatus               string
 		SubscriptionPlanID          *string
@@ -5363,33 +5522,42 @@ var (
 		Scope                      tenancy.Scope
 	}(RecordUserTermsOfServiceAgreementParams{})
 	_ = struct {
+		ReindexCursor string
+		ResultLimit   int64
+	}(ScanUserIDsForReindexParams{})
+	_ = struct {
+		ID string
+	}(ScanUserIDsForReindexRow{})
+	_ = struct {
 		Scope          tenancy.Scope
 		UsernamePrefix string
 		PageCursor     *string
 		ResultLimit    int64
 	}(SearchUsersByUsernameParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(SearchUsersByUsernameRow{})
 	_ = struct {
 		Scope          tenancy.Scope
@@ -5398,27 +5566,29 @@ var (
 		ResultLimit    int64
 	}(SearchUsersByUsernameDescendingParams{})
 	_ = struct {
-		ID                                  string
-		Scope                               tenancy.Scope
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		HashedPassword                      string
-		RequiresPasswordChange              bool
-		PasswordLastChangedAt               *time.Time
-		TwoFactorSecret                     string
-		TwoFactorSecretVerifiedAt           *time.Time
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		AccountStatus                       string
-		AccountStatusExplanation            string
-		LastAcceptedTermsOfService          *time.Time
-		LastAcceptedPrivacyPolicy           *time.Time
-		CreatedAt                           time.Time
-		LastUpdatedAt                       *time.Time
-		ArchivedAt                          *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		HashedPassword                         string
+		RequiresPasswordChange                 bool
+		PasswordLastChangedAt                  *time.Time
+		TwoFactorSecret                        string
+		TwoFactorSecretVerifiedAt              *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		AccountStatus                          string
+		AccountStatusExplanation               string
+		LastAcceptedTermsOfService             *time.Time
+		LastAcceptedPrivacyPolicy              *time.Time
+		CreatedAt                              time.Time
+		LastUpdatedAt                          *time.Time
+		ArchivedAt                             *time.Time
+		LastIndexedAt                          *time.Time
 	}(SearchUsersByUsernameDescendingRow{})
 	_ = struct {
 		BillingStatus string
@@ -5437,10 +5607,11 @@ var (
 		BelongsToAccount string
 	}(SetMembershipDefaultAccountParams{})
 	_ = struct {
-		EmailAddressVerificationTokenDigest string
-		EmailAddressVerifiedAt              *time.Time
-		ID                                  string
-		Scope                               tenancy.Scope
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		EmailAddressVerifiedAt                 *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
 	}(SetUserEmailAddressVerificationTokenParams{})
 	_ = struct {
 		RequiresPasswordChange bool
@@ -5467,15 +5638,16 @@ var (
 		Scope             tenancy.Scope
 	}(UpdateAccountParams{})
 	_ = struct {
-		Username                            string
-		DisplayName                         string
-		EmailAddress                        string
-		FirstName                           string
-		LastName                            string
-		EmailAddressVerifiedAt              *time.Time
-		EmailAddressVerificationTokenDigest string
-		ID                                  string
-		Scope                               tenancy.Scope
+		Username                               string
+		DisplayName                            string
+		EmailAddress                           string
+		FirstName                              string
+		LastName                               string
+		EmailAddressVerifiedAt                 *time.Time
+		EmailAddressVerificationTokenDigest    string
+		EmailAddressVerificationTokenExpiresAt *time.Time
+		ID                                     string
+		Scope                                  tenancy.Scope
 	}(UpdateUserParams{})
 	_ = struct {
 		AccountStatus            string

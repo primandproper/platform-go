@@ -83,6 +83,8 @@ func (s *Server) ListTransactions(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter, PermissionArchiveTransactions)
+
 	page, err := s.store.ListTransactions(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
@@ -120,6 +122,8 @@ func (s *Server) ListTransactionsForAccount(
 
 		return nil, err
 	}
+
+	s.confineToLive(ctx, req, filter, PermissionArchiveTransactions)
 
 	if err = s.requireAccount(req, accountID, "listing an account's ledger"); err != nil {
 		return nil, err

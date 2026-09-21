@@ -285,7 +285,8 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "SetUserEmailAddressVerificationToken", run: func() error {
-				return store.SetUserEmailAddressVerificationToken(t.Context(), nil, testScope, "u", "tok")
+				return store.SetUserEmailAddressVerificationToken(
+					t.Context(), nil, testScope, "u", "tok", store.now().Add(time.Hour))
 			}},
 			{name: "MarkUserEmailAddressVerified", run: func() error {
 				return store.MarkUserEmailAddressVerified(t.Context(), nil, testScope, "u", "tok")
@@ -467,6 +468,20 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			}},
 			{name: "EraseInvitationsForSubject", run: func() error {
 				_, err := store.EraseInvitationsForSubject(t.Context(), nil, testScope, "u")
+
+				return err
+			}},
+
+			// The search index pair takes no scope — it is the sync servicing
+			// itself, not a read on somebody's behalf — but it owes the same
+			// refusal for a nil executor as everything else here.
+			{name: "ScanUsersForReindex", run: func() error {
+				_, err := store.ScanUsersForReindex(t.Context(), nil, "", 0)
+
+				return err
+			}},
+			{name: "MarkUsersAsIndexed", run: func() error {
+				_, err := store.MarkUsersAsIndexed(t.Context(), nil, []string{"u"})
 
 				return err
 			}},

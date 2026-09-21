@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
 
@@ -51,7 +52,31 @@ func (s *SQLStore) GetUserByEmailVerificationToken(
 				return nil, err
 			}
 
-			return userFromEmailVerificationTokenDigestRow(&row), nil
+			user := userFromEmailVerificationTokenDigestRow(&row)
+
+			// The deadline is compared here rather than in the statement's
+			// predicate, which is authentication/passwordreset's ruling followed
+			// rather than re-derived: liveness is decided in Go, once, against
+			// the clock that stamped the column. A predicate would compare the
+			// database's clock against a deadline this store's clock computed,
+			// so the two would be different clocks deciding one link — and under
+			// a test clock that only moves when a test moves it, years apart.
+			//
+			// It is refused rather than handed back with a flag. This method's
+			// job is to resolve a link to the person it names, and a caller that
+			// received a user for a dead link is a caller who has to remember to
+			// check — which is the check every consumer would write and one of
+			// them would forget.
+			//
+			// A row whose digest matched but whose deadline is missing is dead
+			// too, by EmailVerificationLinkLive's reading. No write here
+			// produces that pair, which is exactly why the guard treats it as
+			// unanswerable rather than as unexpiring.
+			if !user.EmailVerificationLinkLive(s.now()) {
+				return nil, platformerrors.Wrap(ErrEmailVerificationLinkExpired, "email verification token")
+			}
+
+			return user, nil
 		})
 }
 
@@ -239,17 +264,29 @@ func (s *SQLStore) MarkUserTwoFactorSecretVerified(
 }
 
 // SetUserEmailAddressVerificationToken stores the digest of the token a
-// verification link will carry, replacing any outstanding one and dropping any
-// proof the address already had.
+// verification link will carry and the deadline it stops being answerable at,
+// replacing any outstanding one and dropping any proof the address already had.
 //
 // The secret is the argument and the digest is the column, so the token this
 // method is handed is never written anywhere — see tokenDigest. A caller mails
 // the value it passed in; nothing can read it back out of the row.
+//
+// expiresAt is required and a zero one is refused, for the reason
+// Invitation.ExpiresAt is required: this link is a bearer credential that
+// proves an address and, through the sign-in service, sets the first password
+// on an account holding none. A deadline defaulted here would be this package
+// choosing how long somebody else's mail stays dangerous.
+//
+// It is a deadline rather than a lifetime because the caller holds the clock
+// that minted the token, and a store computing its own would put two clocks on
+// one link — the failure passwordreset names, where a test clock and a wall
+// clock are years apart.
 func (s *SQLStore) SetUserEmailAddressVerificationToken(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	userID, token string,
+	expiresAt time.Time,
 ) error {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
@@ -276,6 +313,17 @@ func (s *SQLStore) SetUserEmailAddressVerificationToken(
 		)
 	}
 
+	if expiresAt.IsZero() {
+		// Refused rather than defaulted. A link written with no deadline is one
+		// nothing downstream can bound afterwards, because the column and the
+		// digest are assigned together and the next write that touches either
+		// clears both.
+		return op.Error(
+			platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "email verification token has no expiry"),
+			"setting identity email verification token",
+		)
+	}
+
 	// Any outstanding token is replaced, so re-sending a verification email
 	// invalidates the previous link rather than leaving two live.
 	//
@@ -287,10 +335,11 @@ func (s *SQLStore) SetUserEmailAddressVerificationToken(
 	// column that says otherwise which has to go.
 	count, err := s.q.SetUserEmailAddressVerificationToken(ctx, tx,
 		identitydb.SetUserEmailAddressVerificationTokenParams{
-			ID:                                  userID,
-			Scope:                               scope,
-			EmailAddressVerificationTokenDigest: tokenDigest(token),
-			EmailAddressVerifiedAt:              nil,
+			ID:                                     userID,
+			Scope:                                  scope,
+			EmailAddressVerificationTokenDigest:    tokenDigest(token),
+			EmailAddressVerificationTokenExpiresAt: pointer.To(expiresAt.UTC()),
+			EmailAddressVerifiedAt:                 nil,
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "setting identity email verification token"); err != nil {
 		return op.Error(err, "setting identity email verification token")
@@ -341,10 +390,11 @@ func (s *SQLStore) MarkUserEmailAddressVerified(
 	// digest is not a prefix of the token somebody would have to present.
 	count, err := s.q.MarkUserEmailAddressVerified(ctx, tx,
 		identitydb.MarkUserEmailAddressVerifiedParams{
-			ID:                                  userID,
-			Scope:                               scope,
-			EmailAddressVerifiedAt:              pointer.To(s.now()),
-			EmailAddressVerificationTokenDigest: "",
+			ID:                                     userID,
+			Scope:                                  scope,
+			EmailAddressVerifiedAt:                 pointer.To(s.now()),
+			EmailAddressVerificationTokenDigest:    "",
+			EmailAddressVerificationTokenExpiresAt: nil,
 			CurrentEmailAddressVerificationTokenDigest: tokenDigest(token),
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "marking identity email address verified"); err != nil {
@@ -394,10 +444,11 @@ func (s *SQLStore) MarkUserEmailAddressProven(
 
 	count, err := s.q.MarkUserEmailAddressProven(ctx, tx,
 		identitydb.MarkUserEmailAddressProvenParams{
-			ID:                                  userID,
-			Scope:                               scope,
-			EmailAddressVerifiedAt:              pointer.To(s.now()),
-			EmailAddressVerificationTokenDigest: "",
+			ID:                                     userID,
+			Scope:                                  scope,
+			EmailAddressVerifiedAt:                 pointer.To(s.now()),
+			EmailAddressVerificationTokenDigest:    "",
+			EmailAddressVerificationTokenExpiresAt: nil,
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "marking identity email address proven"); err != nil {
 		return op.Error(err, "marking identity email address proven")

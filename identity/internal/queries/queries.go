@@ -62,6 +62,22 @@ const (
 	UserEmailVerificationTokenDigestColumn = "email_address_verification_token_digest"
 )
 
+// userEmailVerificationTokenExpiresAtColumn is the deadline the digest above
+// stops being answerable at.
+//
+// It is unexported because nothing is keyed on it, which is the test the block
+// above states: liveness is decided in Go, against the clock that stamped the
+// column, and no statement here carries a predicate on it. That is
+// authentication/passwordreset's ruling followed rather than re-derived — a
+// guard in SQL would be a second copy of the boundary, free to disagree with
+// User.EmailVerificationLinkLive about which second a link dies in, and under a
+// test clock the two are years apart.
+//
+// It is assigned by every statement that assigns the digest, which is what
+// keeps the pair one state rather than two columns that can disagree about
+// whether a link is outstanding.
+const userEmailVerificationTokenExpiresAtColumn = "email_address_verification_token_expires_at"
+
 // userDisplayNameColumn is the name a user is shown under, kept beside the
 // folded handle the statements above are keyed on and unrelated to it.
 //
@@ -267,6 +283,7 @@ var Users = Table{
 		"two_factor_secret_verified_at",
 		EmailAddressVerifiedAtColumn,
 		UserEmailVerificationTokenDigestColumn,
+		userEmailVerificationTokenExpiresAtColumn,
 		accountStatusColumn,
 		accountStatusExplanationColumn,
 		termsOfServiceColumn,
@@ -274,13 +291,29 @@ var Users = Table{
 		querygen.CreatedAtColumn,
 		querygen.LastUpdatedAtColumn,
 		querygen.ArchivedAtColumn,
+
+		// last_indexed_at is what makes this the one table here a search index
+		// mirrors, and naming it is the whole of the wiring: StandardCRUD
+		// emits ScanUserIDsForReindex and MarkUsersAsIndexed from its presence,
+		// so neither statement is written here and writing either renders it
+		// twice under one method name.
+		//
+		// searchsync.NewStampBuffer calls that stamp "the natural
+		// implementation" a Syncer writes through, and until this column no
+		// table in this module carried one — so the two halves fit together
+		// over something nothing had. SearchUsersByUsername is why it is this
+		// table: a prefix match that points an application wanting more at the
+		// search package is an advertisement of being indexed.
+		querygen.LastIndexedAtColumn,
 	},
 	Nullable: []string{
 		passwordLastChangedAtColumn,
 		twoFactorVerifiedAtColumn,
 		EmailAddressVerifiedAtColumn,
+		userEmailVerificationTokenExpiresAtColumn,
 		termsOfServiceColumn,
 		privacyPolicyColumn,
+		querygen.LastIndexedAtColumn,
 	},
 	Updatable: []string{
 		UserUsernameColumn,
@@ -290,6 +323,7 @@ var Users = Table{
 		"last_name",
 		EmailAddressVerifiedAtColumn,
 		UserEmailVerificationTokenDigestColumn,
+		userEmailVerificationTokenExpiresAtColumn,
 	},
 	Omitted: []querygen.StandardQuery{querygen.ExistsQuery},
 }
@@ -703,15 +737,29 @@ func fieldWrites(g *querygen.Generator) []*querygen.Query {
 			querygen.Match{Column: twoFactorVerifiedAtColumn, Against: querygen.NoValue}),
 
 		// Issuing a link drops the proof, for the reason enrolling a second
-		// factor drops its verification: the two columns are one state, and a
+		// factor drops its verification: these columns are one state, and a
 		// row holding both says the address is proven and has an outstanding
 		// link at the same time. Which of the two a reader believes is then a
 		// question about which column it happened to look at.
+		//
+		// The deadline is assigned here and in every statement below that
+		// clears the digest, which is the same rule applied to the third
+		// column: a deadline outliving the link it bounds is a row saying a
+		// link is outstanding when none is, and a link minted with no deadline
+		// is the bearer credential this column exists to stop.
 		g.UpdateQuery("SetUserEmailAddressVerificationToken", UsersTable, Users.Columns,
-			[]string{UserEmailVerificationTokenDigestColumn, EmailAddressVerifiedAtColumn}, Users.Nullable, scope),
+			[]string{
+				UserEmailVerificationTokenDigestColumn,
+				userEmailVerificationTokenExpiresAtColumn,
+				EmailAddressVerifiedAtColumn,
+			}, Users.Nullable, scope),
 
 		g.UpdateQuery("MarkUserEmailAddressVerified", UsersTable, Users.Columns,
-			[]string{EmailAddressVerifiedAtColumn, UserEmailVerificationTokenDigestColumn}, Users.Nullable,
+			[]string{
+				EmailAddressVerifiedAtColumn,
+				UserEmailVerificationTokenDigestColumn,
+				userEmailVerificationTokenExpiresAtColumn,
+			}, Users.Nullable,
 			scope,
 			querygen.Match{Column: UserEmailVerificationTokenDigestColumn, Arg: currentEmailVerificationTokenDigestArg}),
 
@@ -738,7 +786,11 @@ func fieldWrites(g *querygen.Generator) []*querygen.Query {
 		// SetUserEmailAddressVerificationToken's comment is about, entered from
 		// the other side.
 		g.UpdateQuery("MarkUserEmailAddressProven", UsersTable, Users.Columns,
-			[]string{EmailAddressVerifiedAtColumn, UserEmailVerificationTokenDigestColumn}, Users.Nullable,
+			[]string{
+				EmailAddressVerifiedAtColumn,
+				UserEmailVerificationTokenDigestColumn,
+				userEmailVerificationTokenExpiresAtColumn,
+			}, Users.Nullable,
 			scope),
 
 		// The other direction, and the one nothing else can express: the proof

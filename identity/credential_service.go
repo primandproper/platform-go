@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -275,11 +276,13 @@ func (s *Service) MarkUserTwoFactorSecretVerified(
 // leaves after the commit, which is the same bargain Invite makes with the
 // invitation it issues.
 //
-// The token is the caller's — its length, its alphabet, its expiry policy — and
-// the store refuses an empty one. Any outstanding token is replaced, so
-// re-sending invalidates the previous link, and any proof the address already had
-// comes off in the same statement; what that proof was reaches the hook, because
-// nothing can read it afterwards.
+// The token is the caller's — its length, its alphabet — and the store refuses
+// an empty one. So is the deadline: expiresAt is required and a zero one is
+// refused, because a verification link is a bearer credential and the policy for
+// how long one stays dangerous is a deployment's rather than this package's. Any
+// outstanding token is replaced, so re-sending invalidates the previous link,
+// and any proof the address already had comes off in the same statement; what
+// that proof was reaches the hook, because nothing can read it afterwards.
 //
 // The token does not reach the hook and is not returned: the caller minted it and
 // is the one who needs it. The user handed back and passed to the hook is read
@@ -288,6 +291,7 @@ func (s *Service) SetUserEmailAddressVerificationToken(
 	ctx context.Context,
 	scope tenancy.Scope,
 	userID, token string,
+	expiresAt time.Time,
 ) (*User, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
@@ -305,7 +309,7 @@ func (s *Service) SetUserEmailAddressVerificationToken(
 
 		previousAddressVerifiedAt := before.EmailAddressVerifiedAt
 
-		if err = s.store.SetUserEmailAddressVerificationToken(ctx, tx, scope, userID, token); err != nil {
+		if err = s.store.SetUserEmailAddressVerificationToken(ctx, tx, scope, userID, token, expiresAt); err != nil {
 			return err
 		}
 

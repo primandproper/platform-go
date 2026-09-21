@@ -11,6 +11,24 @@ privacy pipeline would compile all of it. The seam goes here for the same reason
 comments/privacy and dataprivacy/auditerasure exist, and it costs one
 constructor argument.
 
+# What neither half reaches
+
+Both read by subject — [waitlists.SignupStore.ListSignupsForSubject] and
+[waitlists.SignupStore.WithdrawSignupsForSubject] — so a signup carrying no
+subject is found by neither. That is the anonymous join: waitlists/grpc's
+Join takes the caller as the subject where there is one and nobody where there
+is not, which is what a pre-launch waitlist is for, since the people on it are
+the ones who do not have accounts yet.
+
+It is stated rather than fixed, and the alternative is worse. Erasing by
+contact address would let anybody erase anybody's signup by naming an address
+they do not own: a dataprivacy.Subject carries no proof of control over one,
+which is exactly what the token behind [waitlists.SignupStore.Withdraw] does
+carry. So Withdraw is the anonymous person's remedy, and a deployment that
+wants every signup reachable from this adapter refuses anonymous ones instead —
+see waitlists/grpc's PublicMethods for how, and why it is one decision rather
+than a default.
+
 # Why the erasure withdraws rather than deletes
 
 A signup is the one row in this module whose erasure has to remember the

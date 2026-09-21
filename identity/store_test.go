@@ -32,6 +32,7 @@ func TestStore_PartitionsItsMethods(t *testing.T) {
 		{reflect.TypeFor[AdminWriter](), "AdminWriter"},
 		{reflect.TypeFor[BillingWriter](), "BillingWriter"},
 		{reflect.TypeFor[InvitationStore](), "InvitationStore"},
+		{reflect.TypeFor[SearchIndexWriter](), "SearchIndexWriter"},
 	}
 
 	seen := map[string]string{}
@@ -58,7 +59,7 @@ func TestStore_PartitionsItsMethods(t *testing.T) {
 	// that is one too small.
 	for method := range storeType.Methods() {
 		if method := method.Name; seen[method] == "" {
-			t.Errorf("Store.%s is in none of the nine interfaces", method)
+			t.Errorf("Store.%s is in none of the ten interfaces", method)
 		}
 	}
 }
@@ -110,6 +111,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		{name: "service", run: runServiceSuite},
 		{name: "credential service", run: runCredentialServiceSuite},
 		{name: "transactions", run: runCallerTransactionSuite},
+		{name: "search index", run: runSearchIndexSuite},
 		{name: "timestamps", run: runClockSuite},
 	}
 

@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
@@ -64,9 +65,11 @@ func (s *Server) Register(
 //
 // The subject is the caller and there is no target on the request. Editing
 // somebody else's profile is an operator act, and the operator acts this service
-// exposes are the three on AdminWriter — a status, a service role, an archival —
-// each of which is named as such and permissioned as such. A "update any user"
-// RPC would be a fourth, hiding inside the one every signed-in person calls.
+// exposes are named as such and permissioned as such: the three on AdminWriter —
+// a status, a service role, an archival — and SetUserRequiresPasswordChange,
+// which is on the credential writer rather than AdminWriter because it is not a
+// privilege escalation to hold. A "update any user" RPC would be one more,
+// hiding inside the one every signed-in person calls.
 func (s *Server) UpdateProfile(
 	ctx context.Context,
 	request *identitypb.UpdateProfileRequest,
@@ -194,6 +197,50 @@ func (s *Server) SetUserServiceRoles(
 	}
 
 	return &identitypb.SetUserServiceRolesResponse{User: UserToProto(user)}, nil
+}
+
+// SetUserRequiresPasswordChange forces a password change at a user's next
+// sign-in, or releases one.
+//
+// It is the fourth operator write and the only one whose subject is a
+// credential rather than the row itself — and it still carries no credential,
+// which is why it is served here and not by the sign-in service. It assigns a
+// boolean; the sign-in service reads it, and a password chosen through
+// SignInService.UpdatePassword clears it.
+//
+// An absent requires_password_change is refused rather than read as false, for
+// the reason [AccountStatusFromProto] refuses UNSPECIFIED: the value a
+// forgotten field carries is the one that undoes somebody's decision, and this
+// service will not perform that on the strength of a field nobody set.
+func (s *Server) SetUserRequiresPasswordChange(
+	ctx context.Context,
+	request *identitypb.SetUserRequiresPasswordChangeRequest,
+) (*identitypb.SetUserRequiresPasswordChangeResponse, error) {
+	ctx, op, principal, done, err := s.caller(
+		ctx, identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	op.Set(userIDKey, request.GetUserId())
+
+	if request.RequiresPasswordChange == nil {
+		err = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue,
+			"password change requirement is unset")
+
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(),
+			codes.InvalidArgument, "setting the password change requirement of user %q", request.GetUserId())
+	}
+
+	user, err := s.svc.SetUserRequiresPasswordChange(
+		ctx, scopeOf(principal), request.GetUserId(), request.GetRequiresPasswordChange())
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "setting the password change requirement of user %q", request.GetUserId())
+	}
+
+	return &identitypb.SetUserRequiresPasswordChangeResponse{User: UserToProto(user)}, nil
 }
 
 // GetPrincipal answers "who am I and what may I do" for the calling user.

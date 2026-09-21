@@ -176,6 +176,24 @@ var (
 	// told to ask for another one rather than that the link was wrong.
 	ErrInvitationExpired = platformerrors.New("invitation has expired")
 
+	// ErrEmailVerificationLinkExpired indicates an outstanding verification link
+	// whose deadline has passed. Store.GetUserByEmailVerificationToken returns
+	// it in place of the user the digest names.
+	//
+	// It is distinct from ErrUserNotFound for the Go caller and for the trace,
+	// not for the wire: both mappers answer it exactly as an absent user, which
+	// is the opposite choice from ErrInvitationExpired's and made for a
+	// different lookup. An invitation is found by id and then has its token
+	// compared, so "expired" is told to somebody who named a real row; a
+	// verification link is found by the digest of the token alone, so an answer
+	// that told an expired link apart from an unknown one would tell whoever is
+	// submitting guesses which of their guesses were once real.
+	//
+	// authentication/signin collapses it further still, into
+	// ErrInvalidVerificationToken along with every other way of failing to
+	// resolve a link, and records the specific reason on the operation's span.
+	ErrEmailVerificationLinkExpired = platformerrors.New("email address verification link has expired")
+
 	// ErrInvalidEmailAddress indicates an address net/mail cannot parse. It
 	// wraps errors.ErrUnrecognizedInputValue, so a caller may check either.
 	ErrInvalidEmailAddress = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "invalid email address")

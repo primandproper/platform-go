@@ -172,6 +172,32 @@ trips rather than closing it.
 And it is the only backend that can answer which sessions a principal holds. See
 above: that is a column on the row, which a table has and a keyspace does not.
 
+# Why no write here takes a transaction
+
+Every other store in this module reads (ctx, tx database.Tx, scope, ...) on a
+write, and a handful are named exceptions that take a plain executor instead.
+Store is neither, and the reason is one none of those share: it is the only
+store here whose records may not be in a SQL database at all.
+
+A database.Tx is a handle on one SQL connection. Handing one to a Store backed
+by sessions/cache would be handing it a value it has nothing to do with, and
+the signature would promise a consumer an atomicity the redis backend cannot
+provide — a sign-in that established a session inside the caller's transaction
+and then rolled it back would leave the session live in the cache, with the
+transaction reporting that nothing happened. The honest signature is the one
+that takes no executor, because what this Store can join depends on a Backend
+chosen at construction and the interface is the same either way.
+
+What it costs is real and worth stating rather than discovering: a sign-in that
+writes a user row and establishes a session is two commits, and a session can
+outlive a rolled-back sign-in. Establish the session last, once the transaction
+that precedes it has committed, so the failure mode is a signed-up user with no
+session — which is a sign-in away from fixed — rather than a session held by a
+user who does not exist.
+
+A consumer who needs the session in the transaction wants sessions/database's
+Backend directly, which is a table like any other.
+
 # What T must be
 
 Whatever the chosen backend can round-trip: a concrete struct with exported

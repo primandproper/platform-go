@@ -24,8 +24,8 @@ import (
 //
 // They map more than webhooks/grpc raises, deliberately. A consumer serving
 // Replay from their own handler gets ErrEndpointDisabled and ErrDeliveryNotFound
-// answered too, and a mapping that only covered the nine RPCs this module ships
-// would make the answer depend on which transport happened to ask.
+// answered too, and a mapping that only covered what this module's own surface
+// raises would make the answer depend on which transport happened to ask.
 //
 // Two absences are worth naming because both look mappable and neither is.
 // ErrNoSigningSecret is requestsigning.ErrNoSigningKey and ErrCircuitOpen wraps

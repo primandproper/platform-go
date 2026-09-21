@@ -405,8 +405,13 @@ type Service struct {
 	refreshTokenTTL      time.Duration
 	adminRefreshTokenTTL time.Duration
 
-	magicLinkTTL   time.Duration
-	magicLinkFloor time.Duration
+	magicLinkTTL time.Duration
+
+	// verificationLinkTTL is how long the link minted at registration stays
+	// answerable. It becomes a deadline before it reaches identity's store,
+	// which refuses a zero one — see DefaultVerificationLinkTTL.
+	verificationLinkTTL time.Duration
+	magicLinkFloor      time.Duration
 
 	secondFactor SecondFactorPolicy
 }
@@ -485,8 +490,10 @@ func NewService(
 		refreshTokenTTL:      DefaultRefreshTokenTTL,
 		adminRefreshTokenTTL: DefaultAdminRefreshTokenTTL,
 
-		magicLinkTTL:   DefaultMagicLinkTTL,
-		magicLinkFloor: DefaultMagicLinkRequestFloor,
+		magicLinkTTL: DefaultMagicLinkTTL,
+
+		verificationLinkTTL: DefaultVerificationLinkTTL,
+		magicLinkFloor:      DefaultMagicLinkRequestFloor,
 	}
 
 	for _, opt := range opts {

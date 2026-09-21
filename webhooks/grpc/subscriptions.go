@@ -127,6 +127,8 @@ func (s *Server) ListSubscriptions(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
+
 	page, err := s.store.ListSubscriptions(ctx, s.client.Reader(), req.scope, endpointID, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,

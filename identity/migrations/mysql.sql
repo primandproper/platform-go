@@ -38,27 +38,51 @@
 -- verification link carries, never the token itself. See postgres.sql for why,
 -- and identity.SQLStore for where the hashing happens.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
-    id                                      VARCHAR(64) NOT NULL PRIMARY KEY,
-    scope                                   VARCHAR(255) NOT NULL,
-    username                                VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
-    display_name                            VARCHAR(255) NOT NULL DEFAULT '',
-    email_address                           VARCHAR(320) COLLATE utf8mb4_bin NOT NULL,
-    first_name                              VARCHAR(255) NOT NULL DEFAULT '',
-    last_name                               VARCHAR(255) NOT NULL DEFAULT '',
-    hashed_password                         VARCHAR(512) NOT NULL,
-    requires_password_change                BOOLEAN NOT NULL DEFAULT FALSE,
-    password_last_changed_at                DATETIME(6),
-    two_factor_secret                       VARCHAR(255) NOT NULL DEFAULT '',
-    two_factor_secret_verified_at           DATETIME(6),
-    email_address_verified_at               DATETIME(6),
-    email_address_verification_token_digest VARCHAR(255) NOT NULL DEFAULT '',
-    account_status                          VARCHAR(32) NOT NULL,
-    account_status_explanation              VARCHAR(1024) NOT NULL DEFAULT '',
-    last_accepted_terms_of_service          DATETIME(6),
-    last_accepted_privacy_policy            DATETIME(6),
-    created_at                              DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    last_updated_at                         DATETIME(6),
-    archived_at                             DATETIME(6),
+    id                                          VARCHAR(64) NOT NULL PRIMARY KEY,
+    scope                                       VARCHAR(255) NOT NULL,
+    username                                    VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
+    display_name                                VARCHAR(255) NOT NULL DEFAULT '',
+    email_address                               VARCHAR(320) COLLATE utf8mb4_bin NOT NULL,
+    first_name                                  VARCHAR(255) NOT NULL DEFAULT '',
+    last_name                                   VARCHAR(255) NOT NULL DEFAULT '',
+    hashed_password                             VARCHAR(512) NOT NULL,
+    requires_password_change                    BOOLEAN NOT NULL DEFAULT FALSE,
+    password_last_changed_at                    DATETIME(6),
+    two_factor_secret                           VARCHAR(255) NOT NULL DEFAULT '',
+    two_factor_secret_verified_at               DATETIME(6),
+    email_address_verified_at                   DATETIME(6),
+    email_address_verification_token_digest     VARCHAR(255) NOT NULL DEFAULT '',
+
+    -- email_address_verification_token_expires_at is when the outstanding
+    -- verification link above stops being answerable.
+    --
+    -- A verification link is a bearer credential and a strong one: answering it
+    -- proves the address, promotes the registrant out of unverified, and --
+    -- through the sign-in service's AttachPassword -- sets the first password on
+    -- an account that holds none. identity_invitations.expires_at carries the
+    -- same obligation for a weaker link, and its column comment gives the same
+    -- reason: one that never expires is still valid in a mailbox somebody lost
+    -- control of two years ago.
+    --
+    -- Nullable, and NULL means no link is outstanding rather than a link with no
+    -- deadline. It is written and cleared in the same statement as the digest
+    -- beside it -- every statement that assigns one assigns both -- so a row
+    -- carrying a digest and no deadline is a state no write here produces, and
+    -- the store refuses to resolve one rather than treating it as unexpiring.
+    email_address_verification_token_expires_at DATETIME(6),
+    account_status                              VARCHAR(32) NOT NULL,
+    account_status_explanation                  VARCHAR(1024) NOT NULL DEFAULT '',
+    last_accepted_terms_of_service              DATETIME(6),
+    last_accepted_privacy_policy                DATETIME(6),
+    created_at                                  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    last_updated_at                             DATETIME(6),
+    archived_at                                 DATETIME(6),
+
+    -- last_indexed_at is when a search index last accepted this row, written by
+    -- MarkUsersAsIndexed and read by nothing in this package. See the Postgres
+    -- schema for why search bookkeeping sits in a domain table here, and why
+    -- NULL means never indexed rather than indexed at the zero time.
+    last_indexed_at                             DATETIME(6),
 
     -- The uniqueness covers archived rows as well as live ones in every
     -- dialect, which is a decision rather than a MySQL concession — see the

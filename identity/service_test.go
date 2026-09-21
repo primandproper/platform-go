@@ -156,6 +156,17 @@ func (h *recordingHooks) AfterCancelInvitation(
 	return h.record(ctx, tx, "cancel")
 }
 
+func (h *recordingHooks) AfterCreateAccount(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, account *Account, membership *Membership,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.account, h.membership = account, membership
+
+	return h.record(ctx, tx, "create_account")
+}
+
 func (h *recordingHooks) AfterTransferAccountOwnership(
 	ctx context.Context, tx database.Tx, _ tenancy.Scope, account *Account, previousOwnerUserID string,
 ) error {
@@ -556,7 +567,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		joiner := newUser("grace")
 		joiner.EmailAddress = "grace@example.com"
-		joiner.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(joiner, "verify-me")
 
 		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
 			joiner, issued.ID, "the-token", "glad to")
@@ -623,7 +634,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 
 		joiner := newUser("grace")
-		joiner.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(joiner, "verify-me")
 
 		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
 			joiner, issued.ID, "the-token", "")
@@ -1065,6 +1076,53 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		_, err = service.CancelInvitation(t.Context(), testScope, issued.ID, "again")
 		must.ErrorIs(t, err, ErrInvitationNotFound)
 		test.EqOp(t, 1, hooks.ran("cancel"))
+	})
+
+	// The gap this closes: Store.CreateAccount existed, nothing above it did,
+	// and a user could only ever create the account they registered with — so
+	// every other account had to arrive by invitation, which makes starting
+	// something of your own a thing only somebody else can do for you.
+	t.Run("opens a second account owned by the user, without moving their default", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		owner := registerAda(t, service, "ada")
+
+		second, err := service.CreateAccount(t.Context(), testScope, owner.User.ID,
+			&Account{Name: "second household"}, []string{"owner"})
+		must.NoError(t, err)
+		test.EqOp(t, owner.User.ID, second.OwnerUserID)
+		test.NotEq(t, owner.Account.ID, second.ID)
+
+		// The hook ran, with both rows the call wrote.
+		test.EqOp(t, 1, hooks.ran("create_account"))
+		must.NotNil(t, hooks.membership)
+		test.EqOp(t, second.ID, hooks.membership.BelongsToAccount)
+
+		// The owner membership exists and is not the default: a second account
+		// is somewhere a user may go, not somewhere they are moved to.
+		membership, err := store.GetMembership(t.Context(), env.reader(), testScope, owner.User.ID, second.ID)
+		must.NoError(t, err)
+		test.False(t, membership.DefaultAccount,
+			test.Sprint("opening a second account moved the user out of their first"))
+
+		first, err := store.GetMembership(t.Context(), env.reader(), testScope, owner.User.ID, owner.Account.ID)
+		must.NoError(t, err)
+		test.True(t, first.DefaultAccount, test.Sprint("the first account stopped being the default"))
+	})
+
+	t.Run("refuses an account naming somebody else as owner", func(t *testing.T) {
+		t.Parallel()
+
+		service, _ := env.newService(t, &recordingHooks{})
+
+		owner := registerAda(t, service, "ada")
+
+		_, err := service.CreateAccount(t.Context(), testScope, owner.User.ID,
+			&Account{Name: "not mine", OwnerUserID: "somebody_else"}, []string{"owner"})
+		test.Error(t, err)
 	})
 
 	t.Run("transfers ownership and names the owner it came from", func(t *testing.T) {

@@ -84,6 +84,17 @@ func WithGrantsExtractor(grants authorization.GrantsExtractor) Option {
 	return func(s *Server) { s.grants = grants }
 }
 
+// WithContactResolver decides where a Join's contact address comes from.
+//
+// Absent, the address is read off the request, which is what a public signup
+// form needs and what every consumer had before this option existed. Supplying
+// one is a deployment saying its Join is mounted behind a grant rather than in
+// [PublicMethods] — where an address read off the wire lets any authenticated
+// caller sign up somebody else's. See [ContactResolver].
+func WithContactResolver(contacts ContactResolver) Option {
+	return func(s *Server) { s.contacts = contacts }
+}
+
 // WithLogger sets the server's logger.
 func WithLogger(logger logging.Logger) Option {
 	return func(s *Server) { s.logger = logger }

@@ -60,6 +60,20 @@
 // password on this wire would put the choice of hashing engine in the
 // transport.
 //
+// SetUserRequiresPasswordChange is the one write that looks like a credential
+// RPC and is not one. It carries no secret in either direction -- it assigns a
+// boolean on a directory row, which the sign-in service reads on its status
+// call and which SignInService.UpdatePassword clears -- so the sentence above
+// does not reach it: there is nothing here that a hashing engine produced. It
+// is an operator write on a directory column and belongs with ArchiveUser,
+// UpdateUserAccountStatus and SetUserServiceRoles, which is where it sits.
+//
+// The sign-in service is deliberately not where it lives, even though that is
+// the service that enforces the flag. signin.Directory is the narrowest
+// interface the component holding everybody's passwords can be given, and an
+// interface that could also impose a forced change on any user is one that
+// could be made to.
+//
 // Registration here therefore mints the passwordless user that package already
 // treats as first-class. A registration that carries a credential is
 // SignInService.Register, in signin.proto: that service holds the authenticator,
@@ -102,6 +116,7 @@ const (
 	IdentityService_AcceptInvitation_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/AcceptInvitation"
 	IdentityService_RejectInvitation_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/RejectInvitation"
 	IdentityService_CancelInvitation_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/CancelInvitation"
+	IdentityService_CreateAccount_FullMethodName                  = "/primandproper.platform.identity.v1.IdentityService/CreateAccount"
 	IdentityService_TransferAccountOwnership_FullMethodName       = "/primandproper.platform.identity.v1.IdentityService/TransferAccountOwnership"
 	IdentityService_SetDefaultAccount_FullMethodName              = "/primandproper.platform.identity.v1.IdentityService/SetDefaultAccount"
 	IdentityService_SetMembershipRoles_FullMethodName             = "/primandproper.platform.identity.v1.IdentityService/SetMembershipRoles"
@@ -110,6 +125,7 @@ const (
 	IdentityService_ArchiveAccount_FullMethodName                 = "/primandproper.platform.identity.v1.IdentityService/ArchiveAccount"
 	IdentityService_UpdateUserAccountStatus_FullMethodName        = "/primandproper.platform.identity.v1.IdentityService/UpdateUserAccountStatus"
 	IdentityService_SetUserServiceRoles_FullMethodName            = "/primandproper.platform.identity.v1.IdentityService/SetUserServiceRoles"
+	IdentityService_SetUserRequiresPasswordChange_FullMethodName  = "/primandproper.platform.identity.v1.IdentityService/SetUserRequiresPasswordChange"
 	IdentityService_GetPrincipal_FullMethodName                   = "/primandproper.platform.identity.v1.IdentityService/GetPrincipal"
 	IdentityService_GetUser_FullMethodName                        = "/primandproper.platform.identity.v1.IdentityService/GetUser"
 	IdentityService_ListUsers_FullMethodName                      = "/primandproper.platform.identity.v1.IdentityService/ListUsers"
@@ -151,6 +167,7 @@ type IdentityServiceClient interface {
 	AcceptInvitation(ctx context.Context, in *AcceptInvitationRequest, opts ...grpc.CallOption) (*AcceptInvitationResponse, error)
 	RejectInvitation(ctx context.Context, in *RejectInvitationRequest, opts ...grpc.CallOption) (*RejectInvitationResponse, error)
 	CancelInvitation(ctx context.Context, in *CancelInvitationRequest, opts ...grpc.CallOption) (*CancelInvitationResponse, error)
+	CreateAccount(ctx context.Context, in *CreateAccountRequest, opts ...grpc.CallOption) (*CreateAccountResponse, error)
 	TransferAccountOwnership(ctx context.Context, in *TransferAccountOwnershipRequest, opts ...grpc.CallOption) (*TransferAccountOwnershipResponse, error)
 	SetDefaultAccount(ctx context.Context, in *SetDefaultAccountRequest, opts ...grpc.CallOption) (*SetDefaultAccountResponse, error)
 	SetMembershipRoles(ctx context.Context, in *SetMembershipRolesRequest, opts ...grpc.CallOption) (*SetMembershipRolesResponse, error)
@@ -159,6 +176,7 @@ type IdentityServiceClient interface {
 	ArchiveAccount(ctx context.Context, in *ArchiveAccountRequest, opts ...grpc.CallOption) (*ArchiveAccountResponse, error)
 	UpdateUserAccountStatus(ctx context.Context, in *UpdateUserAccountStatusRequest, opts ...grpc.CallOption) (*UpdateUserAccountStatusResponse, error)
 	SetUserServiceRoles(ctx context.Context, in *SetUserServiceRolesRequest, opts ...grpc.CallOption) (*SetUserServiceRolesResponse, error)
+	SetUserRequiresPasswordChange(ctx context.Context, in *SetUserRequiresPasswordChangeRequest, opts ...grpc.CallOption) (*SetUserRequiresPasswordChangeResponse, error)
 	// The reads.
 	GetPrincipal(ctx context.Context, in *GetPrincipalRequest, opts ...grpc.CallOption) (*GetPrincipalResponse, error)
 	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
@@ -263,6 +281,16 @@ func (c *identityServiceClient) CancelInvitation(ctx context.Context, in *Cancel
 	return out, nil
 }
 
+func (c *identityServiceClient) CreateAccount(ctx context.Context, in *CreateAccountRequest, opts ...grpc.CallOption) (*CreateAccountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateAccountResponse)
+	err := c.cc.Invoke(ctx, IdentityService_CreateAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *identityServiceClient) TransferAccountOwnership(ctx context.Context, in *TransferAccountOwnershipRequest, opts ...grpc.CallOption) (*TransferAccountOwnershipResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TransferAccountOwnershipResponse)
@@ -337,6 +365,16 @@ func (c *identityServiceClient) SetUserServiceRoles(ctx context.Context, in *Set
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetUserServiceRolesResponse)
 	err := c.cc.Invoke(ctx, IdentityService_SetUserServiceRoles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *identityServiceClient) SetUserRequiresPasswordChange(ctx context.Context, in *SetUserRequiresPasswordChangeRequest, opts ...grpc.CallOption) (*SetUserRequiresPasswordChangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetUserRequiresPasswordChangeResponse)
+	err := c.cc.Invoke(ctx, IdentityService_SetUserRequiresPasswordChange_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -499,6 +537,7 @@ type IdentityServiceServer interface {
 	AcceptInvitation(context.Context, *AcceptInvitationRequest) (*AcceptInvitationResponse, error)
 	RejectInvitation(context.Context, *RejectInvitationRequest) (*RejectInvitationResponse, error)
 	CancelInvitation(context.Context, *CancelInvitationRequest) (*CancelInvitationResponse, error)
+	CreateAccount(context.Context, *CreateAccountRequest) (*CreateAccountResponse, error)
 	TransferAccountOwnership(context.Context, *TransferAccountOwnershipRequest) (*TransferAccountOwnershipResponse, error)
 	SetDefaultAccount(context.Context, *SetDefaultAccountRequest) (*SetDefaultAccountResponse, error)
 	SetMembershipRoles(context.Context, *SetMembershipRolesRequest) (*SetMembershipRolesResponse, error)
@@ -507,6 +546,7 @@ type IdentityServiceServer interface {
 	ArchiveAccount(context.Context, *ArchiveAccountRequest) (*ArchiveAccountResponse, error)
 	UpdateUserAccountStatus(context.Context, *UpdateUserAccountStatusRequest) (*UpdateUserAccountStatusResponse, error)
 	SetUserServiceRoles(context.Context, *SetUserServiceRolesRequest) (*SetUserServiceRolesResponse, error)
+	SetUserRequiresPasswordChange(context.Context, *SetUserRequiresPasswordChangeRequest) (*SetUserRequiresPasswordChangeResponse, error)
 	// The reads.
 	GetPrincipal(context.Context, *GetPrincipalRequest) (*GetPrincipalResponse, error)
 	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
@@ -555,6 +595,9 @@ func (UnimplementedIdentityServiceServer) RejectInvitation(context.Context, *Rej
 func (UnimplementedIdentityServiceServer) CancelInvitation(context.Context, *CancelInvitationRequest) (*CancelInvitationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CancelInvitation not implemented")
 }
+func (UnimplementedIdentityServiceServer) CreateAccount(context.Context, *CreateAccountRequest) (*CreateAccountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateAccount not implemented")
+}
 func (UnimplementedIdentityServiceServer) TransferAccountOwnership(context.Context, *TransferAccountOwnershipRequest) (*TransferAccountOwnershipResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransferAccountOwnership not implemented")
 }
@@ -578,6 +621,9 @@ func (UnimplementedIdentityServiceServer) UpdateUserAccountStatus(context.Contex
 }
 func (UnimplementedIdentityServiceServer) SetUserServiceRoles(context.Context, *SetUserServiceRolesRequest) (*SetUserServiceRolesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetUserServiceRoles not implemented")
+}
+func (UnimplementedIdentityServiceServer) SetUserRequiresPasswordChange(context.Context, *SetUserRequiresPasswordChangeRequest) (*SetUserRequiresPasswordChangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetUserRequiresPasswordChange not implemented")
 }
 func (UnimplementedIdentityServiceServer) GetPrincipal(context.Context, *GetPrincipalRequest) (*GetPrincipalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPrincipal not implemented")
@@ -783,6 +829,24 @@ func _IdentityService_CancelInvitation_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IdentityService_CreateAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServiceServer).CreateAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IdentityService_CreateAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServiceServer).CreateAccount(ctx, req.(*CreateAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _IdentityService_TransferAccountOwnership_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TransferAccountOwnershipRequest)
 	if err := dec(in); err != nil {
@@ -923,6 +987,24 @@ func _IdentityService_SetUserServiceRoles_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(IdentityServiceServer).SetUserServiceRoles(ctx, req.(*SetUserServiceRolesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IdentityService_SetUserRequiresPasswordChange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserRequiresPasswordChangeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServiceServer).SetUserRequiresPasswordChange(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IdentityService_SetUserRequiresPasswordChange_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServiceServer).SetUserRequiresPasswordChange(ctx, req.(*SetUserRequiresPasswordChangeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1201,6 +1283,10 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _IdentityService_CancelInvitation_Handler,
 		},
 		{
+			MethodName: "CreateAccount",
+			Handler:    _IdentityService_CreateAccount_Handler,
+		},
+		{
 			MethodName: "TransferAccountOwnership",
 			Handler:    _IdentityService_TransferAccountOwnership_Handler,
 		},
@@ -1231,6 +1317,10 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetUserServiceRoles",
 			Handler:    _IdentityService_SetUserServiceRoles_Handler,
+		},
+		{
+			MethodName: "SetUserRequiresPasswordChange",
+			Handler:    _IdentityService_SetUserRequiresPasswordChange_Handler,
 		},
 		{
 			MethodName: "GetPrincipal",

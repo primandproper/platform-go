@@ -164,6 +164,15 @@ consumer supplies the same authorization.GrantsExtractor they hand the enforcer;
 a server built without it clears the field on every read. archived.go carries
 the ruling.
 
+The extractor answers a second question at a different door. A setting the
+catalog marked AdminOnly may be written only by a caller holding
+[PermissionWriteAdminValues], asked by SetValue and ClearValue against the
+definition they read rather than against the method they are — because both are
+one method serving reserved and self-service settings alike, and which one this
+is arrives in the request body. Unlike the archived rows that is a refusal and
+not a narrowing: a write has no lesser version of itself to fall back to.
+adminonly.go carries the ruling.
+
 The seventh value-side RPC, ListValuesForDefinition, names no subject and asks
 nothing of the authorizer. It pages every subject's answer to one setting, which
 is why it has a grant of its own — [PermissionReadAllValues] — rather than

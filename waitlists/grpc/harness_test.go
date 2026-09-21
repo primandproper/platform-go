@@ -124,11 +124,20 @@ func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
 // It is not a default the package ships and could not be — see
 // waitlistsgrpc.SignupAuthorizer — so the suite names it, which is the point.
 // The tests about what a refusal looks like supply one that refuses.
+//
+// It answers both questions rather than one, because the rest of this suite is
+// about what a handler does and not about what a policy allows. Leaving
+// SubjectRead nil would refuse every subject read by design, which would make
+// every existing test of that read a test of the authorizer.
 func permitWithdrawals() waitlistsgrpc.SignupAuthorizer {
-	return waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+	return waitlistsgrpc.SignupAuthorizerFuncs{
+		Withdrawal: func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
 			return nil
-		})
+		},
+		SubjectRead: func(context.Context, callers.Principal, tenancy.Scope, waitlists.Subject) error {
+			return nil
+		},
+	}
 }
 
 // harness is one database, one store and one server over them.

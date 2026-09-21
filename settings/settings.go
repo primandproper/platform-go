@@ -279,11 +279,21 @@ type Definition struct {
 	// legal.
 	Enumeration []string `json:"enumeration"`
 
-	// AdminOnly marks a setting only an administrator may write. It is recorded
-	// rather than enforced — this package has no notion of who is calling, and
-	// a store that pretended to would be an authorization check in the wrong
-	// layer. What it is for is the caller's own check, and the admin UI that
-	// needs to know which settings to hide from a self-service page.
+	// AdminOnly marks a setting only an administrator may write — its value,
+	// for any subject, by setting one or by clearing one. It is recorded here
+	// rather than enforced: this package has no notion of who is calling, and a
+	// store that pretended to would be an authorization check in the wrong
+	// layer.
+	//
+	// The layer it defers to is whoever holds the store. On the wire that is
+	// settings/grpc, which refuses SetValue and ClearValue on a setting carrying
+	// this flag unless the caller holds its PermissionWriteAdminValues — see
+	// that package's adminonly.go for why the method-to-grant map cannot carry
+	// the rule. A Go caller holding the store directly is inside the trust
+	// boundary and owes itself the same check.
+	//
+	// It is also what an admin UI reads to know which settings to hide from a
+	// self-service page.
 	AdminOnly bool `json:"adminOnly"`
 }
 

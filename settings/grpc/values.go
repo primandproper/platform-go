@@ -78,6 +78,10 @@ func (s *Server) SetValue(
 			return readErr
 		}
 
+		if adminErr := s.confineToAdmin(ctx, req, definition, name); adminErr != nil {
+			return adminErr
+		}
+
 		raw, rawErr := rawFromTypedValue(definition.Kind, request.GetValue())
 		if rawErr != nil {
 			return rawErr
@@ -103,7 +107,11 @@ func (s *Server) SetValue(
 		// InvalidArgument is what a mapper would say about it if the sentinel
 		// were the store's.
 		code := codes.Internal
-		if errors.Is(err, ErrNoValueNamed) {
+
+		switch {
+		case errors.Is(err, ErrAdminOnlySetting):
+			code = codes.PermissionDenied
+		case errors.Is(err, ErrNoValueNamed):
 			code = codes.InvalidArgument
 		}
 
@@ -195,6 +203,18 @@ func (s *Server) ClearValue(
 	var resolution *settings.Resolution
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		// Read before the clear, not after: the reserved-setting refusal has to
+		// be decided from a transaction that has not yet done the thing. See
+		// adminonly.go for what this read costs and why it is worth it.
+		definition, readErr := s.store.GetDefinitionByName(ctx, tx, req.scope, name)
+		if readErr != nil {
+			return readErr
+		}
+
+		if adminErr := s.confineToAdmin(ctx, req, definition, name); adminErr != nil {
+			return adminErr
+		}
+
 		if _, clearErr := s.store.ClearValue(ctx, tx, req.scope, subject, name); clearErr != nil {
 			return clearErr
 		}
@@ -208,8 +228,17 @@ func (s *Server) ClearValue(
 
 		return nil
 	}); err != nil {
+		// codes.Internal is the default and the registered mapper answers over
+		// it for everything settings decides. The one refusal raised here
+		// rather than there is the reserved-setting rule, which is this
+		// transport's and has no mapper to speak for it.
+		code := codes.Internal
+		if errors.Is(err, ErrAdminOnlySetting) {
+			code = codes.PermissionDenied
+		}
+
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.Internal, "clearing the value of setting %q", name)
+			req.op.Logger(), req.op.Span(), code, "clearing the value of setting %q", name)
 
 		return nil, err
 	}

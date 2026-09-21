@@ -119,6 +119,8 @@ func (s *Server) ListProducts(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter, PermissionArchiveProducts)
+
 	page, err := s.store.ListProducts(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,

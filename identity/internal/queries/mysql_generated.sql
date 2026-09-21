@@ -16,6 +16,7 @@ INSERT INTO identity_users (
 	two_factor_secret_verified_at,
 	email_address_verified_at,
 	email_address_verification_token_digest,
+	email_address_verification_token_expires_at,
 	account_status,
 	account_status_explanation,
 	last_accepted_terms_of_service,
@@ -35,6 +36,7 @@ INSERT INTO identity_users (
 	sqlc.narg(two_factor_secret_verified_at),
 	sqlc.narg(email_address_verified_at),
 	sqlc.arg(email_address_verification_token_digest),
+	sqlc.narg(email_address_verification_token_expires_at),
 	sqlc.arg(account_status),
 	sqlc.arg(account_status_explanation),
 	sqlc.narg(last_accepted_terms_of_service),
@@ -57,13 +59,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.id = sqlc.arg(id)
@@ -85,6 +89,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -92,6 +97,7 @@ SELECT
 	identity_users.created_at,
 	identity_users.last_updated_at,
 	identity_users.archived_at,
+	identity_users.last_indexed_at,
 	(
 		SELECT COUNT(identity_users.id)
 		FROM identity_users
@@ -147,6 +153,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -154,6 +161,7 @@ SELECT
 	identity_users.created_at,
 	identity_users.last_updated_at,
 	identity_users.archived_at,
+	identity_users.last_indexed_at,
 	(
 		SELECT COUNT(identity_users.id)
 		FROM identity_users
@@ -202,6 +210,7 @@ UPDATE identity_users SET
 	last_name = sqlc.arg(last_name),
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
@@ -213,6 +222,19 @@ UPDATE identity_users SET
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
 	AND scope = sqlc.arg(scope);
+
+-- name: ScanUserIDsForReindex :many
+SELECT identity_users.id
+FROM identity_users
+WHERE identity_users.archived_at IS NULL
+	AND CAST(identity_users.id AS BINARY) > sqlc.arg(reindex_cursor)
+ORDER BY CAST(identity_users.id AS BINARY)
+LIMIT ?;
+
+-- name: MarkUsersAsIndexed :execrows
+UPDATE identity_users SET
+	last_indexed_at = CURRENT_TIMESTAMP(6)
+WHERE id IN (sqlc.slice(ids));
 
 -- name: CreateAccount :exec
 INSERT INTO identity_accounts (
@@ -847,13 +869,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.id = sqlc.arg(id)
 	AND identity_users.scope = sqlc.arg(scope)
@@ -901,13 +925,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.id = sqlc.arg(id)
 	AND identity_users.scope = sqlc.arg(scope);
@@ -928,13 +954,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.username = sqlc.arg(username)
@@ -956,13 +984,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.email_address = sqlc.arg(email_address)
@@ -984,13 +1014,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest)
@@ -1084,13 +1116,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.scope = sqlc.arg(scope)
 	AND identity_users.id IN (sqlc.slice(ids))
@@ -1144,6 +1178,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at AS user_two_factor_secret_verified_at,
 	identity_users.email_address_verified_at AS user_email_address_verified_at,
 	identity_users.email_address_verification_token_digest AS user_email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at AS user_email_address_verification_token_expires_at,
 	identity_users.account_status AS user_account_status,
 	identity_users.account_status_explanation AS user_account_status_explanation,
 	identity_users.last_accepted_terms_of_service AS user_last_accepted_terms_of_service,
@@ -1151,6 +1186,7 @@ SELECT
 	identity_users.created_at AS user_created_at,
 	identity_users.last_updated_at AS user_last_updated_at,
 	identity_users.archived_at AS user_archived_at,
+	identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT(identity_memberships.id)
 		FROM identity_memberships
@@ -1223,6 +1259,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at AS user_two_factor_secret_verified_at,
 	identity_users.email_address_verified_at AS user_email_address_verified_at,
 	identity_users.email_address_verification_token_digest AS user_email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at AS user_email_address_verification_token_expires_at,
 	identity_users.account_status AS user_account_status,
 	identity_users.account_status_explanation AS user_account_status_explanation,
 	identity_users.last_accepted_terms_of_service AS user_last_accepted_terms_of_service,
@@ -1230,6 +1267,7 @@ SELECT
 	identity_users.created_at AS user_created_at,
 	identity_users.last_updated_at AS user_last_updated_at,
 	identity_users.archived_at AS user_archived_at,
+	identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT(identity_memberships.id)
 		FROM identity_memberships
@@ -1465,13 +1503,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.scope = sqlc.arg(scope)
@@ -1496,13 +1536,15 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.scope = sqlc.arg(scope)
@@ -1558,6 +1600,7 @@ WHERE archived_at IS NULL
 -- name: SetUserEmailAddressVerificationToken :execrows
 UPDATE identity_users SET
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
@@ -1568,6 +1611,7 @@ WHERE archived_at IS NULL
 UPDATE identity_users SET
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
@@ -1578,6 +1622,7 @@ WHERE archived_at IS NULL
 UPDATE identity_users SET
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)

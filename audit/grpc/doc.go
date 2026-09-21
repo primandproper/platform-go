@@ -63,6 +63,35 @@ complete. A client that wants the rest sends the same window again with
 after_seq set to that last_seq, and the server checks the link across the seam
 like any other — see audit.SQLReader.Verify.
 
+# What a deployment with per-actor chains cannot read here
+
+The scope is the hash chain's partition as well as the row's label, and this
+surface binds it to the connection. So the entries this service returns are the
+entries of the chain the caller's principal names, and no request can ask for
+another.
+
+That is the whole of the tenancy guarantee and it is also a real limit, worth
+knowing before it is discovered through empty pages. A deployment that files
+some events under a per-actor scope — logins, sign-ups and password resets are
+the usual reason, since a chain is a serialization point and putting every
+login on one makes it the busiest row in the database — has put those entries
+in chains no connection resolves to. They are not missing and not unreadable:
+they are simply not this surface's to return, because the caller whose scope
+would reach them is the actor, and the caller asking is an operator.
+
+The answer for those is the reading that does not go through a connection's
+scope: audit/privacy's collector, which is handed the subject a request names
+and reads the repository directly, and is what a subject access request already
+fans out over. A deployment wanting an operator-facing read of another actor's
+chain builds it over audit.Reader in their own process, where the scope is an
+argument rather than a property of who is calling.
+
+What this service will not grow is a scope field on the request. The chain
+partition being unnameable from the wire is what makes "no caller can read
+another tenant's log" a property of the schema rather than of a check somebody
+has to keep passing — see the reserved names in audit.proto, and the same
+ruling in every other surface here.
+
 # Errors
 
 A method here hands the reader's error back with a default code and does not
@@ -111,6 +140,16 @@ Without it, an entry that is not there arrives as codes.Unknown.
 		nil,
 		[]grpcserver.RegistrationFunc{srv.RegisterOn},
 	)
+
+The last of those interceptors is the one to read about before mounting this
+somewhere a browser or a mobile app can reach. grpcerrors.UnaryErrorEncodingInterceptor
+puts the whole wrapped error into the status details so a peer can reconstruct
+it, which is what makes a sentinel survive the wire — and what the status
+*message* deliberately withholds, since an error's text can name tables,
+connection strings and the permission that was missing. The two channels are not
+protecting the same thing. A deployment serving untrusted clients strips the
+detail at the edge; see that function's own documentation for the wording of
+that obligation.
 
 There is no config subpackage entry for this: audit/config builds the recorder,
 the reader and the retention policy, and a server is three lines over what it

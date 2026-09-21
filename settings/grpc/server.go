@@ -95,6 +95,18 @@ var (
 	// and this is the refusal for the half of the difference that is not a
 	// value.
 	ErrNoValueNamed = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "settings write names no value")
+
+	// ErrAdminOnlySetting is a write to a setting the catalog reserved, by a
+	// caller who does not hold [PermissionWriteAdminValues].
+	//
+	// It wraps callers.ErrTargetNotPermitted so that a consumer branching on
+	// "the caller may not" catches it beside the [SubjectAuthorizer]'s refusal,
+	// which is the other way this surface tells somebody they may not write
+	// this. The two are still different sentences — that one is about whose
+	// settings, this one is about which setting — and both answer
+	// codes.PermissionDenied.
+	ErrAdminOnlySetting = platformerrors.Wrap(callers.ErrTargetNotPermitted,
+		"settings write names a setting reserved to administrators")
 )
 
 var _ settingspb.SettingsServiceServer = (*Server)(nil)

@@ -171,6 +171,8 @@ func (s *Server) ListEndpoints(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter, PermissionArchiveEndpoints)
+
 	page, err := s.store.ListEndpoints(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,

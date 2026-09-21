@@ -117,6 +117,7 @@ type Server struct {
 	reader audit.Reader
 	client database.Client
 	scopes ScopeResolver
+	chains ChainsResolver
 
 	o11y observability.Observer
 

@@ -87,6 +87,10 @@ type CommentsAdapter struct {
 
 	Store   comments.Store
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // IssueReportsAdapter registers issuereports/privacy's collector and eraser.
@@ -95,6 +99,10 @@ type IssueReportsAdapter struct {
 
 	Store   issuereports.Store
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // SettingsAdapter registers settings/privacy's collector and eraser.
@@ -103,6 +111,10 @@ type SettingsAdapter struct {
 
 	Store   settings.ValueStore
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // WaitlistsAdapter registers waitlists/privacy's collector and eraser. That
@@ -112,6 +124,10 @@ type WaitlistsAdapter struct {
 
 	Store   waitlists.SignupStore
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // MediaRegistryAdapter registers mediaregistry/privacy's collector and eraser.
@@ -122,6 +138,10 @@ type MediaRegistryAdapter struct {
 
 	Store   mediaregistry.Store
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // OAuth2ClientsAdapter registers authentication/oauth2clients/privacy's
@@ -131,6 +151,10 @@ type OAuth2ClientsAdapter struct {
 
 	Store   oauth2clients.Store
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // PasskeysAdapter registers authentication/passkeys/privacy's collector and
@@ -142,6 +166,10 @@ type PasskeysAdapter struct {
 
 	Store   passkeys.Store
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // PasswordResetAdapter registers authentication/passwordreset/privacy's
@@ -151,6 +179,10 @@ type PasswordResetAdapter struct {
 
 	Store   passwordreset.Store
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // IdentityAdapter registers identity/privacy's collector and eraser.
@@ -159,6 +191,10 @@ type IdentityAdapter struct {
 
 	Store   IdentityStore
 	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
 }
 
 // NotificationsAdapter registers notifications/privacy, which ships two pairs
@@ -173,6 +209,14 @@ type NotificationsAdapter struct {
 	Inbox    notifications.Inbox
 	Registry notifications.Registry
 	Resolve  dataprivacy.ScopeResolver
+
+	// BeforeEraseInbox and BeforeEraseDevices are the two seams this adapter's
+	// two keys each get, and they are two fields for the reason Inbox and
+	// Registry are: the keys register separately, so a step written for one of
+	// them must not be run against the other. Both are nil in ordinary wiring.
+	// See precede.
+	BeforeEraseInbox   dataprivacy.Eraser
+	BeforeEraseDevices dataprivacy.Eraser
 }
 
 // BillingAdapter registers billing/privacy's collector.
@@ -181,6 +225,12 @@ type NotificationsAdapter struct {
 // subscription and a ledger row are financial records every jurisdiction
 // requires kept, and a seam whose only correct implementation erases nothing
 // invites a deployment to register it and believe its history was deleted.
+//
+// There is no BeforeErase field either, and the absence follows from the same
+// sentence. That seam precedes a domain's own eraser; here there is none to
+// precede, so the field would register an eraser for billing that was entirely
+// the consumer's — which is the replacement this package refuses everywhere
+// else, arriving through the one door with no default behind it.
 //
 // Its resolver answers with accounts rather than scopes — an account is a scope
 // and an id, and neither half is inferable from the other.
@@ -203,6 +253,10 @@ type BillingAdapter struct {
 // nil. Doing both is an error, because the second registration of a key is one.
 type AuditErasureAdapter struct {
 	_ struct{} `json:"-" yaml:"-"`
+
+	// BeforeErase runs inside the erasure's transaction, ahead of the chain
+	// erasure, and is nil in ordinary wiring. See precede.
+	BeforeErase dataprivacy.Eraser
 
 	Dialect dialect.Dialect
 	Options []auditerasure.Option
@@ -338,7 +392,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", commentsprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: commentsprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: commentsprivacy.DefaultKey, collector: collector, eraser: precede(a.Comments.BeforeErase, eraser)})
 	}
 	if a.IssueReports != nil {
 		collector, eraser, err := a.IssueReports.build(a.Reader)
@@ -346,7 +400,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", issuereportsprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: issuereportsprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: issuereportsprivacy.DefaultKey, collector: collector, eraser: precede(a.IssueReports.BeforeErase, eraser)})
 	}
 	if a.Settings != nil {
 		collector, eraser, err := a.Settings.build(a.Reader)
@@ -354,7 +408,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", settingsprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: settingsprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: settingsprivacy.DefaultKey, collector: collector, eraser: precede(a.Settings.BeforeErase, eraser)})
 	}
 	if a.Waitlists != nil {
 		collector, eraser, err := a.Waitlists.build(a.Reader)
@@ -362,7 +416,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", waitlistsprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: waitlistsprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: waitlistsprivacy.DefaultKey, collector: collector, eraser: precede(a.Waitlists.BeforeErase, eraser)})
 	}
 	if a.MediaRegistry != nil {
 		collector, eraser, err := a.MediaRegistry.build(a.Reader)
@@ -370,7 +424,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", mediaregistryprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: mediaregistryprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: mediaregistryprivacy.DefaultKey, collector: collector, eraser: precede(a.MediaRegistry.BeforeErase, eraser)})
 	}
 	if a.OAuth2Clients != nil {
 		collector, eraser, err := a.OAuth2Clients.build(a.Reader)
@@ -378,7 +432,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", oauth2clientsprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: oauth2clientsprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: oauth2clientsprivacy.DefaultKey, collector: collector, eraser: precede(a.OAuth2Clients.BeforeErase, eraser)})
 	}
 	if a.Passkeys != nil {
 		collector, eraser, err := a.Passkeys.build(a.Reader)
@@ -386,7 +440,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", passkeysprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: passkeysprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: passkeysprivacy.DefaultKey, collector: collector, eraser: precede(a.Passkeys.BeforeErase, eraser)})
 	}
 	if a.PasswordReset != nil {
 		collector, eraser, err := a.PasswordReset.build(a.Reader)
@@ -394,7 +448,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", passwordresetprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: passwordresetprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: passwordresetprivacy.DefaultKey, collector: collector, eraser: precede(a.PasswordReset.BeforeErase, eraser)})
 	}
 	if a.Identity != nil {
 		collector, eraser, err := a.Identity.build(a.Reader)
@@ -402,7 +456,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", identityprivacy.DefaultKey)
 		}
 
-		built = append(built, registration{key: identityprivacy.DefaultKey, collector: collector, eraser: eraser})
+		built = append(built, registration{key: identityprivacy.DefaultKey, collector: collector, eraser: precede(a.Identity.BeforeErase, eraser)})
 	}
 	if a.Notifications != nil {
 		// Two seams, two keys, and either may be absent: a deployment with an
@@ -413,7 +467,7 @@ func (a *Adapters) build() ([]registration, error) {
 				return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", notificationsprivacy.DefaultInboxKey)
 			}
 
-			built = append(built, registration{key: notificationsprivacy.DefaultInboxKey, collector: collector, eraser: eraser})
+			built = append(built, registration{key: notificationsprivacy.DefaultInboxKey, collector: collector, eraser: precede(a.Notifications.BeforeEraseInbox, eraser)})
 		}
 
 		if a.Notifications.Registry != nil {
@@ -422,7 +476,7 @@ func (a *Adapters) build() ([]registration, error) {
 				return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", notificationsprivacy.DefaultDeviceKey)
 			}
 
-			built = append(built, registration{key: notificationsprivacy.DefaultDeviceKey, collector: collector, eraser: eraser})
+			built = append(built, registration{key: notificationsprivacy.DefaultDeviceKey, collector: collector, eraser: precede(a.Notifications.BeforeEraseDevices, eraser)})
 		}
 	}
 
@@ -445,7 +499,7 @@ func (a *Adapters) build() ([]registration, error) {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", auditerasure.DefaultKey)
 		}
 
-		built = append(built, registration{key: auditerasure.DefaultKey, eraser: eraser})
+		built = append(built, registration{key: auditerasure.DefaultKey, eraser: precede(a.AuditErasure.BeforeErase, eraser)})
 	}
 
 	return built, nil

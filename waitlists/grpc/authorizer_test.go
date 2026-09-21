@@ -31,10 +31,9 @@ import (
 func TestWithdrawAsksTheAuthorizerBeforeItWrites(T *testing.T) {
 	T.Parallel()
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
-			return callers.ErrTargetNotPermitted
-		}))
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+		return callers.ErrTargetNotPermitted
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")
@@ -66,10 +65,9 @@ func TestWithdrawAsksTheAuthorizerBeforeItWrites(T *testing.T) {
 func TestARefusedWithdrawalReadsAsAnAbsence(T *testing.T) {
 	T.Parallel()
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
-			return callers.ErrTargetNotPermitted
-		}))
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+		return callers.ErrTargetNotPermitted
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")
@@ -103,10 +101,9 @@ func TestAnUndecidedAuthorizerIsAServerFault(T *testing.T) {
 
 	unavailable := errors.New("the link store would not answer")
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
-			return unavailable
-		}))
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+		return unavailable
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")
@@ -127,11 +124,10 @@ func TestAnUndecidedAuthorizerIsAServerFault(T *testing.T) {
 func TestAWrappedSentinelStillRefuses(T *testing.T) {
 	T.Parallel()
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(_ context.Context, _ callers.Principal, _ tenancy.Scope, _, signupID string) error {
-			return platformerrors.Wrapf(callers.ErrTargetNotPermitted,
-				"the link named a different signup than %q", signupID)
-		}))
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(_ context.Context, _ callers.Principal, _ tenancy.Scope, _, signupID string) error {
+		return platformerrors.Wrapf(callers.ErrTargetNotPermitted,
+			"the link named a different signup than %q", signupID)
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")
@@ -160,13 +156,12 @@ func TestTheAuthorizerIsHandedWhatItNeedsToDecide(T *testing.T) {
 		timesConsulted int
 	)
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(_ context.Context, caller callers.Principal, scope tenancy.Scope, listID, signupID string) error {
-			seenCaller, seenScope, seenList, seenSignup = caller, scope, listID, signupID
-			timesConsulted++
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(_ context.Context, caller callers.Principal, scope tenancy.Scope, listID, signupID string) error {
+		seenCaller, seenScope, seenList, seenSignup = caller, scope, listID, signupID
+		timesConsulted++
 
-			return nil
-		}))
+		return nil
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")
@@ -191,14 +186,13 @@ func TestASignedInCallerReachesTheAuthorizer(T *testing.T) {
 
 	var seen string
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(_ context.Context, caller callers.Principal, _ tenancy.Scope, _, _ string) error {
-			if caller != nil {
-				seen = caller.UserID()
-			}
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(_ context.Context, caller callers.Principal, _ tenancy.Scope, _, _ string) error {
+		if caller != nil {
+			seen = caller.UserID()
+		}
 
-			return nil
-		}))
+		return nil
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")
@@ -220,12 +214,11 @@ func TestNoOtherRPCConsultsTheAuthorizer(T *testing.T) {
 
 	var consulted int
 
-	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
-			consulted++
+	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+		consulted++
 
-			return nil
-		}))
+		return nil
+	}})
 
 	list := h.seedOpenList(T, testScope)
 	signup := h.seedSignup(T, testScope, list.ID, "ada@example.com")

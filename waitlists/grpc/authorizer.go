@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/primandproper/platform-go/v14/callers"
+	"github.com/primandproper/platform-go/v14/waitlists"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -91,27 +92,110 @@ type SignupAuthorizer interface {
 		scope tenancy.Scope,
 		listID, signupID string,
 	) error
+
+	// AuthorizeSubjectRead is asked before ListSignupsForSubject pages the
+	// signups of the subject a request named.
+	//
+	// It exists because [PermissionReadSignups] cannot answer the question. That
+	// grant covers four reads at once, and the sharpest of them —
+	// [Server.GetSignupByContact] — is an oracle over every address in the
+	// tenant, so a deployment grants it narrowly and correctly. The cost was
+	// that the one safe read went with it: a member asking where they are in a
+	// queue is asking about themselves, and there was no way to permit that
+	// without also permitting them to name somebody else. A grant on the method
+	// says this caller may make this kind of call; whose signups these are is
+	// this method's, asked after the subject has been read and before any row
+	// is.
+	//
+	// The caller is never nil here, unlike AuthorizeWithdrawal: this read is not
+	// in [PublicMethods] and an anonymous request does not reach it.
+	//
+	// A refusal discloses nothing. It is decided before the read, so a subject
+	// nobody has ever signed up is refused by exactly the rule one belonging to
+	// somebody else is, and the client cannot tell the two apart.
+	AuthorizeSubjectRead(
+		ctx context.Context,
+		caller callers.Principal,
+		scope tenancy.Scope,
+		subject waitlists.Subject,
+	) error
 }
 
-// SignupAuthorizerFunc adapts a function to [SignupAuthorizer], for a consumer
-// whose rule is one closure over something they already hold.
-type SignupAuthorizerFunc func(
-	ctx context.Context,
-	caller callers.Principal,
-	scope tenancy.Scope,
-	listID, signupID string,
-) error
+// SignupAuthorizerFuncs adapts a closure per question to [SignupAuthorizer],
+// for a consumer whose rules are closures over something they already hold.
+//
+// A nil field refuses. An unanswered question is not a permitted one, and a
+// struct literal is where that omission is visible: a deployment that answers
+// only Withdrawal has written down that it did not decide the read, in its own
+// code, where a reviewer sees it.
+//
+// There is deliberately no one-closure adapter beside this. There was, and it
+// satisfied the interface by refusing the half it could not carry — which made
+// a consumer who used it and then called ListSignupsForSubject discover the
+// refusal at runtime, from a type that looked complete. The finding that
+// produced AuthorizeSubjectRead was itself somebody not noticing that one grant
+// covered four reads, so a second way not to notice was the wrong thing to
+// ship. Answering one question now means writing one field and leaving the
+// other, which is the same amount of typing and says what it is.
+type SignupAuthorizerFuncs struct {
+	// Withdrawal answers AuthorizeWithdrawal.
+	Withdrawal func(ctx context.Context, caller callers.Principal, scope tenancy.Scope, listID, signupID string) error
 
-var _ SignupAuthorizer = SignupAuthorizerFunc(nil)
+	// SubjectRead answers AuthorizeSubjectRead. The self-service rule is two
+	// lines: permit when the subject names the caller, refuse otherwise.
+	SubjectRead func(ctx context.Context, caller callers.Principal, scope tenancy.Scope, subject waitlists.Subject) error
+}
 
-// AuthorizeWithdrawal calls f.
-func (f SignupAuthorizerFunc) AuthorizeWithdrawal(
+var _ SignupAuthorizer = SignupAuthorizerFuncs{}
+
+// AuthorizeWithdrawal calls Withdrawal, or refuses when it is nil.
+func (f SignupAuthorizerFuncs) AuthorizeWithdrawal(
 	ctx context.Context,
 	caller callers.Principal,
 	scope tenancy.Scope,
 	listID, signupID string,
 ) error {
-	return f(ctx, caller, scope, listID, signupID)
+	if f.Withdrawal == nil {
+		return callers.ErrTargetNotPermitted
+	}
+
+	return f.Withdrawal(ctx, caller, scope, listID, signupID)
+}
+
+// AuthorizeSubjectRead calls SubjectRead, or refuses when it is nil.
+func (f SignupAuthorizerFuncs) AuthorizeSubjectRead(
+	ctx context.Context,
+	caller callers.Principal,
+	scope tenancy.Scope,
+	subject waitlists.Subject,
+) error {
+	if f.SubjectRead == nil {
+		return callers.ErrTargetNotPermitted
+	}
+
+	return f.SubjectRead(ctx, caller, scope, subject)
+}
+
+// authorizeSubjectRead asks the seam and turns what it said into the status a
+// client sees.
+//
+// NotFound rather than PermissionDenied, matching authorizeWithdrawal below and
+// for the same reason: a refusal that said "permission denied" would confirm
+// that the subject named is one this tenant knows about, which is the disclosure
+// the grant on this method already exists to prevent.
+func (s *Server) authorizeSubjectRead(ctx context.Context, req *request, subject waitlists.Subject) error {
+	err := s.signups.AuthorizeSubjectRead(ctx, req.principal, req.scope, subject)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
+		return grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(),
+			codes.NotFound, "reading the signups of %s %q", subject.Type, subject.ID)
+	}
+
+	return grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(),
+		codes.Internal, "authorizing the read of %s %q's signups", subject.Type, subject.ID)
 }
 
 // authorizeWithdrawal asks the seam and turns what it said into the status a

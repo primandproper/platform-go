@@ -138,7 +138,7 @@ type harness struct {
 // The store is passed twice, which is the wiring notifications.SQLStore's own
 // documentation describes: two interfaces because their consumers are separate,
 // one implementation because they are one schema.
-func newHarness(tb testing.TB) *harness {
+func newHarness(tb testing.TB, opts ...notificationsgrpc.Option) *harness {
 	tb.Helper()
 
 	db, err := sqlite.NewDatabaseClient(tb.Context(),
@@ -160,7 +160,8 @@ func newHarness(tb testing.TB) *harness {
 	store, err := notifications.NewSQLStore(db, notifications.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
-	server, err := notificationsgrpc.NewServer(store, store, db, extractPrincipal)
+	server, err := notificationsgrpc.NewServer(store, store, db, extractPrincipal,
+		append([]notificationsgrpc.Option{notificationsgrpc.WithGrantsExtractor(extractGrants)}, opts...)...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, server: server}

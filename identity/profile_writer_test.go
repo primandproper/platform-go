@@ -118,10 +118,17 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
+
+		// Re-issued after the proof, so all three columns are set going in and
+		// the assertions below are about what the move cleared rather than what
+		// was never there.
+		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "verify-again"))
+		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-again"))
+		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "verify-once-more"))
 
 		user.EmailAddress = "moved@example.com"
 		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
@@ -129,6 +136,14 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.False(t, read.EmailAddressVerified())
+
+		// The link goes with the proof, deadline and all. A deadline carried
+		// forward over a cleared digest is a row saying a link is outstanding
+		// when none is — and one carried forward beside a digest would be a link
+		// minted for the address being left behind, still able to prove the
+		// address being moved to.
+		test.EqOp(t, "", read.EmailAddressVerificationTokenDigest)
+		test.Nil(t, read.EmailAddressVerificationTokenExpiresAt)
 
 		// Saving again without changing the address must not re-clear anything
 		// it did not have to.
@@ -145,7 +160,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
@@ -383,7 +398,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))

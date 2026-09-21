@@ -77,6 +77,8 @@ func (s *Server) ListPurchases(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter, PermissionArchivePurchases)
+
 	page, err := s.store.ListPurchases(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
@@ -113,6 +115,8 @@ func (s *Server) ListPurchasesForAccount(
 
 		return nil, err
 	}
+
+	s.confineToLive(ctx, req, filter, PermissionArchivePurchases)
 
 	if err = s.requireAccount(req, accountID, "listing an account's purchases"); err != nil {
 		return nil, err

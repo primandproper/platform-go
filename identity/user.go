@@ -111,6 +111,29 @@ type User struct {
 	// saving a profile.
 	EmailAddressVerifiedAt *time.Time `json:"emailAddressVerifiedAt"`
 
+	// EmailAddressVerificationTokenExpiresAt is when the outstanding
+	// verification link stops being answerable, or nil when there is no link
+	// outstanding.
+	//
+	// It is required whenever EmailAddressVerificationToken is set, and
+	// ValidateWithContext refuses the pair with one half missing, for the reason
+	// Invitation.ExpiresAt is required: a verification link is a bearer
+	// credential, and one that never expires is one that is still valid in a
+	// mailbox somebody lost control of two years ago. This link's authority is
+	// the larger of the two — an invitation joins an account, and an outstanding
+	// verification link claims one, because Service.AttachPassword answers it
+	// with a password for a registrant who holds none.
+	//
+	// It is a deadline rather than a lifetime, for the reason the invitation's
+	// is: the clock belongs to whoever mints the link, and a column recording
+	// "two days from some moment" is a column nothing can compare.
+	//
+	// Like the token and the stamp it travels with, it is not writable through
+	// UpdateUser. It is cleared with the digest by every write that clears the
+	// digest — verifying, proving, and moving the address — because a deadline
+	// outliving its link is a row saying a link is outstanding when none is.
+	EmailAddressVerificationTokenExpiresAt *time.Time `json:"emailAddressVerificationTokenExpiresAt"`
+
 	// PasswordLastChangedAt is when HashedPassword last changed. It is what a
 	// password-age policy reads, and nil for a user still on the hash they
 	// registered with.
@@ -297,6 +320,21 @@ func (u *User) ValidateWithContext(ctx context.Context) error {
 		return platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue, "account status %q", u.AccountStatus)
 	}
 
+	// A link with no deadline is refused here rather than stored and discovered
+	// later, for the reason an invitation with no ExpiresAt is: the write is the
+	// last moment anybody holds the clock that would have set one, and a token
+	// that reaches the column without a deadline beside it is a permanent bearer
+	// credential that nothing downstream can retroactively bound.
+	//
+	// Only this direction is checked. A deadline with no token is what every
+	// clear leaves behind for an instant and what no read can produce, and
+	// refusing it would refuse the zero value of a user nobody minted a link
+	// for.
+	if u.EmailAddressVerificationToken != "" && u.EmailAddressVerificationTokenExpiresAt == nil {
+		return platformerrors.Wrap(platformerrors.ErrEmptyInputParameter,
+			"email address verification token has no expiry")
+	}
+
 	return u.validateProfile(ctx)
 }
 
@@ -363,6 +401,13 @@ func (u *User) Redacted() *User {
 	clone.EmailAddressVerificationToken = ""
 	clone.EmailAddressVerificationTokenDigest = ""
 
+	// The deadline goes with the digest it belongs to. On its own it is not a
+	// secret and not a verifier for guesses, but a redacted user saying a link
+	// expires on Thursday while carrying no link is the row state every write
+	// touching these columns assigns them together to avoid, and a redaction
+	// that manufactured it would be the one place it could be read.
+	clone.EmailAddressVerificationTokenExpiresAt = nil
+
 	return &clone
 }
 
@@ -394,6 +439,26 @@ func (u *User) TwoFactorEnabled() bool {
 // reachable.
 func (u *User) EmailAddressVerified() bool {
 	return u != nil && u.EmailAddressVerifiedAt != nil
+}
+
+// EmailVerificationLinkLive reports whether this user has a verification link
+// that can still be answered as of now.
+//
+// It is the question Store.GetUserByEmailVerificationToken asks before it hands
+// a user back, and it is false in three ways rather than one: no link was ever
+// minted, a link was minted and has since been burned, or a link is on the row
+// and its deadline has passed. A caller distinguishing them is a caller building
+// the oracle authentication/signin collapses four refusals to avoid.
+//
+// It mirrors Invitation.Expired, in the direction a guard reads: the sibling
+// answers "is this dead" because its caller has a row it means to refuse, and
+// this one answers "may this be used" because its caller has a lookup it means
+// to complete.
+func (u *User) EmailVerificationLinkLive(now time.Time) bool {
+	return u != nil &&
+		u.EmailAddressVerificationTokenDigest != "" &&
+		u.EmailAddressVerificationTokenExpiresAt != nil &&
+		now.Before(*u.EmailAddressVerificationTokenExpiresAt)
 }
 
 // Archived reports whether the user has been soft-deleted.

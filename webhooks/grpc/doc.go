@@ -33,12 +33,14 @@ identifier is what SaveEndpoint writes into Endpoint.CreatedBy, so that "who
 registered this endpoint" is answered by the connection rather than by a request
 field somebody could put anything in.
 
-# Ten RPCs, and nine absences
+# Eleven RPCs, and nine absences
 
-Endpoint CRUD, the signing-key rotation, subscription CRUD, and the delivery
-log. That is the half of webhooks that is a resource rather than a protocol: an
-operator adds a URL, picks event types, rotates a secret, and then asks whether
-it got through and what came back. It is the only half a person ever touches.
+Endpoint CRUD, the signing-key rotation, subscription CRUD, the catalog a
+subscription is judged against, and the delivery log. That is the half of
+webhooks that is a resource rather than a protocol: an operator adds a URL,
+picks event types from what ListEventTypes offers, rotates a secret, and then
+asks whether it got through and what came back. It is the only half a person
+ever touches.
 
 The other nine methods of webhooks.Store are absent, and each says so on itself
 rather than only here, so that a reader of the Store finds the answer where they
@@ -152,6 +154,28 @@ other direction, having paid for the alternative once: an ownership check
 standing in front of a write is not a check, because it reads through one
 connection what the write will act on through another. The owner belongs in the
 statement, and here it always is.
+
+# Subscription means something else in billing
+
+This service and billing's both declare GetSubscription, ListSubscriptions and
+ArchiveSubscription, over two unrelated nouns: a paid plan there, an event
+interest here. The wire tells them apart — the two live in different proto
+packages, and their generated Go types in different packages again — so nothing
+about a client's calls is ambiguous.
+
+What is not ambiguous but does not compile is embedding both generated server
+interfaces in one type. Go refuses overlapping method sets whose signatures
+differ, and these differ in every request and response type, so a consumer
+serving both domains from one struct gets "duplicate method GetSubscription" and
+two more like it. The fix is to hold the two as fields rather than embedding
+them, which is what a consumer serving two domains from one process wants
+anyway.
+
+It is written down rather than renamed because the name is right in both places
+and the wire has no collision to fix. Renaming either side would make one
+domain's vocabulary worse to serve an optional Go composition pattern, and would
+not generalize: any two domains here that share a noun and the Get/List/Archive
+shape collide the same way, and there is no rename that prevents the next one.
 
 # Errors
 

@@ -57,6 +57,40 @@ inconsistency to be tidied away: its axis is the account a subject is billed
 under, which carries a scope and an id, and neither half is inferable from the
 other.
 
+# Putting a rule in front of a domain's eraser
+
+A deployment whose own rules have to run before a domain's erasure sets that
+adapter's BeforeErase. It runs inside the erasure's transaction, ahead of the
+domain's own eraser, and what the two of them did is summed into one outcome.
+The worked case is an account with a succession rule: move it to somebody else
+before the person who owned it is erased, and do both or neither.
+
+	Identity: &privacyadapters.IdentityAdapter{
+	    Store:       userStore,
+	    Resolve:     tenantsOf,
+	    BeforeErase: householdSuccession,
+	},
+
+It precedes that eraser and cannot replace it, and the asymmetry is the point
+rather than an unfinished decorator. The shape asked for first is a wrapper —
+hand me the domain's eraser and I will return one that calls it — and it is
+refused because of what dataprivacy.ErasureOutcome is. Retained carries what was
+kept and the legal basis for keeping it, into the request record and in front of
+a regulator. A wrapper holding the domain's eraser can report numbers that
+eraser never produced, and where a wrapper that forgot to call it could be
+caught, a falsified count cannot be: the key is registered, the roster is
+satisfied, and the artifact is well-formed. So the domain's eraser is never
+handed over.
+
+A BeforeErase that fails takes the whole erasure with it, which is worth saying
+plainly: a consumer's buggy step blocks erasure for that subject until it is
+fixed. That is the direction to be wrong in. The other one is a subject who was
+told they were erased and was not.
+
+[BillingAdapter] has no such field, because billing/privacy ships no eraser for
+one to precede — see that type. Every other adapter has one, and
+[NotificationsAdapter] has two, because it registers two keys.
+
 # Why it is not in service
 
 Importing service to register these means paying for the whole config tree —

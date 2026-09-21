@@ -63,6 +63,16 @@ const (
 	// list in the tenant, which is what the list holds and what a person joining
 	// one has not agreed to publish. That read is the reason the public half of
 	// this service stops at the open catalog.
+	//
+	// Covering four reads at once used to make that an all-or-nothing choice: a
+	// deployment granting it narrowly enough to contain the oracle also took
+	// away the one safe read, a member asking where they are in a queue. It no
+	// longer does. ListSignupsForSubject asks
+	// [SignupAuthorizer.AuthorizeSubjectRead] after the subject is read, so
+	// whose signups these are is answered per request rather than by the grant,
+	// and the self-service rule is two lines. The oracle stays where it is: an
+	// address is not a subject, so GetSignupByContact has nothing to authorize
+	// against and the grant is the whole of its defense.
 	PermissionReadSignups authorization.Permission = "waitlists.signups.read"
 
 	// PermissionUpdateSignups covers rewriting the operator's note against a
@@ -128,6 +138,20 @@ const (
 // standing to move that row is [SignupAuthorizer]'s — a seam with no default,
 // asked inside the handler, because it is the question a grant on the method
 // could not have answered.
+// What a consumer accepts along with them: an anonymous Join writes a signup
+// with no subject, and waitlists/privacy reads and erases by subject
+// — ListSignupsForSubject and WithdrawSignupsForSubject. A signup nobody is
+// named on is reachable by neither. The person's own remedy is Withdraw, which
+// is why it is public beside Join and not an administrative RPC.
+//
+// That is a fork rather than a defect, and it is stated here because it is
+// decided by mounting these and not by anything else. A deployment whose
+// waitlist is for people who already have accounts does not mount them: Join is
+// absent from [Permissions] too, so a fail-closed interceptor refuses it until
+// the consumer puts it in a map of their own under a grant of their own, and
+// every signup then carries the caller as its subject. A deployment that wants
+// the pre-launch waitlist this package is named for mounts them and accepts
+// that those rows answer to Withdraw alone.
 func PublicMethods() []string {
 	return []string{
 		waitlistspb.WaitlistsService_ListOpenLists_FullMethodName,

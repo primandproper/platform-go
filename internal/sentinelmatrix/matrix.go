@@ -341,6 +341,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrUserNotFound":       {Err: identity.ErrUserNotFound, Is: Mapped},
 		"ErrUsernameTaken":      {Err: identity.ErrUsernameTaken, Is: Mapped},
 
+		// An expired verification link, which both transports answer exactly as
+		// an absence — the opposite of the row below it, and for a reason about
+		// the lookup rather than about expiry. See the sentinel's own comment.
+		"ErrEmailVerificationLinkExpired": {Err: identity.ErrEmailVerificationLinkExpired, Is: Mapped},
+
 		// The three states an act is refused from rather than forbidden. Each is
 		// fixable by the caller in a specific order, and a 500 would tell them to
 		// do nothing. ErrInvitationExpired is the one row in this file whose two

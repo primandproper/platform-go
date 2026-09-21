@@ -45,6 +45,25 @@ const (
 	// the first imply the second.
 	PermissionUpdateUserServiceRoles authorization.Permission = "identity.users.update_service_roles"
 
+	// PermissionRequirePasswordChange covers forcing a password change at a
+	// user's next sign-in, and releasing one.
+	//
+	// It is the lightest of the four operator writes and is its own grant so
+	// that it can be granted lightly. It destroys nothing, discloses nothing and
+	// locks nobody out: the subject clears the requirement by choosing a new
+	// password, which is a door they already have. A support desk that should be
+	// able to answer "we think your password leaked" without being able to ban
+	// anybody, end their sessions or make them an operator holds this and none
+	// of the other three.
+	//
+	// One grant covers both directions, because releasing a requirement is the
+	// same act performed by the same person a minute later — usually the one who
+	// imposed it, having found they were wrong. A grant that let an operator
+	// impose one and not withdraw it would leave the correction to somebody
+	// else.
+	//
+	PermissionRequirePasswordChange authorization.Permission = "identity.users.require_password_change"
+
 	// PermissionReadAccounts covers reading an account and its roster, by id.
 	//
 	// The grant is on the method and says the caller may perform this kind of
@@ -66,6 +85,23 @@ const (
 	// PermissionUpdateAccounts covers renaming an account and changing its
 	// billing address and time zone.
 	PermissionUpdateAccounts authorization.Permission = "identity.accounts.update"
+
+	// PermissionCreateAccounts covers opening a second account, owned by the
+	// caller.
+	//
+	// It is its own grant and the whole of the check on that RPC, which asks no
+	// authorizer — there is no row yet to authorize against, and the owner is
+	// the principal rather than anything a client may name. So whether members
+	// may start accounts of their own is this grant and nothing else, which is
+	// a deployment's decision and reads like one: a product where a person runs
+	// several households grants it widely, and one where an account is
+	// provisioned for them does not grant it at all.
+	//
+	// It is separate from PermissionUpdateAccounts because the questions are
+	// different sizes. Editing an account somebody already has is bounded by
+	// the accounts they hold; opening one is not bounded by anything, which is
+	// why a deployment may reasonably allow the first and refuse the second.
+	PermissionCreateAccounts authorization.Permission = "identity.accounts.create"
 
 	// PermissionTransferAccountOwnership covers moving an account to a new
 	// owner.
@@ -139,10 +175,11 @@ func Permissions() map[string][]authorization.Permission {
 		// Registration.
 		identitypb.IdentityService_Register_FullMethodName: {PermissionCreateUsers},
 
-		// The three operator writes, each with its own permission.
-		identitypb.IdentityService_ArchiveUser_FullMethodName:             {PermissionArchiveUsers},
-		identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName: {PermissionUpdateUserStatus},
-		identitypb.IdentityService_SetUserServiceRoles_FullMethodName:     {PermissionUpdateUserServiceRoles},
+		// The four operator writes, each with its own permission.
+		identitypb.IdentityService_ArchiveUser_FullMethodName:                   {PermissionArchiveUsers},
+		identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName:       {PermissionUpdateUserStatus},
+		identitypb.IdentityService_SetUserServiceRoles_FullMethodName:           {PermissionUpdateUserServiceRoles},
+		identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName: {PermissionRequirePasswordChange},
 
 		// Accounts.
 		identitypb.IdentityService_GetAccount_FullMethodName:               {PermissionReadAccounts},
@@ -152,6 +189,7 @@ func Permissions() map[string][]authorization.Permission {
 		identitypb.IdentityService_ListMembershipsForUser_FullMethodName:   {PermissionReadAccounts},
 		identitypb.IdentityService_ListAccounts_FullMethodName:             {PermissionListAllAccounts},
 		identitypb.IdentityService_UpdateAccount_FullMethodName:            {PermissionUpdateAccounts},
+		identitypb.IdentityService_CreateAccount_FullMethodName:            {PermissionCreateAccounts},
 		identitypb.IdentityService_TransferAccountOwnership_FullMethodName: {PermissionTransferAccountOwnership},
 		identitypb.IdentityService_ArchiveAccount_FullMethodName:           {PermissionArchiveAccounts},
 		identitypb.IdentityService_SetMembershipRoles_FullMethodName:       {PermissionManageMembers},

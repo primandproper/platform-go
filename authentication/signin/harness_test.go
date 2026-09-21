@@ -20,6 +20,8 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/clock"
+	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
@@ -713,4 +715,23 @@ func (e *env) registerUnverified(t *testing.T, username string) *identity.User {
 	must.NoError(t, err)
 
 	return registered.User
+}
+
+// longPast is a moment far enough back that anything dated from it is dead
+// against the store's own clock, whatever a test run's wall clock says.
+var longPast = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// fixedClockAt is a clock that does not move, for the tests that need a link
+// minted at a moment of their choosing.
+//
+// It is this package's clock rather than the directory store's, which is what
+// makes it useful here: the link's deadline is computed from it and the
+// liveness check is made against the store's real one, so a service clocked in
+// the past mints a link that is already expired without any test having to
+// sleep.
+func fixedClockAt(at time.Time) clock.Clock {
+	return &clockmock.ClockMock{
+		NowFunc:   func() time.Time { return at },
+		SinceFunc: at.Sub,
+	}
 }

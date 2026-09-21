@@ -19,7 +19,7 @@ import (
 // rather than an enum because a consumer's policy is data — a YAML file, a table
 // of roles — and it has to be able to name one without importing Go.
 //
-// There are eight of them over ten RPCs, and the two collapses are deliberate.
+// There are nine of them over eleven RPCs, and the two collapses are deliberate.
 // Each get and its list share one grant, because they answer the same question
 // at two cardinalities and a grant that separated them would let a consumer
 // allow enumeration while forbidding the read it enumerates into. A consumer who
@@ -96,6 +96,22 @@ const (
 	// subscriber said about it, is operational history that includes a
 	// subscriber's own error text.
 	PermissionReadAttempts authorization.Permission = "webhooks.attempts.read"
+
+	// PermissionReadEventTypes covers reading the catalog of event types a
+	// subscription may name.
+	//
+	// It is its own grant and a light one. The catalog is the application's own
+	// source-code constant, identical for every tenant and holding no row
+	// anybody owns — the event types this deployment publishes and prose saying
+	// when each fires. A deployment whose event names are not a secret grants it
+	// to anybody who may manage an endpoint at all.
+	//
+	// It is separate from [PermissionAddSubscriptions] rather than folded into
+	// it because the read comes first: a subscription form has to render the
+	// choices before anybody makes one, and a grant that let you subscribe in
+	// order to find out what you could subscribe to would be the wrong way
+	// round.
+	PermissionReadEventTypes authorization.Permission = "webhooks.event_types.read"
 )
 
 // Permissions is the default map from method name to what it requires: every
@@ -124,6 +140,7 @@ func Permissions() map[string][]authorization.Permission {
 		webhookspb.WebhooksService_ListSubscriptions_FullMethodName:   {PermissionReadSubscriptions},
 		webhookspb.WebhooksService_ArchiveSubscription_FullMethodName: {PermissionArchiveSubscriptions},
 		webhookspb.WebhooksService_ListAttempts_FullMethodName:        {PermissionReadAttempts},
+		webhookspb.WebhooksService_ListEventTypes_FullMethodName:      {PermissionReadEventTypes},
 	}
 }
 

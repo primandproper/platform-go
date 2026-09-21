@@ -395,6 +395,35 @@ message ListSubscriptionsResponse {
   repeated WebhookSubscription results = 2;
 }
 
+// EventTypeDefinition is one entry in the catalog an application publishes:
+// the event type a subscription may name, and prose saying when it fires.
+message EventTypeDefinition {
+  reserved "scope";
+
+  string event_type = 1 [json_name = "eventType"];
+  string description = 2;
+}
+
+// ListEventTypesRequest asks what a subscription may name.
+//
+// It reserves "scope" as every message here does, and carries nothing else. The
+// catalog is a value the application supplies at construction rather than a
+// table, so it is identical for every tenant and there is nothing to page,
+// filter or narrow -- see ListEventTypes.
+message ListEventTypesRequest {
+  reserved "scope";
+}
+
+// ListEventTypesResponse is the whole catalog, sorted by event type.
+//
+// There is no pagination field, deliberately. A catalog is a source-code
+// constant of the application serving it, sized by how many kinds of thing that
+// application publishes, and a page token over it would be a cursor into a
+// value that cannot change between two requests to the same binary.
+message ListEventTypesResponse {
+  repeated EventTypeDefinition results = 1;
+}
+
 message ArchiveSubscriptionRequest {
   reserved "scope";
 
@@ -463,4 +492,6 @@ service WebhooksService {
   rpc ArchiveSubscription(ArchiveSubscriptionRequest) returns (ArchiveSubscriptionResponse);
 
   rpc ListAttempts(ListAttemptsRequest) returns (ListAttemptsResponse);
+
+  rpc ListEventTypes(ListEventTypesRequest) returns (ListEventTypesResponse);
 }

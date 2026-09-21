@@ -372,6 +372,17 @@ var adapterWalk = sync.OnceValues(func() (map[string][]string, error) {
 		}
 
 		dir := filepath.ToSlash(rel)
+
+		// This package's own directory is not an adapter directory. precede.go
+		// carries a dataprivacy.Eraser conformance var for the composition
+		// Register applies to a consumer's BeforeErase, which ships no key, is
+		// registered under none, and belongs to the registrar rather than to a
+		// domain. Counting it would make the roster below claim a twelfth
+		// adapter that no export has a section for.
+		if dir == "privacyadapters" {
+			return nil
+		}
+
 		found[dir] = append(found[dir], defaultKeys(parsed)...)
 
 		return nil

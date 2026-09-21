@@ -121,3 +121,67 @@ func TestSearchUsersByUsernameMatchesThePrefixInTheCallersDirectory(T *testing.T
 	// is not here.
 	test.SliceNotContains(T, usernames, "alexis")
 }
+
+// TestSetUserRequiresPasswordChangeImposesAndReleases is the fourth operator
+// write, and the round trip is the whole of it: an operator imposes the
+// requirement, the directory reports it, and the same operator withdraws it.
+//
+// Both directions are one RPC and one grant because they are the same act
+// performed by the same person, usually a minute apart and usually because the
+// first one was wrong.
+func TestSetUserRequiresPasswordChangeImposesAndReleases(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	user := h.seedUser(T, testScope, "somebody")
+	test.False(T, user.RequiresPasswordChange,
+		test.Sprint("a freshly seeded user already owed a password change"))
+
+	imposed, err := h.client.SetUserRequiresPasswordChange(h.ctx(),
+		&identitypb.SetUserRequiresPasswordChangeRequest{
+			UserId:                 user.ID,
+			RequiresPasswordChange: new(true),
+		})
+	must.NoError(T, err)
+	test.True(T, imposed.GetUser().GetRequiresPasswordChange())
+
+	released, err := h.client.SetUserRequiresPasswordChange(h.ctx(),
+		&identitypb.SetUserRequiresPasswordChangeRequest{
+			UserId:                 user.ID,
+			RequiresPasswordChange: new(false),
+		})
+	must.NoError(T, err)
+	test.False(T, released.GetUser().GetRequiresPasswordChange(),
+		test.Sprint("an operator could impose a forced change and not withdraw it"))
+}
+
+// TestSetUserRequiresPasswordChangeRefusesAnUnsetFlag is why the field is
+// optional rather than a plain bool. A proto3 scalar cannot tell "release it"
+// from "I did not say", and the value a forgotten field carries is the one that
+// undoes the decision somebody made.
+func TestSetUserRequiresPasswordChangeRefusesAnUnsetFlag(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	user := h.seedUser(T, testScope, "somebody")
+
+	_, err := h.client.SetUserRequiresPasswordChange(h.ctx(),
+		&identitypb.SetUserRequiresPasswordChangeRequest{
+			UserId:                 user.ID,
+			RequiresPasswordChange: new(true),
+		})
+	must.NoError(T, err)
+
+	_, err = h.client.SetUserRequiresPasswordChange(h.ctx(),
+		&identitypb.SetUserRequiresPasswordChangeRequest{UserId: user.ID})
+	must.Error(T, err)
+	test.EqOp(T, codes.InvalidArgument, status.Code(err))
+
+	// The refusal reached the store nowhere: the requirement still stands.
+	read, err := h.client.GetUser(h.ctx(), &identitypb.GetUserRequest{UserId: user.ID})
+	must.NoError(T, err)
+	test.True(T, read.GetUser().GetRequiresPasswordChange(),
+		test.Sprint("a request that named no instruction released one anyway"))
+}
