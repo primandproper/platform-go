@@ -188,12 +188,22 @@ branch that is also an oracle."* A client that must show a TOTP prompt therefore
 on message text, which is not a stable interface. Either the message becomes part of the
 contract, or something non-oracular needs to carry it.
 
-**Q3 — Idempotency keys.** No v14 proto defines a client-supplied idempotency key —
-`grep -r idempotency --include='*.proto'` over this module returns nothing — yet R3 and R4
-describe retrying. Retries of non-idempotent RPCs need one.
-Confirm whether a convention exists; if not, it belongs in the module rather than in each
-client. Adding one is additive — a new field on a request message — so it needs a minor
-release, not a major.
+**Q3 — Idempotency keys. Resolved: the convention exists.** I looked in the wrong place — it
+is not a proto field, it is gRPC metadata, which is the right home for it. `primitives-go`'s
+`idempotency` package defines `MetadataKey = "idempotency-key"` and ships both a client and a
+server interceptor, and this module already uses them in `settings/grpc/client`,
+`identity/grpc/client` and `saga`.
+
+The rule for a client, from that package's own documentation:
+
+> The client generates one before its first attempt and reuses that same value on every retry
+> of the same logical operation… A key minted inside the retry loop is a new key per attempt,
+> which looks like protection and provides none.
+
+So: `idempotency.WithNewKey(ctx)` once, **outside** the retry loop, and the client
+interceptor forwards it. A call carrying no key is sent exactly as it would be without the
+interceptor, so this is opt-in per call rather than imposed. Both clients must send
+`idempotency-key` on retryable non-idempotent calls, minted once per logical operation.
 
 **Q4 — Streams.** Nothing here covers reconnect, backoff or resumption for streaming RPCs.
 
