@@ -168,8 +168,18 @@ dropped connection leaves the client unable to know whether the token was spent.
 re-sending it; but there is no successor to retry with, because none arrived. The options are
 to sign out immediately (losing sessions to a flaky network) or to re-send and risk revoking a
 live family (R4's exact prohibition). **This needs an answer before either client ships**, and
-it may need a server-side affordance — an idempotent exchange keyed on the token, so a repeat
-of the *same* request is distinguishable from a genuine reuse.
+it probably needs a server-side affordance — an idempotent exchange, so a repeat of the *same*
+request is distinguishable from a genuine reuse.
+
+That affordance is **additive**, and so is a minor release rather than a major one. A new
+optional field on `ExchangeRefreshTokenRequest` is wire-compatible, and the behaviour only
+differs when a client sends it. The one thing that would force a major is the storage it
+needs: `RefreshTokenStore` is exported and injected through `WithRefreshTokenStore`, so it is
+explicitly meant to be implemented outside this module, and adding a method to it would break
+every external implementation at compile time. The way out is the usual one — declare a new
+interface that embeds `RefreshTokenStore`, type-assert for it at runtime, and let a store that
+does not implement it behave exactly as it does today. Idempotency then arrives as an opt-in
+capability, and nobody's build breaks.
 
 **Q2 — Is the second-factor signal a contract?** `ErrSecondFactorRequired` and
 `ErrInvalidCredentials` deliberately share one code and differ only in message — *"one says
@@ -181,7 +191,9 @@ contract, or something non-oracular needs to carry it.
 **Q3 — Idempotency keys.** No v14 proto defines a client-supplied idempotency key —
 `grep -r idempotency --include='*.proto'` over this module returns nothing — yet R3 and R4
 describe retrying. Retries of non-idempotent RPCs need one.
-Confirm whether a convention exists; if not, it belongs in v15 rather than in each client.
+Confirm whether a convention exists; if not, it belongs in the module rather than in each
+client. Adding one is additive — a new field on a request message — so it needs a minor
+release, not a major.
 
 **Q4 — Streams.** Nothing here covers reconnect, backoff or resumption for streaming RPCs.
 
