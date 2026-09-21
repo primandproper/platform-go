@@ -60,6 +60,20 @@
 // password on this wire would put the choice of hashing engine in the
 // transport.
 //
+// SetUserRequiresPasswordChange is the one write that looks like a credential
+// RPC and is not one. It carries no secret in either direction -- it assigns a
+// boolean on a directory row, which the sign-in service reads on its status
+// call and which SignInService.UpdatePassword clears -- so the sentence above
+// does not reach it: there is nothing here that a hashing engine produced. It
+// is an operator write on a directory column and belongs with ArchiveUser,
+// UpdateUserAccountStatus and SetUserServiceRoles, which is where it sits.
+//
+// The sign-in service is deliberately not where it lives, even though that is
+// the service that enforces the flag. signin.Directory is the narrowest
+// interface the component holding everybody's passwords can be given, and an
+// interface that could also impose a forced change on any user is one that
+// could be made to.
+//
 // Registration here therefore mints the passwordless user that package already
 // treats as first-class. A registration that carries a credential is
 // SignInService.Register, in signin.proto: that service holds the authenticator,
@@ -111,6 +125,7 @@ const (
 	IdentityService_ArchiveAccount_FullMethodName                 = "/primandproper.platform.identity.v1.IdentityService/ArchiveAccount"
 	IdentityService_UpdateUserAccountStatus_FullMethodName        = "/primandproper.platform.identity.v1.IdentityService/UpdateUserAccountStatus"
 	IdentityService_SetUserServiceRoles_FullMethodName            = "/primandproper.platform.identity.v1.IdentityService/SetUserServiceRoles"
+	IdentityService_SetUserRequiresPasswordChange_FullMethodName  = "/primandproper.platform.identity.v1.IdentityService/SetUserRequiresPasswordChange"
 	IdentityService_GetPrincipal_FullMethodName                   = "/primandproper.platform.identity.v1.IdentityService/GetPrincipal"
 	IdentityService_GetUser_FullMethodName                        = "/primandproper.platform.identity.v1.IdentityService/GetUser"
 	IdentityService_ListUsers_FullMethodName                      = "/primandproper.platform.identity.v1.IdentityService/ListUsers"
@@ -161,6 +176,7 @@ type IdentityServiceClient interface {
 	ArchiveAccount(ctx context.Context, in *ArchiveAccountRequest, opts ...grpc.CallOption) (*ArchiveAccountResponse, error)
 	UpdateUserAccountStatus(ctx context.Context, in *UpdateUserAccountStatusRequest, opts ...grpc.CallOption) (*UpdateUserAccountStatusResponse, error)
 	SetUserServiceRoles(ctx context.Context, in *SetUserServiceRolesRequest, opts ...grpc.CallOption) (*SetUserServiceRolesResponse, error)
+	SetUserRequiresPasswordChange(ctx context.Context, in *SetUserRequiresPasswordChangeRequest, opts ...grpc.CallOption) (*SetUserRequiresPasswordChangeResponse, error)
 	// The reads.
 	GetPrincipal(ctx context.Context, in *GetPrincipalRequest, opts ...grpc.CallOption) (*GetPrincipalResponse, error)
 	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
@@ -355,6 +371,16 @@ func (c *identityServiceClient) SetUserServiceRoles(ctx context.Context, in *Set
 	return out, nil
 }
 
+func (c *identityServiceClient) SetUserRequiresPasswordChange(ctx context.Context, in *SetUserRequiresPasswordChangeRequest, opts ...grpc.CallOption) (*SetUserRequiresPasswordChangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetUserRequiresPasswordChangeResponse)
+	err := c.cc.Invoke(ctx, IdentityService_SetUserRequiresPasswordChange_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *identityServiceClient) GetPrincipal(ctx context.Context, in *GetPrincipalRequest, opts ...grpc.CallOption) (*GetPrincipalResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPrincipalResponse)
@@ -520,6 +546,7 @@ type IdentityServiceServer interface {
 	ArchiveAccount(context.Context, *ArchiveAccountRequest) (*ArchiveAccountResponse, error)
 	UpdateUserAccountStatus(context.Context, *UpdateUserAccountStatusRequest) (*UpdateUserAccountStatusResponse, error)
 	SetUserServiceRoles(context.Context, *SetUserServiceRolesRequest) (*SetUserServiceRolesResponse, error)
+	SetUserRequiresPasswordChange(context.Context, *SetUserRequiresPasswordChangeRequest) (*SetUserRequiresPasswordChangeResponse, error)
 	// The reads.
 	GetPrincipal(context.Context, *GetPrincipalRequest) (*GetPrincipalResponse, error)
 	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
@@ -594,6 +621,9 @@ func (UnimplementedIdentityServiceServer) UpdateUserAccountStatus(context.Contex
 }
 func (UnimplementedIdentityServiceServer) SetUserServiceRoles(context.Context, *SetUserServiceRolesRequest) (*SetUserServiceRolesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetUserServiceRoles not implemented")
+}
+func (UnimplementedIdentityServiceServer) SetUserRequiresPasswordChange(context.Context, *SetUserRequiresPasswordChangeRequest) (*SetUserRequiresPasswordChangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetUserRequiresPasswordChange not implemented")
 }
 func (UnimplementedIdentityServiceServer) GetPrincipal(context.Context, *GetPrincipalRequest) (*GetPrincipalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPrincipal not implemented")
@@ -961,6 +991,24 @@ func _IdentityService_SetUserServiceRoles_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IdentityService_SetUserRequiresPasswordChange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserRequiresPasswordChangeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServiceServer).SetUserRequiresPasswordChange(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IdentityService_SetUserRequiresPasswordChange_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServiceServer).SetUserRequiresPasswordChange(ctx, req.(*SetUserRequiresPasswordChangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _IdentityService_GetPrincipal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetPrincipalRequest)
 	if err := dec(in); err != nil {
@@ -1269,6 +1317,10 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetUserServiceRoles",
 			Handler:    _IdentityService_SetUserServiceRoles_Handler,
+		},
+		{
+			MethodName: "SetUserRequiresPasswordChange",
+			Handler:    _IdentityService_SetUserRequiresPasswordChange_Handler,
 		},
 		{
 			MethodName: "GetPrincipal",

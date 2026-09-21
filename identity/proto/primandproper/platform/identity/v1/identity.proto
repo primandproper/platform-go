@@ -60,6 +60,20 @@
 // password on this wire would put the choice of hashing engine in the
 // transport.
 //
+// SetUserRequiresPasswordChange is the one write that looks like a credential
+// RPC and is not one. It carries no secret in either direction -- it assigns a
+// boolean on a directory row, which the sign-in service reads on its status
+// call and which SignInService.UpdatePassword clears -- so the sentence above
+// does not reach it: there is nothing here that a hashing engine produced. It
+// is an operator write on a directory column and belongs with ArchiveUser,
+// UpdateUserAccountStatus and SetUserServiceRoles, which is where it sits.
+//
+// The sign-in service is deliberately not where it lives, even though that is
+// the service that enforces the flag. signin.Directory is the narrowest
+// interface the component holding everybody's passwords can be given, and an
+// interface that could also impose a forced change on any user is one that
+// could be made to.
+//
 // Registration here therefore mints the passwordless user that package already
 // treats as first-class. A registration that carries a credential is
 // SignInService.Register, in signin.proto: that service holds the authenticator,
@@ -722,6 +736,25 @@ message SetUserServiceRolesResponse {
   User user = 1;
 }
 
+message SetUserRequiresPasswordChangeRequest {
+  reserved "scope";
+
+  string user_id = 1 [json_name = "userID"];
+
+  // requires_password_change is optional because false is a real instruction
+  // and not an absence: sending it releases a requirement somebody imposed. A
+  // request that omits the field is refused for the reason
+  // UpdateUserAccountStatusRequest.status refuses UNSPECIFIED -- the value a
+  // forgotten field carries is the one that undoes an operator's decision, and
+  // a wire that cannot tell "release it" from "I did not say" would perform
+  // the release either way.
+  optional bool requires_password_change = 2;
+}
+
+message SetUserRequiresPasswordChangeResponse {
+  User user = 1;
+}
+
 message GetPrincipalRequest {
   reserved "scope";
 
@@ -917,6 +950,7 @@ service IdentityService {
   rpc ArchiveAccount(ArchiveAccountRequest) returns (ArchiveAccountResponse);
   rpc UpdateUserAccountStatus(UpdateUserAccountStatusRequest) returns (UpdateUserAccountStatusResponse);
   rpc SetUserServiceRoles(SetUserServiceRolesRequest) returns (SetUserServiceRolesResponse);
+  rpc SetUserRequiresPasswordChange(SetUserRequiresPasswordChangeRequest) returns (SetUserRequiresPasswordChangeResponse);
 
   // The reads.
   rpc GetPrincipal(GetPrincipalRequest) returns (GetPrincipalResponse);

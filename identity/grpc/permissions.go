@@ -45,6 +45,25 @@ const (
 	// the first imply the second.
 	PermissionUpdateUserServiceRoles authorization.Permission = "identity.users.update_service_roles"
 
+	// PermissionRequirePasswordChange covers forcing a password change at a
+	// user's next sign-in, and releasing one.
+	//
+	// It is the lightest of the four operator writes and is its own grant so
+	// that it can be granted lightly. It destroys nothing, discloses nothing and
+	// locks nobody out: the subject clears the requirement by choosing a new
+	// password, which is a door they already have. A support desk that should be
+	// able to answer "we think your password leaked" without being able to ban
+	// anybody, end their sessions or make them an operator holds this and none
+	// of the other three.
+	//
+	// One grant covers both directions, because releasing a requirement is the
+	// same act performed by the same person a minute later — usually the one who
+	// imposed it, having found they were wrong. A grant that let an operator
+	// impose one and not withdraw it would leave the correction to somebody
+	// else.
+	//
+	PermissionRequirePasswordChange authorization.Permission = "identity.users.require_password_change"
+
 	// PermissionReadAccounts covers reading an account and its roster, by id.
 	//
 	// The grant is on the method and says the caller may perform this kind of
@@ -156,10 +175,11 @@ func Permissions() map[string][]authorization.Permission {
 		// Registration.
 		identitypb.IdentityService_Register_FullMethodName: {PermissionCreateUsers},
 
-		// The three operator writes, each with its own permission.
-		identitypb.IdentityService_ArchiveUser_FullMethodName:             {PermissionArchiveUsers},
-		identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName: {PermissionUpdateUserStatus},
-		identitypb.IdentityService_SetUserServiceRoles_FullMethodName:     {PermissionUpdateUserServiceRoles},
+		// The four operator writes, each with its own permission.
+		identitypb.IdentityService_ArchiveUser_FullMethodName:                   {PermissionArchiveUsers},
+		identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName:       {PermissionUpdateUserStatus},
+		identitypb.IdentityService_SetUserServiceRoles_FullMethodName:           {PermissionUpdateUserServiceRoles},
+		identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName: {PermissionRequirePasswordChange},
 
 		// Accounts.
 		identitypb.IdentityService_GetAccount_FullMethodName:               {PermissionReadAccounts},
