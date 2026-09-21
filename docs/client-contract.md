@@ -163,23 +163,23 @@ that tells an honest zero from an absent one, and it defaults to false.
 These are unresolved. Both clients must answer them the same way, so they are decisions rather
 than implementation details.
 
-**Q1 — What does a client do when `ExchangeRefreshToken` fails ambiguously?** (tracked in #869) A timeout or
-dropped connection leaves the client unable to know whether the token was spent. R4 forbids
-re-sending it; but there is no successor to retry with, because none arrived. The options are
-to sign out immediately (losing sessions to a flaky network) or to re-send and risk revoking a
-live family (R4's exact prohibition). **This needs an answer before either client ships**, and
-it probably needs a server-side affordance — an idempotent exchange, so a repeat of the *same*
-request is distinguishable from a genuine reuse.
+**Q1 — An ambiguous `ExchangeRefreshToken` failure. Decided; pending #869.** A timeout or
+dropped connection leaves a client unable to know whether its token was spent. R4 forbids
+re-sending it, and no successor arrived to retry with, so both available moves lose a working
+session.
 
-That affordance is **additive**, and so is a minor release rather than a major one. A new
-optional field on `ExchangeRefreshTokenRequest` is wire-compatible, and the behaviour only
-differs when a client sends it. The one thing that would force a major is the storage it
-needs: `RefreshTokenStore` is exported and injected through `WithRefreshTokenStore`, so it is
-explicitly meant to be implemented outside this module, and adding a method to it would break
-every external implementation at compile time. The way out is the usual one — declare a new
-interface that embeds `RefreshTokenStore`, type-assert for it at runtime, and let a store that
-does not implement it behave exactly as it does today. Idempotency then arrives as an opt-in
-capability, and nobody's build breaks.
+The answer is an idempotency key. Once #869 lands, the rule for a client is:
+
+**R9 — retry an ambiguous exchange with the same idempotency key, and expect a different
+successor.** Mint the key once per logical exchange, outside the retry loop, and send it on
+every attempt. The service recognises the repeat, mints a *fresh* successor and revokes the
+one the first attempt produced. A client that receives a token it has not seen before has not
+found a bug: re-minting is the design, chosen over replaying a stored response so that no
+refresh token secret is ever kept at rest, and so that an attacker replaying the request
+revokes the real client's token — making theft visible — instead of silently sharing it.
+
+Until #869 lands there is no safe retry, and a client must treat an ambiguous exchange
+failure as a lost session.
 
 **Q2 — Is the second-factor signal a contract?** `ErrSecondFactorRequired` and
 `ErrInvalidCredentials` deliberately share one code and differ only in message — *"one says
