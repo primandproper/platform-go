@@ -11,6 +11,14 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+// ClaimRefreshTokenRemintParams are the arguments to ClaimRefreshTokenRemint.
+type ClaimRefreshTokenRemintParams struct {
+	RedeemedWithKey *string
+	Hash            string
+	Scope           tenancy.Scope
+	ExpectedKey     *string
+}
+
 // GetRefreshTokenParams are the arguments to GetRefreshToken.
 type GetRefreshTokenParams struct {
 	Hash  string
@@ -31,6 +39,18 @@ type GetRefreshTokenRow struct {
 	RevokedAt       *time.Time
 }
 
+// GetRefreshTokenRedemptionParams are the arguments to GetRefreshTokenRedemption.
+type GetRefreshTokenRedemptionParams struct {
+	Hash  string
+	Scope tenancy.Scope
+}
+
+// GetRefreshTokenRedemptionRow is one row of GetRefreshTokenRedemption's result.
+type GetRefreshTokenRedemptionRow struct {
+	RedeemedWithKey *string
+	SuccessorHash   *string
+}
+
 // InsertRefreshTokenParams are the arguments to InsertRefreshToken.
 type InsertRefreshTokenParams struct {
 	Hash            string
@@ -44,12 +64,35 @@ type InsertRefreshTokenParams struct {
 	PurgeAfter      time.Time
 }
 
+// RecordRefreshTokenSuccessorParams are the arguments to RecordRefreshTokenSuccessor.
+type RecordRefreshTokenSuccessorParams struct {
+	SuccessorHash *string
+	Hash          string
+	Scope         tenancy.Scope
+}
+
 // RedeemRefreshTokenParams are the arguments to RedeemRefreshToken.
 type RedeemRefreshTokenParams struct {
 	RedeemedAt *time.Time
 	Hash       string
 	Scope      tenancy.Scope
 	Now        time.Time
+}
+
+// RedeemRefreshTokenWithKeyParams are the arguments to RedeemRefreshTokenWithKey.
+type RedeemRefreshTokenWithKeyParams struct {
+	RedeemedAt      *time.Time
+	RedeemedWithKey *string
+	Hash            string
+	Scope           tenancy.Scope
+	Now             time.Time
+}
+
+// RevokeRefreshTokenParams are the arguments to RevokeRefreshToken.
+type RevokeRefreshTokenParams struct {
+	RevokedAt *time.Time
+	Hash      string
+	Scope     tenancy.Scope
 }
 
 // RevokeRefreshTokenFamilyParams are the arguments to RevokeRefreshTokenFamily.

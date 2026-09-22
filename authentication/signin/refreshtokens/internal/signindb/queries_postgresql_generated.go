@@ -13,6 +13,12 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const claimRefreshTokenRemintPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
+	redeemed_with_key = $1
+WHERE hash = $2
+	AND scope = $3
+	AND redeemed_with_key = $4`
+
 const getRefreshTokenPostgreSQL = `SELECT
 	{{prefix}}signin_refresh_tokens.scope,
 	{{prefix}}signin_refresh_tokens.family_id,
@@ -24,6 +30,13 @@ const getRefreshTokenPostgreSQL = `SELECT
 	{{prefix}}signin_refresh_tokens.purge_after,
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.hash = $1
+	AND {{prefix}}signin_refresh_tokens.scope = $2`
+
+const getRefreshTokenRedemptionPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.redeemed_with_key,
+	{{prefix}}signin_refresh_tokens.successor_hash
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = $1
 	AND {{prefix}}signin_refresh_tokens.scope = $2`
@@ -51,6 +64,11 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	$9
 )`
 
+const recordRefreshTokenSuccessorPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
+	successor_hash = $1
+WHERE hash = $2
+	AND scope = $3`
+
 const redeemRefreshTokenPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
 	redeemed_at = $1
 WHERE hash = $2
@@ -58,6 +76,21 @@ WHERE hash = $2
 	AND redeemed_at IS NULL
 	AND revoked_at IS NULL
 	AND expires_at > $4`
+
+const redeemRefreshTokenWithKeyPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
+	redeemed_at = $1,
+	redeemed_with_key = $2
+WHERE hash = $3
+	AND scope = $4
+	AND redeemed_at IS NULL
+	AND revoked_at IS NULL
+	AND expires_at > $5`
+
+const revokeRefreshTokenPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
+	revoked_at = $1
+WHERE hash = $2
+	AND scope = $3
+	AND revoked_at IS NULL`
 
 const revokeRefreshTokenFamilyPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
 	revoked_at = $1
@@ -76,9 +109,14 @@ WHERE purge_after <= $1`
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
+	claimRefreshTokenRemint       string
 	getRefreshToken               string
+	getRefreshTokenRedemption     string
 	insertRefreshToken            string
+	recordRefreshTokenSuccessor   string
 	redeemRefreshToken            string
+	redeemRefreshTokenWithKey     string
+	revokeRefreshToken            string
 	revokeRefreshTokenFamily      string
 	revokeRefreshTokensForSubject string
 	sweepRefreshTokens            string
@@ -88,13 +126,33 @@ type postgresqlQueries struct {
 // table name the analyzer identified.
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
+		claimRefreshTokenRemint:       strings.ReplaceAll(claimRefreshTokenRemintPostgreSQL, prefixMarker, prefix),
 		getRefreshToken:               strings.ReplaceAll(getRefreshTokenPostgreSQL, prefixMarker, prefix),
+		getRefreshTokenRedemption:     strings.ReplaceAll(getRefreshTokenRedemptionPostgreSQL, prefixMarker, prefix),
 		insertRefreshToken:            strings.ReplaceAll(insertRefreshTokenPostgreSQL, prefixMarker, prefix),
+		recordRefreshTokenSuccessor:   strings.ReplaceAll(recordRefreshTokenSuccessorPostgreSQL, prefixMarker, prefix),
 		redeemRefreshToken:            strings.ReplaceAll(redeemRefreshTokenPostgreSQL, prefixMarker, prefix),
+		redeemRefreshTokenWithKey:     strings.ReplaceAll(redeemRefreshTokenWithKeyPostgreSQL, prefixMarker, prefix),
+		revokeRefreshToken:            strings.ReplaceAll(revokeRefreshTokenPostgreSQL, prefixMarker, prefix),
 		revokeRefreshTokenFamily:      strings.ReplaceAll(revokeRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
 		revokeRefreshTokensForSubject: strings.ReplaceAll(revokeRefreshTokensForSubjectPostgreSQL, prefixMarker, prefix),
 		sweepRefreshTokens:            strings.ReplaceAll(sweepRefreshTokensPostgreSQL, prefixMarker, prefix),
 	}
+}
+
+// ClaimRefreshTokenRemint runs the :execrows query against postgresql.
+func (q *postgresqlQueries) ClaimRefreshTokenRemint(ctx context.Context, db DBTX, arg ClaimRefreshTokenRemintParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.claimRefreshTokenRemint,
+		arg.RedeemedWithKey,
+		arg.Hash,
+		arg.Scope,
+		arg.ExpectedKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // GetRefreshToken runs the :one query against postgresql.
@@ -122,6 +180,23 @@ func (q *postgresqlQueries) GetRefreshToken(ctx context.Context, db DBTX, arg Ge
 	return i, err
 }
 
+// GetRefreshTokenRedemption runs the :one query against postgresql.
+func (q *postgresqlQueries) GetRefreshTokenRedemption(ctx context.Context, db DBTX, arg GetRefreshTokenRedemptionParams) (GetRefreshTokenRedemptionRow, error) {
+	row := db.QueryRowContext(ctx, q.getRefreshTokenRedemption,
+		arg.Hash,
+		arg.Scope,
+	)
+
+	var i GetRefreshTokenRedemptionRow
+
+	err := row.Scan(
+		&i.RedeemedWithKey,
+		&i.SuccessorHash,
+	)
+
+	return i, err
+}
+
 // InsertRefreshToken runs the :exec query against postgresql.
 func (q *postgresqlQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg InsertRefreshTokenParams) error {
 	_, err := db.ExecContext(ctx, q.insertRefreshToken,
@@ -139,6 +214,20 @@ func (q *postgresqlQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg
 	return err
 }
 
+// RecordRefreshTokenSuccessor runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RecordRefreshTokenSuccessor(ctx context.Context, db DBTX, arg RecordRefreshTokenSuccessorParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.recordRefreshTokenSuccessor,
+		arg.SuccessorHash,
+		arg.Hash,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RedeemRefreshToken runs the :execrows query against postgresql.
 func (q *postgresqlQueries) RedeemRefreshToken(ctx context.Context, db DBTX, arg RedeemRefreshTokenParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.redeemRefreshToken,
@@ -146,6 +235,36 @@ func (q *postgresqlQueries) RedeemRefreshToken(ctx context.Context, db DBTX, arg
 		arg.Hash,
 		arg.Scope,
 		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RedeemRefreshTokenWithKey runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RedeemRefreshTokenWithKey(ctx context.Context, db DBTX, arg RedeemRefreshTokenWithKeyParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.redeemRefreshTokenWithKey,
+		arg.RedeemedAt,
+		arg.RedeemedWithKey,
+		arg.Hash,
+		arg.Scope,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RevokeRefreshToken runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RevokeRefreshToken(ctx context.Context, db DBTX, arg RevokeRefreshTokenParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshToken,
+		arg.RevokedAt,
+		arg.Hash,
+		arg.Scope,
 	)
 	if err != nil {
 		return 0, err
@@ -202,6 +321,12 @@ func (q *postgresqlQueries) SweepRefreshTokens(ctx context.Context, db DBTX, arg
 // transposition at run time.
 var (
 	_ = struct {
+		RedeemedWithKey *string
+		Hash            string
+		Scope           tenancy.Scope
+		ExpectedKey     *string
+	}(ClaimRefreshTokenRemintParams{})
+	_ = struct {
 		Hash  string
 		Scope tenancy.Scope
 	}(GetRefreshTokenParams{})
@@ -218,6 +343,14 @@ var (
 		RevokedAt       *time.Time
 	}(GetRefreshTokenRow{})
 	_ = struct {
+		Hash  string
+		Scope tenancy.Scope
+	}(GetRefreshTokenRedemptionParams{})
+	_ = struct {
+		RedeemedWithKey *string
+		SuccessorHash   *string
+	}(GetRefreshTokenRedemptionRow{})
+	_ = struct {
 		Hash            string
 		Scope           tenancy.Scope
 		FamilyID        string
@@ -229,11 +362,28 @@ var (
 		PurgeAfter      time.Time
 	}(InsertRefreshTokenParams{})
 	_ = struct {
+		SuccessorHash *string
+		Hash          string
+		Scope         tenancy.Scope
+	}(RecordRefreshTokenSuccessorParams{})
+	_ = struct {
 		RedeemedAt *time.Time
 		Hash       string
 		Scope      tenancy.Scope
 		Now        time.Time
 	}(RedeemRefreshTokenParams{})
+	_ = struct {
+		RedeemedAt      *time.Time
+		RedeemedWithKey *string
+		Hash            string
+		Scope           tenancy.Scope
+		Now             time.Time
+	}(RedeemRefreshTokenWithKeyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		Hash      string
+		Scope     tenancy.Scope
+	}(RevokeRefreshTokenParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		Scope     tenancy.Scope

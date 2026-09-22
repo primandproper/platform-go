@@ -13,6 +13,12 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const claimRefreshTokenRemintSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
+	redeemed_with_key = ?1
+WHERE hash = ?2
+	AND scope = ?3
+	AND redeemed_with_key = ?4`
+
 const getRefreshTokenSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.scope,
 	{{prefix}}signin_refresh_tokens.family_id,
@@ -24,6 +30,13 @@ const getRefreshTokenSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.purge_after,
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.hash = ?1
+	AND {{prefix}}signin_refresh_tokens.scope = ?2`
+
+const getRefreshTokenRedemptionSQLite = `SELECT
+	{{prefix}}signin_refresh_tokens.redeemed_with_key,
+	{{prefix}}signin_refresh_tokens.successor_hash
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = ?1
 	AND {{prefix}}signin_refresh_tokens.scope = ?2`
@@ -51,6 +64,11 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	?9
 )`
 
+const recordRefreshTokenSuccessorSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
+	successor_hash = ?1
+WHERE hash = ?2
+	AND scope = ?3`
+
 const redeemRefreshTokenSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
 	redeemed_at = ?1
 WHERE hash = ?2
@@ -58,6 +76,21 @@ WHERE hash = ?2
 	AND redeemed_at IS NULL
 	AND revoked_at IS NULL
 	AND expires_at > ?4`
+
+const redeemRefreshTokenWithKeySQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
+	redeemed_at = ?1,
+	redeemed_with_key = ?2
+WHERE hash = ?3
+	AND scope = ?4
+	AND redeemed_at IS NULL
+	AND revoked_at IS NULL
+	AND expires_at > ?5`
+
+const revokeRefreshTokenSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
+	revoked_at = ?1
+WHERE hash = ?2
+	AND scope = ?3
+	AND revoked_at IS NULL`
 
 const revokeRefreshTokenFamilySQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
 	revoked_at = ?1
@@ -76,9 +109,14 @@ WHERE purge_after <= ?1`
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
+	claimRefreshTokenRemint       string
 	getRefreshToken               string
+	getRefreshTokenRedemption     string
 	insertRefreshToken            string
+	recordRefreshTokenSuccessor   string
 	redeemRefreshToken            string
+	redeemRefreshTokenWithKey     string
+	revokeRefreshToken            string
 	revokeRefreshTokenFamily      string
 	revokeRefreshTokensForSubject string
 	sweepRefreshTokens            string
@@ -88,9 +126,14 @@ type sqliteQueries struct {
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
+		claimRefreshTokenRemint:       strings.ReplaceAll(claimRefreshTokenRemintSQLite, prefixMarker, prefix),
 		getRefreshToken:               strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
+		getRefreshTokenRedemption:     strings.ReplaceAll(getRefreshTokenRedemptionSQLite, prefixMarker, prefix),
 		insertRefreshToken:            strings.ReplaceAll(insertRefreshTokenSQLite, prefixMarker, prefix),
+		recordRefreshTokenSuccessor:   strings.ReplaceAll(recordRefreshTokenSuccessorSQLite, prefixMarker, prefix),
 		redeemRefreshToken:            strings.ReplaceAll(redeemRefreshTokenSQLite, prefixMarker, prefix),
+		redeemRefreshTokenWithKey:     strings.ReplaceAll(redeemRefreshTokenWithKeySQLite, prefixMarker, prefix),
+		revokeRefreshToken:            strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
 		revokeRefreshTokenFamily:      strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
 		revokeRefreshTokensForSubject: strings.ReplaceAll(revokeRefreshTokensForSubjectSQLite, prefixMarker, prefix),
 		sweepRefreshTokens:            strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
@@ -127,6 +170,21 @@ func timeTextPtr(t *time.Time) any {
 	return timeText(*t)
 }
 
+// ClaimRefreshTokenRemint runs the :execrows query against sqlite.
+func (q *sqliteQueries) ClaimRefreshTokenRemint(ctx context.Context, db DBTX, arg ClaimRefreshTokenRemintParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.claimRefreshTokenRemint,
+		arg.RedeemedWithKey,
+		arg.Hash,
+		arg.Scope,
+		arg.ExpectedKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // GetRefreshToken runs the :one query against sqlite.
 func (q *sqliteQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRefreshTokenParams) (GetRefreshTokenRow, error) {
 	row := db.QueryRowContext(ctx, q.getRefreshToken,
@@ -152,6 +210,23 @@ func (q *sqliteQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRef
 	return i, err
 }
 
+// GetRefreshTokenRedemption runs the :one query against sqlite.
+func (q *sqliteQueries) GetRefreshTokenRedemption(ctx context.Context, db DBTX, arg GetRefreshTokenRedemptionParams) (GetRefreshTokenRedemptionRow, error) {
+	row := db.QueryRowContext(ctx, q.getRefreshTokenRedemption,
+		arg.Hash,
+		arg.Scope,
+	)
+
+	var i GetRefreshTokenRedemptionRow
+
+	err := row.Scan(
+		&i.RedeemedWithKey,
+		&i.SuccessorHash,
+	)
+
+	return i, err
+}
+
 // InsertRefreshToken runs the :exec query against sqlite.
 func (q *sqliteQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg InsertRefreshTokenParams) error {
 	_, err := db.ExecContext(ctx, q.insertRefreshToken,
@@ -169,6 +244,20 @@ func (q *sqliteQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Ins
 	return err
 }
 
+// RecordRefreshTokenSuccessor runs the :execrows query against sqlite.
+func (q *sqliteQueries) RecordRefreshTokenSuccessor(ctx context.Context, db DBTX, arg RecordRefreshTokenSuccessorParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.recordRefreshTokenSuccessor,
+		arg.SuccessorHash,
+		arg.Hash,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RedeemRefreshToken runs the :execrows query against sqlite.
 func (q *sqliteQueries) RedeemRefreshToken(ctx context.Context, db DBTX, arg RedeemRefreshTokenParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.redeemRefreshToken,
@@ -176,6 +265,36 @@ func (q *sqliteQueries) RedeemRefreshToken(ctx context.Context, db DBTX, arg Red
 		arg.Hash,
 		arg.Scope,
 		timeText(arg.Now),
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RedeemRefreshTokenWithKey runs the :execrows query against sqlite.
+func (q *sqliteQueries) RedeemRefreshTokenWithKey(ctx context.Context, db DBTX, arg RedeemRefreshTokenWithKeyParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.redeemRefreshTokenWithKey,
+		timeTextPtr(arg.RedeemedAt),
+		arg.RedeemedWithKey,
+		arg.Hash,
+		arg.Scope,
+		timeText(arg.Now),
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RevokeRefreshToken runs the :execrows query against sqlite.
+func (q *sqliteQueries) RevokeRefreshToken(ctx context.Context, db DBTX, arg RevokeRefreshTokenParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshToken,
+		timeTextPtr(arg.RevokedAt),
+		arg.Hash,
+		arg.Scope,
 	)
 	if err != nil {
 		return 0, err
@@ -232,6 +351,12 @@ func (q *sqliteQueries) SweepRefreshTokens(ctx context.Context, db DBTX, arg Swe
 // transposition at run time.
 var (
 	_ = struct {
+		RedeemedWithKey *string
+		Hash            string
+		Scope           tenancy.Scope
+		ExpectedKey     *string
+	}(ClaimRefreshTokenRemintParams{})
+	_ = struct {
 		Hash  string
 		Scope tenancy.Scope
 	}(GetRefreshTokenParams{})
@@ -248,6 +373,14 @@ var (
 		RevokedAt       *time.Time
 	}(GetRefreshTokenRow{})
 	_ = struct {
+		Hash  string
+		Scope tenancy.Scope
+	}(GetRefreshTokenRedemptionParams{})
+	_ = struct {
+		RedeemedWithKey *string
+		SuccessorHash   *string
+	}(GetRefreshTokenRedemptionRow{})
+	_ = struct {
 		Hash            string
 		Scope           tenancy.Scope
 		FamilyID        string
@@ -259,11 +392,28 @@ var (
 		PurgeAfter      time.Time
 	}(InsertRefreshTokenParams{})
 	_ = struct {
+		SuccessorHash *string
+		Hash          string
+		Scope         tenancy.Scope
+	}(RecordRefreshTokenSuccessorParams{})
+	_ = struct {
 		RedeemedAt *time.Time
 		Hash       string
 		Scope      tenancy.Scope
 		Now        time.Time
 	}(RedeemRefreshTokenParams{})
+	_ = struct {
+		RedeemedAt      *time.Time
+		RedeemedWithKey *string
+		Hash            string
+		Scope           tenancy.Scope
+		Now             time.Time
+	}(RedeemRefreshTokenWithKeyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		Hash      string
+		Scope     tenancy.Scope
+	}(RevokeRefreshTokenParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		Scope     tenancy.Scope

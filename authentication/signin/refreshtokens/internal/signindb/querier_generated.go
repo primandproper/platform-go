@@ -27,15 +27,37 @@ import (
 // that discriminates, or set clientFoundRows=true in the MySQL DSN, which
 // switches MySQL to matched semantics.
 type Querier interface {
+	// ClaimRefreshTokenRemint runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	ClaimRefreshTokenRemint(ctx context.Context, db DBTX, arg ClaimRefreshTokenRemintParams) (int64, error)
 	// GetRefreshToken runs the :one query.
 	GetRefreshToken(ctx context.Context, db DBTX, arg GetRefreshTokenParams) (GetRefreshTokenRow, error)
+	// GetRefreshTokenRedemption runs the :one query.
+	GetRefreshTokenRedemption(ctx context.Context, db DBTX, arg GetRefreshTokenRedemptionParams) (GetRefreshTokenRedemptionRow, error)
 	// InsertRefreshToken runs the :exec query.
 	InsertRefreshToken(ctx context.Context, db DBTX, arg InsertRefreshTokenParams) error
+	// RecordRefreshTokenSuccessor runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RecordRefreshTokenSuccessor(ctx context.Context, db DBTX, arg RecordRefreshTokenSuccessorParams) (int64, error)
 	// RedeemRefreshToken runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RedeemRefreshToken(ctx context.Context, db DBTX, arg RedeemRefreshTokenParams) (int64, error)
+	// RedeemRefreshTokenWithKey runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RedeemRefreshTokenWithKey(ctx context.Context, db DBTX, arg RedeemRefreshTokenWithKeyParams) (int64, error)
+	// RevokeRefreshToken runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RevokeRefreshToken(ctx context.Context, db DBTX, arg RevokeRefreshTokenParams) (int64, error)
 	// RevokeRefreshTokenFamily runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

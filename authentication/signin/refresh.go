@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/idempotency"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
@@ -197,6 +198,14 @@ type RefreshTokenIssuance struct {
 //
 // No carve-out is needed and none is taken: CLAUDE.md's enumerated six stays
 // closed. The mint runs inside the login transaction the service already opens.
+//
+// # What it deliberately cannot answer
+//
+// Nothing here can tell a client's own retry of an exchange from somebody else's
+// replay of it, and after an ambiguous failure — a timeout, a dropped
+// connection, a backgrounded app — that is a dropped packet ending a login. A
+// store that can tell them apart implements [IdempotentRefreshTokenStore] as
+// well; one that does not is complete, and behaves exactly as it does today.
 type RefreshTokenStore interface {
 	// Issue mints a token, stores its digest, and returns the secret exactly
 	// once.
@@ -281,6 +290,104 @@ type RefreshTokenStore interface {
 	) (int64, error)
 }
 
+// IdempotentRefreshTokenStore is a [RefreshTokenStore] that can tell a client's
+// own retry of an exchange from somebody else's replay of it.
+//
+// It exists because rotation's central rule is unfollowable after an *ambiguous*
+// failure. A spent refresh token is single-use with reuse detection, so a client
+// that retries an exchange must retry it with the successor it was given — and a
+// client whose request timed out, whose connection dropped, or that was
+// backgrounded mid-call has no successor, because none arrived. Re-sending the
+// token it still holds revokes a live login; giving up loses the session. A
+// dropped packet signs the user out, and there is no third answer without this.
+//
+// The third answer is a key the client mints once per logical exchange, outside
+// its retry loop, and sends on every attempt — the convention
+// [github.com/primandproper/primitives-go/v2/idempotency] already defines, and
+// the metadata entry this module's gRPC clients already stamp. A store
+// implementing this interface records that key with the spend, so a later
+// presentation of the same token bearing the same key is recognizable as the
+// retry it is.
+//
+// What it does *not* do is replay a recorded response. The retry is answered
+// with a freshly minted successor, and the one the first attempt minted is
+// revoked. Two reasons, and the second is the stronger: this module keeps no
+// refresh token secret at rest to replay, and a replay would hand an attacker
+// who captured the request the very token the legitimate client holds — two
+// parties silently sharing one credential, which is the thing reuse detection
+// exists to prevent. Under a re-mint the same capture is loud: the client's next
+// call fails, it signs in again, and the theft surfaces.
+//
+// # Why it is a second interface
+//
+// [RefreshTokenStore] is exported and injected through [WithRefreshTokenStore],
+// so it is meant to be implemented outside this module, and a method added to it
+// would stop every such implementation compiling. This one embeds it and is
+// type-asserted for at runtime: a store that does not implement it, or a request
+// that carries no key, takes exactly the path it takes today.
+//
+// # The obligation the two methods share
+//
+// They are two halves of one exchange and belong in one transaction — the
+// caller's, as every write on the embedded interface is. RedeemIdempotently
+// without RecordSuccessor leaves a row that is spent and cannot say what it
+// minted, which is the state the retry branch refuses; and a caller that ran one
+// and not the other has a login whose next dropped response ends it.
+// [Service.ExchangeRefreshToken] is the worked example.
+type IdempotentRefreshTokenStore interface {
+	RefreshTokenStore
+
+	// RedeemIdempotently spends a secret the way Redeem does, recording the key
+	// that spent it, and honors a retry presented with that same key.
+	//
+	// A first exchange answers exactly as Redeem would. A presentation of a
+	// token this key already spent answers the same way *again* — the spent
+	// token, nil error — when the exchange it is retrying has not been overtaken:
+	// the successor it minted is still unspent and unrevoked, no more than the
+	// implementation's grace period has passed, and the key has not already been
+	// honored once. The implementation revokes that superseded successor in tx
+	// and the caller mints a replacement, as it would for any successful
+	// redemption.
+	//
+	// Everything else is Redeem's answer unchanged, family revocation and
+	// ErrRefreshTokenReused included — no key, a different key, a successor the
+	// client has already spent, a window that has closed, or a key already spent
+	// on one retry. The caller's obligation is therefore Redeem's obligation, and
+	// for the same reason: the revocation is written into tx before the sentinel
+	// is returned, so returning it out of the transaction callback undoes the
+	// response to the theft it just reported.
+	//
+	// An empty or malformed key is refused rather than ignored, through
+	// idempotency.ValidateKey's sentinels. A caller with no key calls Redeem.
+	RedeemIdempotently(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		secret string,
+		key string,
+	) (*RefreshToken, error)
+
+	// RecordSuccessor tells the store which token an exchange minted, naming
+	// both by the secrets the caller is holding rather than by any digest the
+	// store renders from them.
+	//
+	// It runs in the same transaction as the spend and the mint. A retry can only
+	// be honored by revoking the successor the first attempt produced, and "the
+	// successor" is a row nothing else in the schema can name — so a spend
+	// committed without this is a login whose next ambiguous failure ends it,
+	// which is precisely the behavior this interface was added to remove.
+	//
+	// It is called after a mint rather than before, because the secret it records
+	// does not exist until Issue has returned it.
+	RecordSuccessor(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		predecessor string,
+		successor string,
+	) error
+}
+
 // ExchangeRefreshToken spends a refresh token and answers with a fresh access
 // token and its successor, in one transaction.
 //
@@ -326,6 +433,26 @@ type RefreshTokenStore interface {
 //
 // A service built without [WithRefreshTokenStore] mints no refresh tokens, so
 // every call here is [ErrRefreshTokensNotConfigured].
+//
+// # A retry that is not a replay
+//
+// Everything above describes an exchange that either happened or did not. The
+// case it does not cover is the one a client cannot act on: a request whose
+// answer never arrived. There is no successor to retry with, and re-sending the
+// token reads from here as the theft it is indistinguishable from.
+//
+// A caller that puts an idempotency key on ctx —
+// [github.com/primandproper/primitives-go/v2/idempotency.WithKey], which this
+// module's gRPC surface fills from the conventional `idempotency-key` metadata —
+// gets the other answer, provided its store implements
+// [IdempotentRefreshTokenStore]. The retry is answered with a *fresh* successor
+// and the one the lost response carried is revoked, so the client ends up with
+// exactly one live refresh token either way. The key buys one such retry; a
+// second presentation of it is a reuse like any other.
+//
+// Neither half is conditional on the other being configured. No key on ctx, or a
+// store without that interface, takes the path above unchanged — which is what
+// makes this a minor rather than a break.
 func (s *Service) ExchangeRefreshToken(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -355,8 +482,13 @@ func (s *Service) ExchangeRefreshToken(
 	// caller is told afterwards. See RefreshTokenStore.Redeem.
 	var reuse error
 
+	// The store and the key, resolved once outside the transaction because
+	// neither can change inside it and because both being absent is the ordinary
+	// case rather than a fallback.
+	idempotent, key := s.idempotentExchange(ctx)
+
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		spent, txErr := s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
+		spent, txErr := s.spend(ctx, tx, scope, refreshToken, idempotent, key)
 		if txErr != nil {
 			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
 				reuse = txErr
@@ -408,6 +540,17 @@ func (s *Service) ExchangeRefreshToken(
 
 		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID); txErr != nil {
 			return txErr
+		}
+
+		// The second half of an idempotent exchange, and it lands in this
+		// transaction rather than after it for the reason the first half does: a
+		// spend committed without the successor it minted is a login whose next
+		// dropped response ends it, which is the failure this whole path exists
+		// to remove.
+		if idempotent != nil {
+			if txErr = idempotent.RecordSuccessor(ctx, tx, scope, refreshToken, signIn.RefreshToken); txErr != nil {
+				return txErr
+			}
 		}
 
 		return s.hooks.AfterIssueToken(ctx, tx, scope, signIn)
@@ -518,6 +661,55 @@ func (s *Service) RevokeRefreshTokensForSubject(
 	}
 
 	return revoked, nil
+}
+
+// idempotentExchange reports which of the two exchange paths this request takes:
+// the store to use for it, and the key it was given.
+//
+// Both halves have to be present, and the conjunction is the whole rule. A key
+// with a store that cannot record it would be protection a client was told it
+// had; a store that can record one, given no key, has nothing to record. Either
+// missing is today's exchange, which is the correct answer rather than a
+// degraded one — a client that sends no key has not asked for this.
+//
+// It reads the key off ctx rather than taking it as an argument, because that is
+// where the convention puts it: idempotency.WithKey is what the transports fill,
+// and a parameter here would be a second way to say the same thing that a
+// consumer's own handler would have to remember to wire.
+func (s *Service) idempotentExchange(ctx context.Context) (store IdempotentRefreshTokenStore, key string) {
+	store, ok := s.refreshTokens.(IdempotentRefreshTokenStore)
+	if !ok {
+		return nil, ""
+	}
+
+	minted, ok := idempotency.KeyFromContext(ctx)
+	if !ok {
+		return nil, ""
+	}
+
+	return store, string(minted)
+}
+
+// spend redeems the presented token through whichever of the two doors this
+// request qualified for.
+//
+// It is a branch rather than a store method with a sometimes-empty key
+// parameter, so that a store which never learned about idempotency is never
+// handed one — and so that the ordinary exchange's call is the same line it has
+// always been.
+func (s *Service) spend(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	refreshToken string,
+	idempotent IdempotentRefreshTokenStore,
+	key string,
+) (*RefreshToken, error) {
+	if idempotent != nil {
+		return idempotent.RedeemIdempotently(ctx, tx, scope, refreshToken, key)
+	}
+
+	return s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
 }
 
 // mintRefreshToken writes the refresh token a completed sign-in or a completed
