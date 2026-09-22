@@ -7,6 +7,8 @@ import (
 	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/billing"
@@ -328,6 +330,7 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 	m.issueReports()
 	m.notifications()
 	m.oauth2Clients()
+	m.passwordReset()
 	m.settings()
 	m.signIn()
 	m.waitlists()
@@ -810,6 +813,35 @@ func (m *mount) settings() {
 	}
 
 	m.mountedGRPC("settings", srv.RegisterOn)
+}
+
+// passwordReset mounts the way back in for somebody who cannot sign in.
+//
+// It takes no principal extractor, and it is the only surface here that does not:
+// all three of its RPCs are for a caller who has not signed in and cannot, so
+// there is nobody to extract. Its scope resolver is left at the package's own
+// default for sign-in's reason, with no exception to make — every RPC on it
+// arrives with nobody on it, not just six of them.
+//
+// A consumer provides the *passwordreset.Service the way they provide
+// *signin.Service, and this mounts the surface over it if they did. What that
+// service needs beyond a store — a Mailer, and the authenticator that hashes the
+// password a reset writes — has no default this module could supply, which is
+// why neither is a config field here.
+func (m *mount) passwordReset() {
+	svc, ok := need[*passwordreset.Service](m)
+	if !ok {
+		return
+	}
+
+	srv, err := passwordresetgrpc.NewServer(svc, passwordresetgrpc.WithPillars(m.pillars))
+	if err != nil {
+		m.fail("password reset", err)
+
+		return
+	}
+
+	m.mountedGRPC("password reset", srv.RegisterOn)
 }
 
 // signIn mounts the sign-in surface.
