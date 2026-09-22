@@ -50,6 +50,18 @@ it an exchange re-resolves the principal and hands back a token for whatever the
 user's default account has since become, rather than for the account that was
 proven at sign-in.
 
+# A retry is not a replay
+
+Rotation's rule — retry with the successor you were given, never with the token
+you already sent — is unfollowable by a client that never received an answer.
+This store implements
+[github.com/primandproper/platform-go/v14/authentication/signin.IdempotentRefreshTokenStore]
+so that a retry carrying the idempotency key that spent the token is answered
+with a *fresh* successor while the one the lost response carried is revoked,
+rather than being treated as the theft it is otherwise indistinguishable from.
+Two nullable columns carry it, written by the statements that were already being
+written; see [RedeemIdempotently], [RemintGrace] and the migrations package.
+
 # What this store does not do
 
 It reads no user table, so it does not check that a subject exists; the service

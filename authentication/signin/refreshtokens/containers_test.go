@@ -157,6 +157,56 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
 	})
 
+	// The retry path, whose correctness turns on what :execrows counts. MySQL
+	// reports rows *changed* where the other two report rows *matched*, and the
+	// claim that bounds this to one re-mint per key reads that count as its
+	// answer — so "the second presentation loses" is a claim only a real MySQL
+	// server can settle.
+	t.Run("honors one retry of an exchange, and only one", func(t *testing.T) {
+		first := mint(t, "family_retry", "user_retry", time.Hour)
+
+		_, lost, exchangeErr := exchange(t, store, testScope(), first.Secret, "retry_key_01")
+		must.NoError(t, exchangeErr)
+		must.NotNil(t, lost)
+
+		// The answer the client never received, retried with the key it minted
+		// once for this exchange.
+		_, replacement, exchangeErr := exchange(t, store, testScope(), first.Secret, "retry_key_01")
+		must.NoError(t, exchangeErr)
+		must.NotNil(t, replacement)
+		test.NotEqOp(t, lost.Secret, replacement.Secret)
+
+		// The superseded successor is revoked, alone — an ordinary refusal
+		// rather than a detected theft, and the family is untouched.
+		_, redeemErr := redeem(t, store, testScope(), lost.Secret)
+		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
+
+		// A second retry of the same evidence is a reuse, because the claim
+		// spent the key.
+		_, _, exchangeErr = exchange(t, store, testScope(), first.Secret, "retry_key_01")
+		test.ErrorIs(t, exchangeErr, signin.ErrRefreshTokenReused)
+
+		// And that reuse ended the login, replacement included.
+		_, redeemErr = redeem(t, store, testScope(), replacement.Secret)
+		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
+	})
+
+	// The clock comparison the grace window rests on is made in Go against the
+	// stamp the row carries, so what a server run checks is that the stamp
+	// survives the round trip through the engine's own temporal type well enough
+	// to be compared at all.
+	t.Run("refuses a retry once the grace window has passed", func(t *testing.T) {
+		first := mint(t, "family_grace", "user_grace", 48*time.Hour)
+
+		_, _, exchangeErr := exchange(t, store, testScope(), first.Secret, "grace_key_01")
+		must.NoError(t, exchangeErr)
+
+		c.advance(RemintGrace + time.Minute)
+
+		_, _, exchangeErr = exchange(t, store, testScope(), first.Secret, "grace_key_01")
+		test.ErrorIs(t, exchangeErr, signin.ErrRefreshTokenReused)
+	})
+
 	// The primary key, which only a real engine enforces the way this schema says
 	// it does.
 	t.Run("refuses a second row bearing one digest", func(t *testing.T) {

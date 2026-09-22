@@ -9,6 +9,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/idempotency"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
@@ -547,4 +548,193 @@ func refreshTable(t *testing.T, e *env) string {
 	must.NotNil(t, e.refresh)
 
 	return e.refreshPrefix + "_signin_refresh_tokens"
+}
+
+// plainRefreshStore is a RefreshTokenStore and nothing more: the four methods,
+// with the idempotent pair deliberately unreachable.
+//
+// It is what a consumer who implemented the seam themselves has, and it exists
+// so that "a store without the interface behaves exactly as it does today" is a
+// test rather than a sentence. Embedding the interface rather than the SQL store
+// is what makes the assertion true by construction — a method added to
+// IdempotentRefreshTokenStore cannot be promoted onto this by accident.
+type plainRefreshStore struct {
+	signin.RefreshTokenStore
+}
+
+func TestService_ExchangeRefreshToken_Idempotently(T *testing.T) {
+	T.Parallel()
+
+	// The case rotation had no answer for: the response never arrived, so the
+	// client has no successor to retry with and re-sends what it still holds.
+	T.Run("a retry carrying the key that spent the token is not a reuse", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		// Minted once, outside the retry loop, which is the client rule the
+		// whole mechanism rests on.
+		ctx := idempotency.WithKey(t.Context(), "exchange_01")
+
+		lost, err := e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		retried, err := e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+		must.NotNil(t, retried)
+
+		// A fresh successor rather than the one the lost answer carried, in the
+		// same login.
+		test.EqOp(t, first.FamilyID, retried.FamilyID)
+		test.NotEqOp(t, lost.RefreshToken, retried.RefreshToken)
+
+		// And it works, which is the whole deliverable.
+		after, err := e.svc.ExchangeRefreshToken(ctx, testScope, retried.RefreshToken)
+		test.NoError(t, err)
+		test.NotNil(t, after)
+	})
+
+	// The successor the client never received is revoked rather than left live,
+	// so one login still holds exactly one exchangeable token.
+	T.Run("the successor the lost answer carried stops working", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ctx := idempotency.WithKey(t.Context(), "exchange_01")
+
+		lost, err := e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		_, err = e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		// Revoked, so it is the ordinary refusal rather than a detected theft —
+		// nobody replayed anything.
+		dead, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, lost.RefreshToken)
+		test.Nil(t, dead)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.False(t, platformerrors.Is(err, signin.ErrRefreshTokenReused))
+	})
+
+	// The bound. One captured request must not become a renewable session.
+	T.Run("a key buys one retry", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ctx := idempotency.WithKey(t.Context(), "exchange_01")
+
+		_, err = e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		_, err = e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		replayed, err := e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		test.Nil(t, replayed)
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+	})
+
+	// A thief's replay carries no key, and gets the answer it has always got.
+	T.Run("a replay without the key still ends the login", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ctx := idempotency.WithKey(t.Context(), "exchange_01")
+
+		successor, err := e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		replayed, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		test.Nil(t, replayed)
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+
+		after, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, successor.RefreshToken)
+		test.Nil(t, after)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	// Both halves of "additive": no key, or no interface, and the exchange is the
+	// one that shipped.
+	T.Run("a request with no key takes the ordinary path", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		replayed, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		test.Nil(t, replayed)
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+	})
+
+	T.Run("a store that does not implement the interface takes the ordinary path", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		// A second service over the same database and the same user, differing
+		// from the suite's in one thing: the store it was handed cannot record a
+		// key.
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+			signin.WithRefreshTokenStore(plainRefreshStore{RefreshTokenStore: e.refresh}))
+		must.NoError(t, err)
+
+		first, err := svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ctx := idempotency.WithKey(t.Context(), "exchange_01")
+
+		_, err = svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		// The key was sent and nothing recorded it, so the retry is the reuse it
+		// has always been. That is the honest answer for a store that cannot do
+		// better, and it is why the key is not a promise the service makes on its
+		// own.
+		replayed, err := svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		test.Nil(t, replayed)
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+	})
+
+	// A malformed key is refused rather than dropped: a client told its retry was
+	// protected when nothing recorded it is worse off than one told to fix its
+	// header.
+	T.Run("a malformed key is refused and spends nothing", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ctx := idempotency.WithKey(t.Context(), "exchange one")
+
+		refused, err := e.svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
+		test.Nil(t, refused)
+		test.ErrorIs(t, err, idempotency.ErrKeyInvalid)
+
+		// The token is untouched, so the client can correct itself and carry on.
+		rotated, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		test.NoError(t, err)
+		test.NotNil(t, rotated)
+	})
 }

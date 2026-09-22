@@ -3,19 +3,23 @@ package grpc_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/callers"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -461,6 +465,73 @@ func TestServer_ExchangeRefreshToken(T *testing.T) {
 
 		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 		test.EqOp(t, signin.ErrInvalidCredentials.Error(), status.Convert(err).Message())
+	})
+
+	// The metadata entry this RPC reads, end to end: the header a client stamps
+	// becomes the key the store records, so the retry a lost response forces is
+	// answered rather than treated as theft.
+	T.Run("the idempotency-key header makes a retry survivable", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		first, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		// Minted once for this exchange and stamped on every attempt, which is
+		// what the client interceptor in primitives-go does for a caller that
+		// wires it.
+		ctx := metadata.AppendToOutgoingContext(h.rootCtx, idempotencygrpc.MetadataKey, "exchange_01")
+
+		lost, err := h.client.ExchangeRefreshToken(ctx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		retried, err := h.client.ExchangeRefreshToken(ctx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		// A fresh successor in the same login, and not the one the lost answer
+		// carried.
+		test.EqOp(t, first.GetToken().GetFamilyId(), retried.GetToken().GetFamilyId())
+		test.NotEqOp(t, lost.GetToken().GetRefreshToken(), retried.GetToken().GetRefreshToken())
+
+		// The same request without the header is the replay it looks like.
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+	})
+
+	// A header the store will not accept is a request to correct rather than one
+	// to answer as though it had been protected.
+	T.Run("a malformed idempotency key is InvalidArgument", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		first, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		ctx := metadata.AppendToOutgoingContext(h.rootCtx, idempotencygrpc.MetadataKey,
+			strings.Repeat("k", refreshtokens.MaximumIdempotencyKeyLength+1))
+
+		_, err = h.client.ExchangeRefreshToken(ctx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		// And nothing was spent, so the client can drop the header and carry on.
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		test.NoError(t, err)
 	})
 
 	T.Run("an unknown token is the ordinary refusal", func(t *testing.T) {
