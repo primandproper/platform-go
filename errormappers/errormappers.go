@@ -82,6 +82,19 @@ func Register() {
 	// remedy. See signin.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
 
+	// And the same eleven again as identifiers, which is what a client that must
+	// branch on the refusal reads instead of the prose. It is the only reasons
+	// list in the module so far; the other client-safe lists are candidates for
+	// one and each is its own decision about names a client compiles against
+	// forever. See signin.ClientSafeReasons.
+	//
+	// This call registers the sentinels as client-safe too, so it would do the
+	// work of the line above on its own. The line above stays because the two
+	// lists are separate statements — these refusals may be quoted, these
+	// refusals may be switched on — and a package that later adds a sentinel to
+	// one and not the other should read as it is rather than silently inherit.
+	grpcerrors.RegisterClientSafeReasons(signin.ClientSafeReasons...)
+
 	// The two refusals an authorization request meets. Both are PermissionDenied
 	// and so are indistinguishable by code, and each names a different remedy for
 	// somebody staring at a browser. See oauth2clients.ClientSafeSentinels.

@@ -1148,6 +1148,42 @@ func ClientSafeSentinels(pkg string) []error {
 	}
 }
 
+// ClientSafeReasonPackages are the packages that declare a ClientSafeReasons
+// list: the refusals a client may be handed a stable identifier for, rather
+// than only the prose ClientSafeSentinels grants.
+//
+// Every one of them is also in ClientSafePackages, and that containment is the
+// roster's main claim. A reason is a disclosure exactly as a message is — a
+// client reading REFRESH_TOKEN_REUSED has learned what the words "that token
+// was already spent" would have told it — so a package may not hand out an
+// identifier for a refusal it will not say out loud. Declaring a reasons list
+// without a client-safe list fails here, and so does a reason for a sentinel
+// the client-safe list omits.
+//
+// It is a roster for the reason the other two are, and it catches the same
+// silence: a package that declares a list and is handed to
+// RegisterClientSafeReasons nowhere has no symptom in its own tests. The
+// mapper answers, the message carries the sentinel's words, and the only thing
+// missing is the detail a client was going to branch on — which reads, to that
+// client, as a server that simply never sends one. Both directions are checked
+// against those packages' source, so declaring a list is what fails this
+// roster rather than remembering to add a row to it.
+var ClientSafeReasonPackages = []string{
+	signInPkg,
+}
+
+// ClientSafeReasons is the list pkg declares as the identifiers a client may
+// branch on. The switch is the one place this package spells them out;
+// everywhere else they are the strings in ClientSafeReasonPackages.
+func ClientSafeReasons(pkg string) []grpcerrors.ClientReason {
+	switch pkg {
+	case signInPkg:
+		return signin.ClientSafeReasons
+	default:
+		panic("no client-safe reasons for " + pkg)
+	}
+}
+
 // Resolution is what one sentinel resolves to on both transports, asked of the
 // mapper that owns it rather than of a process-global registry.
 type Resolution struct {

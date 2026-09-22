@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
@@ -298,4 +299,105 @@ func TestRegister_theOperationSpellingReachesTheRegistry(T *testing.T) {
 	test.EqOp(T, codes.AlreadyExists, status.Code(err), test.Sprint(
 		"identity.ErrUsernameTaken reached the client as the code the call site passed as a default, "+
 			"so this spelling never reached identity.GRPCMapper"))
+}
+
+// TestRegister_installsTheClientSafeReasons is the third channel's half of the
+// same acceptance, and the one that is end-to-end rather than about a list.
+//
+// A reason is worth nothing until an interceptor puts it on a status, and
+// whether it does is decided entirely by whether Register handed the list to
+// RegisterClientSafeReasons. So this asks the interceptor, as a client would:
+// serve an error, read the google.rpc.ErrorInfo off what came back, and check
+// it says what the package declared.
+//
+// A reasons list Register forgot has no symptom anywhere else. The mapper still
+// answers, the message still carries the sentinel's words, and the only thing
+// that changes is that a client reading ClientReasonFromStatus is told there is
+// no reason — which is indistinguishable from a server that has none.
+func TestRegister_installsTheClientSafeReasons(T *testing.T) {
+	T.Parallel()
+
+	interceptor := grpcerrors.UnaryErrorEncodingInterceptor()
+
+	var reasons []grpcerrors.ClientReason
+	for _, pkg := range sentinelmatrix.ClientSafeReasonPackages {
+		reasons = append(reasons, sentinelmatrix.ClientSafeReasons(pkg)...)
+	}
+
+	must.SliceNotEmpty(T, reasons, must.Sprint("no client-safe reasons, so this test asserted nothing"))
+
+	seen := map[string]struct{}{}
+
+	for _, reason := range reasons {
+		_, err := interceptor(
+			T.Context(),
+			nil,
+			&grpc.UnaryServerInfo{},
+			func(context.Context, any) (any, error) {
+				return nil, platformerrors.Wrap(reason.Err, "serving a request")
+			},
+		)
+		must.Error(T, err)
+
+		info, ok := grpcerrors.ClientReasonFromStatus(err)
+		must.True(T, ok, must.Sprintf(
+			"%v reached the client with no ErrorInfo, so nothing registered the reason %q", reason.Err, reason.Reason))
+
+		test.EqOp(T, reason.Reason, info.GetReason())
+		test.EqOp(T, reason.Domain, info.GetDomain())
+
+		seen[info.GetReason()] = struct{}{}
+	}
+
+	test.MapLen(T, len(reasons), seen, test.Sprint(
+		"two registered reasons reached a client as the same identifier, so a client switching on it cannot tell them apart"))
+}
+
+// TestRegister_theReasonSurvivesStripping is what the third channel was
+// actually for, asserted at the edge that made the other two insufficient.
+//
+// The encoded-chain detail is documented as being for a trusted peer, so a
+// server reachable by untrusted clients strips it. Until there was a second
+// detail, "strip it" and "strip the details" were the same sentence — so a
+// client-facing edge dropped everything, which is exactly why a reason could
+// not simply have been added to the encoded error.
+//
+// After StripEncodedErrorDetail the internal chain is gone and the reason is
+// still there. Both halves are asserted, because either one alone is satisfied
+// by a strip that did nothing or by one that took everything.
+func TestRegister_theReasonSurvivesStripping(T *testing.T) {
+	T.Parallel()
+
+	interceptor := grpcerrors.UnaryErrorEncodingInterceptor()
+
+	_, err := interceptor(
+		T.Context(),
+		nil,
+		&grpc.UnaryServerInfo{},
+		func(context.Context, any) (any, error) {
+			return nil, platformerrors.Wrap(signin.ErrSecondFactorRequired, "authenticating a user")
+		},
+	)
+	must.Error(T, err)
+
+	st, ok := status.FromError(err)
+	must.True(T, ok)
+	must.SliceLen(T, 2, st.Details(), must.Sprint(
+		"the status carries something other than the reason and the encoded chain"))
+
+	stripped := grpcerrors.StripEncodedErrorDetail(err)
+
+	strippedStatus, ok := status.FromError(stripped)
+	must.True(T, ok)
+	test.SliceLen(T, 1, strippedStatus.Details(), test.Sprint(
+		"stripping the encoded chain took the reason with it, which is the all-or-nothing this channel exists to end"))
+
+	info, ok := grpcerrors.ClientReasonFromStatus(stripped)
+	must.True(T, ok, must.Sprint("the reason did not survive the edge, so a client is back to matching the message"))
+	test.EqOp(T, "SECOND_FACTOR_REQUIRED", info.GetReason())
+
+	// The code and the client-safe message are untouched by stripping: they are
+	// the two channels that already worked, and the edge must not cost them.
+	test.EqOp(T, codes.Unauthenticated, strippedStatus.Code())
+	test.EqOp(T, signin.ErrSecondFactorRequired.Error(), strippedStatus.Message())
 }
