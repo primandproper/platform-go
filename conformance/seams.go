@@ -1,0 +1,276 @@
+package conformance
+
+import (
+	"context"
+
+	"github.com/primandproper/platform-go/v14/audit/auditpb"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/billing/billingpb"
+	"github.com/primandproper/platform-go/v14/comments/commentspb"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+
+	"google.golang.org/grpc"
+)
+
+// Seams is everything a subject supplies, and the only thing Run takes besides
+// the suites to run.
+//
+// Every field but NewSubject is optional, and every absence is a skip with its
+// reason printed rather than a failure. That is service.Config's rule one level
+// down: presence is the switch, and a subsystem nobody configured is absent
+// rather than broken.
+type Seams struct {
+	// NewSubject mints a caller. Required.
+	//
+	// The default is a caller in a tenant nothing else in this run shares,
+	// which is what makes an assertion's rows findable in a database it does
+	// not own. InTenant and AsAdmin narrow it; both are declined by returning
+	// ErrSubjectUnsupported, and the assertions that asked skip.
+	NewSubject func(ctx context.Context, opts ...SubjectOption) (*Subject, error)
+
+	// Actions are the states no client can bring about on its own, brought
+	// about however this subject's deployment brings them about. Absent fields
+	// skip their assertions.
+	Actions Actions
+
+	// Anonymous returns a connection carrying no caller — what a request looks
+	// like once the consumer's authentication interceptor has declined to add
+	// one.
+	//
+	// It is a connection rather than a context decorator because "no caller" is
+	// not always the absence of a decoration. A deployment may carry
+	// credentials on the connection itself, in which case an unauthenticated
+	// call needs a connection of its own rather than a call made without
+	// metadata.
+	//
+	// The assertions it unlocks are the ones that enumerate a service's RPCs
+	// from its descriptor rather than naming them, so they cover a method added
+	// later without being edited. A subject that supplies none skips them.
+	Anonymous func(ctx context.Context) (grpc.ClientConnInterface, error)
+
+	// Dialect is what the subject's database is, for the assertions that must
+	// narrow to it. The zero value means unknown, and an assertion that needs
+	// to know skips.
+	//
+	// It exists for precision rather than for behavior: an assertion that
+	// branches on the dialect to expect different results is asserting that
+	// this module's surfaces behave differently per dialect, which is the
+	// opposite of what the matrix promises. What it legitimately decides is how
+	// closely a timestamp may be compared — see the package documentation.
+	Dialect dialect.Dialect
+
+	// ExclusiveDatabase says the suite is the only writer against this
+	// subject's database for the length of the run.
+	//
+	// It unlocks the handful of assertions that cannot be phrased without it —
+	// a sweep's survivors, an empty-result read — and it is false by default
+	// because a consumer running this against a shared environment is the case
+	// that must be safe when nobody thought about it.
+	ExclusiveDatabase bool
+
+	// ControlledTime says the suite may move the clock the subject's service
+	// reads, through whatever mechanism the subject arranged.
+	//
+	// direct mode sets it where it runs inside a testing/synctest bubble.
+	// A deployed service cannot offer it, so expiry and pacing assertions skip
+	// there — which is honest: nothing a consumer can do makes their production
+	// clock movable, and a suite that waited for real time is a suite nobody
+	// runs.
+	ControlledTime bool
+}
+
+// Subject is one caller, and the clients it calls through.
+//
+// The clients are per subject rather than per run because the tenant travels on
+// the connection — docs/client-contract.md states that as the rule a client
+// obeys, and a suite that shared one connection between two tenants would be
+// asserting against a seam this module does not offer. direct mode returns the
+// same clients for every subject and distinguishes them on Decorate; a deployed
+// subject typically dials its own.
+type Subject struct {
+
+	// Surfaces are the clients this caller reaches the service through. A nil
+	// field is a surface the subject did not mount.
+	Surfaces Surfaces
+
+	// Decorate adds to a call context whatever this subject's connection is not
+	// already carrying — a principal in direct mode, credentials metadata over
+	// a wire. Nil means the connection carries everything.
+	Decorate func(context.Context) context.Context
+
+	// Conn is this caller's connection, for the assertions that enumerate a
+	// service's RPCs from its descriptor and invoke them dynamically rather
+	// than through a typed client.
+	//
+	// Optional, and separate from Surfaces because a typed client is not
+	// required to expose the connection underneath it. A subject that supplies
+	// none skips those assertions; everything written against a typed client
+	// runs regardless.
+	Conn grpc.ClientConnInterface
+
+	// UserID is the calling user's identifier, where the subject knows it.
+	// Empty is legal: a subject that mints credentials without surfacing an
+	// identifier leaves it empty, and the assertions that need one skip.
+	UserID string
+
+	// Scope is whose directory this caller is in. Assertions use it to name
+	// the rows they seeded and to prove a neighbor's are absent.
+	Scope tenancy.Scope
+}
+
+// Context applies Decorate, or returns ctx when there is nothing to add.
+func (s *Subject) Context(ctx context.Context) context.Context {
+	if s == nil || s.Decorate == nil {
+		return ctx
+	}
+
+	return s.Decorate(ctx)
+}
+
+// Surfaces are the twelve gRPC surfaces this module mounts, as the generated
+// client interface each one is reached through.
+//
+// The generated interface rather than this module's <pkg>/grpc/client wrapper,
+// because the wrapper embeds the interface and a subject that dialed its own
+// connection has one of those already. A subject holding a wrapper assigns it
+// directly.
+type Surfaces struct {
+	Audit         auditpb.AuditServiceClient
+	Billing       billingpb.BillingServiceClient
+	Comments      commentspb.CommentsServiceClient
+	Identity      identitypb.IdentityServiceClient
+	IssueReports  issuereportspb.IssueReportsServiceClient
+	Notifications notificationspb.NotificationsServiceClient
+	OAuth2Clients oauth2clientspb.OAuth2ClientsServiceClient
+	PasswordReset passwordresetpb.PasswordResetServiceClient
+	Settings      settingspb.SettingsServiceClient
+	SignIn        signinpb.SignInServiceClient
+	Waitlists     waitlistspb.WaitlistsServiceClient
+	Webhooks      webhookspb.WebhooksServiceClient
+}
+
+// Actions are the states no client can bring about on its own.
+//
+// An action rather than a row, and that is the whole of the design. The first
+// shape of this seam handed over an audit.Entry for the suite to write, which
+// is a backdoor: it puts the suite in the business of manufacturing state, and
+// it asserts against a row that may not resemble the ones the deployment
+// actually produces.
+//
+// What a subject is asked for instead is the thing it already does. "Do
+// something in this tenant that your deployment records an audit entry for,
+// and tell me what that entry will name." A consumer satisfies it by creating
+// a webhook or registering a user, exercising their handler, their recorder
+// and their transaction; this module's own harnesses satisfy it by calling the
+// recorder, which is what a consumer's handler does at the end of that path
+// anyway. Same seam, and in a deployed subject it is the real path rather than
+// a shortcut past it.
+//
+// That asymmetry is not incidental. No gRPC surface in this module records an
+// audit entry — settings and identity only name audit.Recorder in comments
+// showing a consumer how to wire one — because recording belongs inside the
+// transaction of the change it describes, and this module does not own that
+// transaction. So "call the surface and read the log afterwards" works in a
+// consumer's deployment and writes nothing at all in this module's, which is
+// exactly why the seam has to describe the action rather than assume it.
+type Actions struct {
+	// Auditable does something in this tenant the deployment records an audit
+	// entry for, and reports what that entry names.
+	Auditable func(ctx context.Context, scope tenancy.Scope) (*Audited, error)
+
+	// Credentialed gives a caller a stored secret, the way the deployment's own
+	// password or credential path does, and reports a fragment of it that must
+	// never appear in a response.
+	//
+	// The fragment comes back rather than going in for the same reason Audited
+	// reports what it touched: the deployment chooses how it stores a secret,
+	// and an assertion that supplied one would be searching responses for a
+	// string nothing ever wrote. What is asserted is that whatever the
+	// deployment did store is not rendered — so the fragment has to be the
+	// deployment's own.
+	Credentialed func(ctx context.Context, scope tenancy.Scope, userID string) (string, error)
+
+	// Subscribed makes a paid subscription exist for this tenant, the way the
+	// payment provider's webhook handler does.
+	//
+	// There is no CreateSubscription RPC and that is a ruling rather than a
+	// gap: a subscription mirrors what a payment provider says is paid for, so
+	// one created over the wire would grant paid features with nothing behind
+	// them. A consumer's own suite documented this as an assertion it could not
+	// write — "needs data seeding the harness does not currently provide" — and
+	// omitted it rather than write it flaky. This is the seam that closes it.
+	Subscribed func(ctx context.Context, scope tenancy.Scope) (*billing.Subscription, error)
+}
+
+// Audited is what an auditable action touched, as the entry recording it will
+// name the same thing.
+//
+// It is what the action reports rather than what the suite supplied, because a
+// deployment chooses its own resource types and actors and an assertion that
+// dictated them would be asserting against a log nobody keeps.
+type Audited struct {
+	// ResourceType and ResourceID are the row the action touched. The suite
+	// finds the entry by them, so they have to match what the deployment
+	// recorded.
+	ResourceType string
+	ResourceID   string
+
+	// ActorID is who the deployment recorded as having acted. Empty is legal,
+	// and the assertions that query by actor skip.
+	ActorID string
+}
+
+// SubjectOption narrows what NewSubject mints.
+type SubjectOption func(*SubjectRequest)
+
+// SubjectRequest is what the options accumulate into, and what a subject
+// factory reads.
+type SubjectRequest struct {
+	// Scope, when non-nil, is the tenant the caller must be in — the two-
+	// members-of-one-account case. Nil asks for a tenant of this caller's own.
+	//
+	// A pointer because the zero tenancy.Scope is undecided rather than global,
+	// and those are two different requests: nil is "any fresh tenant", and a
+	// non-nil tenancy.Global() is a caller in the scope belonging to nobody.
+	// Reading presence off the zero value would collapse them, which is the
+	// conflation tenancy's own documentation exists to prevent.
+	Scope *tenancy.Scope
+
+	// Admin asks for a caller holding whatever service role the deployment
+	// treats as administrative.
+	Admin bool
+}
+
+// InTenant asks for a caller in an existing tenant rather than a fresh one.
+func InTenant(scope tenancy.Scope) SubjectOption {
+	return func(r *SubjectRequest) { r.Scope = &scope }
+}
+
+// AsAdmin asks for an administrative caller.
+func AsAdmin() SubjectOption {
+	return func(r *SubjectRequest) { r.Admin = true }
+}
+
+// NewSubjectRequest applies opts, for a subject factory to read.
+func NewSubjectRequest(opts ...SubjectOption) *SubjectRequest {
+	req := &SubjectRequest{}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(req)
+		}
+	}
+
+	return req
+}

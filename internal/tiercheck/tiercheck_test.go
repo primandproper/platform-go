@@ -95,6 +95,14 @@ var roster = map[string]entry{
 	"authentication/signin":            {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own — the refresh tokens its rotation mints live in a subpackage, which inherits this row by longest-prefix match"},
 	"authentication/webauthnsessions":  {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 
+	// A domain that owns no table: this module's promises about its own
+	// surfaces, written once and assertable against a subject that is either
+	// this module's own assembly or a consumer's running service. It is a
+	// domain because every promise in it is about a domain noun — whose audit
+	// chain a session reads, which tenant's rows a listing holds — and an
+	// application with no users has no promise here to check.
+	"conformance": {tier: domain},
+
 	// The composition root.
 	"errormappers":    {tier: root},
 	"privacyadapters": {tier: root},

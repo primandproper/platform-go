@@ -112,6 +112,18 @@ reasons behind the three exceptions.
 | `errormappers` | The one call that tells the two transport registries what these sentinels mean  |
 | `privacyadapters` | The one call that puts every privacy adapter this module ships in a `dataprivacy.Registry` |
 
+### The promises
+| Package        | Purpose                                                                       |
+|----------------|---------------------------------------------------------------------------------|
+| `conformance`  | This module's behavioural promises, written once and assertable against a subject that is either this module's own assembly or a consumer's running service |
+
+A surface's own package asserts what its handler decides, over a server that
+package built. `conformance` asserts what a *client* sees, over a server
+somebody else built — which is the half that was only ever checked in a
+consumer's repository, and therefore the half this module could break and learn
+about from somebody else's CI. See the package documentation for the three
+subjects and what each one proves.
+
 ## Primitives and Domains
 
 There were two kinds of package here and they have separated: the primitives
@@ -145,6 +157,7 @@ checking it.
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
