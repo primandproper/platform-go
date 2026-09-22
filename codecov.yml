@@ -55,6 +55,12 @@
 # conformance/identity — report 98.2% and 100%, which is the same accident
 # pointing the other way rather than evidence that those two are better tested.
 # Excluding the tree keeps one honest number instead of two misleading ones.
+#
+# .scripts/coverage.sh drops the tree from the run as well, so this entry is
+# what keeps Codecov from reporting the files it then finds no data for. The
+# suites still run on every pull request, in .github/workflows/conformance.yaml
+# — excluding them from a number is not excluding them from CI, and a reader who
+# finds only this file should not have to take that on faith.
 ignore:
   - "**/mock/**"
   - "**/*.pb.go"
