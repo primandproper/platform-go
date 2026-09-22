@@ -566,6 +566,22 @@ whose shape it is standing in for. A package that grows handlers therefore
 cannot reach `main` without somebody having said which side of the line they
 fall on.
 
+### The client contract
+
+What a *client* of one of those transports owes is written down too, once, in
+[`docs/client-contract.md`](docs/client-contract.md): the seams a client injects,
+the sign-in state machine, refresh token rotation, the error channels to branch
+on, and pagination. It is in no particular language, and
+[`platform-client-ts`](https://github.com/primandproper/platform-client-ts) and
+[`platform-client-swift`](https://github.com/primandproper/platform-client-swift)
+implement it rather than each reconstructing it from the proto comments.
+
+It lives here rather than beside either client for the reason the protos do: it
+describes this module's wire behaviour, so a change to that behaviour updates it
+in the pull request making the change. Where a rule needs a server newer than
+some tag, it names the tag — the clients pin one, and a rule describing
+unreleased `main` is a rule that breaks a session.
+
 ## SQL Dialect Support
 
 `database` speaks Postgres, MySQL and SQLite, and so does almost every package

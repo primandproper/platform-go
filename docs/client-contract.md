@@ -46,12 +46,13 @@ not be written.
 token reaches a server.** A service turns a token back into a caller through a
 `callers.PrincipalExtractor` the consumer writes — the schema's own words are that *"turning
 one back into a caller is the consumer's interceptor"* — so there is no metadata key this
-document could name as *the* answer. What it can name is the default both clients ship and a
-deployment overrides: the metadata entry `authorization`, valued `Bearer <token>`, on the five
-authenticated RPCs and on `GetAuthStatus` whenever a token is held.
+document could name as *the* answer. What it can name is the default a client implements
+unless a deployment says otherwise: the metadata entry `authorization`, valued
+`Bearer <token>`, on the five authenticated RPCs and on `GetAuthStatus` whenever a token is
+held.
 
-The eight anonymous RPCs carry no credential at all, and `ExchangeRefreshToken` is the one
-worth saying twice: it authenticates with the refresh token in its body, never with the access
+The other seven anonymous RPCs carry no credential at all, and `ExchangeRefreshToken` is the
+one worth saying twice: it authenticates with the refresh token in its body, never with the access
 token, so a client that waits for a valid access token before refreshing has it backwards.
 
 ### The tenant travels on the connection
@@ -102,10 +103,14 @@ the link's `token` in place of the handle and password, and still carries `totp_
 > it has it is always correct."*
 
 `active_account_id` is which account the minted token is for, and empty means the user's
-default. There is **no switch-account RPC**: `AuthStatus.account_ids` lists every account the
-caller is a live member of, and moving to another one is a fresh sign-in naming it — a new
-token, a new family. An account the user is not a live member of is refused rather than
-honoured.
+default. There is **no RPC that re-points a live token at another account**:
+`AuthStatus.account_ids` lists every account the caller is a live member of, and moving to one
+of them is a fresh sign-in naming it — a new token, a new family. `identity.SetDefaultAccount`
+is not that door and a client building a switcher out of it will be surprised: it changes the
+caller's *landing* account, which is where the next sign-in goes when no account is named, and
+leaves the token in hand pointing exactly where it did. An account the user is not a live
+member of is refused rather than honoured, which is *"the check that stops a client choosing
+whose data its token reaches."*
 
 `IssuedToken` is the whole session:
 
@@ -134,8 +139,9 @@ handed to it has taken on the issuer's format as a dependency for no gain.
 ## The access token
 
 Refresh when a call needs a token and `now() >= expires_at - skew`. Not on a timer, not in the
-background. `skew` is the client's number rather than the server's — both clients use thirty
-seconds — and it is the reason `Clock` is a seam.
+background. `skew` is the client's number rather than the server's, and this document fixes it
+at thirty seconds so that two clients do not differ over a value neither can derive. It is the
+reason `Clock` is a seam.
 
 | state | event | next | actions |
 | --- | --- | --- | --- |
@@ -292,10 +298,12 @@ client that treats its absence as a bug has a client that breaks on a Tuesday:
   adds the reason only if it marshals, on the grounds that *"a status that says the right code
   and message without a detail is better than an error about attaching one."*
 - **A deployment may not have registered anything.** The mappers reach a client only once
-  `errormappers.Register` has been called; without it every refusal in this module arrives as
-  `codes.Unknown`, which for a sign-in *"means a client cannot tell 'wrong password' from 'the
-  database is down'"*. A client cannot fix that and should fail legibly rather than mysteriously
-  when it sees it.
+  `errormappers.Register` has been called. Without it, a refusal that wraps a platform sentinel
+  still maps — `MapToGRPC` consults `PlatformMapper` before any registered mapper — and every
+  refusal one of this module's own packages raises on its own account arrives as `codes.Unknown`,
+  which for a sign-in *"means a client cannot tell 'wrong password' from 'the database is
+  down'"*. A client cannot fix that and should fail legibly rather than mysteriously when it
+  sees it.
 
 The detail rides in the gRPC status's details, which on the wire is the `grpc-status-details-bin`
 trailer carrying a `google.rpc.Status` whose `details` are `Any`-packed; the one to look for is
@@ -367,7 +375,7 @@ a client can test:
 | `DEADLINE_EXCEEDED`, `UNAVAILABLE`, `CANCELLED`, or a transport failure with no status | yes — retry once, same key |
 | `UNAUTHENTICATED` | no — the exchange was refused; sign out (R7) |
 | `PERMISSION_DENIED` | no — the directory refused them; sign out |
-| `INVALID_ARGUMENT` | no — the key was malformed; fix it and send the same key again |
+| `INVALID_ARGUMENT` | no — the request was refused before the token was touched, a malformed key being the usual cause. Correct it; the next attempt is a *first* attempt, not a retry |
 | `INTERNAL`, `UNKNOWN` | treat as ambiguous; the call may have committed before failing |
 
 Deadlines are the client's, and this is where the choice shows: a short deadline on the
@@ -440,10 +448,13 @@ learn why an exchange failed.
 HTTP. A client reading gRPC can tell a service with no administrative door from one whose door
 it is not admitted through; both answers mean the same thing to a user.
 
-Against a server older than v14.1.0 there are no reasons on any refusal. A client must then
-fall back to the codes, and for the one branch that actually matters — a second-factor prompt
-against a wrong-password screen, both `UNAUTHENTICATED` — the honest answer is to offer the code
-field whenever a sign-in is refused and the client knows the user is enrolled.
+Against a server older than v14.1.0 there are no reasons on any refusal, and the one branch
+that actually matters has no code to read: a second-factor prompt and a wrong-password screen
+are both `UNAUTHENTICATED`. A client cannot resolve that from `AuthStatus` either — whether a
+user is enrolled is a fact only a signed-in caller can read, and this caller is not one. So the
+answer is to need no branch: put an optional code field on the sign-in form, send whatever is in
+it, and let the refusal mean "these credentials, whatever you typed, were not enough." Matching
+the message is the other option and is what R11 exists to stop.
 
 ## Keeping this true
 
