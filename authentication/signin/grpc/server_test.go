@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestNewServer(T *testing.T) {
@@ -373,6 +374,129 @@ func TestServer_CredentialWrites(T *testing.T) {
 		_, err := h.client.VerifyTOTPSecret(h.asJane(), &signinpb.VerifyTOTPSecretRequest{TotpCode: "000000"})
 		test.ErrorIs(t, err, signin.ErrSecondFactorNotEnrolled)
 		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+	})
+}
+
+func TestServer_SignOut(T *testing.T) {
+	T.Parallel()
+
+	T.Run("ends the login", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		signedIn, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		_, err = h.client.SignOut(h.rootCtx, &signinpb.SignOutRequest{
+			RefreshToken: signedIn.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: signedIn.GetToken().GetRefreshToken(),
+		})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	// The reason it is anonymous, asserted rather than argued: h.rootCtx carries
+	// no credential, and an application that has been closed long enough to want
+	// this button has no live access token either.
+	T.Run("no principal is required", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		signedIn, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		_, err = h.client.SignOut(h.rootCtx, &signinpb.SignOutRequest{
+			RefreshToken: signedIn.GetToken().GetRefreshToken(),
+		})
+		test.NoError(t, err)
+	})
+
+	// Every refusal a presented token can draw is one answer, and that answer is
+	// OK. A sign-out that refused an unknown token would be an oracle for which
+	// tokens are real, and one that refused a second press would be an error
+	// message for something that had already happened.
+	T.Run("a token naming no live login is answered like any other", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		signedIn, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		first, err := h.client.SignOut(h.rootCtx, &signinpb.SignOutRequest{
+			RefreshToken: signedIn.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		second, err := h.client.SignOut(h.rootCtx, &signinpb.SignOutRequest{
+			RefreshToken: signedIn.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		never, err := h.client.SignOut(h.rootCtx, &signinpb.SignOutRequest{
+			RefreshToken: "a-token-this-service-never-minted",
+		})
+		must.NoError(t, err)
+
+		// All three responses are empty, so there is nothing on the wire to tell
+		// the three cases apart by either.
+		test.True(t, proto.Equal(first, second))
+		test.True(t, proto.Equal(first, never))
+	})
+}
+
+func TestServer_SignOutEverywhere(T *testing.T) {
+	T.Parallel()
+
+	T.Run("ends every login the caller holds", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		first, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		second, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		must.NotEqOp(t, first.GetToken().GetFamilyId(), second.GetToken().GetFamilyId())
+
+		_, err = h.client.SignOutEverywhere(h.asJane(), &signinpb.SignOutEverywhereRequest{})
+		must.NoError(t, err)
+
+		for _, signedIn := range []*signinpb.LoginForTokenResponse{first, second} {
+			_, exchangeErr := h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+				RefreshToken: signedIn.GetToken().GetRefreshToken(),
+			})
+			test.ErrorIs(t, exchangeErr, signin.ErrInvalidCredentials)
+		}
+	})
+
+	// Unlike SignOut, this one has nothing but the principal to read the subject
+	// off, so an anonymous request has nobody to sign out.
+	T.Run("an anonymous caller is refused", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		_, err := h.client.SignOutEverywhere(h.rootCtx, &signinpb.SignOutEverywhereRequest{})
+		test.ErrorIs(t, err, signingrpc.ErrNoPrincipal)
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 	})
 }
 

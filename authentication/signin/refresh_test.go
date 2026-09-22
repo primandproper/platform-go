@@ -432,6 +432,99 @@ func TestService_RevokeRefreshTokens(T *testing.T) {
 	})
 }
 
+func TestService_SignOut(T *testing.T) {
+	T.Parallel()
+
+	T.Run("signing out ends the login", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		must.NoError(t, e.svc.SignOut(t.Context(), testScope, signedIn.RefreshToken))
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	// The whole family, not the row presented. A client that signs out after one
+	// refresh holds the successor; the predecessor is spent and must not be a way
+	// back in either.
+	T.Run("signing out ends every token in the family", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		rotated, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+		must.NoError(t, err)
+		must.EqOp(t, signedIn.FamilyID, rotated.FamilyID)
+
+		must.NoError(t, e.svc.SignOut(t.Context(), testScope, rotated.RefreshToken))
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, rotated.RefreshToken)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	// The branch with work attached. Redeem revokes the family into tx and then
+	// answers ErrRefreshTokenReused, so a SignOut that returned that sentinel out
+	// of its callback would roll back the revocation it was asked for. The proof
+	// is that the successor — which was live a moment ago — is dead afterwards.
+	T.Run("signing out with an already spent token still ends the login", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		rotated, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+		must.NoError(t, err)
+
+		// The predecessor, which the exchange above spent.
+		must.NoError(t, e.svc.SignOut(t.Context(), testScope, signedIn.RefreshToken))
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, rotated.RefreshToken)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	// Idempotent, and silent about what it found. A second sign-out and a
+	// sign-out with a token nobody ever held are the same nil, which is the
+	// anti-enumeration property the exchange has, arrived at from the other side.
+	T.Run("a token naming no live login is not an error", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		must.NoError(t, e.svc.SignOut(t.Context(), testScope, signedIn.RefreshToken))
+		must.NoError(t, e.svc.SignOut(t.Context(), testScope, signedIn.RefreshToken))
+		must.NoError(t, e.svc.SignOut(t.Context(), testScope, "a token nobody was ever issued"))
+	})
+
+	T.Run("refuses a sign-out that presented nothing", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		test.ErrorIs(t, e.svc.SignOut(t.Context(), testScope, ""), signin.ErrEmptyRefreshToken)
+	})
+
+	T.Run("refuses a service that stores no refresh tokens", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		test.ErrorIs(t, e.svc.SignOut(t.Context(), testScope, "irrelevant"), signin.ErrRefreshTokensNotConfigured)
+	})
+}
+
 func TestNewService_Lifetimes(T *testing.T) {
 	T.Parallel()
 

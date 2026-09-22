@@ -149,6 +149,65 @@ func (s *Server) ExchangeRefreshToken(
 	return &signinpb.ExchangeRefreshTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
 }
 
+// SignOut ends the login the presented refresh token belongs to.
+//
+// It is anonymous for ExchangeRefreshToken's reason and one of its own. The
+// credential is the whole of the request's authority, and an application signing
+// out has usually been closed for a while, so requiring a live access token would
+// make the button work only for people who did not need it.
+//
+// Every refusal a presented token can draw is a success here — see
+// [github.com/primandproper/platform-go/v14/authentication/signin.Service.SignOut],
+// which collapses them — so this method answers an error only when the deployment
+// is unwell or mints no refresh tokens at all.
+func (s *Server) SignOut(
+	ctx context.Context,
+	request *signinpb.SignOutRequest,
+) (*signinpb.SignOutResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_SignOut_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.SignOut(ctx, req.scope, request.GetRefreshToken()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "signing out")
+	}
+
+	return &signinpb.SignOutResponse{}, nil
+}
+
+// SignOutEverywhere ends every login the calling user holds, this one included.
+//
+// It requires a caller and takes the subject from the principal, so there is no
+// field that could name anybody else: an operator ending somebody else's sessions
+// is a different act, and it is
+// [github.com/primandproper/platform-go/v14/authentication/signin.Service.RevokeRefreshTokensForSubject]
+// behind a consumer's own administrative surface rather than this RPC.
+//
+// The count it revoked is deliberately dropped rather than returned. It is a row
+// count — a login that has refreshed forty times is forty rows — so a client
+// rendering it as devices would be rendering something else. See
+// SignOutEverywhereResponse in the schema.
+func (s *Server) SignOutEverywhere(
+	ctx context.Context,
+	_ *signinpb.SignOutEverywhereRequest,
+) (*signinpb.SignOutEverywhereResponse, error) {
+	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_SignOutEverywhere_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if _, err = s.svc.RevokeRefreshTokensForSubject(ctx, req.scope, req.principal.UserID()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "signing out everywhere")
+	}
+
+	return &signinpb.SignOutEverywhereResponse{}, nil
+}
+
 // GetAuthStatus reports where the calling user stands, and is the one RPC here
 // that answers a request with no caller on it rather than refusing it.
 //

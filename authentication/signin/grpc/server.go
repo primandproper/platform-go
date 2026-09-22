@@ -42,12 +42,12 @@ var (
 	// ErrNilPrincipalExtractor indicates a nil callers.PrincipalExtractor.
 	//
 	// It is refused at construction rather than defaulted, because the only
-	// default available is one that resolves nobody — and the four RPCs that
-	// need a caller would then refuse every request while the three that do not
+	// default available is one that resolves nobody — and the six RPCs that
+	// need a caller would then refuse every request while the nine that do not
 	// kept working, which is a server that looks half alive.
 	ErrNilPrincipalExtractor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil principal extractor for the sign-in server")
 
-	// ErrNoPrincipal indicates a request to one of the four authenticated RPCs
+	// ErrNoPrincipal indicates a request to one of the six authenticated RPCs
 	// that arrived with nobody on it.
 	//
 	// It is a sentinel of its own rather than a wrap of a platform one, for the
@@ -217,7 +217,7 @@ func (s *Server) anonymous(ctx context.Context, method string) (
 	return ctx, &request{op: op, scope: scope}, done, nil
 }
 
-// caller is anonymous plus the principal the four authenticated RPCs need.
+// caller is anonymous plus the principal the six authenticated RPCs need.
 //
 // The scope comes off the resolver rather than off the principal, so one wiring
 // decision governs the whole service — see [ScopeResolver].
