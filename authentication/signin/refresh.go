@@ -304,7 +304,7 @@ type RefreshTokenStore interface {
 // The third answer is a key the client mints once per logical exchange, outside
 // its retry loop, and sends on every attempt — the convention
 // [github.com/primandproper/primitives-go/v2/idempotency] already defines, and
-// the metadata entry this module's gRPC clients already stamp. A store
+// the metadata entry this package's own gRPC client stamps on this one RPC. A store
 // implementing this interface records that key with the spend, so a later
 // presentation of the same token bearing the same key is recognizable as the
 // retry it is.

@@ -504,10 +504,11 @@ func (s *Server) RedeemMagicLink(
 // withIdempotencyKey moves the incoming `idempotency-key` metadata entry onto
 // ctx, where the service reads it.
 //
-// The metadata name is idempotencygrpc.MetadataKey, which is what this module's
-// generated clients already stamp through that package's client interceptor —
-// so a consumer using them sends the header by configuring the interceptor
-// rather than by learning a second convention here.
+// The metadata name is idempotencygrpc.MetadataKey, which is what this package's
+// own client stamps on this RPC through that package's client interceptor — so a
+// consumer using it sends the header by putting a key on the context rather than
+// by learning a second convention here. That client stamps it on this RPC alone,
+// and its documentation says why the rest of them are excluded.
 //
 // A request with no key, or with an empty one, is returned unchanged and takes
 // the ordinary exchange path. What is deliberately not done here is validating
