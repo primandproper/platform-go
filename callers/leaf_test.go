@@ -40,6 +40,14 @@ import (
 var identityKeepers = map[string]string{
 	"identity":                   "identity's own package",
 	"authentication/signin/grpc": "renders a signed-in user with identitygrpc.UserToProto",
+
+	// A second kind of reason, and the distinction is worth keeping: this surface
+	// names nothing of identity's itself. It inherits the edge from the service
+	// it wraps, whose Directory seam is typed on *identity.User because a reset
+	// reads a user by address and writes that user's hash. Anybody mounting this
+	// has already linked the directory by constructing the service, so the
+	// surface adds no edge a consumer could otherwise have avoided.
+	"authentication/passwordreset/grpc": "inherits passwordreset.Service's Directory seam, which is typed on *identity.User",
 }
 
 // TestCallersIsALeaf pins the half a reader of this package can check without

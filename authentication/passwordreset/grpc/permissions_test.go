@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -20,44 +20,34 @@ import (
 // full-method form an interceptor sees.
 //
 // Reading it off the descriptor rather than listing it here is what makes this
-// file a check rather than a second copy: an RPC added to the schema appears
-// here without anybody remembering to add it.
+// file a check rather than a second copy: an RPC added to the schema appears here
+// without anybody remembering to add it.
 func serviceMethods() []string {
-	prefix := "/" + signinpb.SignInService_ServiceDesc.ServiceName + "/"
+	prefix := "/" + passwordresetpb.PasswordResetService_ServiceDesc.ServiceName + "/"
 
-	out := make([]string, 0, len(signinpb.SignInService_ServiceDesc.Methods))
-	for _, m := range signinpb.SignInService_ServiceDesc.Methods {
+	out := make([]string, 0, len(passwordresetpb.PasswordResetService_ServiceDesc.Methods))
+	for _, m := range passwordresetpb.PasswordResetService_ServiceDesc.Methods {
 		out = append(out, prefix+m.MethodName)
 	}
 
 	return out
 }
 
-// TestMethodsAreDecidedAbout is the property the three lists exist for: an RPC
-// added to the service later and named in none of them is a method the enforcer
-// denies, in somebody's production, for a reason nothing connects to a missing
-// entry here.
+// TestMethodsAreDecidedAbout is the property the roster exists for: an RPC added
+// to the service later and left out of it is a method the enforcer denies, in
+// somebody's production, for a reason nothing connects to a missing entry here.
+//
+// What it would be denying is the only way back in for somebody who cannot sign
+// in, which is why this check matters more on this service than on one whose
+// callers can still reach a door.
 func TestMethodsAreDecidedAbout(T *testing.T) {
 	T.Parallel()
 
-	lists := map[string][]string{
-		"AnonymousMethods":   signingrpc.AnonymousMethods(),
-		"RegistrarMethods":   signingrpc.RegistrarMethods(),
-		"SelfServiceMethods": signingrpc.SelfServiceMethods(),
-	}
+	anonymous := passwordresetgrpc.AnonymousMethods()
 
 	for _, method := range serviceMethods() {
-		naming := make([]string, 0, len(lists))
-
-		for name, list := range lists {
-			if slices.Contains(list, method) {
-				naming = append(naming, name)
-			}
-		}
-
-		test.SliceLen(T, 1, naming, test.Sprintf(
-			"%s is named by %v, and every RPC belongs to exactly one list: none means nothing says who may call it, "+
-				"and two means authorization/grpc refuses a method declared twice", method, naming))
+		test.True(T, slices.Contains(anonymous, method), test.Sprintf(
+			"%s is on the service and in no list, so nothing says who may call it", method))
 	}
 }
 
@@ -69,11 +59,7 @@ func TestListsNameOnlyRealMethods(T *testing.T) {
 
 	methods := serviceMethods()
 
-	for _, method := range slices.Concat(
-		signingrpc.AnonymousMethods(),
-		signingrpc.RegistrarMethods(),
-		signingrpc.SelfServiceMethods(),
-	) {
+	for _, method := range passwordresetgrpc.AnonymousMethods() {
 		test.SliceContains(T, methods, method, test.Sprintf(
 			"%s is named in a list but is not an RPC on this service", method))
 	}
@@ -85,12 +71,9 @@ func TestRequire(T *testing.T) {
 	T.Run("declares every method as public", func(t *testing.T) {
 		t.Parallel()
 
-		reqs, err := signingrpc.Require(authzgrpc.NewRequirements()).Build()
+		reqs, err := passwordresetgrpc.Require(authzgrpc.NewRequirements()).Build()
 		must.NoError(t, err)
 
-		// Every one, and nothing else. A method this service serves and does not
-		// declare is denied by the enforcer's fail-closed rule, which is the
-		// failure this function exists to make impossible.
 		test.SliceLen(t, len(serviceMethods()), reqs.Methods())
 
 		for _, method := range serviceMethods() {
@@ -106,7 +89,7 @@ func TestRequire(T *testing.T) {
 		builder := authzgrpc.NewRequirements()
 		builder.Public(otherMethod)
 
-		reqs, err := signingrpc.Require(builder).Build()
+		reqs, err := passwordresetgrpc.Require(builder).Build()
 		must.NoError(t, err)
 
 		test.SliceContains(t, reqs.Methods(), otherMethod)
@@ -116,24 +99,21 @@ func TestRequire(T *testing.T) {
 	T.Run("a nil builder", func(t *testing.T) {
 		t.Parallel()
 
-		test.Nil(t, signingrpc.Require(nil))
+		test.Nil(t, passwordresetgrpc.Require(nil))
 	})
 }
 
-// TestNothingIsPermissioned pins the conclusion the package documentation
-// argues for, so that a permission added later is a deliberate change to this
-// file rather than a quiet one.
+// TestNothingIsPermissioned pins the conclusion the package documentation argues
+// for, so that a permission added later is a deliberate change to this file
+// rather than a quiet one.
 //
 // It asserts it the way it will actually be experienced: an enforcer built over
 // this fragment lets every method through for a caller who holds no grants at
-// all. Nine of these RPCs are how a caller becomes somebody — or stops being
-// them — so no grant could gate them; five take their subject from the principal
-// and have no field that could name anybody else; and the last is Register,
-// whose policy is the consumer's and sits in front of the call.
+// all — which is every caller this service has, since none of them has signed in.
 func TestNothingIsPermissioned(T *testing.T) {
 	T.Parallel()
 
-	reqs, err := signingrpc.Require(authzgrpc.NewRequirements()).Build()
+	reqs, err := passwordresetgrpc.Require(authzgrpc.NewRequirements()).Build()
 	must.NoError(T, err)
 
 	enforcer, err := authzgrpc.NewEnforcer(reqs,

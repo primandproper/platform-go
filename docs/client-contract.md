@@ -261,13 +261,87 @@ client and their authority differs sharply:
   renders "we sent it" on success and "no such account" on failure rebuilds the enumerator that
   padding exists to prevent. Show the same screen either way.
 
+`AttachPassword` is not a password reset and a client should not offer it as one: it is refused
+for an account that already holds a password, because it exists for somebody who registered
+without one. Forgetting a password you have is [the next section](#resetting-a-forgotten-password).
+
+## Resetting a forgotten password
+
+A second service, on its own schema: `PasswordResetService`, in
+`primandproper.platform.passwordreset.v1`. A client generates it beside the sign-in one and
+dials it on the same connection, with the same tenant (R12) and the same `Transport` seam. All
+three of its RPCs are anonymous and none of them can be anything else, because the whole premise
+is somebody who cannot sign in.
+
+It is the only way back for a person who has forgotten their password. `UpdatePassword` needs
+the current one, and `AttachPassword` is refused for an account that already holds a password,
+so a client without this flow has no path from "I forgot it" to a new password — a magic link
+signs such a person in and still leaves them unable to change it.
+
+| RPC | what a client does |
+| --- | --- |
+| `RequestPasswordReset(email_address)` | the "forgot password" form. Answers identically whoever holds the address |
+| `VerifyPasswordResetToken(token)` | the page load behind the link, *before* rendering the form |
+| `CompletePasswordReset(token, new_password)` | the form's submit |
+
+**R15 — show the same screen whether the address exists or not.** The response is empty, and it
+is empty so that it cannot differ; the service also holds its own answer to a floor so the two
+cannot be told apart by a stopwatch. A client that renders "check your inbox" on success and "no
+account with that address" otherwise has rebuilt the account enumerator both of those exist to
+prevent, in the one place the server cannot reach.
+
+**R16 — verify before you render the form.** Nothing is held open by it and it decides nothing —
+a token live when `VerifyPasswordResetToken` answered can be spent by somebody else a moment
+later, and the answer that matters is `CompletePasswordReset`'s — but it is the difference
+between telling somebody their link is dead now and telling them after they have chosen a
+password. It answers `expires_at`, and nothing else: not who the link is for, deliberately, so a
+forwarded link does not name the account it opens.
+
+**A dead link is three refusals told apart, and they are told apart by their message.** Expired,
+already used, and never a link all answer `FAILED_PRECONDITION`, and `passwordreset` registers
+no reasons — which is correct rather than an omission, and is R11's rule applied rather than
+broken. A reason exists for a refusal a client must *act* on differently; all three of these
+have one remedy, which is to ask for a new link. So a client shows the message and offers that
+button, for all three, and still does not branch on the text.
+
+**Completing a reset signs nobody in.** There is no token in the response and there will not be
+one; the next call is `LoginForToken` with the password that was just chosen. And it does not
+end the sessions that account already has — which is the same thing `UpdatePassword` does, and
+is the consumer's to change. A client whose user is resetting *because* they think somebody else
+is in their account should sign them in afterwards and call `SignOutEverywhere`, which is the one
+sequence that actually ends the other sessions.
+
 ## Signing out
 
-There is no sign-out RPC, and that is not an omission a client can route around: the module's
-family revocation is a Go-side call on the service, not a method on the schema. So `signOut()`
-is `clear()`, and the refresh token stays exchangeable until its own deadline or until
-something server-side revokes it. A client that needs a real remote revocation is asking for an
-RPC that does not exist yet, and should say so here rather than parse a token to fake one.
+Two RPCs, and a client wants both. `SignOut` carries the refresh token and needs no caller;
+`SignOutEverywhere` requires a caller and takes no fields, ending every login that person holds
+on every device.
+
+`SignOut` is anonymous deliberately, and it is the half a client gets wrong by being tidy: an
+application that has been closed for a week has an expired access token, which is exactly when
+somebody presses the button, so the credential that names the login is the refresh token and not
+a caller. Send the refresh token, then `clear()`, in that order — a client that clears first has
+thrown away the only thing that could end the login.
+
+**Every refusal a presented token can draw is a success.** Unknown, already spent, already
+revoked and expired all mean the same thing about the login being ended, and the service answers
+all of them with an empty `SignOutResponse`. So a client never shows an error for signing out,
+and never needs to: pressing it twice, or pressing it on a session that had already lapsed, is
+the ordinary case.
+
+**What neither one stops is an access token already issued.** Nothing can — it is checked
+against the issuer's signature rather than against any table — so a sign-out takes effect
+within one access-token lifetime. A client should therefore `clear()` locally as well, which it
+was going to do anyway, and a deployment that needs the window shorter shortens the access
+token.
+
+**R17 — a `signOut()` that only clears local state is a lie on a shared device.** It is one
+extra call, it cannot fail in a way worth reporting, and without it the refresh token stays
+exchangeable for the rest of its window by whoever has the device.
+
+An operator ending somebody else's sessions is not here and will not be: those RPCs name
+nobody, so there is no field an administrator could use. That act is a Go-side call behind the
+consumer's own administrative surface.
 
 ## Errors
 
@@ -472,4 +546,6 @@ something that streams.
 
 No UI. No product protos — a product's own services generate clients in the product's
 repository; this covers `platform-go`'s. No retrying a non-idempotent call without an
-idempotency key on it (R4). No remote sign-out, because there is no RPC for one.
+idempotency key on it (R4). No administrative surface: every RPC this document covers is about
+the caller or about the credential the caller presented, and an operator acting on somebody else
+goes through a consumer's own service.
