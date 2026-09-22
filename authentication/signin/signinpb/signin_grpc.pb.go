@@ -142,6 +142,8 @@ const (
 	SignInService_LoginForToken_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
 	SignInService_AdminLoginForToken_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
 	SignInService_ExchangeRefreshToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
+	SignInService_SignOut_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/SignOut"
+	SignInService_SignOutEverywhere_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
 	SignInService_GetAuthStatus_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
 	SignInService_GetSelf_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/GetSelf"
 	SignInService_UpdatePassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
@@ -155,7 +157,7 @@ const (
 //
 // SignInService is sign-in.
 //
-// Eight of its RPCs are anonymous by definition and five require a caller. What
+// Nine of its RPCs are anonymous by definition and six require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
@@ -185,6 +187,14 @@ type SignInServiceClient interface {
 	LoginForToken(ctx context.Context, in *LoginForTokenRequest, opts ...grpc.CallOption) (*LoginForTokenResponse, error)
 	AdminLoginForToken(ctx context.Context, in *AdminLoginForTokenRequest, opts ...grpc.CallOption) (*AdminLoginForTokenResponse, error)
 	ExchangeRefreshToken(ctx context.Context, in *ExchangeRefreshTokenRequest, opts ...grpc.CallOption) (*ExchangeRefreshTokenResponse, error)
+	// The way out, in its two sizes. Ending this login carries the credential and
+	// needs no caller, so an application whose access token expired while it was
+	// closed can still sign out; ending every login needs a caller and names
+	// nobody. Both are a client's to call and neither is an operator's tool --
+	// revoking somebody else's sessions is signin.Service's method, reached
+	// through a consumer's own administrative surface.
+	SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*SignOutResponse, error)
+	SignOutEverywhere(ctx context.Context, in *SignOutEverywhereRequest, opts ...grpc.CallOption) (*SignOutEverywhereResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error)
 	GetSelf(ctx context.Context, in *GetSelfRequest, opts ...grpc.CallOption) (*GetSelfResponse, error)
@@ -282,6 +292,26 @@ func (c *signInServiceClient) ExchangeRefreshToken(ctx context.Context, in *Exch
 	return out, nil
 }
 
+func (c *signInServiceClient) SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*SignOutResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignOutResponse)
+	err := c.cc.Invoke(ctx, SignInService_SignOut_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) SignOutEverywhere(ctx context.Context, in *SignOutEverywhereRequest, opts ...grpc.CallOption) (*SignOutEverywhereResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignOutEverywhereResponse)
+	err := c.cc.Invoke(ctx, SignInService_SignOutEverywhere_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *signInServiceClient) GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetAuthStatusResponse)
@@ -338,7 +368,7 @@ func (c *signInServiceClient) VerifyTOTPSecret(ctx context.Context, in *VerifyTO
 //
 // SignInService is sign-in.
 //
-// Eight of its RPCs are anonymous by definition and five require a caller. What
+// Nine of its RPCs are anonymous by definition and six require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
@@ -368,6 +398,14 @@ type SignInServiceServer interface {
 	LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error)
 	AdminLoginForToken(context.Context, *AdminLoginForTokenRequest) (*AdminLoginForTokenResponse, error)
 	ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error)
+	// The way out, in its two sizes. Ending this login carries the credential and
+	// needs no caller, so an application whose access token expired while it was
+	// closed can still sign out; ending every login needs a caller and names
+	// nobody. Both are a client's to call and neither is an operator's tool --
+	// revoking somebody else's sessions is signin.Service's method, reached
+	// through a consumer's own administrative surface.
+	SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error)
+	SignOutEverywhere(context.Context, *SignOutEverywhereRequest) (*SignOutEverywhereResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error)
 	GetSelf(context.Context, *GetSelfRequest) (*GetSelfResponse, error)
@@ -408,6 +446,12 @@ func (UnimplementedSignInServiceServer) AdminLoginForToken(context.Context, *Adm
 }
 func (UnimplementedSignInServiceServer) ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExchangeRefreshToken not implemented")
+}
+func (UnimplementedSignInServiceServer) SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SignOut not implemented")
+}
+func (UnimplementedSignInServiceServer) SignOutEverywhere(context.Context, *SignOutEverywhereRequest) (*SignOutEverywhereResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SignOutEverywhere not implemented")
 }
 func (UnimplementedSignInServiceServer) GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthStatus not implemented")
@@ -589,6 +633,42 @@ func _SignInService_ExchangeRefreshToken_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SignInService_SignOut_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignOutRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).SignOut(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_SignOut_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).SignOut(ctx, req.(*SignOutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_SignOutEverywhere_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignOutEverywhereRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).SignOutEverywhere(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_SignOutEverywhere_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).SignOutEverywhere(ctx, req.(*SignOutEverywhereRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SignInService_GetAuthStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAuthStatusRequest)
 	if err := dec(in); err != nil {
@@ -717,6 +797,14 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExchangeRefreshToken",
 			Handler:    _SignInService_ExchangeRefreshToken_Handler,
+		},
+		{
+			MethodName: "SignOut",
+			Handler:    _SignInService_SignOut_Handler,
+		},
+		{
+			MethodName: "SignOutEverywhere",
+			Handler:    _SignInService_SignOutEverywhere_Handler,
 		},
 		{
 			MethodName: "GetAuthStatus",

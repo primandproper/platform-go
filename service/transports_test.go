@@ -6,6 +6,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
@@ -35,6 +37,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksmock "github.com/primandproper/platform-go/v14/webhooks/mock"
 
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
@@ -189,8 +192,8 @@ func TestRegisterTransports(T *testing.T) {
 		must.NoError(t, err)
 
 		// The gRPC lane then the HTTP one, alphabetical within each. identity,
-		// oauth2 clients and sign-in are absent because their services are:
-		// see the subtest below.
+		// oauth2 clients, password reset and sign-in are absent because their
+		// services are: see the subtest below.
 		test.Eq(t, []string{
 			"audit gRPC",
 			"billing gRPC",
@@ -208,6 +211,40 @@ func TestRegisterTransports(T *testing.T) {
 		// One registration per mounted gRPC surface, and none for the HTTP
 		// ones, which are already on the router.
 		test.SliceLen(t, 8, mounted.registrations)
+	})
+
+	// The surfaces above are mounted off a store, which a mock satisfies. The four
+	// mounted off a *Service are not, because a service is a concrete type — so
+	// none of them appears in that list. Password reset is the one whose service
+	// assembles out of doubles, so it is the one that can pin the property they
+	// all share: a provided service is a mounted surface.
+	T.Run("a surface mounted off a provided service", func(t *testing.T) {
+		t.Parallel()
+
+		i := newTransportInjector(t)
+
+		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
+
+		svc, err := passwordreset.NewService(
+			&databasemock.ClientMock{},
+			&passwordresetmock.StoreMock{},
+			stubResetDirectory{},
+			argon2.NewArgon2Authenticator(),
+			stubResetMailer{},
+		)
+		must.NoError(t, err)
+
+		do.ProvideValue(i, svc)
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		// No extractor was needed for it, which is the half worth pinning: it is
+		// the only surface here that mounts without one.
+		test.Eq(t, []string{"password reset gRPC"}, mounted.names)
+		test.SliceLen(t, 1, mounted.registrations)
 	})
 
 	T.Run("a surface whose store is unconfigured does not mount, and that is not an error", func(t *testing.T) {
@@ -547,3 +584,24 @@ func TestNew_transports(T *testing.T) {
 		must.ErrorIs(t, err, settingsgrpc.ErrNilSubjectAuthorizer)
 	})
 }
+
+// stubResetDirectory and stubResetMailer are the two seams
+// passwordreset.NewService refuses to be built without. Neither is called: the
+// test that uses them mounts a surface and makes no request through it.
+type stubResetDirectory struct{}
+
+func (stubResetDirectory) GetUserByEmailAddress(
+	context.Context, database.SQLQueryExecutor, tenancy.Scope, string,
+) (*identity.User, error) {
+	return nil, nil
+}
+
+func (stubResetDirectory) UpdateUserPassword(
+	context.Context, database.Tx, tenancy.Scope, string, string,
+) error {
+	return nil
+}
+
+type stubResetMailer struct{}
+
+func (stubResetMailer) SendPasswordReset(context.Context, *passwordreset.Mail) error { return nil }

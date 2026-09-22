@@ -1,19 +1,22 @@
 /*
 Package grpc serves the sign-in service over gRPC.
 
-It is imported as signingrpc, and it is eleven RPCs over
+It is imported as signingrpc, and it is fifteen RPCs over
 [github.com/primandproper/primitives-go/v2/authentication/signin.Service]: a
-registration, two doors, the two that finish a registration, two reads and four
-credential writes. Each method converts, calls one thing, and converts back.
+registration and the two that finish one, the two password doors and the
+passwordless pair, the exchange that keeps a login alive, the two ways out, two
+reads and three credential writes. Each method converts, calls one thing, and
+converts back.
 There is no orchestration here — anything that had to happen in a transaction
 happened one layer down, where the transaction is.
 
 # The two seams, and why there are two
 
 Every other resource surface in this module reads who is calling off one seam,
-because every request to it arrives with somebody on it. This one has six RPCs
-that by definition do not: a caller signing in has not signed in yet, and
-neither has the registrant answering the link that was mailed to them.
+because every request to it arrives with somebody on it. This one has nine RPCs
+that by definition do not: a caller signing in has not signed in yet, neither has
+the registrant answering the link that was mailed to them, and a caller signing
+out is holding the credential that names the login rather than a live token.
 
 So the scope — whose directory this is — comes off a [ScopeResolver] the
 consumer supplies, which reads it from the connection: a host header, a piece of
@@ -23,7 +26,7 @@ a single-tenant deployment wants and is a directory with no users in it for a
 multi-tenant one that forgot — a sign-in that refuses everybody rather than one
 that signs them into somebody else's tenant.
 
-The five authenticated RPCs read the caller off a
+The six authenticated RPCs read the caller off a
 [github.com/primandproper/platform-go/v14/callers.PrincipalExtractor], which
 resolves a [github.com/primandproper/platform-go/v14/callers.Principal]. Those
 are one package for the whole module rather than an interface per surface: a

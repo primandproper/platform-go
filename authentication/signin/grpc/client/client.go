@@ -83,7 +83,10 @@ a deployment's mistake to make.
 The other writes here are safe to retry anyway, so none of them lose anything to
 the filter. Signing in twice mints a second token rather than a second account,
 and setting the same password twice is the state the first attempt was aiming at
-— which is not true of the RPCs identity's interceptor exists for. A retried
+— which is not true of the RPCs identity's interceptor exists for. The two
+sign-outs are the plainest case: every refusal a presented token can draw is
+answered as a success there, so a retry cannot arrive at a different outcome than
+the attempt it repeats. A retried
 registration is the one that would write twice, and the directory refuses it:
 the username and the address are unique within a scope, so the second attempt is
 a collision rather than a duplicate account.

@@ -569,6 +569,83 @@ func (s *Service) ExchangeRefreshToken(
 	return signIn, nil
 }
 
+// SignOut ends the login a refresh token belongs to, named by the token itself.
+//
+// It is the deliberate half of what [Service.RevokeRefreshTokenFamily] does, and
+// it exists because a client cannot call that one: a family identifier is not a
+// secret — it is on every IssuedToken and it is minted by identifiers.New, whose
+// values carry a timestamp and a counter — so an RPC that took one would let a
+// caller end a login by guessing at one. The presented token is high-entropy and
+// is the only thing a client holds that names its own family and nobody else's.
+//
+// It spends the token and then revokes the family, in one transaction, which is
+// the order that matters: the token is being retired either way, and a
+// revocation that landed without the spend would leave a row a later reuse check
+// reads as theft rather than as a sign-out.
+//
+// **Every refusal a presented token can draw is success here.** A token nobody
+// holds, one already spent, one already revoked and one past its deadline all
+// mean the same thing about the login the caller asked to end — it is over, or it
+// never began — and answering ErrInvalidCredentials to somebody pressing sign out
+// would be an error message for an act that has already happened. It is also the
+// same anti-enumeration property the exchange has, arrived at from the other
+// side: a sign-out that refused an unknown token would say which tokens are real.
+//
+// The already-spent case is the one with work attached, and it is why this method
+// captures the sentinel rather than returning it.
+// [RefreshTokenStore.Redeem] writes the family's revocation into tx before
+// answering ErrRefreshTokenReused, so returning it out of the callback would roll
+// back the very thing the caller wanted done. The transaction commits and the
+// caller is told nothing, because nothing is what they need to be told.
+//
+// What it does not do is stop an access token already in somebody's hands — see
+// [Service.RevokeRefreshTokenFamily], whose documentation applies here
+// unchanged. A service that mints no refresh tokens has no login to end and
+// answers [ErrRefreshTokensNotConfigured].
+func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken string) (err error) {
+	ctx, op, done := s.begin(ctx, opSignOut, observability.WithValue(scopeKey, scope.String()))
+	defer func() { done(err) }()
+
+	if s.refreshTokens == nil {
+		return op.Error(ErrRefreshTokensNotConfigured, "signing out")
+	}
+
+	if err = scope.Validate(); err != nil {
+		return op.Error(err, "checking the scope a sign-out was made in")
+	}
+
+	if refreshToken == "" {
+		return op.Error(ErrEmptyRefreshToken, "reading the refresh token a sign-out presented")
+	}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		spent, txErr := s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
+		if txErr != nil {
+			// Both branches commit. A reuse has already had the family revoked
+			// into tx by the store, and every other refusal is a token that
+			// names no live login — neither is a reason to abandon the
+			// transaction, and the first is a reason not to.
+			if platformerrors.Is(txErr, ErrInvalidCredentials) {
+				op.SpanOnly(signOutNothingToEndKey, true)
+
+				return nil
+			}
+
+			return txErr
+		}
+
+		op.SetValues(map[string]any{userIDKey: spent.SubjectID, familyKey: spent.FamilyID})
+
+		_, txErr = s.refreshTokens.RevokeFamily(ctx, tx, scope, spent.FamilyID)
+
+		return txErr
+	}); err != nil {
+		return op.Error(err, "signing out")
+	}
+
+	return nil
+}
+
 // RevokeRefreshTokenFamily ends one login: every refresh token that sign-in ever
 // issued stops being exchangeable, and it reports how many it withdrew.
 //

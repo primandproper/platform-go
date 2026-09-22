@@ -64,11 +64,11 @@ what a client talks to:
 
 	svc, err := service.New(i)
 
-Fourteen surfaces mount. Eleven gRPC — audit, oauth2clients, signin, billing,
-comments, identity, issuereports, notifications, settings, waitlists and
-webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built from.
-Three HTTP — dataprivacy, mediaregistry and operations — put their routes on the
-router the HTTP server serves.
+Fifteen surfaces mount. Twelve gRPC — audit, oauth2clients, passwordreset,
+signin, billing, comments, identity, issuereports, notifications, settings,
+waitlists and webhooks — join the []grpcserver.RegistrationFunc the gRPC server
+is built from. Three HTTP — dataprivacy, mediaregistry and operations — put their
+routes on the router the HTTP server serves.
 
 That router is checked, which routing.Router leaves to whoever holds it: it
 accumulates registration failures rather than returning them, and nothing
@@ -84,18 +84,21 @@ absence: a config naming no billing registers no billing store, so no billing
 surface mounts, and that is not a failure. A component that was registered and
 cannot be built is, and it is reported naming the surface that wanted it. It is
 the same distinction the rest of this package draws, and drawing it here is what
-lets identity, oauth2clients and signin behave without a special case — their
-servers are built over a service Register does not register, so they mount for
-an application that registered one and stay absent for one that did not.
+lets identity, oauth2clients, passwordreset and signin behave without a special
+case — their servers are built over a service Register does not register, so they
+mount for an application that registered one and stay absent for one that did
+not.
 
 # The two seams
 
 Everything else about a surface is deterministic from the config. These are not,
 because no environment variable can express them:
 
-The extractor is how a surface tells who is calling. One of them, for all
-fourteen, which is the argument the callers package already makes: a deployment
-has one authentication interceptor and one notion of a caller. Four surfaces
+The extractor is how a surface tells who is calling. One of them, for the
+fourteen that read one — passwordreset is the exception and needs none, because
+every RPC on it is for somebody who cannot sign in — which is the argument the
+callers package already makes: a deployment has one authentication interceptor
+and one notion of a caller. Four surfaces
 declare something narrower than a principal — audit and operations want a scope,
 dataprivacy wants a subject, mediaregistry wants a caller identifier and a scope
 — and each of those is derived from the one extractor rather than asked for

@@ -513,6 +513,7 @@ the whole list.
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                       |
 | `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                       |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`           |
+| `authentication/passwordreset/grpc` | resource surface | ask for a reset link, check one, spend one — over `passwordreset.Service`                                 |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                     |
 | `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                 |
 | `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                  |
@@ -545,19 +546,20 @@ is indistinguishable from an absence, a content type a browser executes is never
 served inline, and nothing is cached by a shared proxy. There is no resource of
 yours in that either: what is on the wire is bytes and a content type.
 
-The other thirteen are resource surfaces, and they get there by two routes.
+The other fourteen are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
-`authentication/oauth2clients/grpc`, `dataprivacy/http`, `audit/grpc`,
-`notifications/grpc`, `comments/grpc`, `webhooks/grpc`, `billing/grpc`,
-`issuereports/grpc`, `settings/grpc` and `waitlists/grpc` are the other kind —
-a domain's own transport, shipped under the rule above rather than as an
-exception to it, and twelve of the thirteen have crossed this way. Eleven of
-those twelve are gRPC and the twelfth is not, for the reason given above:
-`dataprivacy`'s flow was on HTTP before there was a handler in it.
+`authentication/passwordreset/grpc`, `authentication/oauth2clients/grpc`,
+`dataprivacy/http`, `audit/grpc`, `notifications/grpc`, `comments/grpc`,
+`webhooks/grpc`, `billing/grpc`, `issuereports/grpc`, `settings/grpc` and
+`waitlists/grpc` are the other kind — a domain's own transport, shipped under the
+rule above rather than as an exception to it, and thirteen of the fourteen have
+crossed this way. Twelve of those thirteen are gRPC and the thirteenth is not,
+for the reason given above: `dataprivacy`'s flow was on HTTP before there was a
+handler in it.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
@@ -565,6 +567,22 @@ refuses to emit a row for one whose own `doc.go` does not name its kind and
 whose shape it is standing in for. A package that grows handlers therefore
 cannot reach `main` without somebody having said which side of the line they
 fall on.
+
+### The client contract
+
+What a *client* of one of those transports owes is written down too, once, in
+[`docs/client-contract.md`](docs/client-contract.md): the seams a client injects,
+the sign-in state machine, refresh token rotation, the error channels to branch
+on, and pagination. It is in no particular language, and
+[`platform-client-ts`](https://github.com/primandproper/platform-client-ts) and
+[`platform-client-swift`](https://github.com/primandproper/platform-client-swift)
+implement it rather than each reconstructing it from the proto comments.
+
+It lives here rather than beside either client for the reason the protos do: it
+describes this module's wire behaviour, so a change to that behaviour updates it
+in the pull request making the change. Where a rule needs a server newer than
+some tag, it names the tag — the clients pin one, and a rule describing
+unreleased `main` is a rule that breaks a session.
 
 ## SQL Dialect Support
 

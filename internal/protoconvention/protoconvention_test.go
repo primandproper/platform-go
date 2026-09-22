@@ -10,6 +10,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
@@ -37,6 +38,8 @@ var schemas = map[string]protoreflect.FileDescriptor{
 		File_primandproper_platform_audit_v1_audit_proto,
 	"authentication/oauth2clients/proto/primandproper/platform/oauth2clients/v1/oauth2clients.proto": oauth2clientspb.
 		File_primandproper_platform_oauth2clients_v1_oauth2clients_proto,
+	"authentication/passwordreset/proto/primandproper/platform/passwordreset/v1/passwordreset.proto": passwordresetpb.
+		File_primandproper_platform_passwordreset_v1_passwordreset_proto,
 	"authentication/signin/proto/primandproper/platform/signin/v1/signin.proto": signinpb.
 		File_primandproper_platform_signin_v1_signin_proto,
 	"billing/proto/primandproper/platform/billing/v1/billing.proto": billingpb.

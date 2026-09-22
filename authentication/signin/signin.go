@@ -52,6 +52,16 @@ const (
 	// names a sign-in rather than a credential, which is exactly what following
 	// a rotation across several requests needs.
 	familyKey = "signin.family_id"
+
+	// signOutNothingToEndKey records that a sign-out presented a token naming no
+	// live login — unknown, already spent, already revoked or expired, which
+	// Service.SignOut answers identically and deliberately.
+	//
+	// On the span only, and never as a metric. It is the ordinary shape of a
+	// client signing out of a session that had already lapsed, so a counter of it
+	// would alarm on users behaving normally; what it is useful for is explaining
+	// a single sign-out that revoked nothing.
+	signOutNothingToEndKey = "signin.sign_out_nothing_to_end"
 )
 
 // The names this service labels its instruments with, one per operation. They
@@ -71,11 +81,18 @@ const (
 	opGetAuthStatus     = "get_auth_status"
 	opGetSelf           = "get_self"
 
-	// The three refresh doors. Exchanging is a series of its own rather than a
+	// The four refresh doors. Exchanging is a series of its own rather than a
 	// second kind of login, because the two answer different questions of a
 	// dashboard: how often somebody proves a password, and how long their
 	// sign-ins actually last.
+	//
+	// Signing out is a series of its own for the same reason, and is not folded
+	// into revoke_refresh_token_family even though it ends in that call: what a
+	// dashboard asks of a sign-out is how many people leave deliberately, and
+	// counting it beside the revocations a detected reuse performs would mix a
+	// person's decision with an alarm.
 	opExchangeRefreshToken = "exchange_refresh_token"
+	opSignOut              = "sign_out"
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
 	opUpdatePassword       = "update_password"
