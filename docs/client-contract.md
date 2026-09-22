@@ -8,8 +8,9 @@ It lives here because it describes **this module's wire behaviour**. A change to
 flow in v15 updates this file in the same pull request that makes the change, rather than two
 client repositories discovering it afterwards.
 
-**Status:** first draft against **v14.0.0**. The [open questions](#open-questions) are real
-and unresolved; nothing should be implemented past them without a decision.
+**Status:** describes **v14** as it stands. Every rule here is behaviour a client can rely on
+today; nothing below is aspirational, and the one thing deliberately left out is named under
+[keeping this true](#keeping-this-true).
 
 ## Who this binds
 
@@ -79,7 +80,7 @@ background.
 | `authenticated` | call needs a token, outside skew | `authenticated` | use it |
 | `refreshing` | ok | `authenticated` | `save(successor)`, serve **all** waiters |
 | `refreshing` | `UNAUTHENTICATED` | `anonymous` | `clear()` |
-| `refreshing` | any other error | `authenticated` | surface; **do not `clear()`** |
+| `refreshing` | any other error | `authenticated` | retry once with the same key (R10); surface; **do not `clear()`** |
 
 **R1 — one refresh at a time, and it is not an optimisation.** Concurrent callers finding an
 expired token must await one in-flight exchange. Two exchanges means the same refresh token
@@ -91,7 +92,6 @@ is not a revocation.
 
 **R3 — one retry, never a loop.** An RPC returning `UNAUTHENTICATED` may trigger at most one
 refresh-and-retry.
-
 
 **R4 — mint an idempotency key once per logical operation, outside the retry loop.**
 `primitives-go`'s `idempotency` package defines `MetadataKey = "idempotency-key"` and ships a
@@ -113,9 +113,12 @@ The rule that will bite anything written without reading it, quoted from the pro
 
 So:
 
-**R5 — never re-send a refresh token.** Not on timeout, not on transport error, not through a
-generic retry policy. A blind retry of `ExchangeRefreshToken` is the one call in this API that
-can destroy a working session.
+**R5 — never re-send a refresh token bare.** Not on timeout, not on transport error, not
+through a generic retry policy. A blind retry of `ExchangeRefreshToken` is the one call in this
+API that can destroy a working session. The single exception is a retry carrying the same
+idempotency key the lost attempt carried, which is
+[R10](#recovering-a-lost-exchange-and-telling-refusals-apart) and is the only reason that rule
+exists.
 
 **R6 — a refresh token is dead the moment it is sent.** Persist the successor before doing
 anything else with it. A client that exchanges, crashes, and restarts holding the *old* token
@@ -150,7 +153,9 @@ Two codes carry most of the meaning:
   retry-with-credentials path down the give-up branch."*
 
 A client must branch on the code for this distinction: `UNAUTHENTICATED` means offer
-credentials again; `PERMISSION_DENIED` means stop asking.
+credentials again; `PERMISSION_DENIED` means stop asking. `FAILED_PRECONDITION` and
+`INVALID_ARGUMENT` carry the rest — the state is wrong, or the request was. Which refusal
+produced any of them is [R11](#recovering-a-lost-exchange-and-telling-refusals-apart)'s table.
 
 ## Pagination
 
@@ -168,33 +173,89 @@ ride along on its rows, handed an empty final page, has no row to read them off 
 walking a keyset to its end sees a `0` that is *not* a result. `counts_known` is the field
 that tells an honest zero from an absent one, and it defaults to false.
 
-## Two rules that will change, and what they are today
+## Recovering a lost exchange, and telling refusals apart
 
-**R10 — an ambiguous `ExchangeRefreshToken` failure is a lost session.** A timeout or dropped
-connection leaves a client unable to know whether its token was spent. R5 forbids re-sending
-it, and no successor arrived to retry with, so there is nothing safe to do: clear credentials
-and sign in again. This is the one rule here that costs a user something real for a dropped
-packet, and it is the current behaviour rather than a desirable one — see
-[#869](https://github.com/primandproper/platform-go/issues/869).
+Two rules that used to be worse than they should be. Both now have the server-side answer they
+were waiting for, and both describe v14 as shipped.
 
-**R11 — never branch on message text. Prompt for a second factor on any `UNAUTHENTICATED`
-from sign-in.** `ErrSecondFactorRequired` and `ErrInvalidCredentials` share
-`codes.Unauthenticated` and differ only in their message, and a message is not an interface:
-it cannot be reworded or localised without breaking whoever matched on it. Until a structured
-signal exists ([#873](https://github.com/primandproper/platform-go/issues/873)), a client that
-needs to tell them apart should prompt for a code and let the next attempt refuse, rather than
-compare prose.
+**R10 — after an ambiguous `ExchangeRefreshToken` failure, retry with the same idempotency
+key.** A timeout or a dropped connection leaves a client unable to know whether its token was
+spent, and with no successor to retry with. Re-sending the token *bare* is still what R5
+forbids. Re-sending it under the key that accompanied the first attempt is not: the server
+recognises the retry, mints a **fresh** successor, and revokes the one the lost response
+carried — so the client ends up holding exactly one live refresh token either way.
 
-## Tracked changes
+It is a re-mint, not a replay. Nothing recorded is handed back, and the token a retry receives
+is a *different* one from whatever the first attempt minted. That is deliberate: a replay would
+hand an attacker who captured the request the very token the legitimate client holds, two
+parties sharing one credential, which is what reuse detection exists to prevent.
 
-Each of these changes a rule above. When one lands, it updates this document in the same pull
-request — that is the reason the document lives in this module rather than beside a client.
+Four conditions, each of which a client either controls or can wait out:
 
-| | changes | |
+- **The same key.** Mint it once per logical exchange, outside the retry loop, and send it as
+  `idempotency-key` metadata — R4's rule, applied to the one call that most needs it. A key
+  minted per attempt protects nothing.
+- **One retry per key.** Honouring the retry clears the key, so a *second* presentation of that
+  token and key is a reuse like any other and ends the family. Retry once; if that fails, sign
+  in again. The bound is what keeps a captured request from minting live tokens for ten
+  minutes.
+- **Inside the window.** Ten minutes from the original exchange, and only while the successor
+  is unspent — a client that got a successor through and used it has closed the window itself.
+- **A well-formed key:** non-empty printable ASCII, no spaces, at most 255 bytes. A malformed
+  one is refused with `INVALID_ARGUMENT` before the token is touched, so it costs a round trip
+  rather than a session.
+
+**A client that cannot know it is talking to a server with this must fall back to R5.** The
+metadata is read by every `platform-go` sign-in service, but answering a keyed retry is the
+refresh-token store's to do, and a service may inject its own. Against a store that does not,
+a keyed retry is a bare retry: reuse, and the family revoked. The stores this module ships all
+implement it.
+
+**R11 — branch on the reason, never on the message.** `ErrSecondFactorRequired` and
+`ErrInvalidCredentials` both answer `UNAUTHENTICATED` and differ in their wording, and a
+message is not an interface — it can be reworded or localised without warning. Every refusal a
+client may be told about therefore carries a `google.rpc.ErrorInfo` detail, at the standard
+type URL, with `domain` `signin.platform-go.primandproper.github.com` and a stable
+`UPPER_SNAKE_CASE` `reason`. Read the reason. It is chosen once and never reworded, which the
+message explicitly is not, and it survives an edge that strips encoded error details.
+
+| reason | code | what it means for a client |
 | --- | --- | --- |
-| [#869](https://github.com/primandproper/platform-go/issues/869) | **R10** | An idempotency key makes a client's own retry distinguishable from a replay. R10 becomes "retry with the same key and expect a *different* successor", and a rule arrives for a duplicate refused as already in flight: back off, retry with the same key, do not clear credentials. |
-| [#873](https://github.com/primandproper/platform-go/issues/873) | **R11** | A client-safe structured reason replaces prose. R11 becomes "branch on the reason". |
-| — | — | Streams: nothing here covers reconnect, backoff or resumption. Parked until something streams; designing it against an imagined workload would produce answers nobody could check. |
+| `INVALID_CREDENTIALS` | `UNAUTHENTICATED` | offer credentials again |
+| `SECOND_FACTOR_REQUIRED` | `UNAUTHENTICATED` | prompt for a code, resend with `totp_code` |
+| `SECOND_FACTOR_NOT_ENROLLED` | `FAILED_PRECONDITION` | this door needs a second factor and the user has none; enrolling needs a sign-in they cannot have, so the remedy is the service's, not the client's |
+| `USER_UNVERIFIED` | `FAILED_PRECONDITION` | registration is unfinished; send them to verification |
+| `USER_SUSPENDED` | `PERMISSION_DENIED` | stop asking; the message carries the explanation and is meant to be shown |
+| `USER_TERMINATED` | `PERMISSION_DENIED` | stop asking; unlike a suspension this does not reverse |
+| `NOT_AN_ADMINISTRATOR` | `PERMISSION_DENIED` | stop asking |
+| `ADMIN_SIGNIN_UNAVAILABLE` | `PERMISSION_DENIED` | stop asking |
+| `NO_PASSWORD_CREDENTIAL` | `FAILED_PRECONDITION` | a signed-in subject changing a password they do not have; offer the door they do |
+| `PASSWORD_ALREADY_SET` | `FAILED_PRECONDITION` | attaching a password to somebody who holds one; it is a change, not an attach |
+| `NO_CREDENTIAL_NAMED` | `INVALID_ARGUMENT` | a registration that did not say how the user will sign in; fix the request |
+
+That is the whole set, and its edges are both load-bearing. A refusal absent from it carries no
+reason at all, which is how **R7 survives this**: a reused, expired or revoked refresh token
+answers `INVALID_CREDENTIALS` here exactly as a wrong password does. The structured channel
+does not reopen what the collapsed message closed, and a client still cannot learn why an
+exchange failed.
+
+`NOT_AN_ADMINISTRATOR` and `ADMIN_SIGNIN_UNAVAILABLE` are distinct over gRPC and collapsed over
+HTTP. A client reading gRPC can tell a service with no administrative door from one whose door
+it is not admitted through; both answers mean the same thing to a user.
+
+## Keeping this true
+
+A change to this module's wire behaviour updates this document in the pull request that makes
+the change — that is the reason the document lives here rather than beside a client.
+
+Nothing is outstanding. R10 and R11 were the two rules that named a ticket rather than a
+behaviour, and both have landed: [#869](https://github.com/primandproper/platform-go/issues/869)
+as the idempotent exchange, [#873](https://github.com/primandproper/platform-go/issues/873) as
+the client-safe reason.
+
+**Streams are parked deliberately.** Nothing here covers reconnect, backoff or resumption.
+Designing that against an imagined workload would produce answers nobody could check, so it
+waits for something that streams.
 
 ## Non-goals
 
