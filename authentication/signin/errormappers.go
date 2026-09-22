@@ -95,6 +95,94 @@ var ClientSafeSentinels = []error{
 	ErrNoCredentialNamed,
 }
 
+// ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
+// package registers carries.
+//
+// ErrorInfo's convention is the service that issued the reason, and this
+// module is a library rather than a service: it cannot know what the
+// deployment embedding it is called. What it can name unambiguously is
+// itself, so the domain is this package, reverse-DNS from where it lives.
+//
+// It deliberately carries no major version. A domain is half of the pair a
+// client compiles against, so a /v15 that moved this string would break every
+// client for a reason that has nothing to do with the refusals it names.
+//
+// A consumer who would rather their own service name appeared here registers
+// their own list before calling errormappers.Register: the first registration
+// of a sentinel wins, which errors/grpc documents on
+// RegisterClientSafeReasons.
+const ClientReasonDomain = "signin.platform-go.primandproper.github.com"
+
+// ClientSafeReasons are the stable identifiers a client branches on, handed to
+// errors/grpc.RegisterClientSafeReasons by errormappers.Register.
+//
+// It is the third channel, and it exists because the first two could not be
+// it. The status code collides — four of these are PermissionDenied, four are
+// FailedPrecondition and two are Unauthenticated — and ClientSafeSentinels
+// answers that collision with the sentinel's own prose, which is written for a
+// person to read. A client that must *act* differently, rather than display
+// differently, has had only that sentence: a second-factor prompt and a
+// password field are both Unauthenticated, so telling them apart meant
+// matching the English string "a second-factor code is required". This list is
+// what a client matches instead.
+//
+// It is exactly ClientSafeSentinels, entry for entry, and that is the rule
+// rather than a coincidence. The question each list answers is the same one —
+// may a caller be told which of these happened — so a refusal disclosable as
+// prose is disclosable as an identifier, and one that is not must be in
+// neither. Two lists that could differ would be two places to make that
+// judgment and one place to get it wrong; a test pins them equal, so adding a
+// sentinel to one and not the other fails rather than ships. The reverse
+// containment is what matters most: a reason for a sentinel *not* client-safe
+// would disclose by identifier exactly what this package took care not to
+// disclose in words.
+//
+// The names are UPPER_SNAKE_CASE, which is ErrorInfo's own convention, and
+// each is chosen once and never reworded — that is the whole point of having
+// them. Where a name and the sentinel's wording read differently, the name is
+// the one that may not move: USER_SUSPENDED stays USER_SUSPENDED however
+// ErrUserBanned's message is later phrased, which is the substitution this
+// channel exists to make possible.
+//
+// Three of them resolve through wrapping rather than by being reached
+// directly, and that is the same construction the message channel already
+// relies on. ErrRefreshTokenReused, ErrInvalidVerificationToken and
+// ErrInvalidMagicLink each wrap ErrInvalidCredentials and are each absent from
+// both lists, so the chain walk passes over the unregistered node and answers
+// with INVALID_CREDENTIALS — which is what makes a replayed refresh token
+// indistinguishable from a wrong password on this channel too. Had
+// ErrInvalidCredentials been left out of this list while ErrSecondFactorRequired
+// went in, the three would have answered with *no* reason where a wrong
+// password answered with one, and the collapse those sentinels are built to
+// produce would have been undone by the act of fixing the second factor. See
+// TestClientSafeReason_collapsedRefusals.
+//
+// ErrNotAnAdministrator and ErrAdminLoginDisabled get distinct names, and that
+// is worth stating because the HTTP mapper deliberately collapses them into one
+// message so a caller cannot tell a service with no administrative door from
+// one whose door they are not admitted through. gRPC does not collapse them and
+// never has: both are in ClientSafeSentinels, so the status already carries
+// each sentinel's own words — "user is not an administrator" and
+// "administrative sign-in is not configured" — and a client can already tell
+// them apart by reading it. Distinct reasons disclose nothing the message does
+// not, which is the test this list applies; collapsing them here while the
+// message stays split would only mean a client kept reading the message. That
+// the two transports disagree about this refusal is a real asymmetry, and it is
+// the mappers' to settle rather than this list's.
+var ClientSafeReasons = []grpcerrors.ClientReason{
+	{Err: ErrInvalidCredentials, Reason: "INVALID_CREDENTIALS", Domain: ClientReasonDomain},
+	{Err: ErrSecondFactorRequired, Reason: "SECOND_FACTOR_REQUIRED", Domain: ClientReasonDomain},
+	{Err: ErrSecondFactorNotEnrolled, Reason: "SECOND_FACTOR_NOT_ENROLLED", Domain: ClientReasonDomain},
+	{Err: ErrUserUnverified, Reason: "USER_UNVERIFIED", Domain: ClientReasonDomain},
+	{Err: ErrUserBanned, Reason: "USER_SUSPENDED", Domain: ClientReasonDomain},
+	{Err: ErrUserTerminated, Reason: "USER_TERMINATED", Domain: ClientReasonDomain},
+	{Err: ErrNotAnAdministrator, Reason: "NOT_AN_ADMINISTRATOR", Domain: ClientReasonDomain},
+	{Err: ErrAdminLoginDisabled, Reason: "ADMIN_SIGNIN_UNAVAILABLE", Domain: ClientReasonDomain},
+	{Err: ErrNoPasswordCredential, Reason: "NO_PASSWORD_CREDENTIAL", Domain: ClientReasonDomain},
+	{Err: ErrPasswordAlreadySet, Reason: "PASSWORD_ALREADY_SET", Domain: ClientReasonDomain},
+	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
+}
+
 type (
 	httpMapper struct{}
 	grpcMapper struct{}

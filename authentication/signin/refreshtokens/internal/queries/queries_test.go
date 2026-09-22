@@ -150,7 +150,12 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	want := []string{
 		InsertTokenQuery,
 		GetTokenQuery,
+		GetRedemptionQuery,
 		RedeemTokenQuery,
+		RedeemTokenWithKeyQuery,
+		ClaimRemintQuery,
+		RecordSuccessorQuery,
+		RevokeTokenQuery,
 		RevokeFamilyQuery,
 		RevokeTokensForSubjectQuery,
 		SweepTokensQuery,

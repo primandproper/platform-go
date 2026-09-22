@@ -39,6 +39,14 @@ FROM signin_refresh_tokens
 WHERE signin_refresh_tokens.hash = sqlc.arg(hash)
 	AND signin_refresh_tokens.scope = sqlc.arg(scope);
 
+-- name: GetRefreshTokenRedemption :one
+SELECT
+	signin_refresh_tokens.redeemed_with_key,
+	signin_refresh_tokens.successor_hash
+FROM signin_refresh_tokens
+WHERE signin_refresh_tokens.hash = sqlc.arg(hash)
+	AND signin_refresh_tokens.scope = sqlc.arg(scope);
+
 -- name: RedeemRefreshToken :execrows
 UPDATE signin_refresh_tokens SET
 	redeemed_at = sqlc.arg(redeemed_at)
@@ -47,6 +55,36 @@ WHERE hash = sqlc.arg(hash)
 	AND redeemed_at IS NULL
 	AND revoked_at IS NULL
 	AND expires_at > sqlc.arg(now);
+
+-- name: RedeemRefreshTokenWithKey :execrows
+UPDATE signin_refresh_tokens SET
+	redeemed_at = sqlc.arg(redeemed_at),
+	redeemed_with_key = sqlc.arg(redeemed_with_key)
+WHERE hash = sqlc.arg(hash)
+	AND scope = sqlc.arg(scope)
+	AND redeemed_at IS NULL
+	AND revoked_at IS NULL
+	AND expires_at > sqlc.arg(now);
+
+-- name: ClaimRefreshTokenRemint :execrows
+UPDATE signin_refresh_tokens SET
+	redeemed_with_key = sqlc.narg(redeemed_with_key)
+WHERE hash = sqlc.arg(hash)
+	AND scope = sqlc.arg(scope)
+	AND redeemed_with_key = sqlc.arg(expected_key);
+
+-- name: RecordRefreshTokenSuccessor :execrows
+UPDATE signin_refresh_tokens SET
+	successor_hash = sqlc.arg(successor_hash)
+WHERE hash = sqlc.arg(hash)
+	AND scope = sqlc.arg(scope);
+
+-- name: RevokeRefreshToken :execrows
+UPDATE signin_refresh_tokens SET
+	revoked_at = sqlc.arg(revoked_at)
+WHERE hash = sqlc.arg(hash)
+	AND scope = sqlc.arg(scope)
+	AND revoked_at IS NULL;
 
 -- name: RevokeRefreshTokenFamily :execrows
 UPDATE signin_refresh_tokens SET

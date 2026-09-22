@@ -82,6 +82,17 @@ const (
 	// RevokedAtColumn is when the token was revoked, and NULL until it is. A
 	// family revocation and a subject-wide revocation both write it.
 	RevokedAtColumn = "revoked_at"
+	// RedeemedWithKeyColumn is the idempotency key the exchange that spent this
+	// row presented, and NULL both before the row is spent and when it is spent
+	// without one. It is assigned by [exchangeWithKey] and both assigned and
+	// compared against by [claimRemint], which is what makes "one re-mint per
+	// key" a property of a statement rather than of whoever read the row first.
+	RedeemedWithKeyColumn = "redeemed_with_key"
+	// SuccessorHashColumn is the digest of the row this exchange minted, and
+	// NULL until it is spent. It is how the retry path names the one row it may
+	// revoke — revoking the family instead is the outcome the retry exists to
+	// avoid, and revoking nothing leaves one login holding two live tokens.
+	SuccessorHashColumn = "successor_hash"
 )
 
 // The arguments the two clock comparisons bind, named for the comparison rather
@@ -105,6 +116,15 @@ const (
 	// PurgeBeforeArg is the horizon the sweep binds. A caller sweeping at an
 	// instant an hour back reclaims only what nothing is still deciding about.
 	PurgeBeforeArg = "purge_before"
+
+	// ExpectedKeyArg is the key [claimRemint] requires the row to still be
+	// carrying, as against the value it assigns.
+	//
+	// Both ends of that comparison are redeemed_with_key, so under one argument
+	// name the statement would set the column to the value it was requiring it
+	// to already hold — legal SQL that guards nothing. Naming the predicate's
+	// end separately is what makes the claim a claim.
+	ExpectedKeyArg = "expected_key"
 )
 
 // Columns is the whole row, in the order the DDL declares it.
@@ -125,16 +145,24 @@ var Columns = []string{
 	PurgeAfterColumn,
 	RedeemedAtColumn,
 	RevokedAtColumn,
+	RedeemedWithKeyColumn,
+	SuccessorHashColumn,
 }
 
 // RecordColumns is what the read projects, in the order the generated row type
-// carries them: the whole table less the hash.
+// carries them: the whole table less the two digest columns and the key.
 //
 // The hash's absence is the point, and it is why this is a projection rather
 // than a SELECT * with a Go-side drop. Nothing in this package reads the column
 // back — it is bound by the insert and compared against by the read and the
 // exchange — and a projection that included it would put a stored credential's
 // digest in whatever a caller did next with the row.
+//
+// successor_hash is left out for exactly that reason and is read by one
+// statement of its own — see [readRedemption], which is the only read in this
+// corpus that projects a digest and the only caller that has somewhere to put
+// one. redeemed_with_key rides along with it because the two are read together
+// or not at all: neither alone answers whether a presentation is a retry.
 var RecordColumns = []string{
 	ScopeColumn,
 	FamilyIDColumn,
@@ -171,6 +199,22 @@ var InsertColumns = []string{
 // else.
 var RedeemColumns = []string{RedeemedAtColumn}
 
+// RedeemWithKeyColumns is what the idempotent exchange assigns: the same stamp,
+// and the key that spent the row.
+//
+// The two are one assignment rather than two statements because they are one
+// fact. A row stamped spent by a write that had not yet recorded which key spent
+// it is a row whose own client's retry is indistinguishable from a replay — the
+// precise failure the key exists to remove, reintroduced in a narrower window.
+var RedeemWithKeyColumns = []string{RedeemedAtColumn, RedeemedWithKeyColumn}
+
+// KeyColumns is what the re-mint claim assigns, which is the key column and
+// nothing else — set to NULL, since honoring a retry spends the evidence.
+var KeyColumns = []string{RedeemedWithKeyColumn}
+
+// SuccessorColumns is what the successor record assigns.
+var SuccessorColumns = []string{SuccessorHashColumn}
+
 // RevokeColumns is what both revocations assign.
 //
 // The family revocation and the subject-wide one share the list rather than each
@@ -184,7 +228,12 @@ var RevokeColumns = []string{RevokedAtColumn}
 const (
 	InsertTokenQuery            = "InsertRefreshToken"
 	GetTokenQuery               = "GetRefreshToken"
+	GetRedemptionQuery          = "GetRefreshTokenRedemption"
 	RedeemTokenQuery            = "RedeemRefreshToken"
+	RedeemTokenWithKeyQuery     = "RedeemRefreshTokenWithKey"
+	ClaimRemintQuery            = "ClaimRefreshTokenRemint"
+	RecordSuccessorQuery        = "RecordRefreshTokenSuccessor"
+	RevokeTokenQuery            = "RevokeRefreshToken"
 	RevokeFamilyQuery           = "RevokeRefreshTokenFamily"
 	RevokeTokensForSubjectQuery = "RevokeRefreshTokensForSubject"
 	SweepTokensQuery            = "SweepRefreshTokens"
@@ -199,9 +248,21 @@ const (
 // executes is this text exactly — the generated signindb package carries it per
 // dialect, with the consumer's table prefix substituted once at construction.
 //
-// The order is the order a token goes through: minted, read, exchanged — or
-// revoked, as one of a family's or as one of a subject's — and finally collected
-// once its purge deadline has passed.
+// The order is the order a token goes through: minted, read — twice, since the
+// idempotent path reads what the ordinary one does not — exchanged, with or
+// without a key, and then the two writes a retry of that exchange makes; or
+// revoked, alone, as one of a family's or as one of a subject's; and finally
+// collected once its purge deadline has passed.
+//
+// # The five statements the idempotent path adds
+//
+// [exchangeWithKey] is [exchange] with one more column in its SET. The rest are
+// the retry, and each is a statement rather than a Go decision for the reason
+// [exchange] is: the count is the answer. [readRedemption] is the only read here
+// that projects a digest; [claimRemint] is the write that admits exactly one
+// retry per key, by requiring the key it clears; [recordSuccessor] is what makes
+// "the successor" a row anything can name; and [revoke] is the single-row
+// revocation the retry does instead of ending a family.
 //
 // # Where liveness is decided, and why it is here
 //
@@ -263,7 +324,12 @@ func Render(d dialect.Dialect) string {
 	return querygen.RenderFile([]*querygen.Query{
 		insert(g),
 		read(g),
+		readRedemption(g),
 		exchange(g),
+		exchangeWithKey(g),
+		claimRemint(g),
+		recordSuccessor(g),
+		revoke(g),
 		revokeFamily(g),
 		revokeForSubject(g),
 		sweep(g),
@@ -330,6 +396,127 @@ func exchange(g *querygen.Generator) *querygen.Query {
 		unredeemed(),
 		unrevoked(),
 		stillLive(),
+	)
+}
+
+// readRedemption is the one read here that projects a digest, and it exists so
+// that RecordColumns does not have to.
+//
+// What it answers is "was this presentation a retry of the exchange that spent
+// this row, and if so what did that exchange mint" — two columns nothing outside
+// the retry path has any use for, and one of which names a live credential. A
+// projection carrying them everywhere would put a successor's digest into
+// whatever a caller did next with an ordinary redemption's row; a read of their
+// own confines them to the one function that has somewhere to put them.
+//
+// It is keyed exactly as [read] is, and it is a second statement rather than a
+// widened first one because the retry path is the rare one: an exchange that
+// succeeds never issues it.
+func readRedemption(g *querygen.Generator) *querygen.Query {
+	return g.ReadQuery(GetRedemptionQuery, TokensTable, Columns,
+		querygen.Read{Projection: []string{RedeemedWithKeyColumn, SuccessorHashColumn}},
+		querygen.Match{Column: HashColumn},
+		querygen.Match{Column: ScopeColumn},
+	)
+}
+
+// exchangeWithKey is [exchange] carrying the key that spent the row.
+//
+// Every predicate is the same one, deliberately: the idempotency key changes
+// what a *later* presentation of this token means and changes nothing about
+// which caller may spend it now. Relaxing a guard here would make the key a way
+// to exchange a token the ordinary statement refuses.
+//
+// The assignment is the part that matters, and it is one statement rather than a
+// spend followed by a record. primitives-go's idempotency.Manager records its
+// result outside the work's transaction and says what that cannot promise —
+// "work that has its effect and then fails" — and for a payment that is an
+// accepted risk. Here it is the exact failure the key exists to remove: a token
+// spent by a write that had not yet recorded which key spent it is a token whose
+// own client's retry reads as a replay, so the family would be revoked by the
+// mechanism added to stop revoking it. Either both land or neither does.
+func exchangeWithKey(g *querygen.Generator) *querygen.Query {
+	return g.UpdateQuery(RedeemTokenWithKeyQuery, TokensTable, Columns, RedeemWithKeyColumns, nil,
+		querygen.Match{Column: HashColumn},
+		querygen.Match{Column: ScopeColumn},
+		unredeemed(),
+		unrevoked(),
+		stillLive(),
+	)
+}
+
+// claimRemint is the write that admits exactly one re-mint per key, and it is
+// the whole of that bound.
+//
+// It clears redeemed_with_key while requiring the row to still be carrying it,
+// so two presentations of one captured request resolve to one winner and the
+// loser falls through to the reuse branch — the same shape [exchange] uses to
+// decide single use, one column over. Both ends of the comparison are the key
+// column, which is why the predicate binds [ExpectedKeyArg] rather than the
+// column's own name: under one argument the statement would set the column to
+// the value it was requiring it to already hold, which is legal SQL that guards
+// nothing.
+//
+// The bound is not a refinement. Without it a single captured exchange request —
+// token and key together — mints a fresh live token for every presentation until
+// the grace window closes, which is a renewable session granted out of evidence
+// that is worth nothing at all today. With it the attacker's take is one token
+// whose use revokes the legitimate client's, and is therefore visible within one
+// request.
+//
+// The assignment is a narg because what it assigns is NULL. There is no "unset"
+// spelling for a column a statement clears, and a second statement spelling
+// `= NULL` inline would be a second rendering of one write.
+func claimRemint(g *querygen.Generator) *querygen.Query {
+	return g.UpdateQuery(ClaimRemintQuery, TokensTable, Columns, KeyColumns, KeyColumns,
+		querygen.Match{Column: HashColumn},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: RedeemedWithKeyColumn, Arg: ExpectedKeyArg},
+	)
+}
+
+// recordSuccessor writes onto a spent row the digest of the row its exchange
+// minted.
+//
+// It is what makes "the successor" nameable, and it runs in the same transaction
+// as the spend and the mint, so there is no committed state in which a row is
+// spent and its successor is unknown. A retry reaching such a row would have
+// nothing to revoke and would have to end the family, which is the answer this
+// whole path exists to avoid.
+//
+// It carries no guard of its own beyond the two key columns. The row it writes
+// to was spent by this same transaction, so "is it still spendable" is a
+// question already answered; a revoked_at IS NULL added here would refuse the
+// write on a family revoked between the two statements and leave the row saying
+// it minted nothing.
+//
+// The value is bound rather than narg'd — a successor this statement could not
+// name is a statement with no reason to run — which is the one place it parts
+// company with [claimRemint] beside it, whose whole assignment is a NULL.
+func recordSuccessor(g *querygen.Generator) *querygen.Query {
+	return g.UpdateQuery(RecordSuccessorQuery, TokensTable, Columns, SuccessorColumns, nil,
+		querygen.Match{Column: HashColumn},
+		querygen.Match{Column: ScopeColumn},
+	)
+}
+
+// revoke ends one token, which is what honoring a retry does to the successor
+// the first attempt already minted.
+//
+// It is [revokeFamily] keyed on the row instead of on the login, and the whole
+// difference between a retry and a detected theft is which of the two runs. A
+// family revocation here would sign the client out for having lost a response,
+// and no revocation at all would leave one login holding two live refresh tokens
+// — which is the property rotation exists to hold, given up by the feature meant
+// to make rotation survivable.
+//
+// The guard is the revocation's own, so a row already revoked reports zero
+// rather than moving the stamp.
+func revoke(g *querygen.Generator) *querygen.Query {
+	return g.UpdateQuery(RevokeTokenQuery, TokensTable, Columns, RevokeColumns, nil,
+		querygen.Match{Column: HashColumn},
+		querygen.Match{Column: ScopeColumn},
+		unrevoked(),
 	)
 }
 

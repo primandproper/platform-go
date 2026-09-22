@@ -8,8 +8,11 @@ import (
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/idempotency"
+	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 )
 
 // LoginForToken proves a password — and a second-factor code from a user who
@@ -111,6 +114,20 @@ func (s *Server) AdminLoginForToken(
 // A service built without signin.WithRefreshTokenStore answers every call here
 // with Internal, because a consumer's client calling an RPC their own server
 // cannot serve is a wiring failure rather than a request to correct.
+//
+// This is the one RPC in this package that reads the conventional
+// `idempotency-key` metadata entry, and it reads it rather than being wrapped in
+// the idempotency interceptor. The interceptor's Manager records its result
+// outside the work's transaction and says what that cannot promise — work that
+// has its effect and then fails — which for a credential rotation is the exact
+// failure the key is here to fix. The key is therefore carried to the service and
+// stored by signin's own transaction; see signin.IdempotentRefreshTokenStore.
+//
+// A request that sends none takes the path it takes today, and so does a service
+// whose store does not implement that interface. A key the store rejects as
+// malformed answers InvalidArgument through the platform mapper, rather than
+// being dropped — a client told its retry was protected when it was not is worse
+// off than one told to fix its header.
 func (s *Server) ExchangeRefreshToken(
 	ctx context.Context,
 	request *signinpb.ExchangeRefreshTokenRequest,
@@ -121,6 +138,8 @@ func (s *Server) ExchangeRefreshToken(
 	}
 
 	defer func() { done(err) }()
+
+	ctx = withIdempotencyKey(ctx)
 
 	signedIn, err := s.svc.ExchangeRefreshToken(ctx, req.scope, request.GetRefreshToken())
 	if err != nil {
@@ -480,4 +499,36 @@ func (s *Server) RedeemMagicLink(
 	}
 
 	return &signinpb.RedeemMagicLinkResponse{Token: IssuedTokenToProto(signedIn)}, nil
+}
+
+// withIdempotencyKey moves the incoming `idempotency-key` metadata entry onto
+// ctx, where the service reads it.
+//
+// The metadata name is idempotencygrpc.MetadataKey, which is what this package's
+// own client stamps on this RPC through that package's client interceptor — so a
+// consumer using it sends the header by putting a key on the context rather than
+// by learning a second convention here. That client stamps it on this RPC alone,
+// and its documentation says why the rest of them are excluded.
+//
+// A request with no key, or with an empty one, is returned unchanged and takes
+// the ordinary exchange path. What is deliberately not done here is validating
+// the key: the store is what refuses a malformed one, because the store is what
+// has to live with the column's width, and a check in two places is a check that
+// can come to disagree about what is acceptable.
+func withIdempotencyKey(ctx context.Context) context.Context {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx
+	}
+
+	values := md.Get(idempotencygrpc.MetadataKey)
+	if len(values) == 0 || values[0] == "" {
+		return ctx
+	}
+
+	// The first entry, and never a join of them. Metadata is repeatable and a
+	// client sending two keys has sent two claims about which operation this is;
+	// concatenating them would mint a third key belonging to neither, which would
+	// match nothing on the retry and read as a replay.
+	return idempotency.WithKey(ctx, idempotency.Key(values[0]))
 }

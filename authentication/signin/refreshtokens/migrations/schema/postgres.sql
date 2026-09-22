@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS signin_refresh_tokens (
     expires_at        TIMESTAMPTZ NOT NULL,
     purge_after       TIMESTAMPTZ NOT NULL,
     redeemed_at       TIMESTAMPTZ,
-    revoked_at        TIMESTAMPTZ
+    revoked_at        TIMESTAMPTZ,
+    redeemed_with_key TEXT,
+    successor_hash    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS signin_refresh_tokens_family_idx

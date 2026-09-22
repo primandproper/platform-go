@@ -25,6 +25,16 @@ who holds a proven second factor and sent no code is told to send one. That does
 reveal that the password was right, and there is no way to prompt for a code
 without revealing it. The alternative is an application that cannot ask.
 
+Because that disclosure is already made, it is made in a form a client can act
+on. On gRPC the two refusals share [google.golang.org/grpc/codes.Unauthenticated]
+and differ in their message, so a client deciding whether to show a code field
+was comparing English sentences — the disclosure had happened and the client was
+still guessing at it. [ClientSafeReasons] gives each of this package's
+client-safe refusals a stable identifier carried in a
+google.rpc.ErrorInfo detail, so the branch is on SECOND_FACTOR_REQUIRED rather
+than on prose that may be reworded or localized. It discloses nothing the
+message did not; it only stops a sentence from being an API.
+
 What it does not decide is policy. Whether a user without a second factor may
 sign in at all is [SecondFactorPolicy]; whether administrative sign-in exists is
 whether a consumer named any roles for it; how long a token lives, and what it
