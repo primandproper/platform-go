@@ -100,5 +100,14 @@ The client-safe lists carry none of this. RegisterClientSafeSentinels builds a
 membership test rather than an ordered chain, so a sentinel registered by both
 sides costs one more comparison and reaches the client with the same words
 either way.
+
+The reasons list is the one place ordering returns, and it is worth knowing
+before wiring a consumer's own. RegisterClientSafeReasons keeps the *first*
+registration of a sentinel, because a later one reaching back and changing what
+a client already branches on is the one thing a stable identifier may not do. So
+a consumer who wants their own service name in the ErrorInfo domain, rather than
+the package's, registers their list before calling Register rather than after.
+Registering reasons also registers their sentinels as client-safe, so a consumer
+substituting a list does not lose the messages.
 */
 package errormappers

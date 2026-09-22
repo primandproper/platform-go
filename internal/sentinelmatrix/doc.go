@@ -56,6 +56,17 @@ package's own tests can see, and only changes what somebody staring at a browser
 is told. Before it, prose was the only thing that said how many there were, and
 three passages said four, six and eight while the source held nine and fifteen.
 
+There is now a third, naming a subset of that subset: ClientSafeReasonPackages
+is the packages that additionally declare a ClientSafeReasons list, the stable
+identifiers a client branches on rather than the prose it displays. It catches
+the same silence as the second — a list registered nowhere is a client that
+never sees a detail and cannot tell that from a server which has none — and it
+adds one rule the others do not have, because a reason is a disclosure exactly
+as a message is. A package may not hand out an identifier for a refusal it will
+not say out loud, so every reasons package is also a client-safe package, and
+within a package that has opted in the two lists are the same list. Both
+containments are checked here.
+
 The roster is a package-level var rather than a test fixture, because two other
 test binaries need the same expectation. errormappers.Register is the one call
 that installs those packages' mappers, service.Register is the caller that

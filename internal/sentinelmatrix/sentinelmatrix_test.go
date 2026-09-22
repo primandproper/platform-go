@@ -185,6 +185,169 @@ func declaresClientSafe(t *testing.T, pkg string) bool {
 	return found[pkg].clientSafe
 }
 
+// declaresClientReasons reports whether pkg's own source declares the reasons
+// list.
+func declaresClientReasons(t *testing.T, pkg string) bool {
+	t.Helper()
+
+	found, err := parsed()
+	must.NoError(t, err)
+
+	return found[pkg].clientReasons
+}
+
+// TestEveryClientReasonListIsRostered is the third entry, made for the third
+// list. A ClientSafeReasons var is the statement that a client may branch on
+// these refusals rather than merely display them, and like the other two it
+// does nothing at all until somebody hands it to RegisterClientSafeReasons — so
+// a package that declares one and is rostered nowhere fails here rather than in
+// a client that silently never sees a detail and falls back to matching prose.
+func TestEveryClientReasonListIsRostered(T *testing.T) {
+	T.Parallel()
+
+	must.SliceNotEmpty(T, sentinelmatrix.ClientSafeReasonPackages)
+
+	for _, pkg := range sentinelmatrix.Packages {
+		T.Run(pkg, func(t *testing.T) {
+			t.Parallel()
+
+			declares := declaresClientReasons(t, pkg)
+			rostered := slices.Contains(sentinelmatrix.ClientSafeReasonPackages, pkg)
+
+			test.EqOp(t, declares, rostered, test.Sprintf(
+				"%s declares a ClientSafeReasons list: %t, and ClientSafeReasonPackages names it: %t", pkg, declares, rostered))
+
+			if !rostered {
+				return
+			}
+
+			must.SliceNotEmpty(t, sentinelmatrix.ClientSafeReasons(pkg), must.Sprintf(
+				"%s is rostered as carrying reasons and its list is empty", pkg))
+		})
+	}
+}
+
+// TestEveryReasonPackageIsAlsoClientSafe is the containment the reasons roster
+// exists to enforce, and the one that is a disclosure rule rather than
+// bookkeeping.
+//
+// A reason is as much a disclosure as a message: a client handed
+// REFRESH_TOKEN_REUSED has learned exactly what "that token was already spent"
+// would have told it, in a form it is easier to act on. So a package may not
+// hand out identifiers for refusals it has not already agreed to say out loud,
+// and the whole-list check is the cheap way to say that.
+func TestEveryReasonPackageIsAlsoClientSafe(T *testing.T) {
+	T.Parallel()
+
+	for _, pkg := range sentinelmatrix.ClientSafeReasonPackages {
+		test.True(T, slices.Contains(sentinelmatrix.ClientSafePackages, pkg), test.Sprintf(
+			"%s hands clients reasons to branch on and declares no ClientSafeSentinels list, so it discloses by identifier what it will not say in words", pkg))
+	}
+}
+
+// TestEveryReasonIsWellFormedAndClientSafe is the per-entry half of the same
+// rule, plus the two properties a stable identifier has to have to be one.
+//
+// Each reason's sentinel must be in that package's client-safe list, for the
+// reason above. Each reason string must be non-empty — errors/grpc silently
+// ignores an entry whose Reason is empty, so a typo there is a client that
+// never branches and a server that looks configured — and UPPER_SNAKE_CASE,
+// which is google.rpc.ErrorInfo's own convention and what tooling in other
+// languages expects.
+//
+// The reasons must also be distinct within a package. Two sentinels sharing one
+// identifier is the collision this channel exists to end, reintroduced one
+// level down: a client switching on the reason would take one branch for two
+// refusals with different remedies, which is the codes.Unauthenticated problem
+// verbatim.
+func TestEveryReasonIsWellFormedAndClientSafe(T *testing.T) {
+	T.Parallel()
+
+	for _, pkg := range sentinelmatrix.ClientSafeReasonPackages {
+		T.Run(pkg, func(t *testing.T) {
+			t.Parallel()
+
+			safe := sentinelmatrix.ClientSafeSentinels(pkg)
+			seen := map[string]bool{}
+
+			for _, reason := range sentinelmatrix.ClientSafeReasons(pkg) {
+				must.Error(t, reason.Err, must.Sprintf("%s lists a reason with no sentinel", pkg))
+
+				test.False(t, seen[reason.Reason], test.Sprintf(
+					"%s uses the reason %q twice, so a client switching on it cannot tell the two refusals apart", pkg, reason.Reason))
+				seen[reason.Reason] = true
+
+				test.True(t, isUpperSnakeCase(reason.Reason), test.Sprintf(
+					"%s declares the reason %q, which is not the UPPER_SNAKE_CASE google.rpc.ErrorInfo expects", pkg, reason.Reason))
+
+				test.NotEqOp(t, "", reason.Domain, test.Sprintf(
+					"%s declares the reason %q with no domain, so a gateway merging two services cannot tell whose it is", pkg, reason.Reason))
+
+				test.True(t, slices.ContainsFunc(safe, func(s error) bool { return errors.Is(reason.Err, s) }),
+					test.Sprintf("%s gives %q the reason %q and does not list it as client-safe, so it discloses by identifier what it will not say in words",
+						pkg, reason.Err, reason.Reason))
+			}
+		})
+	}
+}
+
+// TestEveryClientSafeSentinelHasAReason is the reverse containment, and it is
+// deliberately asserted only for the packages that have opted in.
+//
+// Within a package that hands out reasons at all, the two lists are the same
+// list: the question each answers is "may a caller be told which of these
+// happened", and a sentinel client-safe enough to quote is client-safe enough
+// to name. Leaving one out is the failure mode that is hardest to see from the
+// outside — a client branches successfully on nine refusals and silently falls
+// back to prose for the tenth — and it is exactly what would have happened had
+// ErrSecondFactorRequired been given a reason on its own.
+//
+// It is not asserted across the module, because a package with no reasons list
+// has not made this decision yet and a roster is not the place to force it.
+func TestEveryClientSafeSentinelHasAReason(T *testing.T) {
+	T.Parallel()
+
+	for _, pkg := range sentinelmatrix.ClientSafeReasonPackages {
+		T.Run(pkg, func(t *testing.T) {
+			t.Parallel()
+
+			reasons := sentinelmatrix.ClientSafeReasons(pkg)
+
+			for _, sentinel := range sentinelmatrix.ClientSafeSentinels(pkg) {
+				test.True(t, slices.ContainsFunc(reasons, func(r grpcerrors.ClientReason) bool {
+					return errors.Is(r.Err, sentinel)
+				}), test.Sprintf(
+					"%s lists %q as client-safe and gives it no reason, so a client branches on identifiers for its siblings and on prose for this one", pkg, sentinel))
+			}
+		})
+	}
+}
+
+// isUpperSnakeCase reports whether s is the shape google.rpc.ErrorInfo asks a
+// reason to be: uppercase letters and digits, underscore-separated, starting
+// with a letter and never ending or doubling an underscore.
+func isUpperSnakeCase(s string) bool {
+	if s == "" || s[0] < 'A' || s[0] > 'Z' || s[len(s)-1] == '_' {
+		return false
+	}
+
+	for i := range len(s) {
+		c := s[i]
+
+		switch {
+		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '_':
+			if s[i-1] == '_' {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
 // TestEveryDecisionHoldsOnBothTransports checks the rows against what the
 // mappers actually do. A row is a claim about a client's experience, and a claim
 // nothing verifies is how the gRPC mapper came to be missing sessions and
@@ -279,7 +442,8 @@ var parsed = sync.OnceValues(func() (map[string]declarations, error) {
 			}
 
 			decls.sentinels = append(decls.sentinels, sentinelsIn(file)...)
-			decls.clientSafe = decls.clientSafe || declaresClientSafeSentinels(file)
+			decls.clientSafe = decls.clientSafe || declaresVarNamed(file, "ClientSafeSentinels")
+			decls.clientReasons = decls.clientReasons || declaresVarNamed(file, "ClientSafeReasons")
 		}
 
 		slices.Sort(decls.sentinels)
@@ -296,6 +460,8 @@ type declarations struct {
 	sentinels []string
 	// clientSafe is whether it declares a ClientSafeSentinels list.
 	clientSafe bool
+	// clientReasons is whether it declares a ClientSafeReasons list.
+	clientReasons bool
 }
 
 // sentinelNames is every exported name beginning with Err declared as a
@@ -309,12 +475,14 @@ func sentinelNames(t *testing.T, pkg string) []string {
 	return found[pkg].sentinels
 }
 
-// declaresClientSafeSentinels reads one file for the exported var that says a
-// gRPC status may quote this package's refusals. It is found by its name, for
-// the same reason a sentinel is: the list is declared in the ordinary way in
-// every package that has one, and a list spelled some other way is a list this
-// roster should be told about rather than one it should guess at.
-func declaresClientSafeSentinels(file *ast.File) bool {
+// declaresVarNamed reads one file for an exported package-level var with the
+// given name — ClientSafeSentinels, which says a gRPC status may quote this
+// package's refusals, or ClientSafeReasons, which says a client may branch on
+// them. Either is found by its name, for the same reason a sentinel is: the
+// list is declared in the ordinary way in every package that has one, and a
+// list spelled some other way is a list this roster should be told about rather
+// than one it should guess at.
+func declaresVarNamed(file *ast.File, want string) bool {
 	for _, decl := range file.Decls {
 		gen, ok := decl.(*ast.GenDecl)
 		if !ok || gen.Tok != token.VAR {
@@ -328,7 +496,7 @@ func declaresClientSafeSentinels(file *ast.File) bool {
 			}
 
 			for _, ident := range value.Names {
-				if ident.Name == "ClientSafeSentinels" && ident.IsExported() {
+				if ident.Name == want && ident.IsExported() {
 					return true
 				}
 			}

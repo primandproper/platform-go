@@ -249,3 +249,149 @@ func TestClientSafeMessage_refreshTokenReuse(T *testing.T) {
 	test.ErrorIs(T, reuse, signin.ErrInvalidCredentials)
 	test.False(T, platformerrors.Is(invalid, signin.ErrRefreshTokenReused))
 }
+
+// TestClientSafeReason_secondFactor is the refusal this channel was added for.
+//
+// A second-factor prompt and a password field are both codes.Unauthenticated,
+// so until there was a reason the only thing telling them apart was the English
+// sentence "a second-factor code is required" — which every client matched for
+// itself, and which nobody could reword without breaking all of them. The
+// assertion is that the identifier now carries the distinction the code cannot.
+func TestClientSafeReason_secondFactor(T *testing.T) {
+	T.Parallel()
+
+	grpcerrors.RegisterClientSafeReasons(signin.ClientSafeReasons...)
+
+	// As a handler returns it, under the wrap a service's operation puts on it.
+	secondFactor := platformerrors.Wrap(signin.ErrSecondFactorRequired, "authenticating a user")
+	invalid := platformerrors.Wrap(signin.ErrInvalidCredentials, "authenticating a user")
+
+	secondFactorReason, ok := grpcerrors.ClientSafeReason(secondFactor)
+	must.True(T, ok, must.Sprint("a second-factor refusal carries no reason, so a client is back to matching the message"))
+	test.EqOp(T, "SECOND_FACTOR_REQUIRED", secondFactorReason.Reason)
+	test.EqOp(T, signin.ClientReasonDomain, secondFactorReason.Domain)
+
+	invalidReason, ok := grpcerrors.ClientSafeReason(invalid)
+	must.True(T, ok, must.Sprint("a wrong password carries no reason, so a client cannot tell it from a refusal it has never heard of"))
+	test.EqOp(T, "INVALID_CREDENTIALS", invalidReason.Reason)
+
+	// The point of the pair: one code, two identifiers.
+	secondFactorCode, ok := signin.GRPCMapper.Map(secondFactor)
+	must.True(T, ok)
+
+	invalidCode, ok := signin.GRPCMapper.Map(invalid)
+	must.True(T, ok)
+
+	test.EqOp(T, codes.Unauthenticated, secondFactorCode)
+	test.EqOp(T, invalidCode, secondFactorCode)
+	test.NotEqOp(T, invalidReason.Reason, secondFactorReason.Reason)
+
+	// And the detail is what the interceptors put on the wire for it, which is
+	// the shape a client in another language reads rather than this struct.
+	detail := secondFactorReason.Detail()
+	must.NotNil(T, detail)
+	test.EqOp(T, "SECOND_FACTOR_REQUIRED", detail.GetReason())
+	test.EqOp(T, signin.ClientReasonDomain, detail.GetDomain())
+}
+
+// TestClientSafeReason_collapsedRefusals is the property adding this channel
+// could most easily have broken, and the reason ClientSafeReasons is the whole
+// client-safe list rather than the one sentinel the ticket asked for.
+//
+// Three refusals here are built to be indistinguishable from a wrong password:
+// a replayed refresh token, a verification link that named nobody, and a
+// sign-in link that named nobody. None is registered in either list, and each
+// wraps ErrInvalidCredentials, so the chain walk passes over the unregistered
+// node and answers with what it wraps. That is what makes the collapse real
+// rather than asserted, on this channel exactly as on the message channel.
+//
+// Had ErrSecondFactorRequired been given a reason on its own, all three would
+// have answered with *no* reason where a wrong password answered with one — and
+// "the response carries no ErrorInfo" is as good an oracle as any word in it.
+// Fixing the second factor would have undone the collapse the sentinels exist
+// to produce, and nothing outside this test would have said so.
+func TestClientSafeReason_collapsedRefusals(T *testing.T) {
+	T.Parallel()
+
+	grpcerrors.RegisterClientSafeReasons(signin.ClientSafeReasons...)
+
+	invalid := platformerrors.Wrap(signin.ErrInvalidCredentials, "signing a user in")
+
+	invalidReason, ok := grpcerrors.ClientSafeReason(invalid)
+	must.True(T, ok)
+
+	for name, err := range map[string]error{
+		"refresh token reuse": signin.ErrRefreshTokenReused,
+		"verification token":  signin.ErrInvalidVerificationToken,
+		"sign-in link":        signin.ErrInvalidMagicLink,
+	} {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			wrapped := platformerrors.Wrap(err, "signing a user in")
+
+			reason, found := grpcerrors.ClientSafeReason(wrapped)
+			must.True(t, found, must.Sprintf(
+				"%s carries no reason while a wrong password carries one, so its absence tells a client which refusal this was", name))
+
+			test.EqOp(t, invalidReason.Reason, reason.Reason)
+			test.EqOp(t, "INVALID_CREDENTIALS", reason.Reason)
+
+			// The sentinel is still reachable on its own, which is where it is
+			// useful: the consumer's log, and an alarm on a detected theft.
+			test.ErrorIs(t, wrapped, err)
+		})
+	}
+}
+
+// TestClientSafeReasons_matchTheClientSafeList is the rule the reasons list
+// states about itself, checked here as well as in internal/sentinelmatrix.
+//
+// The roster checks it for every package that declares a list; this checks it
+// where somebody editing these two lists is actually looking. A sentinel added
+// to one and not the other is the failure that is invisible from outside — a
+// client branches on identifiers for ten refusals and silently falls back to
+// prose for the eleventh.
+func TestClientSafeReasons_matchTheClientSafeList(T *testing.T) {
+	T.Parallel()
+
+	must.SliceLen(T, len(signin.ClientSafeSentinels), signin.ClientSafeReasons)
+
+	for _, sentinel := range signin.ClientSafeSentinels {
+		test.True(T, slices.ContainsFunc(signin.ClientSafeReasons, func(r grpcerrors.ClientReason) bool {
+			return platformerrors.Is(r.Err, sentinel)
+		}), test.Sprintf("%q is client-safe and carries no reason", sentinel))
+	}
+
+	for _, reason := range signin.ClientSafeReasons {
+		test.True(T, slices.ContainsFunc(signin.ClientSafeSentinels, func(s error) bool {
+			return platformerrors.Is(reason.Err, s)
+		}), test.Sprintf(
+			"%q carries the reason %q and is not client-safe, so it discloses by identifier what this package will not say in words",
+			reason.Err, reason.Reason))
+	}
+}
+
+// TestClientSafeReasons_doNotDisturbTheMessages is the other half of the
+// coupling errors/grpc makes: RegisterClientSafeReasons registers its sentinels
+// as client-safe too, so registering reasons could in principle change what a
+// client without the detail reads.
+//
+// It must not. The words are the same words, because the same sentinels were
+// already registered by ClientSafeSentinels, and a client reading only the
+// message sees exactly what it saw before this channel existed.
+func TestClientSafeReasons_doNotDisturbTheMessages(T *testing.T) {
+	T.Parallel()
+
+	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
+	grpcerrors.RegisterClientSafeReasons(signin.ClientSafeReasons...)
+
+	for _, sentinel := range signin.ClientSafeSentinels {
+		wrapped := platformerrors.Wrap(sentinel, "signing a user in")
+
+		msg, ok := grpcerrors.ClientSafeMessage(wrapped)
+		must.True(T, ok, must.Sprintf("%q is client-safe and quotes nothing", sentinel))
+
+		test.EqOp(T, sentinel.Error(), msg)
+	}
+}
