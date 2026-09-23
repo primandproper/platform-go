@@ -1,0 +1,229 @@
+# The conformance suite
+
+What this module promises about its own surfaces, written once as shipped
+library code, and assertable against a server this module did not build.
+
+It lives here for the reason `client-contract.md` does: it describes a thing
+consumers depend on, and a change to it should land in the pull request that
+makes the change rather than be discovered afterwards.
+
+**Status:** in progress. Five suites' worth of seams and three surfaces exist;
+nine surfaces and the assembled subject do not. [What is left](#what-is-left)
+is the honest list, and nothing below describes something that has not been
+written.
+
+## The problem it exists to solve
+
+Every gRPC surface here is tested twice, and the two tests prove different
+things.
+
+Each `<pkg>/grpc` package hand-builds a server, hands it a store and a test
+extractor, and asserts what the handler decides. That is 425 assertions across
+twelve surfaces, and none of them has been through a composition root.
+
+A consumer's integration suite boots a whole service and asserts the same
+promises again — in their repository, in their assertion library, against their
+one dialect. `dinnerdonebetter`'s `backend/testing/integration/apiserver` is the
+worked example and carried roughly 120 such tests.
+
+Neither is wrong. What is wrong is that they are two bodies of assertions about
+one set of promises, so this module can break a promise and learn about it from
+somebody else's CI. That is backwards ownership, and it is the whole reason this
+package exists.
+
+The other half is equally real and pulls the other way: a consumer needs to know
+their *own* wiring honours what this module promised — that their extractor
+reaches every surface, that they called `errormappers.Register()`, that their
+`callers.PrincipalExtractor` resolves the scope they think it does. This module
+cannot test that. Only their running service can.
+
+So the answer is not to move the tests. It is to ship them.
+
+## The three subjects
+
+An assertion is written against the generated client interface and the subject
+it runs against is a seam.
+
+| subject | server | database | where it runs |
+| --- | --- | --- | --- |
+| **direct** | hand-built, in the suite's own harness | SQLite | every pull request, seconds, no Docker |
+| **assembled** | built by `service.New` | Postgres, MySQL/MariaDB | every pull request |
+| **deployed** | the consumer's | theirs | their integration suite |
+
+All three are a real client over a real connection. Every harness serves on a
+loopback TCP listener and dials its address; there is no in-memory transport and
+no adapter around a server, because a test-only transport is one more thing
+standing between an assertion and the claim it makes. Measuring the alternative
+showed it buying nothing.
+
+What separates the subjects is therefore only how the server was built and what
+is underneath it — which is exactly the axis a consumer cannot vary and this
+module cannot skip.
+
+## What is settled
+
+These were decided in the course of building it, and each cost something to
+learn.
+
+**A confinement assertion needs a positive control.** "The neighbour's row is
+absent" is also true of a read that reaches nothing at all, so a deployment
+whose scoping is comprehensively broken passes it on the strength of being
+broken. Every confinement assertion here proves the caller reaches its *own* row
+through the same client first. This is not a style preference: a deliberately
+broken scope resolver passed two of the audit suite's five assertions before the
+controls went in, and a mutation test is what found it. Mutate every new
+confinement assertion before believing it.
+
+**No assertion may count.** `direct` gets a database of its own; `deployed` gets
+whatever the consumer is running, beside their other tests and possibly beside
+real traffic. Assertions name the rows they created and check presence or
+absence. A count assertion in a shared deployment is a test whose outcome
+depends on what else is running, which will be read as a dialect bug.
+
+**Assertions are written to the weakest dialect in the matrix.** A consumer runs
+one; this module supports three. No sub-second timestamp comparison, no
+read-back assuming `RETURNING`, no ordering relied on without an explicit
+`ORDER BY`, nothing needing a clause MariaDB lacks. An assertion that can only
+hold on Postgres goes green on a consumer and red in this module's own matrix.
+
+**A seam describes an action, not a row.** `Actions.Auditable` asks a deployment
+to do something it audits and report what the entry will name;
+`Actions.Credentialed` asks it to store a secret its own way and report a
+fragment that must never be rendered. The first draft handed over a row for the
+suite to write, which is a backdoor: it puts the suite in the business of
+manufacturing state and asserts against rows no deployment produces. It is also
+the only shape that works — **no gRPC surface in this module records an audit
+entry**, so "call the surface and read the log afterwards" works in a consumer's
+deployment and writes nothing here.
+
+**Absence is a skip, and the skip says why.** A nil client in `Surfaces` is a
+surface the subject did not mount; a nil field in `Actions` is a state it cannot
+bring about. Both skip with the reason printed. That is `service.Config`'s
+presence-is-the-switch rule one level down. Nothing degrades quietly: a suite
+that silently asserted nothing is worse than no suite.
+
+**Construction stays in `<pkg>/grpc`.** `NewServer(nil, db)` has no wire form,
+a permission roster is a statement about a server rather than a call, and a
+converter test is about two Go types. So is anything that varies how the server
+was built — all seven of `audit/grpc`'s `WithChainsResolver` tests, and
+`identity/grpc`'s authorizer suite. A deployed service was built once and cannot
+be rebuilt by the thing testing it.
+
+**The suite is exported surface, but only `Run`, `Seams` and `Suite` are the
+contract.** Assertions may be added between versions. One that reds a consumer's
+CI has found a real wiring bug, which is what they installed it for. The only
+edge worth a note is a suite pointed at a *remotely deployed* service built from
+an older tag; an assertion needing a server floor says so and skips below it,
+the way `client-contract.md`'s R10 and R11 do.
+
+**Everything lands in this repository.** Conversions and the deletion of the
+in-process tests they supersede go together, here. The consumer's suite is
+refactored separately and later, by whoever owns it.
+
+## Dialects, and who proves what
+
+Dialect coverage is this module's, through the assembled subject fanning across
+the matrix. What a consumer's run proves is their wiring, on their dialect — a
+different question, and the one they cannot answer any other way.
+
+Either real server may be one somebody else provided:
+
+```
+CONFORMANCE_POSTGRES_DSN    unset -> a container starts,  set -> that server
+CONFORMANCE_MYSQL_DSN       unset -> a container starts,  set -> that server
+```
+
+Unset, a developer needs nothing but Docker. Set, the identical assertions run
+against whatever is on the other end — a CI-provided database, or a local server
+on a day when the container runtime is unwell. That is what keeps "all three
+dialects, locally and in CI" one suite rather than two, and it is why the MySQL
+half waited on primitives-go v2.7.0 rather than being written twice.
+
+## CI
+
+The suites run in a workflow of their own, `.github/workflows/conformance.yaml`,
+on every pull request touching Go.
+
+They are **not** in the coverage gate, and that is about the number rather than
+about the tests. `go test` credits coverage to whichever harness executed the
+code, so `conformance/anonymous` reported 0.9% while asserting against all
+thirty-one of identity's RPCs on every run, and the two leaf suites that happen
+to sit beside a harness reported ~100%. Both figures are the same accident
+pointing in opposite directions. `codecov.yml` and `.scripts/coverage.sh` carry
+the long form; excluding them from a number is not excluding them from CI, and
+all three files say so and point at each other.
+
+## What exists
+
+| suite | assertions | notes |
+| --- | --- | --- |
+| `conformance/anonymous` | 142 | every RPC on all twelve surfaces |
+| `conformance/audit` | 5 | confinement, paging |
+| `conformance/identity` | 3 | confinement, paging, credential rendering |
+
+`conformance/anonymous` is the shape that pays, and the reason to prefer
+cross-cutting suites over per-surface ports where the promise allows it. It
+enumerates each service's RPCs from its protobuf descriptor rather than naming
+them, so an RPC added later is covered with nobody remembering to come back, and
+it reads each surface's own declaration of which methods are deliberately open
+— `waitlists.PublicMethods`, `signin.AnonymousMethods`,
+`passwordreset.AnonymousMethods` — rather than carrying a list that could
+disagree with them. Its roster is checked against `protoregistry.GlobalFiles`,
+because a missing entry compiles perfectly and quietly asserts nothing about an
+entire service.
+
+It asserts both directions. The 127 RPCs that require a caller must refuse one
+that has none; the 15 that do not must not be refused that way. The second
+direction is the one nothing else checks and the one with a user-visible
+failure: three of waitlists' public RPCs are a signup form, the link in the mail
+that follows, and the unsubscribe in that mail.
+
+Roughly 142 of the 150 assertions are dialect-independent; that ratio inverts as
+per-surface work lands, which is almost entirely SQL-shaped.
+
+## What it has already found
+
+**platform-go#879** — concurrent registrations deadlocked on MySQL and MariaDB,
+deterministically, and never on Postgres or SQLite. `replaceRoles` cleared an
+owner's grants whether or not there was anything to clear, and on InnoDB a
+`DELETE` matching no row still gap-locks the range it scanned. Fixed by asking
+before clearing. Every existing identity test runs on SQLite, where it cannot
+happen.
+
+**primitives-go#26** — `pgtest` could be pointed at a server CI already provides
+and its siblings could not, so the escape hatch covered one third of a
+three-dialect matrix. Shipped as primitives-go v2.7.0.
+
+**An unexplained MariaDB failure** — `Error 1020 (HY000): Record has changed
+since last read` raised from `clearDefaultAccountsForUser`, MariaDB only,
+concurrency-dependent (`-parallel 1` passes). The mechanism is **not** known. A
+gap-lock hypothesis was tried and falsified: the statement could not be made to
+fail in isolation, either alone at two-way concurrency or in its real
+`INSERT ... ON DUPLICATE KEY UPDATE`-then-`UPDATE` sequence at six-way.
+Diagnosing it needs `SHOW ENGINE INNODB STATUS` captured at the moment of
+failure and the other statements in the same transaction. Whether the branch is
+still red on it has not been re-verified since the fix for #879 landed.
+
+## What is left
+
+In rough order of value per line:
+
+1. **The assembled subject.** `service.New` standing up the surfaces, so the
+   composition root is actually exercised. This is the layer that exists nowhere
+   — every subject today is a hand-built server — and it is the one a consumer
+   cannot substitute for. Nothing proves the extractor reaches all fourteen
+   surfaces until this exists.
+2. **The remaining cross-cutting suites.** Every paged read refusing a malformed
+   filter, and pagination honesty. Both are descriptor-driven the way
+   `anonymous` is, and should land before the per-surface tail.
+3. **The per-surface tail.** Roughly 54 more of identity's, then ten further
+   surfaces, deleting the in-process tests each conversion supersedes. Expect
+   about 55% of a surface's tests to convert: the rest are construction,
+   contract or converter tests that correctly stay put.
+4. **Resolve the MariaDB 1020**, or record why it is acceptable.
+
+An open question nobody has answered: whether to do 1 and 2 before 3, or work
+depth-first through a surface at a time. The ratio argues for 1 and 2 —
+`anonymous` got 142 assertions from about 250 lines, identity's confinement
+cluster got 3 from about 150 — but the per-surface assertions are the ones that
+catch dialect bugs, and #879 was found by exactly one of them.
