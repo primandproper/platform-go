@@ -23,12 +23,15 @@ subject it runs against is a seam:
 	deployed    a consumer's running service over their own connection.
 	            Whether their wiring honors what this module promised.
 
-All three are a real client over a real connection. direct is not a lesser mode
-and it is not an adapter around a server: it dials a bufconn, so it carries the
-same interceptors, the same metadata and the same error encoding a consumer's
-does, and the status code an assertion reads is the code a client reads rather
-than the codes.Internal a handler hands over before a registered mapper has had
-it. waitlists/grpc's own harness carries a comment warning that a suite which
+All three are a real client over a real connection, and "real" is meant
+literally: every harness here serves on a loopback TCP listener and dials its
+address. There is no in-memory transport and no adapter around a server, which
+is deliberate — a test-only transport is one more thing standing between an
+assertion and the claim it is making, and measuring the alternative showed it
+buying nothing. So direct carries the same interceptors, the same metadata and
+the same error encoding a consumer's connection does, and the status code an
+assertion reads is the code a client reads rather than the codes.Internal a
+handler hands over before a registered mapper has had it. waitlists/grpc's own harness carries a comment warning that a suite which
 skipped that registration would pin Internal as the answer to "we have stopped
 taking signups" and pass.
 

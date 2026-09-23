@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/test/bufconn"
 )
 
 // TestMain registers the domain tier's error mappers, which is the call a
@@ -49,7 +48,7 @@ const mdScope = "conformance-scope"
 const auditedResourceType = "conformance_audited"
 
 // TestConformance_Direct runs the shared suite against a hand-built server on a
-// bufconn over SQLite.
+// loopback TCP listener over SQLite.
 //
 // This is the fast mode, and the point of it is that it is not a reduced one:
 // the client is real, the connection is real, and both interceptors are in the
@@ -176,16 +175,14 @@ func serve(t *testing.T, srv *auditgrpc.Server) *auditclient.Client {
 		grpc.ChainUnaryInterceptor(grpcerrors.UnaryErrorEncodingInterceptor()))
 	srv.RegisterOn(grpcServer)
 
-	listener := bufconn.Listen(1 << 20)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	must.NoError(t, err)
 
 	go func() { _ = grpcServer.Serve(listener) }()
 
 	t.Cleanup(grpcServer.Stop)
 
-	conn, err := grpc.NewClient("passthrough:///bufnet",
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-			return listener.DialContext(ctx)
-		}),
+	conn, err := grpc.NewClient(listener.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		auditclient.DefaultInterceptors(),
 	)
