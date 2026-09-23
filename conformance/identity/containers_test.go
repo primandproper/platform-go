@@ -13,16 +13,6 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-//
-// It is named here rather than inherited because the two are not the same
-// database for these purposes — MariaDB has no FOR SHARE, and a clause probed
-// against one is not thereby available on the other. A deployment running stock
-// MySQL should point this suite at one through the environment rather than
-// assume this row covers it.
-const defaultMySQLImage = "mariadb:11"
-
 // The environment variables that let this suite run against a server somebody
 // else provided.
 //
@@ -80,6 +70,6 @@ func TestConformance_RealServers(T *testing.T) {
 			t.Cleanup(func() { _ = db.Close() })
 
 			runAgainst(t, db, dialect.MySQL)
-		}, mysqltest.WithImage(defaultMySQLImage), mysqltest.WithDSNFromEnv(mysqlDSNEnv))
+		}, mysqltest.WithDSNFromEnv(mysqlDSNEnv))
 	})
 }

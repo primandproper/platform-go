@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -24,10 +25,6 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
-
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
 
 // prefixCounter names a fresh pair of tables per subtest. Subtests share one
 // container, so they must not share tables — the chain is global to a scope
@@ -583,15 +580,43 @@ func runWithMySQL(tb testing.TB, fn func(ctx context.Context, client database.Cl
 	tb.Helper()
 
 	mysqltest.Run(tb, func(ctx context.Context, my *mysqltest.Instance) {
+		permitTriggerCreation(ctx, tb, my)
+
 		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
 		must.NoError(tb, err)
 		tb.Cleanup(func() { _ = client.Close() })
 
 		fn(ctx, client)
 	},
-		mysqltest.WithImage(defaultMySQLImage),
 		mysqltest.WithCredentials("audittest", "audittest", "audittest"),
 	)
+}
+
+// permitTriggerCreation grants what AppendOnlyStatements needs on MySQL, as the
+// deployment's administrator rather than as its application role.
+//
+// Binary logging is on by default in MySQL 8 — and off by default in MariaDB,
+// which is why this was invisible until this suite stopped running against
+// MariaDB. With it on, a role that does not hold SUPER may not CREATE TRIGGER
+// at all: the statement comes back as error 1419, naming a privilege rather
+// than anything about the schema.
+//
+// So this is not the suite working around a restriction. It is the suite doing
+// the thing migrations' own documentation says a deployment must do before
+// those statements will apply, in the place a deployment does it — as an
+// administrator, once, against the server. The application role the closure
+// below gets is the unprivileged one it always was, and the triggers are
+// installed through it, which is the arrangement being tested.
+func permitTriggerCreation(ctx context.Context, tb testing.TB, my *mysqltest.Instance) {
+	tb.Helper()
+
+	root, err := sql.Open("mysql", my.RootConnectionString(tb))
+	must.NoError(tb, err)
+
+	defer func() { _ = root.Close() }()
+
+	_, err = root.ExecContext(ctx, "SET GLOBAL log_bin_trust_function_creators = 1")
+	must.NoError(tb, err, must.Sprint("granting the application role what CREATE TRIGGER needs under binary logging"))
 }
 
 func TestAudit_MySQL(T *testing.T) {
