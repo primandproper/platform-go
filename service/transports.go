@@ -111,12 +111,14 @@ var (
 
 // Transports is what a mounted surface needs and a Config cannot carry.
 //
-// Two seams, and they are the whole of the "you keep the policy" bargain. Every
-// surface this module ships is otherwise deterministic from the config: the
-// store it reads, the client it reads on, the observability it reports through.
-// What is not deterministic is who is calling and which rows they may act on,
-// and those are values a caller constructs rather than anything an environment
-// variable can express — so they arrive here, as arguments, and nothing about
+// Two required seams and one optional third, and they are the whole of the "you
+// keep the policy" bargain. Every surface this module ships is otherwise
+// deterministic from the config: the store it reads, the client it reads on,
+// the observability it reports through. What is not deterministic is who is
+// calling, which rows they may act on, and — for a deployment whose directory
+// and whose tenant are not the same thing — which tenant a request is against.
+// Those are values a caller constructs rather than anything an environment
+// variable can express, so they arrive here, as arguments, and nothing about
 // them is decided by this package.
 //
 // It is one struct rather than a variadic because the option slot on these
@@ -133,7 +135,37 @@ type Transports struct {
 	// one notion of a caller, so a surface that reads a narrower seam has that
 	// seam derived from this rather than asking for a second adapter that reads
 	// the same three facts.
+	//
+	// The one fact that derivation cannot always get right is the tenant — see
+	// TenantScope.
 	Extractor callers.PrincipalExtractor
+
+	// TenantScope resolves the tenant a request's rows belong to, for the three
+	// surfaces that mean the tenant rather than the directory: audit's
+	// ScopeResolver, operations' OwnerResolver and mediaregistry's caller
+	// scope. Nil derives it from Extractor's Principal.Scope(), which is what
+	// every consumer had before this field existed.
+	//
+	// It exists because a principal has two scopes and callers.Principal names
+	// one. Principal.Scope() is the directory the caller is in — identity's
+	// gRPC surface reads it exactly that way — and for a deployment with one
+	// directory it is tenancy.Global(). A deployment whose tenant is the
+	// account rather than the directory therefore files its audit entries under
+	// tenancy.Of(accountID) and, without this field, reads them back under
+	// Global(), which sees none of them. Making Principal.Scope() answer with
+	// the account instead would break identity, so the second scope is named
+	// here rather than folded into the first.
+	//
+	// The failure it removes is a quiet one. Nothing refuses a read in the
+	// wrong scope: a log that should be full answers "no entries", which looks
+	// like a system with nothing to report rather than one asking the wrong
+	// question. That is why the field is on this struct, where leaving it nil
+	// is visibly a decision, rather than an interface a consumer can fail to
+	// implement and never hear about.
+	//
+	// It does not touch dataprivacy's subject resolver, which reads a user and
+	// not a scope.
+	TenantScope func(ctx context.Context) (tenancy.Scope, error)
 
 	// Authorizers are the per-surface rules about which rows a caller who may
 	// make this call may make it against.
@@ -410,6 +442,18 @@ func (m *mount) caller(surface string) (callers.PrincipalExtractor, bool) {
 	return m.t.Extractor, true
 }
 
+// tenantScope is the resolver the surfaces that mean the tenant are mounted
+// with: the application's, when it supplied one, and otherwise the derivation
+// from the principal that every consumer had before Transports.TenantScope
+// existed.
+func (m *mount) tenantScope(extract callers.PrincipalExtractor) func(context.Context) (tenancy.Scope, error) {
+	if m.t.TenantScope != nil {
+		return m.t.TenantScope
+	}
+
+	return deriveScope(extract)
+}
+
 // fail records a surface that could not be built, naming it.
 //
 // The surface's own sentinel is underneath, which is the whole intent of
@@ -504,6 +548,10 @@ func (m *mount) routesLanded(surface string, router *routing.Router) bool {
 // same function type under two names because they ask the same question of the
 // same value. Neither package may say so — they are siblings, not a hierarchy —
 // so this is where the one answer is written.
+//
+// It is the fallback rather than the rule: a deployment whose tenant is not its
+// directory supplies Transports.TenantScope, and mount.tenantScope prefers it.
+// See that field for why the two are different questions.
 func deriveScope(extract callers.PrincipalExtractor) func(context.Context) (tenancy.Scope, error) {
 	return func(ctx context.Context) (tenancy.Scope, error) {
 		principal, ok := extract(ctx)
@@ -533,14 +581,27 @@ func deriveSubject(extract callers.PrincipalExtractor) func(context.Context) (da
 }
 
 // deriveMediaCaller reads mediaregistry's two-field caller off the principal.
-func deriveMediaCaller(extract callers.PrincipalExtractor) func(context.Context) (mediaregistryhttp.Caller, error) {
+//
+// The identifier is the principal's and the scope is the tenant's, which is why
+// this takes the tenant resolver rather than reading Principal.Scope() itself:
+// mediaregistry documents Caller.Scope as "the tenant the request is being made
+// in", and an object filed under an account is not found under a directory.
+func deriveMediaCaller(
+	extract callers.PrincipalExtractor,
+	tenant func(context.Context) (tenancy.Scope, error),
+) func(context.Context) (mediaregistryhttp.Caller, error) {
 	return func(ctx context.Context) (mediaregistryhttp.Caller, error) {
 		principal, ok := extract(ctx)
 		if !ok {
 			return mediaregistryhttp.Caller{}, ErrNoPrincipal
 		}
 
-		return mediaregistryhttp.Caller{PrincipalID: principal.UserID(), Scope: principal.Scope()}, nil
+		scope, err := tenant(ctx)
+		if err != nil {
+			return mediaregistryhttp.Caller{}, err
+		}
+
+		return mediaregistryhttp.Caller{PrincipalID: principal.UserID(), Scope: scope}, nil
 	}
 }
 
@@ -567,7 +628,7 @@ func (m *mount) audit() {
 
 	srv, err := auditgrpc.NewServer(reader, client,
 		auditgrpc.WithPillars(m.pillars),
-		auditgrpc.WithScopeResolver(deriveScope(extract)),
+		auditgrpc.WithScopeResolver(m.tenantScope(extract)),
 	)
 	if err != nil {
 		m.fail("audit", err)
@@ -1013,7 +1074,7 @@ func (m *mount) mediaRegistry() {
 	opts := []mediaregistryhttp.Option{
 		mediaregistryhttp.WithLogger(m.pillars.Logger),
 		mediaregistryhttp.WithTracerProvider(m.pillars.TracerProvider),
-		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract)),
+		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract, m.tenantScope(extract))),
 	}
 	if m.t.Authorizers.MediaObjects != nil {
 		opts = append(opts, mediaregistryhttp.WithEntitlement(m.t.Authorizers.MediaObjects))
@@ -1059,7 +1120,7 @@ func (m *mount) operations() {
 	opts := []operationshttp.Option{
 		operationshttp.WithLogger(m.pillars.Logger),
 		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
-		operationshttp.WithOwnerResolver(deriveScope(extract)),
+		operationshttp.WithOwnerResolver(m.tenantScope(extract)),
 	}
 
 	if watcher, watching := need[*operations.Watcher](m); watching {

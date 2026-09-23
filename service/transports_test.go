@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
+	"net"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
@@ -42,6 +45,7 @@ import (
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
 	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
@@ -53,6 +57,8 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 // testPrincipal is the three facts a surface reads off a caller.
@@ -517,9 +523,29 @@ func TestDerivedSeams(T *testing.T) {
 	T.Run("the caller a media request is from", func(t *testing.T) {
 		t.Parallel()
 
-		mediaCaller, err := deriveMediaCaller(withPrincipal)(withCaller)
+		mediaCaller, err := deriveMediaCaller(withPrincipal, deriveScope(withPrincipal))(withCaller)
 		must.NoError(t, err)
 		test.EqOp(t, mediaregistryhttp.Caller{PrincipalID: "user_1", Scope: caller.scope}, mediaCaller)
+	})
+
+	T.Run("a media caller carries the tenant it was handed rather than the directory", func(t *testing.T) {
+		t.Parallel()
+
+		tenant := func(context.Context) (tenancy.Scope, error) { return tenancy.Of("account_1"), nil }
+
+		mediaCaller, err := deriveMediaCaller(withPrincipal, tenant)(withCaller)
+		must.NoError(t, err)
+		test.EqOp(t, mediaregistryhttp.Caller{PrincipalID: "user_1", Scope: tenancy.Of("account_1")}, mediaCaller)
+	})
+
+	T.Run("a tenant resolver that refuses takes the media caller down with it", func(t *testing.T) {
+		t.Parallel()
+
+		sentinel := errors.New("no tenant on this request")
+		tenant := func(context.Context) (tenancy.Scope, error) { return tenancy.Scope{}, sentinel }
+
+		_, err := deriveMediaCaller(withPrincipal, tenant)(withCaller)
+		test.ErrorIs(t, err, sentinel)
 	})
 
 	T.Run("a request with nobody on it is refused rather than read as the global scope", func(t *testing.T) {
@@ -533,8 +559,62 @@ func TestDerivedSeams(T *testing.T) {
 		_, err = deriveSubject(withPrincipal)(nobody)
 		test.ErrorIs(t, err, ErrNoPrincipal)
 
-		_, err = deriveMediaCaller(withPrincipal)(nobody)
+		_, err = deriveMediaCaller(withPrincipal, deriveScope(withPrincipal))(nobody)
 		test.ErrorIs(t, err, ErrNoPrincipal)
+	})
+}
+
+func TestMount_tenantScope(T *testing.T) {
+	T.Parallel()
+
+	caller := testPrincipal{userID: "user_1", scope: tenancy.Of("directory_1"), account: "account_1"}
+	withCaller := context.WithValue(context.Background(), principalKey{}, callers.Principal(caller))
+
+	T.Run("falls back to the principal's own scope", func(t *testing.T) {
+		t.Parallel()
+
+		m := &mount{t: &Transports{Extractor: withPrincipal}}
+
+		scope, err := m.tenantScope(withPrincipal)(withCaller)
+		must.NoError(t, err)
+		test.EqOp(t, tenancy.Of("directory_1"), scope)
+	})
+
+	T.Run("prefers the application's resolver", func(t *testing.T) {
+		t.Parallel()
+
+		m := &mount{t: &Transports{
+			Extractor: withPrincipal,
+			TenantScope: func(ctx context.Context) (tenancy.Scope, error) {
+				principal, ok := withPrincipal(ctx)
+				if !ok {
+					return tenancy.Scope{}, ErrNoPrincipal
+				}
+
+				return tenancy.Of(principal.ActiveAccountID()), nil
+			},
+		}}
+
+		// The directory the caller is in and the tenant the request is against
+		// are different answers, which is the whole reason the field exists.
+		scope, err := m.tenantScope(withPrincipal)(withCaller)
+		must.NoError(t, err)
+		test.EqOp(t, tenancy.Of("account_1"), scope)
+		test.NotEqOp(t, caller.scope, scope)
+	})
+
+	T.Run("carries the application resolver's refusal out", func(t *testing.T) {
+		t.Parallel()
+
+		sentinel := errors.New("this caller belongs to no tenant")
+
+		m := &mount{t: &Transports{
+			Extractor:   withPrincipal,
+			TenantScope: func(context.Context) (tenancy.Scope, error) { return tenancy.Scope{}, sentinel },
+		}}
+
+		_, err := m.tenantScope(withPrincipal)(withCaller)
+		test.ErrorIs(t, err, sentinel)
 	})
 }
 
@@ -605,3 +685,115 @@ func (stubResetDirectory) UpdateUserPassword(
 type stubResetMailer struct{}
 
 func (stubResetMailer) SendPasswordReset(context.Context, *passwordreset.Mail) error { return nil }
+
+// TestRegisterTransports_tenantScopeReachesTheMountedSurface is the assertion
+// the unit tests above cannot make: that the three surfaces meaning the tenant
+// are mounted with Transports.TenantScope and not with the derivation.
+//
+// It proves it by removing the derivation's input. A context value does not
+// cross a connection, so the principal withPrincipal reads is not there on the
+// server side of a real gRPC call: deriveScope would refuse the request with
+// ErrNoPrincipal. A read that succeeds, against the scope the resolver named,
+// is therefore a read the resolver placed.
+func TestRegisterTransports_tenantScopeReachesTheMountedSurface(T *testing.T) {
+	T.Parallel()
+
+	const tenant = "acct_the_studio"
+
+	T.Run("audit reads the tenant the application named", func(t *testing.T) {
+		t.Parallel()
+
+		var asked *tenancy.Scope
+
+		reader := &auditmock.ReaderMock{
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = query.Scope
+
+				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
+			},
+		}
+
+		client := auditServiceOverBufconn(t, reader, &Transports{
+			Extractor:   withPrincipal,
+			Authorizers: allAuthorizers(),
+			TenantScope: func(context.Context) (tenancy.Scope, error) { return tenancy.Of(tenant), nil },
+		})
+
+		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
+		must.NoError(t, err)
+
+		must.NotNil(t, asked, must.Sprint("the reader was never asked"))
+		test.EqOp(t, tenancy.Of(tenant), *asked)
+	})
+
+	T.Run("without one, the derivation still governs and refuses a request with nobody on it", func(t *testing.T) {
+		t.Parallel()
+
+		reader := &auditmock.ReaderMock{
+			ListFunc: func(context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				t.Error("the reader must not be consulted for a request that could not be placed")
+
+				return nil, nil
+			},
+		}
+
+		client := auditServiceOverBufconn(t, reader, &Transports{
+			Extractor:   withPrincipal,
+			Authorizers: allAuthorizers(),
+		})
+
+		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
+		must.Error(t, err, must.Sprint("a request with no principal and no resolver has no scope to be against"))
+	})
+}
+
+// auditServiceOverBufconn mounts the transports and serves them on an
+// in-process connection, returning a client for the audit surface.
+//
+// The audit config block is deliberately absent: leaving it out is what stops
+// Register providing its own reader, so the test's can be the one the surface
+// mounts over.
+func auditServiceOverBufconn(t *testing.T, reader audit.Reader, transports *Transports) auditpb.AuditServiceClient {
+	t.Helper()
+
+	i := do.New()
+	do.ProvideValue[context.Context](i, t.Context())
+
+	cfg := &Config{Name: "example"}
+	must.NoError(t, cfg.ValidateWithContext(t.Context()))
+	Register(i, cfg)
+
+	do.ProvideValue[database.Client](i, &databasemock.ClientMock{
+		ReaderFunc: func() database.SQLQueryExecutor { return &databasemock.SQLQueryExecutorMock{} },
+	})
+	do.ProvideValue(i, reader)
+
+	RegisterTransports(i, transports)
+
+	mounted, err := do.Invoke[*mountedTransports](i)
+	must.NoError(t, err)
+	must.SliceContains(t, mounted.names, "audit gRPC")
+
+	server := grpc.NewServer()
+	for _, register := range mounted.registrations {
+		register(server)
+	}
+
+	listener := bufconn.Listen(1024 * 1024)
+
+	go func() { _ = server.Serve(listener) }()
+
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	must.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = conn.Close()
+		server.Stop()
+		_ = listener.Close()
+	})
+
+	return auditpb.NewAuditServiceClient(conn)
+}

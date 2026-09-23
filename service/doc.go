@@ -104,6 +104,16 @@ dataprivacy wants a subject, mediaregistry wants a caller identifier and a scope
 — and each of those is derived from the one extractor rather than asked for
 again.
 
+The tenant scope is the one derivation an extractor cannot always make. A
+principal carries the directory it is in, and for a deployment with one
+directory that is the global scope; a deployment whose tenant is the account
+files its audit entries, its operations and its media under the account instead.
+Those two readings cannot both be Principal.Scope() — identity reads it as the
+directory — so a deployment where they differ supplies Transports.TenantScope,
+and the three surfaces that mean the tenant are mounted with it. Left nil it is
+derived as before, which is right for every deployment whose directory is its
+tenant.
+
 The authorizers are the rules about which rows a caller who may make a call may
 make it against. Four are required, and a surface configured without one fails
 the startup that configured it rather than mounting open — under the surface's
