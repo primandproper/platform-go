@@ -20,10 +20,13 @@ import (
 	conformanceanonymous "github.com/primandproper/platform-go/v14/conformance/anonymous"
 	conformanceaudit "github.com/primandproper/platform-go/v14/conformance/audit"
 	conformancedataprivacy "github.com/primandproper/platform-go/v14/conformance/dataprivacy"
+	conformancebilling "github.com/primandproper/platform-go/v14/conformance/billing"
 	conformancefilters "github.com/primandproper/platform-go/v14/conformance/filters"
 	conformanceidentity "github.com/primandproper/platform-go/v14/conformance/identity"
+	conformanceoauth2clients "github.com/primandproper/platform-go/v14/conformance/oauth2clients"
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
 	conformancesettings "github.com/primandproper/platform-go/v14/conformance/settings"
+	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
 )
 
 // Suites is every suite, in the order they run.
@@ -44,6 +47,9 @@ func Suites() []conformance.Suite {
 		conformanceidentity.Suite(),
 		conformancedataprivacy.Suite(),
 		conformancesettings.Suite(),
+		conformancebilling.Suite(),
+		conformanceoauth2clients.Suite(),
+		conformancepasswordreset.Suite(),
 	}
 }
 
