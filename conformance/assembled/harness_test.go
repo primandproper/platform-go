@@ -21,6 +21,8 @@ import (
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
+	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
+	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/billing"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
@@ -182,6 +184,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	// And the consumer's reset mailer, which is where a reset link goes.
 	mailbox := &resetMailbox{}
 	do.ProvideValue(i, mailbox)
+
+	// And the consumer's sign-in link mailer.
+	links := &magicLinkMailbox{}
+	do.ProvideValue(i, links)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
@@ -297,6 +303,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			EmailVerified:      verifyEmail(client, identityStore),
 			Subscribed:         subscribe(client, do.MustInvoke[billing.Store](i)),
 			PasswordResetToken: mailbox.token,
+			VerificationToken:  invites.verificationToken,
+			MagicLinkToken:     links.token,
 
 			// The recorder the composition root built, inside a transaction on
 			// the client it built — the end of the path a consumer's handler
@@ -482,6 +490,8 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 		"waitlists":      waitlistsmigrations.Statements,
 		"webhooks":       webhooksmigrations.Statements,
 		"media registry": mediaregistrymigrations.Statements,
+		"magic links":    magiclinkmigrations.Statements,
+		"refresh tokens": refreshtokenmigrations.Statements,
 	} {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))

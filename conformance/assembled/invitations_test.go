@@ -16,9 +16,14 @@ import (
 // AfterInvite hook a consumer would use to mail the link, remembering the token
 // instead. It is registered as the service's identity.Hooks, so what it sees is
 // exactly what a consumer's hook would be handed.
+//
+// It is also where a registrant's verification link goes to be mailed, since a
+// deployment has one identity.Hooks and the two registration hooks are the only
+// places that secret is readable — see verifications_test.go.
 type invitationTokens struct {
 	identity.NoopHooks
-	tokens sync.Map
+	tokens        sync.Map
+	verifications sync.Map
 }
 
 var _ identity.Hooks = (*invitationTokens)(nil)

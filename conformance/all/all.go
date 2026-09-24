@@ -27,6 +27,7 @@ import (
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
 	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
 	conformancesettings "github.com/primandproper/platform-go/v14/conformance/settings"
+	conformancesignin "github.com/primandproper/platform-go/v14/conformance/signin"
 	conformancewaitlists "github.com/primandproper/platform-go/v14/conformance/waitlists"
 )
 
@@ -52,6 +53,7 @@ func Suites() []conformance.Suite {
 		conformanceoauth2clients.Suite(),
 		conformancepasswordreset.Suite(),
 		conformancewaitlists.Suite(),
+		conformancesignin.Suite(),
 	}
 }
 
