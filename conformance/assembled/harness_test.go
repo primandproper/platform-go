@@ -352,6 +352,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 
 		// Every table is this run's own, by prefix.
 		ExclusiveDatabase: true,
+
+		// service mounts waitlists with its default scope resolver, which is
+		// the single-tenant answer: a visitor is in the global directory.
+		VisitorScope: new(tenancy.Global()),
 	})
 }
 

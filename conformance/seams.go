@@ -106,6 +106,24 @@ type Seams struct {
 	// clock movable, and a suite that waited for real time is a suite nobody
 	// runs.
 	ControlledTime bool
+
+	// VisitorScope is the tenant the deployment's waitlists surface places a
+	// request with nobody on it in — what its scope resolver answers for the
+	// Anonymous connection. Nil skips the assertions about the public half made
+	// without a caller, with the reason printed.
+	//
+	// A fact about the deployment rather than an action, and it is needed
+	// because a visitor's tenant is the one thing about a signup page no
+	// client can learn: the resolver reads the connection, and a deployment
+	// may place visitors by hostname, by port or nowhere but the global
+	// directory. An assertion that a visitor joined a list has to open that
+	// list somewhere the visitor lands, and then read it back as an operator
+	// in the same place.
+	//
+	// A pointer for SubjectRequest.Scope's reason: tenancy.Global() is a real
+	// answer here — it is the default resolver's — and must not read as
+	// "unknown".
+	VisitorScope *tenancy.Scope
 }
 
 // Subject is one caller, and the clients it calls through.
