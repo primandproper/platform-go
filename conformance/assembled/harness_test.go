@@ -2,6 +2,8 @@ package assembled_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strconv"
@@ -13,15 +15,42 @@ import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	auditclient "github.com/primandproper/platform-go/v14/audit/grpc/client"
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
+	oauth2clientsclient "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc/client"
+	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
+	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
+	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
+	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
+	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
 	"github.com/primandproper/platform-go/v14/callers"
+	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
+	commentsclient "github.com/primandproper/platform-go/v14/comments/grpc/client"
+	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
+	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
+	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
+	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
+	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
+	notificationsclient "github.com/primandproper/platform-go/v14/notifications/grpc/client"
+	notificationsmigrations "github.com/primandproper/platform-go/v14/notifications/migrations"
 	"github.com/primandproper/platform-go/v14/service"
+	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
+	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
+	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
+	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
+	waitlistsclient "github.com/primandproper/platform-go/v14/waitlists/grpc/client"
+	waitlistsmigrations "github.com/primandproper/platform-go/v14/waitlists/migrations"
+	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
+	webhooksclient "github.com/primandproper/platform-go/v14/webhooks/grpc/client"
+	webhooksmigrations "github.com/primandproper/platform-go/v14/webhooks/migrations"
 
+	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -74,8 +103,18 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		// its default only so the block survives normalization; the package
 		// documentation says why.
 		GRPCServer: &grpcserver.Config{MaxReceiveMessageSize: grpcserver.DefaultMaxMessageSize},
-		Audit:      &auditcfg.Config{Dialect: d, TablePrefix: prefix},
-		Identity:   &identitycfg.Config{TablePrefix: prefix},
+		Tokens:     tokenConfig(t),
+
+		// Every surface that has a config block, each under the run's prefix.
+		Audit:         &auditcfg.Config{Dialect: d, TablePrefix: prefix},
+		Billing:       &billingcfg.Config{TablePrefix: prefix},
+		Comments:      &commentscfg.Config{TablePrefix: prefix},
+		Identity:      &identitycfg.Config{TablePrefix: prefix},
+		IssueReports:  &issuereportscfg.Config{TablePrefix: prefix},
+		Notifications: &notificationscfg.Config{TablePrefix: prefix},
+		Settings:      &settingscfg.Config{TablePrefix: prefix},
+		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
+		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
 	}
 	must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
@@ -84,15 +123,19 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 
 	service.Register(i, cfg)
 
-	// What a consumer's main adds beyond the config: the services Register does
-	// not build, the interceptors the gRPC server resolves, and the extractor.
-	identitycfg.RegisterService(i)
+	// What a consumer's main adds beyond the config: the declarations and
+	// services Register does not build, the interceptors the gRPC server
+	// resolves, the extractor, and the rules about rows.
+	registerApplication(i, prefix)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
 	})
 	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
-	service.RegisterTransports(i, &service.Transports{Extractor: extractPrincipal})
+	service.RegisterTransports(i, &service.Transports{
+		Extractor:   extractPrincipal,
+		Authorizers: authorizers(),
+	})
 
 	svc, err := service.New(i)
 	must.NoError(t, err)
@@ -107,9 +150,21 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	identityStore := do.MustInvoke[identity.Store](i)
 	recorder := do.MustInvoke[audit.Recorder](i)
 
+	// Every surface, on the one connection. passwordreset ships no client
+	// wrapper, so it is the generated interface directly.
 	surfaces := conformance.Surfaces{
-		Audit:    auditclient.Wrap(conn),
-		Identity: identityclient.Wrap(conn),
+		Audit:         auditclient.Wrap(conn),
+		Billing:       billingclient.Wrap(conn),
+		Comments:      commentsclient.Wrap(conn),
+		Identity:      identityclient.Wrap(conn),
+		IssueReports:  issuereportsclient.Wrap(conn),
+		Notifications: notificationsclient.Wrap(conn),
+		OAuth2Clients: oauth2clientsclient.Wrap(conn),
+		PasswordReset: passwordresetpb.NewPasswordResetServiceClient(conn),
+		Settings:      settingsclient.Wrap(conn),
+		SignIn:        signinclient.Wrap(conn),
+		Waitlists:     waitlistsclient.Wrap(conn),
+		Webhooks:      webhooksclient.Wrap(conn),
 	}
 
 	conformanceall.Run(t, conformance.Seams{
@@ -208,6 +263,24 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	})
 }
 
+// tokenConfig is a JWT issuer with a key minted for this run, which is what
+// signin's service signs with. Nothing asserts on a token's contents yet; the
+// key is random so that no two runs could accept each other's.
+func tokenConfig(t *testing.T) *tokenscfg.Config {
+	t.Helper()
+
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	must.NoError(t, err)
+
+	return &tokenscfg.Config{
+		Provider:                tokenscfg.ProviderJWT,
+		Issuer:                  "conformance",
+		Audience:                "conformance",
+		Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(key),
+	}
+}
+
 // run starts svc and returns the address its gRPC server bound, stopping it
 // when the test ends.
 func run(t *testing.T, svc *service.Service, srv *grpcserver.Server) net.Addr {
@@ -277,8 +350,17 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 	t.Helper()
 
 	for name, render := range map[string]func(dialect.Dialect, string) ([]string, error){
-		"audit":    auditmigrations.Statements,
-		"identity": identitymigrations.Statements,
+		"audit":          auditmigrations.Statements,
+		"billing":        billingmigrations.Statements,
+		"comments":       commentsmigrations.Statements,
+		"identity":       identitymigrations.Statements,
+		"issue reports":  issuereportsmigrations.Statements,
+		"notifications":  notificationsmigrations.Statements,
+		"oauth2 clients": oauth2clientsmigrations.Statements,
+		"password reset": passwordresetmigrations.Statements,
+		"settings":       settingsmigrations.Statements,
+		"waitlists":      waitlistsmigrations.Statements,
+		"webhooks":       webhooksmigrations.Statements,
 	} {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))

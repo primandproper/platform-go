@@ -8,8 +8,8 @@ consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
 **Status:** in progress. Three suites and all three subjects exist; the assembled
-subject mounts two of the twelve gRPC surfaces, and the per-surface suites cover
-two. [What is left](#what-is-left) is the honest list, and nothing below
+subject mounts all twelve gRPC surfaces over all three dialects, and the
+per-surface suites cover two of them. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
 
 ## The problem it exists to solve
@@ -161,22 +161,28 @@ all three files say so and point at each other.
 
 | suite | assertions | notes |
 | --- | --- | --- |
-| `conformance/anonymous` | 142 | every RPC on all twelve surfaces, executed for the ones a subject mounts |
+| `conformance/anonymous` | 142 | every RPC on all twelve surfaces, all executed by the assembled subject |
 | `conformance/audit` | 5 | confinement, paging |
 | `conformance/identity` | 3 | confinement, paging, credential rendering |
 
 | subject | where | mounts |
 | --- | --- | --- |
 | direct | `conformance/audit`, `conformance/identity` | one surface each |
-| assembled | `conformance/assembled` | audit and identity, over SQLite, Postgres and MySQL 8 |
+| assembled | `conformance/assembled` | all twelve, over SQLite, Postgres and MySQL 8 |
 
-**142 is what is enumerated, not what has run.** The anonymous suite reads all
+**142 was what was enumerated, not what had run.** The anonymous suite reads all
 twelve descriptors, but an RPC is only called on a surface the subject mounted,
 and until the assembled subject existed no subject mounted anything but identity
 — so identity's 31 were executed and the other 111 were compiled. Audit's three
 ran for the first time through `service.New`, and all three failed; see below.
-Every surface the assembled subject mounts from here raises the executed number
-without anybody editing the suite.
+With every surface mounted all 142 run, on three dialects. The other ten
+surfaces passed on first mounting: what they refuse without a caller was already
+right, and the value of running them is that it now stays right.
+
+A surface the composition root stops mounting fails here rather than skipping:
+the harness hands every suite a client for all twelve, and an unmounted one
+answers `Unimplemented`. Dropping billing's config block reds all eighteen of
+its RPCs.
 
 `conformance/anonymous` is the shape that pays, and the reason to prefer
 cross-cutting suites over per-surface ports where the promise allows it. It
@@ -242,12 +248,9 @@ concurrent writers ran one at a time.
 
 In rough order of value per line:
 
-1. **The rest of the assembled subject.** It exists and mounts audit and
-   identity. The other ten gRPC surfaces each need what a consumer's main owes
-   them — a config block, a migration, and for some an application-registered
-   service or a required authorizer — and every one mounted puts that surface's
-   share of the anonymous suite's 142 under execution. Nothing proves the
-   extractor reaches all fourteen surfaces until it mounts them.
+1. **The three HTTP surfaces in the assembled subject.** dataprivacy,
+   mediaregistry and operations mount on the router rather than the gRPC server,
+   and no suite here speaks HTTP yet; the twelve gRPC surfaces are all mounted.
 2. **The remaining cross-cutting suites.** Every paged read refusing a malformed
    filter, and pagination honesty. Both are descriptor-driven the way
    `anonymous` is, and should land before the per-surface tail.

@@ -24,9 +24,18 @@ it would be proving a service nobody could run.
     and a consumer who forgets the encoder has every mapped sentinel reach their
     clients as Internal, which the anonymous suite reads as a failure.
   - The services Register does not build. identity/config's RegisterService is a
-    call the application makes, so the identity surface mounts for an application
-    that made it and is absent for one that did not.
-  - The extractor, through service.Transports.
+    call the application makes, and oauth2clients, passwordreset and signin have
+    no config block at all — each is built from what the composition root
+    already registered, the way its own documentation says a consumer builds it.
+    A surface over a service nobody built stays absent, which is the absence rule
+    working rather than a gap in it.
+  - The declarations no environment variable can express: comments.Targets and
+    webhooks.Catalog.
+  - The extractor, through service.Transports, and the four authorizers that
+    surfaces refuse to mount without. They encode one rule — a caller has
+    standing in their own user and their active account — rather than a yes,
+    because a permissive authorizer would let every later confinement assertion
+    pass on the strength of the rule being absent.
   - The schema. Nothing in service runs migrations; a consumer renders each
     package's migrations.Statements with the prefix they configured, and so does
     this.
@@ -45,6 +54,14 @@ setting is Port: 0 is exactly that — so it is released and no server is built.
 harness spells out MaxReceiveMessageSize at its default, which means the same thing
 and survives. A consumer asking for an ephemeral port through their environment
 alone meets the same rule.
+
+# Every surface, or a failure
+
+All twelve gRPC surfaces are mounted, and the harness hands every suite a client
+for each regardless of what mounted. That is deliberate: a surface the
+composition root failed to mount answers Unimplemented, and the anonymous suite
+reads that as a failure rather than skipping, so a regression in what
+RegisterTransports mounts cannot pass as an absence.
 
 # Isolation
 
