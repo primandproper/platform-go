@@ -73,7 +73,7 @@ A consumer runs one. This module supports three, and the weakest of them
 decides how an assertion may be written: no sub-second timestamp comparison
 (unison truncates SQLite times to seconds), no read-back that assumes RETURNING
 (MySQL has none), no ordering relied upon without an explicit ORDER BY, and
-nothing that needs a clause MariaDB does not have. An assertion that can only
+nothing that needs a clause MySQL 8 does not have. An assertion that can only
 hold on Postgres is an assertion that goes green on a consumer and red in this
 module's own matrix, which is the wrong way round.
 

@@ -30,7 +30,7 @@ const (
 	mysqlDSNEnv    = "CONFORMANCE_MYSQL_DSN"
 )
 
-// TestConformance_RealServers runs every suite against Postgres and MariaDB.
+// TestConformance_RealServers runs every suite against Postgres and MySQL 8.
 //
 // The assertions are the ones TestConformance_SQLite ran, unchanged and not
 // re-stated — which is the whole claim of the seam. What changes is the driver

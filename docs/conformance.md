@@ -7,10 +7,10 @@ It lives here for the reason `client-contract.md` does: it describes a thing
 consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
-**Status:** in progress. Five suites' worth of seams and three surfaces exist;
-nine surfaces and the assembled subject do not. [What is left](#what-is-left)
-is the honest list, and nothing below describes something that has not been
-written.
+**Status:** in progress. Three suites and all three subjects exist; the assembled
+subject mounts two of the twelve gRPC surfaces, and the per-surface suites cover
+two. [What is left](#what-is-left) is the honest list, and nothing below
+describes something that has not been written.
 
 ## The problem it exists to solve
 
@@ -47,7 +47,7 @@ it runs against is a seam.
 | subject | server | database | where it runs |
 | --- | --- | --- | --- |
 | **direct** | hand-built, in the suite's own harness | SQLite | every pull request, seconds, no Docker |
-| **assembled** | built by `service.New` | Postgres, MySQL/MariaDB | every pull request |
+| **assembled** | built by `service.New` | SQLite, Postgres, MySQL 8 | every pull request |
 | **deployed** | the consumer's | theirs | their integration suite |
 
 All three are a real client over a real connection. Every harness serves on a
@@ -83,7 +83,7 @@ depends on what else is running, which will be read as a dialect bug.
 **Assertions are written to the weakest dialect in the matrix.** A consumer runs
 one; this module supports three. No sub-second timestamp comparison, no
 read-back assuming `RETURNING`, no ordering relied on without an explicit
-`ORDER BY`, nothing needing a clause MariaDB lacks. An assertion that can only
+`ORDER BY`, nothing needing a clause MySQL 8 lacks. An assertion that can only
 hold on Postgres goes green on a consumer and red in this module's own matrix.
 
 **A seam describes an action, not a row.** `Actions.Auditable` asks a deployment
@@ -144,6 +144,10 @@ half waited on primitives-go v2.7.0 rather than being written twice.
 The suites run in a workflow of their own, `.github/workflows/conformance.yaml`,
 on every pull request touching Go.
 
+Containers are on: the real-server half of every subject runs there, from the
+runner's Docker daemon. A job that already has databases sets the two
+`CONFORMANCE_*_DSN` variables instead and starts nothing.
+
 They are **not** in the coverage gate, and that is about the number rather than
 about the tests. `go test` credits coverage to whichever harness executed the
 code, so `conformance/anonymous` reported 0.9% while asserting against all
@@ -157,9 +161,22 @@ all three files say so and point at each other.
 
 | suite | assertions | notes |
 | --- | --- | --- |
-| `conformance/anonymous` | 142 | every RPC on all twelve surfaces |
+| `conformance/anonymous` | 142 | every RPC on all twelve surfaces, executed for the ones a subject mounts |
 | `conformance/audit` | 5 | confinement, paging |
 | `conformance/identity` | 3 | confinement, paging, credential rendering |
+
+| subject | where | mounts |
+| --- | --- | --- |
+| direct | `conformance/audit`, `conformance/identity` | one surface each |
+| assembled | `conformance/assembled` | audit and identity, over SQLite, Postgres and MySQL 8 |
+
+**142 is what is enumerated, not what has run.** The anonymous suite reads all
+twelve descriptors, but an RPC is only called on a surface the subject mounted,
+and until the assembled subject existed no subject mounted anything but identity
+— so identity's 31 were executed and the other 111 were compiled. Audit's three
+ran for the first time through `service.New`, and all three failed; see below.
+Every surface the assembled subject mounts from here raises the executed number
+without anybody editing the suite.
 
 `conformance/anonymous` is the shape that pays, and the reason to prefer
 cross-cutting suites over per-surface ports where the promise allows it. It
@@ -194,25 +211,43 @@ happen.
 and its siblings could not, so the escape hatch covered one third of a
 three-dialect matrix. Shipped as primitives-go v2.7.0.
 
-**An unexplained MariaDB failure** — `Error 1020 (HY000): Record has changed
-since last read` raised from `clearDefaultAccountsForUser`, MariaDB only,
-concurrency-dependent (`-parallel 1` passes). The mechanism is **not** known. A
-gap-lock hypothesis was tried and falsified: the statement could not be made to
-fail in isolation, either alone at two-way concurrency or in its real
-`INSERT ... ON DUPLICATE KEY UPDATE`-then-`UPDATE` sequence at six-way.
-Diagnosing it needs `SHOW ENGINE INNODB STATUS` captured at the moment of
-failure and the other statements in the same transaction. Whether the branch is
-still red on it has not been re-verified since the fix for #879 landed.
+**A MariaDB 1020, diagnosed** — `Error 1020 (HY000): Record has changed since
+last read`, from `clearDefaultAccountsForUser` under concurrent registration. It
+is MariaDB's REPEATABLE READ refusing an `UPDATE` whose current read disagrees
+with the snapshot an earlier consistent read in the same transaction opened;
+primitives-go#28 carries the reproduction. It is MariaDB's alone — the same
+suites pass on MySQL 8, which is what the matrix now runs — and what is left of
+it is #28's question of whether `WithTransaction` should retry what an engine
+says to retry.
+
+**A derived seam answered a missing caller as a bad request** — the first thing
+the assembled subject found, and something only it could. Four surfaces never
+see a principal: `service` derives the one fact each wants from the extractor.
+With nobody on the request the derivation's error was unmapped, so audit
+answered `InvalidArgument` and mediaregistry a 500, where the eight surfaces
+reading a principal themselves say `Unauthenticated`. Every direct harness
+hand-builds its resolver and never went through the derivation. Fixed:
+`callers.ErrNoPrincipal`, mapped, and wrapped by `service.ErrNoPrincipal`.
+
+**Two tenants' first audit entries deadlocked on MySQL** — found by the
+assembled subject over MySQL 8, the first time audit had run against a real
+server beside other writers. The recorder locked a scope's chain row and created
+it only when the locked read missed, and a missed locked read takes an InnoDB
+gap lock that another tenant's insert waits on. Fixed by creating before
+locking. audit's own container suite had a test for exactly this race and could
+not see it: its client config pinned every pool to one connection, so its
+concurrent writers ran one at a time.
 
 ## What is left
 
 In rough order of value per line:
 
-1. **The assembled subject.** `service.New` standing up the surfaces, so the
-   composition root is actually exercised. This is the layer that exists nowhere
-   — every subject today is a hand-built server — and it is the one a consumer
-   cannot substitute for. Nothing proves the extractor reaches all fourteen
-   surfaces until this exists.
+1. **The rest of the assembled subject.** It exists and mounts audit and
+   identity. The other ten gRPC surfaces each need what a consumer's main owes
+   them — a config block, a migration, and for some an application-registered
+   service or a required authorizer — and every one mounted puts that surface's
+   share of the anonymous suite's 142 under execution. Nothing proves the
+   extractor reaches all fourteen surfaces until it mounts them.
 2. **The remaining cross-cutting suites.** Every paged read refusing a malformed
    filter, and pagination honesty. Both are descriptor-driven the way
    `anonymous` is, and should land before the per-surface tail.
@@ -220,7 +255,6 @@ In rough order of value per line:
    surfaces, deleting the in-process tests each conversion supersedes. Expect
    about 55% of a surface's tests to convert: the rest are construction,
    contract or converter tests that correctly stay put.
-4. **Resolve the MariaDB 1020**, or record why it is acceptable.
 
 An open question nobody has answered: whether to do 1 and 2 before 3, or work
 depth-first through a surface at a time. The ratio argues for 1 and 2 —
