@@ -158,7 +158,7 @@ func products(t *testing.T, s *conformance.Session) {
 				Name:        "a renamed thing",
 				Description: "still sold",
 				Kind:        billingpb.ProductKind_PRODUCT_KIND_ONE_TIME,
-				Currency:    "USD",
+				Currency:    currencyUSD,
 				AmountCents: 750,
 			},
 		})
@@ -200,7 +200,7 @@ func products(t *testing.T, s *conformance.Session) {
 			Input: &billingpb.ProductUpdateInput{
 				Name:        "somebody else's name for it",
 				Kind:        billingpb.ProductKind_PRODUCT_KIND_ONE_TIME,
-				Currency:    "USD",
+				Currency:    currencyUSD,
 				AmountCents: 1,
 			},
 		})

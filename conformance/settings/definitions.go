@@ -27,18 +27,18 @@ func definitions(t *testing.T, s *conformance.Session) {
 			Name:         c.digest,
 			Description:  "how often we mail you",
 			Kind:         settingspb.SettingKind_SETTING_KIND_STRING,
-			DefaultValue: new("weekly"),
-			Enumeration:  []string{"weekly", "daily", "never"},
+			DefaultValue: new(optionWeekly),
+			Enumeration:  []string{optionWeekly, optionDaily, optionNever},
 		})
 
 		test.NotEq(t, "", definition.GetId(), test.Sprint("the row was stored without an identifier"))
 		test.EqOp(t, c.digest, definition.GetName())
 		test.EqOp(t, settingspb.SettingKind_SETTING_KIND_STRING, definition.GetKind())
-		test.EqOp(t, "weekly", definition.GetDefaultValue())
+		test.EqOp(t, optionWeekly, definition.GetDefaultValue())
 
 		// Sorted, which is the store reading an enumeration as a set rather
 		// than a sequence arriving unchanged.
-		test.Eq(t, []string{"daily", "never", "weekly"}, definition.GetEnumeration())
+		test.Eq(t, []string{optionDaily, optionNever, optionWeekly}, definition.GetEnumeration())
 
 		// The database's clock, read back by the write. A response carrying
 		// the epoch here is a console rendering "defined in 1970", and no
@@ -168,8 +168,8 @@ func definitions(t *testing.T, s *conformance.Session) {
 				Name:         c.digest,
 				Description:  "how often we mail you, revised",
 				Kind:         settingspb.SettingKind_SETTING_KIND_STRING,
-				DefaultValue: new("never"),
-				Enumeration:  []string{"daily", "never", "weekly"},
+				DefaultValue: new(optionNever),
+				Enumeration:  []string{optionDaily, optionNever, optionWeekly},
 			},
 		})
 		must.NoError(t, err)
@@ -178,7 +178,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		must.NotNil(t, updated)
 		test.EqOp(t, existing.GetId(), updated.GetId())
 		test.EqOp(t, "how often we mail you, revised", updated.GetDescription())
-		test.EqOp(t, "never", updated.GetDefaultValue())
+		test.EqOp(t, optionNever, updated.GetDefaultValue())
 
 		must.NotNil(t, updated.GetLastUpdatedAt(), must.Sprint("the edit answered with no edit time"))
 		test.Positive(t, updated.GetLastUpdatedAt().AsTime().Unix())
@@ -192,14 +192,14 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		caller, c := seeded(t, s)
 		op := operator(t, s, caller)
-		set(t, caller, c.digest, stringValue("daily"))
+		set(t, caller, c.digest, stringValue(optionDaily))
 
 		_, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
 			DefinitionId: byName(t, op, c.digest).GetId(),
 			Definition: &settingspb.SettingDefinitionInput{
 				Name:        c.digest,
 				Kind:        settingspb.SettingKind_SETTING_KIND_STRING,
-				Enumeration: []string{"never", "weekly"},
+				Enumeration: []string{optionNever, optionWeekly},
 			},
 		})
 		must.Error(t, err)
@@ -214,8 +214,8 @@ func definitions(t *testing.T, s *conformance.Session) {
 		value, err := caller.Surfaces.Settings.GetValue(caller.Context(t.Context()),
 			&settingspb.GetValueRequest{Subject: self(caller), Name: c.digest})
 		must.NoError(t, err)
-		test.EqOp(t, "daily", value.GetResult().GetRaw())
-		test.Eq(t, []string{"daily", "never", "weekly"}, byName(t, op, c.digest).GetEnumeration())
+		test.EqOp(t, optionDaily, value.GetResult().GetRaw())
+		test.Eq(t, []string{optionDaily, optionNever, optionWeekly}, byName(t, op, c.digest).GetEnumeration())
 	})
 
 	// Archiving is not erasure, and the name stays claimed: freeing it would
@@ -225,7 +225,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		caller, c := seeded(t, s)
 		op := operator(t, s, caller)
-		set(t, caller, c.digest, stringValue("daily"))
+		set(t, caller, c.digest, stringValue(optionDaily))
 
 		ctx := op.Context(t.Context())
 		retired := byName(t, op, c.digest)
@@ -286,8 +286,8 @@ func definitions(t *testing.T, s *conformance.Session) {
 		other := colleague(t, s, caller)
 		op := operator(t, s, caller)
 
-		set(t, caller, c.digest, stringValue("daily"))
-		set(t, other, c.digest, stringValue("never"))
+		set(t, caller, c.digest, stringValue(optionDaily))
+		set(t, other, c.digest, stringValue(optionNever))
 
 		response, err := op.Surfaces.Settings.ListValuesForDefinition(op.Context(t.Context()),
 			&settingspb.ListValuesForDefinitionRequest{Name: c.digest})
@@ -298,7 +298,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 			answers[value.GetSubject().GetId()] = value.GetRaw()
 		}
 
-		test.EqOp(t, "daily", answers[caller.UserID], test.Sprint("the caller's own answer was missing"))
-		test.EqOp(t, "never", answers[other.UserID], test.Sprint("a colleague's answer was missing"))
+		test.EqOp(t, optionDaily, answers[caller.UserID], test.Sprint("the caller's own answer was missing"))
+		test.EqOp(t, optionNever, answers[other.UserID], test.Sprint("a colleague's answer was missing"))
 	})
 }

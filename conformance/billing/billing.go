@@ -13,6 +13,10 @@ import (
 )
 
 // Suite is the billing surface's behavioral assertions.
+// currencyUSD is the currency every product here is priced in. Which one is
+// immaterial; that it is one the surface accepts is what matters.
+const currencyUSD = "USD"
+
 func Suite() conformance.Suite {
 	return conformance.Suite{
 		Name:    "billing",
@@ -104,7 +108,7 @@ func productInput() *billingpb.ProductCreationInput {
 		Name:              "a thing",
 		Description:       "a thing that is sold",
 		Kind:              billingpb.ProductKind_PRODUCT_KIND_ONE_TIME,
-		Currency:          "USD",
+		Currency:          currencyUSD,
 		AmountCents:       500,
 		ExternalProductId: "prod_" + identifiers.New(),
 	}

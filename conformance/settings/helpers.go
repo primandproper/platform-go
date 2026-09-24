@@ -16,6 +16,14 @@ import (
 
 // The subject types this surface's own vocabulary names. A deployment may
 // declare more; these two are the ones settings ships.
+// The three options the enumerated setting's catalog declares, weekly being
+// its default.
+const (
+	optionDaily  = "daily"
+	optionNever  = "never"
+	optionWeekly = "weekly"
+)
+
 const (
 	subjectUser    = "user"
 	subjectAccount = "account"
@@ -99,14 +107,14 @@ func define(t *testing.T, op *conformance.Subject, input *settingspb.SettingDefi
 }
 
 // defineCatalog defines all five of c's settings in op's tenant.
-func defineCatalog(t *testing.T, op *conformance.Subject, c catalog) {
+func defineCatalog(t *testing.T, op *conformance.Subject, c *catalog) {
 	t.Helper()
 
 	define(t, op, &settingspb.SettingDefinitionInput{
 		Name:         c.digest,
 		Kind:         settingspb.SettingKind_SETTING_KIND_STRING,
-		DefaultValue: new("weekly"),
-		Enumeration:  []string{"daily", "never", "weekly"},
+		DefaultValue: new(optionWeekly),
+		Enumeration:  []string{optionDaily, optionNever, optionWeekly},
 	})
 	define(t, op, &settingspb.SettingDefinitionInput{
 		Name:         c.compact,
@@ -137,7 +145,7 @@ func seeded(t *testing.T, s *conformance.Session) (*conformance.Subject, catalog
 	needsUser(t, caller)
 
 	c := names()
-	defineCatalog(t, operator(t, s, caller), c)
+	defineCatalog(t, operator(t, s, caller), &c)
 
 	return caller, c
 }

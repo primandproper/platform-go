@@ -694,7 +694,7 @@ func (s *SQLStore) writeEnumeration(
 	}
 
 	for _, option := range enumeration {
-		if err := s.q.InsertDefinitionOption(ctx, q, settingsdb.InsertDefinitionOptionParams{
+		if err = s.q.InsertDefinitionOption(ctx, q, settingsdb.InsertDefinitionOptionParams{
 			DefinitionID: definitionID,
 			Value:        option,
 		}); err != nil {

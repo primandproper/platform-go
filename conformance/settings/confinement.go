@@ -109,8 +109,8 @@ func confinement(t *testing.T, s *conformance.Session) {
 		needsUser(t, theirs)
 
 		c := names()
-		defineCatalog(t, operator(t, s, mine), c)
-		set(t, mine, c.digest, stringValue("daily"))
+		defineCatalog(t, operator(t, s, mine), &c)
+		set(t, mine, c.digest, stringValue(optionDaily))
 
 		// The positive control: the caller reaches its own setting and its
 		// own answer through the same client.
@@ -144,7 +144,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 
 		caller, c := seeded(t, s)
 		other := colleague(t, s, caller)
-		set(t, other, c.digest, stringValue("never"))
+		set(t, other, c.digest, stringValue(optionNever))
 
 		for _, gated := range subjectCalls(c.digest) {
 			rpc, call := gated.rpc, gated.call
@@ -165,7 +165,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		value, err := other.Surfaces.Settings.GetValue(other.Context(t.Context()),
 			&settingspb.GetValueRequest{Subject: self(other), Name: c.digest})
 		must.NoError(t, err)
-		test.EqOp(t, "never", value.GetResult().GetRaw())
+		test.EqOp(t, optionNever, value.GetResult().GetRaw())
 	})
 
 	// The refusal is decided before anything is read, so a subject nobody has
@@ -179,7 +179,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		needsAccount(t, theirs)
 
 		c := names()
-		defineCatalog(t, operator(t, s, mine), c)
+		defineCatalog(t, operator(t, s, mine), &c)
 
 		// The positive control: this caller's own resolution is answered.
 		_, err := mine.Surfaces.Settings.Resolve(mine.Context(t.Context()),
@@ -214,7 +214,7 @@ func subjectCalls(name string) []gatedCall {
 			t.Helper()
 
 			_, err := caller.Surfaces.Settings.SetValue(caller.Context(t.Context()),
-				&settingspb.SetValueRequest{Subject: subject, Name: name, Value: stringValue("daily")})
+				&settingspb.SetValueRequest{Subject: subject, Name: name, Value: stringValue(optionDaily)})
 
 			return err
 		}},

@@ -30,9 +30,9 @@ func values(t *testing.T, s *conformance.Session) {
 			check func(t *testing.T, got *settingspb.TypedValue)
 			name  string
 		}{
-			{name: c.digest, sent: stringValue("daily"), check: func(t *testing.T, got *settingspb.TypedValue) {
+			{name: c.digest, sent: stringValue(optionDaily), check: func(t *testing.T, got *settingspb.TypedValue) {
 				t.Helper()
-				test.EqOp(t, "daily", got.GetStringValue())
+				test.EqOp(t, optionDaily, got.GetStringValue())
 			}},
 			{name: c.compact, sent: boolValue(true), check: func(t *testing.T, got *settingspb.TypedValue) {
 				t.Helper()
@@ -48,7 +48,8 @@ func values(t *testing.T, s *conformance.Session) {
 			}},
 		}
 
-		for _, tc := range cases {
+		for i := range cases {
+			tc := &cases[i]
 			resolution := set(t, caller, tc.name, tc.sent)
 
 			test.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_SUBJECT, resolution.GetSource())
@@ -135,7 +136,7 @@ func values(t *testing.T, s *conformance.Session) {
 		_, err := caller.Surfaces.Settings.SetValue(caller.Context(t.Context()), &settingspb.SetValueRequest{
 			Subject: self(caller),
 			Name:    names().digest,
-			Value:   stringValue("daily"),
+			Value:   stringValue(optionDaily),
 		})
 		must.Error(t, err)
 		test.EqOp(t, codes.NotFound, status.Code(err))
@@ -153,11 +154,11 @@ func values(t *testing.T, s *conformance.Session) {
 		must.Error(t, err, must.Sprint("a setting nobody answered read back its default as a stored row"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
 
-		set(t, caller, c.digest, stringValue("never"))
+		set(t, caller, c.digest, stringValue(optionNever))
 
 		response, err := caller.Surfaces.Settings.GetValue(ctx, &settingspb.GetValueRequest{Subject: self(caller), Name: c.digest})
 		must.NoError(t, err)
-		test.EqOp(t, "never", response.GetResult().GetRaw())
+		test.EqOp(t, optionNever, response.GetResult().GetRaw())
 		test.EqOp(t, subjectUser, response.GetResult().GetSubject().GetType())
 		test.EqOp(t, caller.UserID, response.GetResult().GetSubject().GetId())
 	})
@@ -171,7 +172,7 @@ func values(t *testing.T, s *conformance.Session) {
 		caller, c := seeded(t, s)
 		ctx := caller.Context(t.Context())
 
-		set(t, caller, c.digest, stringValue("daily"))
+		set(t, caller, c.digest, stringValue(optionDaily))
 		set(t, caller, c.retention, intValue(30))
 
 		withDefault, err := caller.Surfaces.Settings.ClearValue(ctx,
@@ -181,7 +182,7 @@ func values(t *testing.T, s *conformance.Session) {
 		resolution := withDefault.GetResolution()
 		must.NotNil(t, resolution)
 		test.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_DEFAULT, resolution.GetSource())
-		test.EqOp(t, "weekly", resolution.GetTypedValue().GetStringValue())
+		test.EqOp(t, optionWeekly, resolution.GetTypedValue().GetStringValue())
 		test.Nil(t, resolution.GetValue(), test.Sprint("a cleared answer is still live in the resolution"))
 
 		withNone, err := caller.Surfaces.Settings.ClearValue(ctx,
@@ -202,12 +203,12 @@ func values(t *testing.T, s *conformance.Session) {
 
 		caller, c := seeded(t, s)
 		ctx := caller.Context(t.Context())
-		set(t, caller, c.digest, stringValue("never"))
+		set(t, caller, c.digest, stringValue(optionNever))
 
 		chose, err := caller.Surfaces.Settings.Resolve(ctx, &settingspb.ResolveRequest{Subject: self(caller), Name: c.digest})
 		must.NoError(t, err)
 		test.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_SUBJECT, chose.GetResolution().GetSource())
-		test.EqOp(t, "never", chose.GetResolution().GetTypedValue().GetStringValue())
+		test.EqOp(t, optionNever, chose.GetResolution().GetTypedValue().GetStringValue())
 
 		undecided, err := caller.Surfaces.Settings.Resolve(ctx, &settingspb.ResolveRequest{Subject: self(caller), Name: c.channel})
 		must.NoError(t, err)
@@ -237,7 +238,7 @@ func values(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		set(t, caller, c.digest, stringValue("daily"))
+		set(t, caller, c.digest, stringValue(optionDaily))
 
 		response, err := caller.Surfaces.Settings.ResolveAll(caller.Context(t.Context()),
 			&settingspb.ResolveAllRequest{Subject: self(caller)})
@@ -265,7 +266,7 @@ func values(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		set(t, caller, c.digest, stringValue("daily"))
+		set(t, caller, c.digest, stringValue(optionDaily))
 		set(t, caller, c.retention, intValue(30))
 
 		response, err := caller.Surfaces.Settings.ListValuesForSubject(caller.Context(t.Context()),
@@ -282,7 +283,7 @@ func values(t *testing.T, s *conformance.Session) {
 		}
 
 		op := operator(t, s, caller)
-		test.EqOp(t, "daily", answered[byName(t, op, c.digest).GetId()])
+		test.EqOp(t, optionDaily, answered[byName(t, op, c.digest).GetId()])
 		test.EqOp(t, "30", answered[byName(t, op, c.retention).GetId()])
 		test.MapNotContainsKey(t, answered, byName(t, op, c.compact).GetId(),
 			test.Sprint("a setting the subject never answered was listed as an override"))

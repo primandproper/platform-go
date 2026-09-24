@@ -32,6 +32,12 @@ import (
 // down: presence is the switch, and a subsystem nobody configured is absent
 // rather than broken.
 type Seams struct {
+
+	// Actions are the states no client can bring about on its own, brought
+	// about however this subject's deployment brings them about. Absent fields
+	// skip their assertions.
+	Actions Actions
+
 	// NewSubject mints a caller. Required.
 	//
 	// The default is a caller in a tenant nothing else in this run shares,
@@ -39,11 +45,6 @@ type Seams struct {
 	// not own. InTenant and AsAdmin narrow it; both are declined by returning
 	// ErrSubjectUnsupported, and the assertions that asked skip.
 	NewSubject func(ctx context.Context, opts ...SubjectOption) (*Subject, error)
-
-	// Actions are the states no client can bring about on its own, brought
-	// about however this subject's deployment brings them about. Absent fields
-	// skip their assertions.
-	Actions Actions
 
 	// Anonymous returns a connection carrying no caller — what a request looks
 	// like once the consumer's authentication interceptor has declined to add
@@ -70,6 +71,24 @@ type Seams struct {
 	// probe subject's HTTP.BaseURL; a subject that supplies no client, or whose
 	// subjects carry no HTTP, skips the HTTP half.
 	AnonymousHTTP func(ctx context.Context) (*http.Client, error)
+
+	// VisitorScope is the tenant the deployment's waitlists surface places a
+	// request with nobody on it in — what its scope resolver answers for the
+	// Anonymous connection. Nil skips the assertions about the public half made
+	// without a caller, with the reason printed.
+	//
+	// A fact about the deployment rather than an action, and it is needed
+	// because a visitor's tenant is the one thing about a signup page no
+	// client can learn: the resolver reads the connection, and a deployment
+	// may place visitors by hostname, by port or nowhere but the global
+	// directory. An assertion that a visitor joined a list has to open that
+	// list somewhere the visitor lands, and then read it back as an operator
+	// in the same place.
+	//
+	// A pointer for SubjectRequest.Scope's reason: tenancy.Global() is a real
+	// answer here — it is the default resolver's — and must not read as
+	// "unknown".
+	VisitorScope *tenancy.Scope
 
 	// CommentTargetType is a target type the deployment's comments.Targets
 	// declares, for the reads that name a comment target. Which kinds of thing
@@ -106,24 +125,6 @@ type Seams struct {
 	// clock movable, and a suite that waited for real time is a suite nobody
 	// runs.
 	ControlledTime bool
-
-	// VisitorScope is the tenant the deployment's waitlists surface places a
-	// request with nobody on it in — what its scope resolver answers for the
-	// Anonymous connection. Nil skips the assertions about the public half made
-	// without a caller, with the reason printed.
-	//
-	// A fact about the deployment rather than an action, and it is needed
-	// because a visitor's tenant is the one thing about a signup page no
-	// client can learn: the resolver reads the connection, and a deployment
-	// may place visitors by hostname, by port or nowhere but the global
-	// directory. An assertion that a visitor joined a list has to open that
-	// list somewhere the visitor lands, and then read it back as an operator
-	// in the same place.
-	//
-	// A pointer for SubjectRequest.Scope's reason: tenancy.Global() is a real
-	// answer here — it is the default resolver's — and must not read as
-	// "unknown".
-	VisitorScope *tenancy.Scope
 }
 
 // Subject is one caller, and the clients it calls through.
