@@ -9,6 +9,15 @@ names somebody else's actor — because the failure it guards against has no
 symptom. A scope dropped from a predicate does not error; it widens, and the
 widened answer looks exactly like a correct one until two tenants exist.
 
+Around that sentence sit the promises a client reads the log by: an entry
+renders what the action recorded, hash included; an absent entry is absent in
+exactly one way, so the answer is no oracle for another tenant's identifiers;
+and VerifyChain reports an untouched chain as intact, walks it from its first
+entry unless told where to resume, and hands back the window it was given. A
+tampered chain is not asserted here, because producing one means editing a row
+behind the recorder's back, which is nothing a client or a deployment's action
+should be able to do.
+
 # What is here and what stayed behind
 
 The surface's own suite varies how the server was built: seven of its tests
