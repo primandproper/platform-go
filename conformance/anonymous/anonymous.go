@@ -163,6 +163,17 @@ func Suite() conformance.Suite {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	probe := s.Subject(t)
+
+	// The HTTP half first, and in a subtest of its own, so that a subject
+	// serving only HTTP is not skipped for want of a callerless gRPC
+	// connection it has no use for.
+	t.Run("http", func(t *testing.T) {
+		t.Parallel()
+
+		runHTTP(t, s, probe)
+	})
+
 	anonymous := s.Seams().Anonymous
 	if anonymous == nil {
 		t.Skip("conformance: this subject supplies no callerless connection, and one cannot be synthesized from an authenticated one")
@@ -171,8 +182,6 @@ func run(t *testing.T, s *conformance.Session) {
 	conn, err := anonymous(t.Context())
 	must.NoError(t, err, must.Sprint("opening a connection carrying no caller"))
 	must.NotNil(t, conn, must.Sprint("the subject returned no connection and no error"))
-
-	probe := s.Subject(t)
 
 	surfaces := roster()
 

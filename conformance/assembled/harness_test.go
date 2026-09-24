@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -29,6 +30,8 @@ import (
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
+	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
+	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
@@ -36,9 +39,12 @@ import (
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
+	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
+	mediaregistrymigrations "github.com/primandproper/platform-go/v14/mediaregistry/migrations"
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	notificationsclient "github.com/primandproper/platform-go/v14/notifications/grpc/client"
 	notificationsmigrations "github.com/primandproper/platform-go/v14/notifications/migrations"
+	operationsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
 	"github.com/primandproper/platform-go/v14/service"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
@@ -49,15 +55,23 @@ import (
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 	webhooksclient "github.com/primandproper/platform-go/v14/webhooks/grpc/client"
 	webhooksmigrations "github.com/primandproper/platform-go/v14/webhooks/migrations"
+	workqueuemigrations "github.com/primandproper/platform-go/v14/workqueue/migrations"
 
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/encoding"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/routing"
+	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
+	routingcfg "github.com/primandproper/primitives-go/v2/routing/config"
 	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
+	httpserver "github.com/primandproper/primitives-go/v2/server/http"
 	"github.com/primandproper/primitives-go/v2/tenancy"
+	uploadscfg "github.com/primandproper/primitives-go/v2/uploads/config"
+	"github.com/primandproper/primitives-go/v2/uploads/objectstorage"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test/must"
@@ -105,6 +119,21 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		GRPCServer: &grpcserver.Config{MaxReceiveMessageSize: grpcserver.DefaultMaxMessageSize},
 		Tokens:     tokenConfig(t),
 
+		// The HTTP lane: a router, the encoding it speaks, and a server on an
+		// ephemeral port. StartupDeadline is spelled out for the reason
+		// MaxReceiveMessageSize is above — a block holding only Port: 0 is
+		// released as unconfigured.
+		HTTPServer: &httpserver.Config{StartupDeadline: bootTimeout},
+		Routing: &routingcfg.Config{
+			Provider: routingcfg.ProviderChi,
+			Chi:      &chi.Config{ServiceName: "conformance", SilenceRouteLogging: true},
+		},
+		Encoding: &encoding.Config{ContentType: "application/json"},
+		Uploads: &uploadscfg.Config{Storage: objectstorage.Config{
+			Provider:   objectstorage.MemoryProvider,
+			BucketName: "conformance",
+		}},
+
 		// Every surface that has a config block, each under the run's prefix.
 		Audit:         &auditcfg.Config{Dialect: d, TablePrefix: prefix},
 		Billing:       &billingcfg.Config{TablePrefix: prefix},
@@ -115,6 +144,22 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Settings:      &settingscfg.Config{TablePrefix: prefix},
 		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
 		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
+
+		// And the HTTP surface every dialect can serve.
+		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
+	}
+
+	// operations runs on a work queue that claims with SKIP LOCKED, which is
+	// Postgres's alone (the README's matrix says so), and dataprivacy fulfills
+	// its requests as operations — service.Config refuses the second without
+	// the first. So both HTTP surfaces are mounted on Postgres and absent
+	// elsewhere, and the HTTP flags below say which, so the anonymous suite
+	// asserts the routes a dialect actually serves rather than failing on ones
+	// it cannot.
+	servesOperations := d == dialect.Postgres
+	if servesOperations {
+		cfg.Operations = operationsConfig(prefix)
+		cfg.DataPrivacy = &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix}
 	}
 	must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
@@ -132,6 +177,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		authenticate,
 	})
 	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
+	// The HTTP half of the stand-in credential, on the router before anything
+	// mounts on it: chi refuses middleware added after the first route, which
+	// is a constraint a consumer's main meets in the same place.
+	do.MustInvoke[*routing.Router](i).Use(authenticateHTTP)
+
 	service.RegisterTransports(i, &service.Transports{
 		Extractor:   extractPrincipal,
 		Authorizers: authorizers(),
@@ -143,8 +193,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	client := do.MustInvoke[database.Client](i)
 	migrate(t, client, d, prefix)
 
-	addr := run(t, svc, do.MustInvoke[*grpcserver.Server](i))
-	conn := dial(t, addr)
+	addrs := run(t, svc, do.MustInvoke[*grpcserver.Server](i), do.MustInvoke[*httpserver.APIServer](i))
+	conn := dial(t, addrs.grpc)
+	baseURL := "http://" + loopback(t, addrs.http)
 
 	identitySvc := do.MustInvoke[*identity.Service](i)
 	identityStore := do.MustInvoke[identity.Store](i)
@@ -201,6 +252,15 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 				UserID:   reg.User.ID,
 				Conn:     conn,
 				Surfaces: surfaces,
+				HTTP: &conformance.HTTPSurfaces{
+					Client: &http.Client{Transport: &credentialTransport{
+						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID,
+					}},
+					BaseURL:       baseURL,
+					DataPrivacy:   servesOperations,
+					MediaRegistry: true,
+					Operations:    servesOperations,
+				},
 				Decorate: func(ctx context.Context) context.Context {
 					return metadata.NewOutgoingContext(ctx, metadata.Pairs(
 						mdUserID, reg.User.ID,
@@ -255,6 +315,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Anonymous: func(context.Context) (grpc.ClientConnInterface, error) {
 			return conn, nil
 		},
+		AnonymousHTTP: func(context.Context) (*http.Client, error) {
+			return http.DefaultClient, nil
+		},
 
 		Dialect: d,
 
@@ -281,9 +344,15 @@ func tokenConfig(t *testing.T) *tokenscfg.Config {
 	}
 }
 
-// run starts svc and returns the address its gRPC server bound, stopping it
-// when the test ends.
-func run(t *testing.T, svc *service.Service, srv *grpcserver.Server) net.Addr {
+// boundAddrs are where the two servers bound.
+type boundAddrs struct {
+	grpc net.Addr
+	http net.Addr
+}
+
+// run starts svc and returns the addresses its servers bound, stopping it when
+// the test ends.
+func run(t *testing.T, svc *service.Service, srv *grpcserver.Server, httpSrv *httpserver.APIServer) boundAddrs {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.WithoutCancel(t.Context()))
@@ -307,31 +376,49 @@ func run(t *testing.T, svc *service.Service, srv *grpcserver.Server) net.Addr {
 	bootCtx, bootCancel := context.WithTimeout(t.Context(), bootTimeout)
 	defer bootCancel()
 
-	addr, err := srv.Addr(bootCtx)
-	if err != nil {
-		// A service that stopped before binding says why on done.
-		select {
-		case runErr := <-done:
-			t.Fatalf("the assembled service stopped before its gRPC server bound: %v (%v)", runErr, err)
-		default:
-			t.Fatalf("waiting for the assembled gRPC server to bind: %v", err)
+	var addrs boundAddrs
+
+	for name, wait := range map[string]func(context.Context) (net.Addr, error){
+		"gRPC": func(ctx context.Context) (net.Addr, error) { return srv.Addr(ctx) },
+		"HTTP": func(ctx context.Context) (net.Addr, error) { return httpSrv.Addr(ctx) },
+	} {
+		addr, err := wait(bootCtx)
+		if err != nil {
+			// A service that stopped before binding says why on done.
+			select {
+			case runErr := <-done:
+				t.Fatalf("the assembled service stopped before its %s server bound: %v (%v)", name, runErr, err)
+			default:
+				t.Fatalf("waiting for the assembled %s server to bind: %v", name, err)
+			}
+		}
+
+		if name == "gRPC" {
+			addrs.grpc = addr
+		} else {
+			addrs.http = addr
 		}
 	}
 
-	return addr
+	return addrs
 }
 
-// dial connects to the port the service bound, on loopback.
-//
-// The server listens on every interface, so its address names none; the port is
-// what is dialed.
-func dial(t *testing.T, addr net.Addr) *grpc.ClientConn {
+// loopback is the port a server bound, on loopback. The servers listen on every
+// interface, so their addresses name none; the port is what is dialed.
+func loopback(t *testing.T, addr net.Addr) string {
 	t.Helper()
 
 	tcp, ok := addr.(*net.TCPAddr)
-	must.True(t, ok, must.Sprintf("the gRPC server bound %T, not a TCP address", addr))
+	must.True(t, ok, must.Sprintf("a server bound %T, not a TCP address", addr))
 
-	conn, err := grpc.NewClient(net.JoinHostPort("127.0.0.1", strconv.Itoa(tcp.Port)),
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(tcp.Port))
+}
+
+// dial connects to the port the gRPC server bound.
+func dial(t *testing.T, addr net.Addr) *grpc.ClientConn {
+	t.Helper()
+
+	conn, err := grpc.NewClient(loopback(t, addr),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// Every client in this module installs the same chain, and exports it
 		// for a connection shared between services.
@@ -361,6 +448,27 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 		"settings":       settingsmigrations.Statements,
 		"waitlists":      waitlistsmigrations.Statements,
 		"webhooks":       webhooksmigrations.Statements,
+		"media registry": mediaregistrymigrations.Statements,
+	} {
+		stmts, err := render(d, prefix)
+		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))
+
+		for _, stmt := range stmts {
+			_, execErr := db.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr, must.Sprintf("migrating %s: %q", name, stmt))
+		}
+	}
+
+	if d != dialect.Postgres {
+		return
+	}
+
+	// The Postgres-only packages: operations, the queue it runs on, and
+	// dataprivacy, whose service needs both.
+	for name, render := range map[string]func(dialect.Dialect, string) ([]string, error){
+		"data privacy": dataprivacymigrations.Statements,
+		"operations":   operationsmigrations.Statements,
+		"work queue":   workqueuemigrations.Statements,
 	} {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))
@@ -403,6 +511,46 @@ func authenticate(
 	}
 
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
+}
+
+// authenticateHTTP is authenticate's counterpart on the router: the same
+// stand-in credential, read off headers instead of metadata, and the same
+// refusal to refuse — a request with no credential passes through with nobody
+// on it, and each surface decides what that means.
+func authenticateHTTP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get(mdUserID)
+		if userID == "" {
+			next.ServeHTTP(w, r)
+
+			return
+		}
+
+		principal := &testPrincipal{userID: userID, scope: tenancy.Global(), activeAccountID: r.Header.Get(mdAccount)}
+		if owner := r.Header.Get(mdScope); owner != "" {
+			principal.scope = tenancy.Of(owner)
+		}
+
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal)))
+	})
+}
+
+// credentialTransport puts one subject's stand-in credential on every request,
+// which is what a consumer's authenticated HTTP client does with a cookie or a
+// bearer token.
+type credentialTransport struct {
+	userID    string
+	accountID string
+	scope     tenancy.Scope
+}
+
+func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set(mdUserID, c.userID)
+	req.Header.Set(mdScope, c.scope.String())
+	req.Header.Set(mdAccount, c.accountID)
+
+	return http.DefaultTransport.RoundTrip(req)
 }
 
 type principalKey struct{}

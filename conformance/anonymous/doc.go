@@ -36,9 +36,29 @@ with an empty request it will usually fail on its input, which is correct and
 uninteresting — what is being asserted is that it failed for a reason other than
 who was asking.
 
+# The HTTP half
+
+dataprivacy, mediaregistry and operations are served over HTTP, and the same
+sentence is asserted of their routes: a request with nobody on it is refused as
+401. None of the three has an anonymous route — dataprivacy's confirm is a link
+in a mail, and a browser following it still arrives with its session — so this
+half has one direction.
+
+The routes are listed rather than enumerated, because there is no registry an
+HTTP surface's routes can be read out of: routing.Route is what registration
+returns, not something a package can declare without a router. The list is kept
+honest the way the gRPC roster is, from the other side:
+TestHTTPRosterMatchesWhatEachSurfaceMounts mounts each surface's real handlers
+and compares what Mount returned with the list, in both directions.
+
+A POST carries a well-formed empty body, so a refusal cannot be about a body the
+router failed to decode; and a path parameter names nothing, because a request
+with no caller must be refused before anything is looked up.
+
 # What a subject must supply
 
-Seams.Anonymous, a connection carrying no caller. A subject that supplies none
+Seams.Anonymous, a connection carrying no caller, and for the HTTP half
+Seams.AnonymousHTTP and a Subject.HTTP naming where the routes are. A subject that supplies none
 skips, because there is no way to synthesize one: on a deployment that carries
 credentials on the connection rather than per call, an anonymous request is a
 different connection and not a call made without metadata.

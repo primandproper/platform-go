@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
@@ -58,6 +59,17 @@ type Seams struct {
 	// from its descriptor rather than naming them, so they cover a method added
 	// later without being edited. A subject that supplies none skips them.
 	Anonymous func(ctx context.Context) (grpc.ClientConnInterface, error)
+
+	// AnonymousHTTP returns an HTTP client carrying no caller — Anonymous's
+	// counterpart for the surfaces this module serves over HTTP.
+	//
+	// A client rather than a request decorator for Anonymous's reason: a
+	// deployment may carry credentials in the client itself — a cookie jar, a
+	// transport that signs — and a request made without headers through that
+	// client is not a request with nobody on it. Where the routes are is the
+	// probe subject's HTTP.BaseURL; a subject that supplies no client, or whose
+	// subjects carry no HTTP, skips the HTTP half.
+	AnonymousHTTP func(ctx context.Context) (*http.Client, error)
 
 	// Dialect is what the subject's database is, for the assertions that must
 	// narrow to it. The zero value means unknown, and an assertion that needs
@@ -124,9 +136,36 @@ type Subject struct {
 	// identifier leaves it empty, and the assertions that need one skip.
 	UserID string
 
+	// HTTP is how this caller reaches the surfaces served over HTTP rather than
+	// gRPC. Nil is a subject that serves none of them, and the assertions that
+	// need one skip.
+	HTTP *HTTPSurfaces
+
 	// Scope is whose directory this caller is in. Assertions use it to name
 	// the rows they seeded and to prove a neighbor's are absent.
 	Scope tenancy.Scope
+}
+
+// HTTPSurfaces are the three surfaces this module serves over HTTP, as one
+// caller reaches them.
+//
+// A client and a base URL rather than a client per surface, because there is
+// no generated client for these and the three share one router: what differs
+// between them is the path, and each is mounted at its own package's default
+// base path under BaseURL. A deployment that mounted one elsewhere is not
+// describable here yet, and says so by leaving that surface's flag false.
+type HTTPSurfaces struct {
+	// Client makes this caller's requests, carrying whatever the deployment
+	// authenticates an HTTP request by.
+	Client *http.Client
+
+	// BaseURL is where the router is served, with no trailing slash.
+	BaseURL string
+
+	// Each flag is a surface the subject mounted at its default base path.
+	DataPrivacy   bool
+	MediaRegistry bool
+	Operations    bool
 }
 
 // Context applies Decorate, or returns ctx when there is nothing to add.

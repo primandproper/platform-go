@@ -8,8 +8,9 @@ consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
 **Status:** in progress. Three suites and all three subjects exist; the assembled
-subject mounts all twelve gRPC surfaces over all three dialects, and the
-per-surface suites cover two of them. [What is left](#what-is-left) is the honest list, and nothing below
+subject mounts all twelve gRPC surfaces over all three dialects and the three
+HTTP surfaces wherever they can run, and the per-surface suites cover two of
+them. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
 
 ## The problem it exists to solve
@@ -161,14 +162,14 @@ all three files say so and point at each other.
 
 | suite | assertions | notes |
 | --- | --- | --- |
-| `conformance/anonymous` | 142 | every RPC on all twelve surfaces, all executed by the assembled subject |
+| `conformance/anonymous` | 152 | every RPC on all twelve gRPC surfaces, and every route on the three HTTP ones |
 | `conformance/audit` | 5 | confinement, paging |
 | `conformance/identity` | 3 | confinement, paging, credential rendering |
 
 | subject | where | mounts |
 | --- | --- | --- |
 | direct | `conformance/audit`, `conformance/identity` | one surface each |
-| assembled | `conformance/assembled` | all twelve, over SQLite, Postgres and MySQL 8 |
+| assembled | `conformance/assembled` | all twelve gRPC surfaces on all three dialects; mediaregistry everywhere, dataprivacy and operations on Postgres |
 
 **142 was what was enumerated, not what had run.** The anonymous suite reads all
 twelve descriptors, but an RPC is only called on a surface the subject mounted,
@@ -178,6 +179,15 @@ ran for the first time through `service.New`, and all three failed; see below.
 With every surface mounted all 142 run, on three dialects. The other ten
 surfaces passed on first mounting: what they refuse without a caller was already
 right, and the value of running them is that it now stays right.
+
+The HTTP half adds ten routes — dataprivacy's five, mediaregistry's one and
+operations' four — each refusing a request with nobody on it as 401. They are
+listed rather than enumerated, since no registry holds an HTTP route, and the
+list is checked against what each package's Mount actually returns. operations
+needs Postgres (its queue claims with `SKIP LOCKED`), and dataprivacy's service
+runs its requests as operations, so those two are asserted on Postgres only;
+the README's matrix lists dataprivacy on all three dialects, which is true of its
+store and not of its surface.
 
 A surface the composition root stops mounting fails here rather than skipping:
 the harness hands every suite a client for all twelve, and an unmounted one
@@ -233,7 +243,9 @@ With nobody on the request the derivation's error was unmapped, so audit
 answered `InvalidArgument` and mediaregistry a 500, where the eight surfaces
 reading a principal themselves say `Unauthenticated`. Every direct harness
 hand-builds its resolver and never went through the derivation. Fixed:
-`callers.ErrNoPrincipal`, mapped, and wrapped by `service.ErrNoPrincipal`.
+`callers.ErrNoPrincipal`, mapped, and wrapped by `service.ErrNoPrincipal`. All
+four now answer 401 or `Unauthenticated`, and the anonymous suite asserts it of
+every one of their routes and RPCs.
 
 **Two tenants' first audit entries deadlocked on MySQL** — found by the
 assembled subject over MySQL 8, the first time audit had run against a real
@@ -248,13 +260,10 @@ concurrent writers ran one at a time.
 
 In rough order of value per line:
 
-1. **The three HTTP surfaces in the assembled subject.** dataprivacy,
-   mediaregistry and operations mount on the router rather than the gRPC server,
-   and no suite here speaks HTTP yet; the twelve gRPC surfaces are all mounted.
-2. **The remaining cross-cutting suites.** Every paged read refusing a malformed
+1. **The remaining cross-cutting suites.** Every paged read refusing a malformed
    filter, and pagination honesty. Both are descriptor-driven the way
    `anonymous` is, and should land before the per-surface tail.
-3. **The per-surface tail.** Roughly 54 more of identity's, then ten further
+2. **The per-surface tail.** Roughly 54 more of identity's, then ten further
    surfaces, deleting the in-process tests each conversion supersedes. Expect
    about 55% of a surface's tests to convert: the rest are construction,
    contract or converter tests that correctly stay put.

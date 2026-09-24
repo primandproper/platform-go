@@ -8,9 +8,13 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
+	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	"github.com/primandproper/platform-go/v14/issuereports"
+	"github.com/primandproper/platform-go/v14/operations"
+	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
+	"github.com/primandproper/platform-go/v14/privacyadapters"
 	"github.com/primandproper/platform-go/v14/service"
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/waitlists"
@@ -39,6 +43,31 @@ func registerApplication(i do.Injector, prefix string) {
 	})
 	do.ProvideValue(i, webhooks.Catalog{
 		"conformance.happened": {Description: "something the conformance suite made happen"},
+	})
+
+	// What kinds of long-running work the application runs. Empty is a real
+	// answer: dataprivacy registers its own operation kinds into it as it is
+	// built, and the application here runs none of its own.
+	do.ProvideValue(i, operations.NewRegistry())
+
+	// Which collectors and erasers answer a privacy request. dataprivacy refuses
+	// an empty registry — a subject access request nothing can answer is not a
+	// request — so this registers identity's adapter through privacyadapters,
+	// the call a consumer makes, over the directory the composition root built.
+	do.Provide(i, func(i do.Injector) (*dataprivacy.Registry, error) {
+		registry := dataprivacy.NewRegistry()
+
+		if _, err := privacyadapters.Register(registry, &privacyadapters.Adapters{
+			Reader: do.MustInvoke[database.Client](i).Reader(),
+			Identity: &privacyadapters.IdentityAdapter{
+				Store:   do.MustInvoke[identity.Store](i),
+				Resolve: ownDirectory,
+			},
+		}); err != nil {
+			return nil, err
+		}
+
+		return registry, nil
 	})
 
 	// identity's service, which identity/config ships a registration for and
@@ -83,6 +112,24 @@ func registerApplication(i do.Injector, prefix string) {
 			signin.WithVerifications(directory),
 		)
 	})
+}
+
+// ownDirectory is the harness's answer to which tenants a person's data lives
+// in: the one the request was made in. Every caller here is minted into a
+// directory of its own, so that is the whole of the truth rather than a
+// narrowing of it.
+func ownDirectory(_ context.Context, requestScope tenancy.Scope, _ dataprivacy.Subject) ([]tenancy.Scope, error) {
+	return []tenancy.Scope{requestScope}, nil
+}
+
+// operationsConfig puts both of the operations block's tables under the run's
+// prefix: the operations themselves and the work queue that runs them.
+func operationsConfig(prefix string) *operationscfg.Config {
+	cfg := &operationscfg.Config{}
+	cfg.Operations.TablePrefix = prefix
+	cfg.Queue.TablePrefix = prefix
+
+	return cfg
 }
 
 // discardMailer sends nothing. No assertion here reads a reset mail; a suite

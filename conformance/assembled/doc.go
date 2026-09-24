@@ -57,11 +57,23 @@ alone meets the same rule.
 
 # Every surface, or a failure
 
-All twelve gRPC surfaces are mounted, and the harness hands every suite a client
-for each regardless of what mounted. That is deliberate: a surface the
+All twelve gRPC surfaces are mounted on every dialect, and the harness hands
+every suite a client for each regardless of what mounted. That is deliberate: a surface the
 composition root failed to mount answers Unimplemented, and the anonymous suite
 reads that as a failure rather than skipping, so a regression in what
 RegisterTransports mounts cannot pass as an absence.
+
+The HTTP surfaces follow what each dialect can serve. mediaregistry mounts
+everywhere. operations runs on a work queue that claims with SKIP LOCKED, which
+is Postgres's alone, and dataprivacy fulfills its requests as operations — so
+both mount on Postgres and are absent on the other two, and Subject.HTTP says
+which, so the HTTP half asserts the routes a dialect serves. A consumer reading
+the README's matrix should know the same thing: dataprivacy's store runs on all
+three dialects, and its service and surface only where operations does.
+
+dataprivacy refuses to start with no collector registered, so the harness
+registers identity's privacy adapter through privacyadapters — the call a
+consumer makes — over the directory the composition root built.
 
 # Isolation
 
