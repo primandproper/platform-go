@@ -71,6 +71,12 @@ type Seams struct {
 	// subjects carry no HTTP, skips the HTTP half.
 	AnonymousHTTP func(ctx context.Context) (*http.Client, error)
 
+	// CommentTargetType is a target type the deployment's comments.Targets
+	// declares, for the reads that name a comment target. Which kinds of thing
+	// accept comments is the application's vocabulary, so no suite can guess
+	// one; empty skips the reads that need it, with the reason printed.
+	CommentTargetType string
+
 	// Dialect is what the subject's database is, for the assertions that must
 	// narrow to it. The zero value means unknown, and an assertion that needs
 	// to know skips.
@@ -135,6 +141,11 @@ type Subject struct {
 	// Empty is legal: a subject that mints credentials without surfacing an
 	// identifier leaves it empty, and the assertions that need one skip.
 	UserID string
+
+	// AccountID is the account this caller's requests are against — the
+	// principal's active account — where the subject knows it. Empty is legal,
+	// on the same terms as UserID.
+	AccountID string
 
 	// HTTP is how this caller reaches the surfaces served over HTTP rather than
 	// gRPC. Nil is a subject that serves none of them, and the assertions that

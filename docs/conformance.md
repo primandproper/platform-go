@@ -7,7 +7,7 @@ It lives here for the reason `client-contract.md` does: it describes a thing
 consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
-**Status:** in progress. Three suites and all three subjects exist; the assembled
+**Status:** in progress. Five suites and all three subjects exist; the assembled
 subject mounts all twelve gRPC surfaces over all three dialects and the three
 HTTP surfaces wherever they can run, and the per-surface suites cover two of
 them. [What is left](#what-is-left) is the honest list, and nothing below
@@ -163,6 +163,8 @@ all three files say so and point at each other.
 | suite | assertions | notes |
 | --- | --- | --- |
 | `conformance/anonymous` | 152 | every RPC on all twelve gRPC surfaces, and every route on the three HTTP ones |
+| `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
+| `conformance/pagination` | 156 | every paged read reports the filter it applied |
 | `conformance/audit` | 5 | confinement, paging |
 | `conformance/identity` | 3 | confinement, paging, credential rendering |
 
@@ -188,6 +190,36 @@ needs Postgres (its queue claims with `SKIP LOCKED`), and dataprivacy's service
 runs its requests as operations, so those two are asserted on Postgres only;
 the README's matrix lists dataprivacy on all three dialects, which is true of its
 store and not of its surface.
+
+`conformance/filters` and `conformance/pagination` are the other two
+cross-cutting suites, and both find their reads the way `anonymous` does: every
+RPC whose request carries a `filtering.v1.QueryFilter`, 39 of them today. The
+shared half is `conformance/internal/pagedrpc`, whose one hand-written part is a
+request per read that needs more than a filter to be answerable — an account, a
+comment target, a subject — enumerated rather than inferred, and checked against
+the descriptors so a read with an unfilled field fails there rather than being
+asserted against half-built.
+
+*filters* asserts a malformed filter is refused as `InvalidArgument`: a sort
+direction nobody recognizes, and a timestamp outside protobuf's range, the two
+things `filtering/grpc` reports rather than corrects. Each read is first called
+with a well-formed filter, and that call must not be `InvalidArgument` — without
+that control, a read refused for a missing account would pass for the wrong
+reason. All 39 pass on all three dialects, and a surface made to list despite the
+error reds it.
+
+*pagination* asserts a page reports the filter it applied rather than the one
+it was sent: the default page size when none was asked for, a normalized sort
+direction, the sent cursor echoed as `previous_cursor`, and a page size too large
+for the wire's `uint16` clamped rather than wrapped. The last is phrased as a
+comparison — asking for 65546 must be answered as asking for 65535 is — because
+`MaxQueryFilterLimit` is a deployment's to raise and a suite that knew the
+ceiling would be wrong on the deployments that did. A surface made to report the
+request's filter as the applied one reds three of the four. Two reads skip,
+with the reason printed: settings' `ListValuesForDefinition` answers an unknown
+definition with NotFound, and identity's `ListInvitationsForEmailAddress`
+answers `FailedPrecondition`, so neither has a page to read without state a
+client should not be the one to create.
 
 A surface the composition root stops mounting fails here rather than skipping:
 the harness hands every suite a client for all twelve, and an unmounted one
@@ -260,10 +292,7 @@ concurrent writers ran one at a time.
 
 In rough order of value per line:
 
-1. **The remaining cross-cutting suites.** Every paged read refusing a malformed
-   filter, and pagination honesty. Both are descriptor-driven the way
-   `anonymous` is, and should land before the per-surface tail.
-2. **The per-surface tail.** Roughly 54 more of identity's, then ten further
+1. **The per-surface tail.** Roughly 54 more of identity's, then ten further
    surfaces, deleting the in-process tests each conversion supersedes. Expect
    about 55% of a surface's tests to convert: the rest are construction,
    contract or converter tests that correctly stay put.

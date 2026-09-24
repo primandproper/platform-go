@@ -19,7 +19,9 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceanonymous "github.com/primandproper/platform-go/v14/conformance/anonymous"
 	conformanceaudit "github.com/primandproper/platform-go/v14/conformance/audit"
+	conformancefilters "github.com/primandproper/platform-go/v14/conformance/filters"
 	conformanceidentity "github.com/primandproper/platform-go/v14/conformance/identity"
+	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
 )
 
 // Suites is every suite, in the order they run.
@@ -33,6 +35,8 @@ func Suites() []conformance.Suite {
 		// descriptor, so a subject whose wiring refuses everybody finds out
 		// here rather than in twelve surfaces' worth of confusing failures.
 		conformanceanonymous.Suite(),
+		conformancefilters.Suite(),
+		conformancepagination.Suite(),
 
 		conformanceaudit.Suite(),
 		conformanceidentity.Suite(),
@@ -40,6 +44,8 @@ func Suites() []conformance.Suite {
 }
 
 // Run asserts every suite against the subject the seams describe.
+//
+//nolint:gocritic // hugeParam: Seams is taken by value, as conformance.Run takes it, so a subject cannot change what a run holds after handing it over
 func Run(t *testing.T, seams conformance.Seams) {
 	t.Helper()
 

@@ -34,10 +34,10 @@ func TestRosterCoversEveryService(t *testing.T) {
 	covered := map[protoreflect.FullName]struct{}{}
 
 	for _, surf := range roster() {
-		file := surf.sample.ProtoReflect().Descriptor().ParentFile()
+		file := surf.def.Sample.ProtoReflect().Descriptor().ParentFile()
 
-		service := file.Services().ByName(surf.service)
-		must.NotNil(t, service, must.Sprintf("roster entry %q names no service %q", surf.name, surf.service))
+		service := file.Services().ByName(surf.def.Service)
+		must.NotNil(t, service, must.Sprintf("roster entry %q names no service %q", surf.def.Name, surf.def.Service))
 
 		covered[service.FullName()] = struct{}{}
 	}
@@ -75,11 +75,11 @@ func TestEveryDeclaredAnonymousMethodExists(t *testing.T) {
 			continue
 		}
 
-		t.Run(surf.name, func(t *testing.T) {
+		t.Run(surf.def.Name, func(t *testing.T) {
 			t.Parallel()
 
-			file := surf.sample.ProtoReflect().Descriptor().ParentFile()
-			service := file.Services().ByName(surf.service)
+			file := surf.def.Sample.ProtoReflect().Descriptor().ParentFile()
+			service := file.Services().ByName(surf.def.Service)
 			must.NotNil(t, service)
 
 			declared := map[string]struct{}{}
@@ -91,16 +91,16 @@ func TestEveryDeclaredAnonymousMethodExists(t *testing.T) {
 
 			for _, full := range surf.anonymous {
 				test.MapContainsKey(t, declared, full,
-					test.Sprintf("%s declares %s reachable without a caller, and the service has no such method", surf.name, full))
+					test.Sprintf("%s declares %s reachable without a caller, and the service has no such method", surf.def.Name, full))
 			}
 
 			// An exception list that named every method would make the suite
 			// assert nothing at all for that surface, which is worth catching
 			// separately from a stale name. passwordreset is the one place it
 			// is legitimate, and it says why in the roster.
-			if surf.name != "passwordreset" {
+			if surf.def.Name != "passwordreset" {
 				test.Less(t, methods.Len(), len(surf.anonymous),
-					test.Sprintf("%s declares every one of its methods anonymous; nothing is asserted for it", surf.name))
+					test.Sprintf("%s declares every one of its methods anonymous; nothing is asserted for it", surf.def.Name))
 			}
 		})
 	}

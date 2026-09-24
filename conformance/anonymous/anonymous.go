@@ -4,48 +4,24 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
-	oauth2clientspb "github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v14/conformance/internal/services"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-// surface is one service, how to tell it was mounted, and which of its methods
-// are deliberately reachable without a caller.
+// surface is one service and which of its methods are deliberately reachable
+// without a caller.
 type surface struct {
-
-	// sample is any message from the service's package, which is how its
-	// descriptor is found without naming the service twice.
-	sample proto.Message
-
-	// mounted reads the one field of Surfaces this service is reached through.
-	mounted func(conformance.Surfaces) bool
-
-	// name is the surface, as it appears in a subtest.
-	name string
-
-	// service is the descriptor's own name for the service.
-	service protoreflect.Name
+	def services.Service
 
 	// why says what the exception is for, on the three entries that have one.
 	why string
@@ -58,93 +34,45 @@ type surface struct {
 	anonymous []string
 }
 
-// roster is every gRPC surface this module mounts.
-//
-// A closed list with a reason on every exception, which is the shape this
-// module's other cross-cutting checks take. The completeness of it is asserted
-// rather than trusted: TestRosterCoversEveryService walks the module's own
-// account of what it mounts and fails on a service nobody put here.
-func roster() []surface {
-	return []surface{
-		{
-			name:    "audit",
-			mounted: func(s conformance.Surfaces) bool { return s.Audit != nil },
-			sample:  &auditpb.GetEntryRequest{},
-			service: "AuditService",
-		},
-		{
-			name:    "billing",
-			mounted: func(s conformance.Surfaces) bool { return s.Billing != nil },
-			sample:  &billingpb.GetSubscriptionRequest{},
-			service: "BillingService",
-		},
-		{
-			name:    "comments",
-			mounted: func(s conformance.Surfaces) bool { return s.Comments != nil },
-			sample:  &commentspb.GetCommentRequest{},
-			service: "CommentsService",
-		},
-		{
-			name:    "identity",
-			mounted: func(s conformance.Surfaces) bool { return s.Identity != nil },
-			sample:  &identitypb.RegisterRequest{},
-			service: "IdentityService",
-		},
-		{
-			name:    "issuereports",
-			mounted: func(s conformance.Surfaces) bool { return s.IssueReports != nil },
-			sample:  &issuereportspb.GetReportRequest{},
-			service: "IssueReportsService",
-		},
-		{
-			name:    "notifications",
-			mounted: func(s conformance.Surfaces) bool { return s.Notifications != nil },
-			sample:  &notificationspb.GetNotificationRequest{},
-			service: "NotificationsService",
-		},
-		{
-			name:    "oauth2clients",
-			mounted: func(s conformance.Surfaces) bool { return s.OAuth2Clients != nil },
-			sample:  &oauth2clientspb.GetOAuth2ClientRequest{},
-			service: "OAuth2ClientsService",
-		},
-		{
-			name:      "passwordreset",
-			mounted:   func(s conformance.Surfaces) bool { return s.PasswordReset != nil },
-			sample:    &passwordresetpb.RequestPasswordResetRequest{},
-			service:   "PasswordResetService",
+// exceptions are the three surfaces with methods reachable without a caller,
+// each read from the surface's own declaration.
+func exceptions() map[string]surface {
+	return map[string]surface{
+		"passwordreset": {
 			anonymous: passwordresetgrpc.AnonymousMethods(),
 			why:       "every RPC on it is for somebody who cannot sign in, so it reads no caller at all",
 		},
-		{
-			name:    "settings",
-			mounted: func(s conformance.Surfaces) bool { return s.Settings != nil },
-			sample:  &settingspb.GetDefinitionRequest{},
-			service: "SettingsService",
-		},
-		{
-			name:      "signin",
-			mounted:   func(s conformance.Surfaces) bool { return s.SignIn != nil },
-			sample:    &signinpb.LoginForTokenRequest{},
-			service:   "SignInService",
+		"signin": {
 			anonymous: signingrpc.AnonymousMethods(),
 			why:       "sign-in itself, and the doors that finish a registration or end a session",
 		},
-		{
-			name:      "waitlists",
-			mounted:   func(s conformance.Surfaces) bool { return s.Waitlists != nil },
-			sample:    &waitlistspb.GetListRequest{},
-			service:   "WaitlistsService",
+		"waitlists": {
 			anonymous: waitlistsgrpc.PublicMethods(),
 			why:       "the signup page, the form it submits, and the unsubscribe link in the mail that follows",
 		},
-		{
-			name:    "webhooks",
-			mounted: func(s conformance.Surfaces) bool { return s.Webhooks != nil },
-			sample:  &webhookspb.GetEndpointRequest{},
-			service: "WebhooksService",
-		},
 	}
+}
+
+// roster is every gRPC surface this module mounts, with its exceptions.
+//
+// The services are conformance/internal/services' list, which the pagination
+// suites read too. The completeness of it is asserted rather than trusted:
+// TestRosterCoversEveryService walks the module's own account of what it
+// mounts and fails on a service nobody put there.
+func roster() []surface {
+	all := services.All()
+	except := exceptions()
+
+	out := make([]surface, 0, len(all))
+
+	for i := range all {
+		surf := except[all[i].Name]
+		surf.def = all[i]
+
+		out = append(out, surf)
+	}
+
+	return out
 }
 
 // Suite asserts what every RPC does with a request carrying no caller.
@@ -188,11 +116,11 @@ func run(t *testing.T, s *conformance.Session) {
 	for i := range surfaces {
 		surf := &surfaces[i]
 
-		if !surf.mounted(probe.Surfaces) {
+		if !surf.def.Mounted(probe.Surfaces) {
 			continue
 		}
 
-		t.Run(surf.name, func(t *testing.T) {
+		t.Run(surf.def.Name, func(t *testing.T) {
 			t.Parallel()
 
 			service := descriptorFor(t, surf)
@@ -235,11 +163,11 @@ func run(t *testing.T, s *conformance.Session) {
 func descriptorFor(t *testing.T, surf *surface) protoreflect.ServiceDescriptor {
 	t.Helper()
 
-	file := surf.sample.ProtoReflect().Descriptor().ParentFile()
+	file := surf.def.Sample.ProtoReflect().Descriptor().ParentFile()
 
-	service := file.Services().ByName(surf.service)
-	must.NotNil(t, service, must.Sprintf("the generated file for %s describes no %s", surf.name, surf.service))
-	must.Positive(t, service.Methods().Len(), must.Sprintf("%s describes no methods", surf.service))
+	service := file.Services().ByName(surf.def.Service)
+	must.NotNil(t, service, must.Sprintf("the generated file for %s describes no %s", surf.def.Name, surf.def.Service))
+	must.Positive(t, service.Methods().Len(), must.Sprintf("%s describes no methods", surf.def.Service))
 
 	return service
 }

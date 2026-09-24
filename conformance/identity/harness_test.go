@@ -118,10 +118,11 @@ func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 			}
 
 			return &conformance.Subject{
-				Scope:    scope,
-				UserID:   reg.User.ID,
-				Conn:     conn,
-				Surfaces: conformance.Surfaces{Identity: client},
+				Scope:     scope,
+				UserID:    reg.User.ID,
+				AccountID: reg.Account.ID,
+				Conn:      conn,
+				Surfaces:  conformance.Surfaces{Identity: client},
 				Decorate: func(ctx context.Context) context.Context {
 					return metadata.NewOutgoingContext(ctx, metadata.Pairs(
 						mdUserID, reg.User.ID,

@@ -248,10 +248,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			}
 
 			return &conformance.Subject{
-				Scope:    scope,
-				UserID:   reg.User.ID,
-				Conn:     conn,
-				Surfaces: surfaces,
+				Scope:     scope,
+				UserID:    reg.User.ID,
+				AccountID: reg.Account.ID,
+				Conn:      conn,
+				Surfaces:  surfaces,
 				HTTP: &conformance.HTTPSurfaces{
 					Client: &http.Client{Transport: &credentialTransport{
 						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID,
@@ -318,6 +319,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		AnonymousHTTP: func(context.Context) (*http.Client, error) {
 			return http.DefaultClient, nil
 		},
+
+		// The one target type registerApplication declares.
+		CommentTargetType: "conformance_thing",
 
 		Dialect: d,
 

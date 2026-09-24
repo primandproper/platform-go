@@ -136,6 +136,8 @@ func (s *Session) NeedsControlledTime(t *testing.T, what string) {
 // difference between a consumer who did not wire something and a consumer whose
 // wiring is wrong. Suites run as parallel subtests: each mints its own callers
 // in tenants of their own, so they share a database without sharing rows.
+//
+//nolint:gocritic // hugeParam: Seams is taken by value so a subject cannot change what a run holds after handing it over
 func Run(t *testing.T, seams Seams, suites ...Suite) {
 	t.Helper()
 
