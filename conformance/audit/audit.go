@@ -25,6 +25,15 @@ func Suite() conformance.Suite {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	t.Run("reads", func(t *testing.T) {
+		t.Parallel()
+		reads(t, s)
+	})
+	t.Run("verification", func(t *testing.T) {
+		t.Parallel()
+		verification(t, s)
+	})
+
 	t.Run("an audited action lands in the acting session's chain", func(t *testing.T) {
 		t.Parallel()
 
