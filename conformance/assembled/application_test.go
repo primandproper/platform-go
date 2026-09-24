@@ -6,6 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks"
+	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
@@ -109,13 +111,34 @@ func registerApplication(i do.Injector, prefix string) {
 	})
 
 	do.Provide(i, func(i do.Injector) (*signin.Service, error) {
+		db := do.MustInvoke[database.Client](i)
 		directory := do.MustInvoke[identity.Store](i)
 
-		return signin.NewService(do.MustInvoke[database.Client](i), directory,
+		// Rotation and the passwordless door, each the store signin ships for
+		// it under the run's prefix. Both are optional and a consumer adopting
+		// them does exactly this, which is what puts refresh, sign-out and the
+		// mailed sign-in link under assertion rather than under "not
+		// configured".
+		refreshTokens, err := refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: prefix}, db)
+		if err != nil {
+			return nil, err
+		}
+
+		magicLinks, err := magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: prefix}, db)
+		if err != nil {
+			return nil, err
+		}
+
+		return signin.NewService(db, directory,
 			argon2.NewArgon2Authenticator(), do.MustInvoke[tokens.Issuer](i),
 			signin.WithTOTPIssuer("conformance"),
 			signin.WithRegistrar(do.MustInvoke[*identity.Service](i)),
 			signin.WithVerifications(directory),
+			signin.WithRefreshTokenStore(refreshTokens),
+			signin.WithMagicLinkStore(magicLinks),
+			// The mailbox assemble registered, which is where the sign-in
+			// suite reads the link a person would have been sent.
+			signin.WithMagicLinkMailer(do.MustInvoke[*magicLinkMailbox](i)),
 		)
 	})
 }

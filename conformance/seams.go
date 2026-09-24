@@ -337,6 +337,30 @@ type Actions struct {
 	// deployment decides what a notification says, and the suite finds it by
 	// what the deployment reports rather than by words it guessed.
 	Notified func(ctx context.Context, scope tenancy.Scope, userID string) (string, error)
+
+	// VerificationToken reports the secret the deployment mailed to an address
+	// when somebody registered with it — the link that proves the address and
+	// finishes the registration.
+	//
+	// There is no RPC that returns it: sign-in's Register answers whoever
+	// called it with the registrant and never with the link, because the
+	// person who clicks it is not the client that registered them. The secret
+	// reaches the registrant through whatever the deployment queues from its
+	// identity registration hook. A consumer implements this by reading the
+	// mail their deployment sent; this module's harnesses by a hook that
+	// remembers what it was handed.
+	VerificationToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
+
+	// MagicLinkToken reports the secret the deployment most recently mailed to
+	// an address as a sign-in link — the secret a person with no password
+	// clicks through with.
+	//
+	// There is no RPC that returns it, deliberately: RequestMagicLink answers a
+	// known address and an unknown one identically, and the secret reaches the
+	// person through the deployment's signin.MagicLinkMailer. It is
+	// PasswordResetToken's shape for PasswordResetToken's reason, and a subject
+	// whose deployment mails no sign-in links leaves it nil.
+	MagicLinkToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
 }
 
 // Audited is what an auditable action touched, as the entry recording it will

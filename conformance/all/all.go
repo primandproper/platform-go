@@ -30,6 +30,7 @@ import (
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
 	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
 	conformancesettings "github.com/primandproper/platform-go/v14/conformance/settings"
+	conformancesignin "github.com/primandproper/platform-go/v14/conformance/signin"
 	conformancewaitlists "github.com/primandproper/platform-go/v14/conformance/waitlists"
 	conformancewebhooks "github.com/primandproper/platform-go/v14/conformance/webhooks"
 )
@@ -60,6 +61,7 @@ func Suites() []conformance.Suite {
 		conformancenotifications.Suite(),
 		conformancecomments.Suite(),
 		conformancewebhooks.Suite(),
+		conformancesignin.Suite(),
 	}
 }
 
