@@ -47,7 +47,17 @@ jobs:
       # own real-server runs. The runner's Docker daemon starts them; a job that
       # already had databases would set CONFORMANCE_POSTGRES_DSN and
       # CONFORMANCE_MYSQL_DSN instead and start nothing.
+      #
+      # Through conformancesummary, because go test reports every suite package
+      # as "[no test files]" — the suites are library code, and their
+      # assertions run and are counted inside conformance/assembled — so its
+      # own output cannot tell a suite that ran from one that never did. The
+      # summary tallies each suite's assertions per dialect into the job
+      # summary and fails a registered suite that passed none anywhere.
+      # `shell: bash` is what gives the step pipefail, so go test's own failure
+      # still fails it.
       - name: run conformance suites
         env:
           RUN_CONTAINER_TESTS: "true"
-        run: CGO_ENABLED=1 go test -shuffle=on -race -vet=all ./conformance/...
+        shell: bash
+        run: CGO_ENABLED=1 go test -shuffle=on -race -vet=all -json ./conformance/... | go run ./internal/cmd/conformancesummary
