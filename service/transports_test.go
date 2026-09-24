@@ -42,6 +42,7 @@ import (
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
 	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
@@ -53,6 +54,7 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 // testPrincipal is the three facts a surface reads off a caller.
@@ -535,6 +537,25 @@ func TestDerivedSeams(T *testing.T) {
 
 		_, err = deriveMediaCaller(withPrincipal)(nobody)
 		test.ErrorIs(t, err, ErrNoPrincipal)
+	})
+
+	// The refusal is for want of a caller, and says so on both transports. Each
+	// of the four surfaces behind these seams falls back to a code written for a
+	// resolver that failed — InvalidArgument from audit, a 500 from
+	// mediaregistry — and it is callers' mapper that outranks it.
+	T.Run("a request with nobody on it reaches a client as unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := deriveScope(withPrincipal)(context.Background())
+		must.ErrorIs(t, err, callers.ErrNoPrincipal)
+
+		grpcCode, ok := callers.GRPCMapper.Map(err)
+		test.True(t, ok)
+		test.EqOp(t, codes.Unauthenticated, grpcCode)
+
+		httpCode, _, ok := callers.HTTPMapper.Map(err)
+		test.True(t, ok)
+		test.EqOp(t, httperrors.ErrFetchingSessionContextData, httpCode)
 	})
 }
 

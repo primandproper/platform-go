@@ -75,7 +75,14 @@ var (
 	// audit's scope, operations' owner, dataprivacy's subject and
 	// mediaregistry's caller are each a reading of a principal, and there is no
 	// reading of nobody.
-	ErrNoPrincipal = platformerrors.New(
+	//
+	// It wraps callers.ErrNoPrincipal, whose mappers answer it Unauthenticated
+	// and 401. Without that, each of the four answered with the code it falls
+	// back to for a resolver that failed — InvalidArgument from audit, a 500 from
+	// mediaregistry — which is the right answer to a request a consumer's
+	// resolver could not place and the wrong one to a request with nobody on it.
+	ErrNoPrincipal = platformerrors.Wrap(
+		callers.ErrNoPrincipal,
 		"no principal on the request context a derived transport seam was reading",
 	)
 
