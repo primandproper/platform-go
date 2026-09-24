@@ -166,7 +166,7 @@ all three files say so and point at each other.
 | `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | 156 | every paged read reports the filter it applied |
 | `conformance/audit` | 5 | confinement, paging |
-| `conformance/identity` | 3 | confinement, paging, credential rendering |
+| `conformance/identity` | 56 | the directory: accounts, memberships, invitations, users, confinement throughout |
 
 | subject | where | mounts |
 | --- | --- | --- |
@@ -290,15 +290,31 @@ concurrent writers ran one at a time.
 
 ## What is left
 
-In rough order of value per line:
+1. **The per-surface tail.** identity is converted: 42 of its in-process tests
+   now run as `conformance/identity` against every subject, and 5 more were
+   already superseded by `anonymous`, `filters` and the confinement cluster.
+   Ten surfaces remain. Expect about half of a surface's tests to convert; the
+   rest are construction, contract, converter, option or observability tests
+   that correctly stay put, and identity's stayers are listed in its commit.
 
-1. **The per-surface tail.** Roughly 54 more of identity's, then ten further
-   surfaces, deleting the in-process tests each conversion supersedes. Expect
-   about 55% of a surface's tests to convert: the rest are construction,
-   contract or converter tests that correctly stay put.
+2. **Deleting what the conversions supersede — blocked on a decision.** The
+   ruling is that a conversion and the deletion of the in-process test it
+   supersedes land together. The coverage gate cannot see that trade. It
+   excludes `conformance/` and runs without `-coverpkg`, so a deletion removes
+   coverage the gate counts while the conversion adds coverage it does not.
+   Measured on identity: `identity/grpc` goes from 94.0% to 61.1% (271 of 822
+   statements), which is 0.65% of the 41,416 statements Codecov counts —
+   over its 0.5% threshold, from one surface of eleven. The deletions are
+   therefore on `conformance-deletions`, stacked on this branch, until one of
+   these is chosen:
 
-An open question nobody has answered: whether to do 1 and 2 before 3, or work
-depth-first through a surface at a time. The ratio argues for 1 and 2 —
-`anonymous` got 142 assertions from about 250 lines, identity's confinement
-cluster got 3 from about 150 — but the per-surface assertions are the ones that
-catch dialect bugs, and #879 was found by exactly one of them.
+   - **Credit conformance to what it executes.** Run the assembled subject in
+     the coverage job with `-coverpkg` over the module, so a line an assertion
+     reaches through `service.New` counts where it lives. codecov.yml names
+     the missing `-coverpkg` as the reason its current numbers mislead; this
+     is that fix, and it makes the gate measure the same thing the deletions
+     assume it does.
+   - **Accept the drop** once, with the threshold or a one-off override, and
+     keep excluding the tree.
+   - **Keep the in-process tests**, which abandons the ruling.
+
