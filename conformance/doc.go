@@ -9,10 +9,15 @@ twelve surfaces and none of them has ever been through a composition root. A
 consumer's integration suite boots a whole service and asserts the same things
 again, in the consumer's repository, in the consumer's assertion library,
 against the consumer's single dialect. Neither is wrong. What is wrong is that
-they are two bodies of assertions about one set of promises, so the module can
-break a promise and learn about it from somebody else's CI.
+the second copy lives in the consumer's repository, so the module can break a
+promise and learn about it from somebody else's CI.
 
-This package is the one body. An assertion is written against the generated
+This package is that second copy, owned here and shipped. It supplements the
+in-process tests rather than replacing them: those stay where they are, fast and
+precise and what the coverage gate counts, and this restates the promises for
+subjects they cannot reach. What it makes redundant is the consumer's copy,
+which the consumer deletes once it runs these suites against its own
+deployment. An assertion is written against the generated
 client interface — auditpb.AuditServiceClient and its eleven siblings — and the
 subject it runs against is a seam:
 
@@ -39,13 +44,15 @@ What separates the modes is therefore only how the server was built and what is
 underneath it — which is exactly the axis a consumer cannot vary and this module
 cannot skip.
 
-# What stays where it is
+# What only an in-process test can say
 
 Construction, contract and conversion. NewServer(nil, db) has no wire form,
 Require(*authzgrpc.RequirementsBuilder) is a statement about a server rather
-than about a call, and a converter test is about two Go types. Those 110 tests
-are correctly in process and none of them moves here. This package is the
-behavioral half.
+than about a call, and a converter test is about two Go types. So is anything
+that varies how a server was built. None of that has a counterpart here. Nothing
+moves here from the <pkg>/grpc packages at all: every test there stays, and this
+package restates the behavioral promises among them for a server nobody in this
+module built.
 
 # What a subject supplies, and what it may decline
 

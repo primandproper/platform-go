@@ -27,10 +27,10 @@ promises again — in their repository, in their assertion library, against thei
 one dialect. `dinnerdonebetter`'s `backend/testing/integration/apiserver` is the
 worked example and carried roughly 120 such tests.
 
-Neither is wrong. What is wrong is that they are two bodies of assertions about
-one set of promises, so this module can break a promise and learn about it from
-somebody else's CI. That is backwards ownership, and it is the whole reason this
-package exists.
+Neither is wrong. What is wrong is that the consumer's copy lives in the
+consumer's repository, so this module can break a promise and learn about it
+from somebody else's CI. That is backwards ownership, and it is the whole reason
+this package exists.
 
 The other half is equally real and pulls the other way: a consumer needs to know
 their *own* wiring honours what this module promised — that their extractor
@@ -38,7 +38,9 @@ reaches every surface, that they called `errormappers.Register()`, that their
 `callers.PrincipalExtractor` resolves the scope they think it does. This module
 cannot test that. Only their running service can.
 
-So the answer is not to move the tests. It is to ship them.
+So the answer is not to move the tests. It is to ship them — and to leave this
+module's own in-process tests exactly where they are. The suites are
+supplementary to those; what they replace is the consumer's copy.
 
 ## The three subjects
 
@@ -103,7 +105,7 @@ bring about. Both skip with the reason printed. That is `service.Config`'s
 presence-is-the-switch rule one level down. Nothing degrades quietly: a suite
 that silently asserted nothing is worse than no suite.
 
-**Construction stays in `<pkg>/grpc`.** `NewServer(nil, db)` has no wire form,
+**Some promises can only be asserted in process.** `NewServer(nil, db)` has no wire form,
 a permission roster is a statement about a server rather than a call, and a
 converter test is about two Go types. So is anything that varies how the server
 was built — all seven of `audit/grpc`'s `WithChainsResolver` tests, and
@@ -117,9 +119,17 @@ edge worth a note is a suite pointed at a *remotely deployed* service built from
 an older tag; an assertion needing a server floor says so and skips below it,
 the way `client-contract.md`'s R10 and R11 do.
 
-**Everything lands in this repository.** Conversions and the deletion of the
-in-process tests they supersede go together, here. The consumer's suite is
-refactored separately and later, by whoever owns it.
+**The in-process tests stay; the consumer's duplicates go.** The suites are
+supplementary to this module's own tests, not replacements for them. Every
+`<pkg>/grpc` test stays in process, where it is faster, narrower, able to vary
+how a server is built, and what the coverage gate counts; a suite restates the
+behavioral promise among them against a server that was composed rather than
+hand-built, and the overlap is the point — every defect below was found by a
+suite while the in-process test beside it was green. What a suite makes
+redundant is a consumer's integration test of the same promise, and the
+consumer deletes those once it runs the suites against its own deployment.
+That is separate work in the consumer's repository, by whoever owns it. Every
+suite lands here.
 
 ## Dialects, and who proves what
 
@@ -319,33 +329,15 @@ assertion is skipped naming the bug until the ownership is ruled.
 
 ## What is left
 
-1. **The per-surface tail is converted.** Every gRPC surface has a suite, and
-   each suite's commit lists what converted, what was already superseded, and
-   what stays in process with its reason — construction, rosters, converters,
-   schema, options, observability, and anything that varies how a server was
-   built. mediaregistry's HTTP surface has no per-surface suite yet: asserting
-   it needs an object the application registered, which is a seam nobody has
-   written.
+1. **Every gRPC surface has a suite.** Each suite's commit names the in-process
+   tests whose promises it restates, and the ones it cannot reach and why —
+   construction, rosters, converters, schema, options, observability, and
+   anything that varies how a server was built. mediaregistry's HTTP surface
+   has no per-surface suite yet: asserting it needs an object the application
+   registered, which is a seam nobody has written.
 
-2. **Deleting what the conversions supersede — blocked on a decision.** The
-   ruling is that a conversion and the deletion of the in-process test it
-   supersedes land together. The coverage gate cannot see that trade. It
-   excludes `conformance/` and runs without `-coverpkg`, so a deletion removes
-   coverage the gate counts while the conversion adds coverage it does not.
-   Measured on identity: `identity/grpc` goes from 94.0% to 61.1% (271 of 822
-   statements), which is 0.65% of the 41,416 statements Codecov counts —
-   over its 0.5% threshold from one surface alone. All eleven together cost
-   1,365 statements, 3.29%, and each deletion commit carries its per-package
-   numbers. The deletions are therefore on `conformance-deletions`, stacked on
-   this branch, until one of these is chosen:
-
-   - **Credit conformance to what it executes.** Run the assembled subject in
-     the coverage job with `-coverpkg` over the module, so a line an assertion
-     reaches through `service.New` counts where it lives. codecov.yml names
-     the missing `-coverpkg` as the reason its current numbers mislead; this
-     is that fix, and it makes the gate measure the same thing the deletions
-     assume it does.
-   - **Accept the drop** once, with the threshold or a one-off override, and
-     keep excluding the tree.
-   - **Keep the in-process tests**, which abandons the ruling.
+2. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
+   own deployment, runs these suites in its integration job, and deletes the
+   integration tests of this module's promises they now cover. That is its
+   work, in its repository, and it is what the suites exist to make possible.
 
