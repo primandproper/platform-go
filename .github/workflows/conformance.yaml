@@ -42,12 +42,12 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # No containers yet, and that is a statement about what exists rather
-      # than a choice: every subject these suites run against today is a
-      # hand-built server on a bufconn over SQLite. The assembled subject —
-      # service.New over Postgres and MariaDB — is what flips this to "true",
-      # and it should flip in the change that adds it.
+      # Containers on, because the assembled subject is what they are for:
+      # service.New over Postgres and MySQL 8, beside the hand-built subjects'
+      # own real-server runs. The runner's Docker daemon starts them; a job that
+      # already had databases would set CONFORMANCE_POSTGRES_DSN and
+      # CONFORMANCE_MYSQL_DSN instead and start nothing.
       - name: run conformance suites
         env:
-          RUN_CONTAINER_TESTS: "false"
+          RUN_CONTAINER_TESTS: "true"
         run: CGO_ENABLED=1 go test -shuffle=on -race -vet=all ./conformance/...
