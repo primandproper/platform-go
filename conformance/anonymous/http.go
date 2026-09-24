@@ -76,6 +76,19 @@ func httpRoster() []httpSurface {
 	}
 }
 
+// subtestName is a route as a subtest name: its method and its path with the
+// slashes turned to spaces, "GET operations {operationID} events".
+//
+// Not the path as written, because a slash in a subtest name is nesting to go
+// test: "GET /operations" would read as the parent of "GET
+// /operations/{operationID}" rather than its sibling, in -run patterns and in
+// every tool that reads test2json — the conformance job's per-suite tally
+// counted five of these routes as parents rather than assertions until they
+// stopped being named that way.
+func subtestName(route httpRoute) string {
+	return route.method + " " + strings.ReplaceAll(strings.TrimPrefix(route.path, "/"), "/", " ")
+}
+
 // pathParam matches a route's placeholders, which the suite fills with an
 // identifier nothing holds.
 var pathParam = regexp.MustCompile(`\{[^}]+\}`)
@@ -125,7 +138,7 @@ func runHTTP(t *testing.T, s *conformance.Session, probe *conformance.Subject) {
 			for j := range surf.routes {
 				route := surf.routes[j]
 
-				t.Run(route.method+" "+route.path, func(t *testing.T) {
+				t.Run(subtestName(route), func(t *testing.T) {
 					t.Parallel()
 
 					url := base + pathParam.ReplaceAllString(route.path, absentID)

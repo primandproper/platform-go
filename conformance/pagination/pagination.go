@@ -59,7 +59,7 @@ func run(t *testing.T, s *conformance.Session) {
 	for i := range reads {
 		read := reads[i]
 
-		t.Run(read.Surface+"/"+string(read.Method.Name()), func(t *testing.T) {
+		t.Run(read.Surface+" "+string(read.Method.Name()), func(t *testing.T) {
 			t.Parallel()
 
 			page := func(t *testing.T, filter *filteringpb.QueryFilter) *filteringpb.Pagination {

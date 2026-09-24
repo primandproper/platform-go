@@ -179,7 +179,11 @@ func isResult(action string) bool {
 // The assembled subject's tests are TestConformance_AssembledSQLite/<suite>/...
 // and TestConformance_AssembledRealServers/<dialect>/<suite>/.... A suite is
 // registered if its node appears at all, even skipped; an assertion is a test
-// with no subtests of its own.
+// with no subtests of its own. That is read off the names, which is sound only
+// while no subtest's own name contains a slash — go test treats one as nesting,
+// so a subtest named "GET /a" would count as the parent of "GET /a/b". The
+// suites name their subtests accordingly; see conformance/anonymous's
+// subtestName.
 func count(results map[string]string) (tallies map[string]map[string]*tally, subjects []string) {
 	tallies = map[string]map[string]*tally{}
 	seen := map[string]bool{}
