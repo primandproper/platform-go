@@ -73,7 +73,9 @@ func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 	store, err := identity.NewSQLStore(db, identity.WithTablePrefix(prefix))
 	must.NoError(t, err)
 
-	svc, err := identity.NewService(db, store)
+	invites := &invitationTokens{}
+
+	svc, err := identity.NewService(db, store, identity.WithHooks(invites))
 	must.NoError(t, err)
 
 	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal)
@@ -104,9 +106,14 @@ func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 			// included — so there is no client-only way to mint the first one.
 			// The service is what a consumer's own registration handler calls.
 			reg, registerErr := svc.Register(ctx, scope,
+				// In good standing, because a subject is a signed-in caller
+				// and an unverified account is one sign-in does not admit:
+				// a caller registered as one could not exist in a
+				// deployment, and the principal read says so.
 				&identity.User{
-					Username:     "conf_" + identifiers.New(),
-					EmailAddress: identifiers.New() + "@conformance.invalid",
+					Username:      "conf_" + identifiers.New(),
+					EmailAddress:  identifiers.New() + "@conformance.invalid",
+					AccountStatus: identity.StatusGood,
 				},
 				&identity.Account{Name: "conf_" + identifiers.New()},
 				// The role names are the consumer's, which identity says of
@@ -134,6 +141,9 @@ func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 		},
 
 		Actions: conformance.Actions{
+			InvitationToken: invites.token,
+			EmailVerified:   verifyEmail(db, store),
+
 			// Written through the store, which is where this module's own
 			// sign-in flow writes one. A consumer implements the same seam by
 			// calling their password path; either way the secret in the column

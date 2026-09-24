@@ -24,6 +24,23 @@ func Suite() conformance.Suite {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	t.Run("accounts", func(t *testing.T) {
+		t.Parallel()
+		accounts(t, s)
+	})
+	t.Run("memberships", func(t *testing.T) {
+		t.Parallel()
+		memberships(t, s)
+	})
+	t.Run("invitations", func(t *testing.T) {
+		t.Parallel()
+		invitations(t, s)
+	})
+	t.Run("users", func(t *testing.T) {
+		t.Parallel()
+		users(t, s)
+	})
+
 	t.Run("a read by id is scoped to the caller's directory", func(t *testing.T) {
 		t.Parallel()
 

@@ -172,6 +172,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	// services Register does not build, the interceptors the gRPC server
 	// resolves, the extractor, and the rules about rows.
 	registerApplication(i, prefix)
+
+	// The consumer's identity hooks, which is where an invitation's token goes
+	// to be mailed. identity/config resolves them when it builds the service.
+	invites := &invitationTokens{}
+	do.ProvideValue[identity.Hooks](i, invites)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
@@ -237,9 +242,14 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			// requires a caller, Register included, so there is no client-only
 			// way to mint the first one.
 			reg, registerErr := identitySvc.Register(ctx, scope,
+				// In good standing, because a subject is a signed-in caller
+				// and an unverified account is one sign-in does not admit:
+				// a caller registered as one could not exist in a
+				// deployment, and the principal read says so.
 				&identity.User{
-					Username:     "conf_" + identifiers.New(),
-					EmailAddress: identifiers.New() + "@conformance.invalid",
+					Username:      "conf_" + identifiers.New(),
+					EmailAddress:  identifiers.New() + "@conformance.invalid",
+					AccountStatus: identity.StatusGood,
 				},
 				&identity.Account{Name: "conf_" + identifiers.New()},
 				[]string{"account_admin"})
@@ -273,6 +283,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		},
 
 		Actions: conformance.Actions{
+			InvitationToken: invites.token,
+			EmailVerified:   verifyEmail(client, identityStore),
+
 			// The recorder the composition root built, inside a transaction on
 			// the client it built — the end of the path a consumer's handler
 			// takes, since no surface in this module records an entry itself.

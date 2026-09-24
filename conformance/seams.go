@@ -251,6 +251,26 @@ type Actions struct {
 	// deployment's own.
 	Credentialed func(ctx context.Context, scope tenancy.Scope, userID string) (string, error)
 
+	// InvitationToken reports the token the deployment delivered to an
+	// invitation's recipient — the secret in the link a real invitee clicks.
+	//
+	// There is no RPC that returns it, and that is the point of the design:
+	// identity's Invite answers the sender with a redacted invitation, and the
+	// token reaches the recipient through whatever the deployment's AfterInvite
+	// hook queues. A consumer implements this by reading the mail their
+	// deployment sent; this module's harnesses by a hook that remembers what it
+	// was handed. Either way the token is the deployment's, which is what makes
+	// accepting with it a real acceptance.
+	InvitationToken func(ctx context.Context, scope tenancy.Scope, invitationID string) (string, error)
+
+	// EmailVerified does for a user what the deployment's email verification
+	// link does: marks the address they registered with as theirs.
+	//
+	// An action rather than an RPC because proving you hold an address is a
+	// round trip through a mailbox, and the suite cannot hold one. The reads
+	// that answer only a verified caller are asserted through it.
+	EmailVerified func(ctx context.Context, scope tenancy.Scope, userID string) error
+
 	// Subscribed makes a paid subscription exist for this tenant, the way the
 	// payment provider's webhook handler does.
 	//
