@@ -19,6 +19,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceanonymous "github.com/primandproper/platform-go/v14/conformance/anonymous"
 	conformanceaudit "github.com/primandproper/platform-go/v14/conformance/audit"
+	conformancedataprivacy "github.com/primandproper/platform-go/v14/conformance/dataprivacy"
 	conformancefilters "github.com/primandproper/platform-go/v14/conformance/filters"
 	conformanceidentity "github.com/primandproper/platform-go/v14/conformance/identity"
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
@@ -40,6 +41,7 @@ func Suites() []conformance.Suite {
 
 		conformanceaudit.Suite(),
 		conformanceidentity.Suite(),
+		conformancedataprivacy.Suite(),
 	}
 }
 
