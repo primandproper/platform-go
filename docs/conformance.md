@@ -162,11 +162,27 @@ all three files say so and point at each other.
 
 | suite | assertions | notes |
 | --- | --- | --- |
-| `conformance/anonymous` | 152 | every RPC on all twelve gRPC surfaces, and every route on the three HTTP ones |
+| `conformance/anonymous` | 147 | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
 | `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | 156 | every paged read reports the filter it applied |
-| `conformance/audit` | 5 | confinement, paging |
-| `conformance/identity` | 56 | the directory: accounts, memberships, invitations, users, confinement throughout |
+| `conformance/identity` | 49 | accounts, memberships, invitations, users |
+| `conformance/settings` | 28 | definitions, values, reserved settings, confinement |
+| `conformance/waitlists` | 39 | both audiences: the console, and the public signup page |
+| `conformance/billing` | 31 | products, subscriptions, the account rule |
+| `conformance/issuereports` | 43 | filing, lifecycle, the triage queue |
+| `conformance/signin` | 31 | registration, the password and magic-link doors, refresh, sign-out |
+| `conformance/webhooks` | 28 | event types, endpoints, signing keys, subscriptions |
+| `conformance/comments` | 26 | writing, reading, authorship |
+| `conformance/notifications` | 19 | the inbox and devices |
+| `conformance/audit` | 12 | reads, confinement, paging, verification |
+| `conformance/passwordreset` | 8 | the reset flow end to end |
+| `conformance/oauth2clients` | 7 | the administered registry |
+| `conformance/dataprivacy` | 5 | privacy requests over HTTP; one skipped on a known composition bug |
+
+668 leaf assertions on the Postgres run of the assembled subject, the one that
+serves every surface; SQLite and MySQL 8 run all but the HTTP surfaces that
+need Postgres. Every one passes on all three, with ten skips each, every skip
+printing its reason.
 
 | subject | where | mounts |
 | --- | --- | --- |
@@ -288,14 +304,28 @@ locking. audit's own container suite had a test for exactly this race and could
 not see it: its client config pinned every pool to one connection, so its
 concurrent writers ran one at a time.
 
+**Concurrent setting definitions deadlocked on MySQL** — #879's shape a third
+time. settings cleared a definition's options with a DELETE before writing
+them, whether or not there were any, and on InnoDB that gap-locks the range two
+new definitions both insert into. Found by the settings suite on MySQL 8, where
+parallel subtests create definitions; fixed the way identity was, by asking
+before clearing.
+
+**A privacy request's progress link 404s for the person who submitted it**
+(platform-go#884, open). dataprivacy opens the fulfilling operation owned by the
+person; `service` mounts operations/http resolving the owner as the caller's
+tenant; the two never match. Only the assembled subject could see it, and its
+assertion is skipped naming the bug until the ownership is ruled.
+
 ## What is left
 
-1. **The per-surface tail.** identity is converted: 42 of its in-process tests
-   now run as `conformance/identity` against every subject, and 5 more were
-   already superseded by `anonymous`, `filters` and the confinement cluster.
-   Ten surfaces remain. Expect about half of a surface's tests to convert; the
-   rest are construction, contract, converter, option or observability tests
-   that correctly stay put, and identity's stayers are listed in its commit.
+1. **The per-surface tail is converted.** Every gRPC surface has a suite, and
+   each suite's commit lists what converted, what was already superseded, and
+   what stays in process with its reason — construction, rosters, converters,
+   schema, options, observability, and anything that varies how a server was
+   built. mediaregistry's HTTP surface has no per-surface suite yet: asserting
+   it needs an object the application registered, which is a seam nobody has
+   written.
 
 2. **Deleting what the conversions supersede — blocked on a decision.** The
    ruling is that a conversion and the deletion of the in-process test it
