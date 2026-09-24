@@ -41,8 +41,12 @@ func registerApplication(i do.Injector, prefix string) {
 	do.ProvideValue(i, comments.Targets{
 		"conformance_thing": {Description: "a thing the conformance suite comments on"},
 	})
+	// Two event types rather than one, because the webhooks suite's assertions
+	// about a subscription set — reconciling it, retiring one of it — need a
+	// set with more than one member to be observable.
 	do.ProvideValue(i, webhooks.Catalog{
 		"conformance.happened": {Description: "something the conformance suite made happen"},
+		"conformance.followed": {Description: "something that followed from what the suite made happen"},
 	})
 
 	// What kinds of long-running work the application runs. Empty is a real
