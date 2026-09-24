@@ -22,6 +22,7 @@ import (
 	conformancefilters "github.com/primandproper/platform-go/v14/conformance/filters"
 	conformanceidentity "github.com/primandproper/platform-go/v14/conformance/identity"
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
+	conformancewaitlists "github.com/primandproper/platform-go/v14/conformance/waitlists"
 )
 
 // Suites is every suite, in the order they run.
@@ -40,6 +41,7 @@ func Suites() []conformance.Suite {
 
 		conformanceaudit.Suite(),
 		conformanceidentity.Suite(),
+		conformancewaitlists.Suite(),
 	}
 }
 

@@ -272,10 +272,14 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 					MediaRegistry: true,
 					Operations:    servesOperations,
 				},
+				// The scope travels as its owner rather than as its String,
+				// which is prose: the global scope renders as "<global>",
+				// and authenticate would read that back as a tenant of that
+				// name rather than as the scope belonging to nobody.
 				Decorate: func(ctx context.Context) context.Context {
 					return metadata.NewOutgoingContext(ctx, metadata.Pairs(
 						mdUserID, reg.User.ID,
-						mdScope, scope.String(),
+						mdScope, scope.Owner(),
 						mdAccount, reg.Account.ID,
 					))
 				},
@@ -340,6 +344,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 
 		// Every table is this run's own, by prefix.
 		ExclusiveDatabase: true,
+
+		// service mounts waitlists with its default scope resolver, which is
+		// the single-tenant answer: a visitor is in the global directory.
+		VisitorScope: new(tenancy.Global()),
 	})
 }
 
@@ -564,7 +572,7 @@ type credentialTransport struct {
 func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Set(mdUserID, c.userID)
-	req.Header.Set(mdScope, c.scope.String())
+	req.Header.Set(mdScope, c.scope.Owner())
 	req.Header.Set(mdAccount, c.accountID)
 
 	return http.DefaultTransport.RoundTrip(req)
