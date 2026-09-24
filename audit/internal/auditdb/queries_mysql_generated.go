@@ -32,11 +32,12 @@ FROM (
 	LIMIT ?
 ) AS audit_prune_backlog`
 
-const createAuditChainMySQL = `INSERT IGNORE INTO {{prefix}}audit_log_chains (
+const createAuditChainMySQL = `INSERT INTO {{prefix}}audit_log_chains (
 	scope
 ) VALUES (
 	?
-)`
+)
+ON DUPLICATE KEY UPDATE scope = scope`
 
 const deleteAuditChainsInScopesMySQL = `DELETE FROM {{prefix}}audit_log_chains
 WHERE scope IN (/*SLICE:scopes*/?)`

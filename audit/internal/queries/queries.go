@@ -3,6 +3,7 @@ package queries
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -333,13 +334,7 @@ func chainStatements(g *querygen.Generator) []*querygen.Query {
 
 		lockChainQuery(g),
 
-		// The row already there wins, unchanged, and the count says so. Two
-		// transactions recording into a scope for the first time would
-		// otherwise both insert a genesis row and the loser would fail on the
-		// primary key — taking a caller's business transaction down with it, on
-		// nothing worse than being second.
-		g.InsertIgnoreQuery(CreateChainQuery, ChainsTable,
-			ChainInsertColumns, nil, scopeMatch()),
+		createChainQuery(g),
 
 		g.UpdateQuery(AdvanceChainHeadQuery, ChainsTable,
 			ChainStateColumns, ChainHeadColumns, nil, scopeMatch()),
@@ -347,6 +342,55 @@ func chainStatements(g *querygen.Generator) []*querygen.Query {
 		g.UpdateQuery(RecordChainPruneQuery, ChainsTable,
 			ChainStateColumns, ChainPruneColumns, nil, scopeMatch()),
 	}
+}
+
+// createChainQuery renders the statement that makes sure a scope's chain row
+// exists, which a writer runs before it takes the row lock rather than after a
+// locked read has found nothing.
+//
+// The row already there wins, unchanged. Two transactions recording into a scope
+// for the first time would otherwise both insert a genesis row and the loser
+// would fail on the primary key — taking a caller's business transaction down
+// with it, on nothing worse than being second.
+//
+// The order is the MySQL half of the design. A locked read that finds no row
+// takes a gap lock on InnoDB, gap locks do not conflict with each other, and an
+// insert waits on any gap lock but its own — so two tenants recording their
+// first entries at once each held the gap the other was inserting into, and
+// InnoDB killed one of them with a deadlock. Creating first means no locked read
+// ever misses.
+//
+// That is also why MySQL's arm is not an INSERT IGNORE. On a duplicate, IGNORE
+// takes a shared lock on the existing row, and two writers in one scope each
+// holding one and each then asking for the exclusive lock the read takes is the
+// same deadlock moved onto the path every write after the first one takes. ON
+// DUPLICATE KEY UPDATE takes the exclusive lock outright — on the row alone,
+// since scope is the primary key — so the second writer waits here and the
+// read after it re-locks what it already holds. The assignment restates the
+// key, and is there for the lock rather than the write: querygen's upsert drops
+// key columns from its conflict branch and has nothing else to assign on this
+// table, so the statement is written out.
+//
+// Postgres and SQLite keep the ignore. Neither takes a gap lock, and the locked
+// read that follows serializes their writers on its own.
+func createChainQuery(g *querygen.Generator) *querygen.Query {
+	create := g.InsertIgnoreQuery(CreateChainQuery, ChainsTable,
+		ChainInsertColumns, nil, scopeMatch())
+
+	if g.Dialect() != dialect.MySQL {
+		return create
+	}
+
+	const ignore, plain = "INSERT IGNORE INTO ", "INSERT INTO "
+	if !strings.HasPrefix(create.Content, ignore) {
+		panic("audit queries: MySQL's insert-ignore no longer starts " + strconv.Quote(ignore))
+	}
+
+	create.Content = fmt.Sprintf("%s\nON DUPLICATE KEY UPDATE %s = %s;",
+		strings.TrimSuffix(plain+strings.TrimPrefix(create.Content, ignore), ";"),
+		ScopeColumn, ScopeColumn)
+
+	return create
 }
 
 // lockChainQuery renders the chain read a writer takes, which is the read above

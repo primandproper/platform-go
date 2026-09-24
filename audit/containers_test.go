@@ -481,6 +481,48 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.EqOp(t, writers, countRows(t, env.client, prefix+"_audit_log_entries", "scope = 'brand_new_scope'"))
 	})
 
+	t.Run("creates chains for many new scopes at once without deadlocking", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		prefix := env.newPrefix(t)
+		recorder := env.recorder(t, c, prefix)
+		reader := env.reader(t, prefix)
+
+		// Each writer is a different tenant's first entry, which is what a
+		// deployment sees in its first minutes. On InnoDB a locked read that
+		// finds no row takes a gap lock, and gap locks do not conflict with each
+		// other — so writers that locked before creating each held the gap the
+		// others were inserting into, and InnoDB killed all but one of them.
+		// The recorder creates the row before locking it for this case.
+		const writers = 16
+
+		scopes := make([]tenancy.Scope, writers)
+		for i := range scopes {
+			scopes[i] = tenancy.Of(fmt.Sprintf("new_scope_%02d", i))
+		}
+
+		errs := make(chan error, writers)
+		for _, scope := range scopes {
+			go func() {
+				errs <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+					return recorder.Record(t.Context(), q, scope, entryFor(scope, "first"))
+				})
+			}()
+		}
+
+		for range writers {
+			must.NoError(t, <-errs)
+		}
+
+		for _, scope := range scopes {
+			result, err := reader.Verify(t.Context(), env.client.Reader(), scope, time.Time{}, time.Time{}, ChainStart)
+			must.NoError(t, err)
+			test.True(t, result.Intact(), test.Sprintf("chain for %s", scope))
+			test.EqOp(t, 1, result.Checked, test.Sprintf("chain for %s", scope))
+		}
+	})
+
 	t.Run("refuses an update once the append-only trigger is installed", func(t *testing.T) {
 		t.Parallel()
 
@@ -566,13 +608,17 @@ func TestAudit_Postgres(T *testing.T) {
 	T.Parallel()
 
 	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString, maxOpenConns: realServerConns})
 		must.NoError(T, err)
 		T.Cleanup(func() { _ = client.Close() })
 
 		runDialectSuite(T, &dialectEnv{dialect: dialect.Postgres, client: client})
 	}, pgtest.WithMaxOpenConns(32))
 }
+
+// realServerConns is the pool a real server's client opens: wide enough that the
+// concurrent-writer subtests have their transactions open at once.
+const realServerConns = 32
 
 // runWithMySQL boots a MySQL container via mysqltest and hands its closure a
 // database.Client against it.
@@ -582,7 +628,7 @@ func runWithMySQL(tb testing.TB, fn func(ctx context.Context, client database.Cl
 	mysqltest.Run(tb, func(ctx context.Context, my *mysqltest.Instance) {
 		permitTriggerCreation(ctx, tb, my)
 
-		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString, maxOpenConns: realServerConns})
 		must.NoError(tb, err)
 		tb.Cleanup(func() { _ = client.Close() })
 
@@ -682,7 +728,7 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 		t.Parallel()
 
 		pgtest.Run(t, func(_ context.Context, pg *pgtest.Instance) {
-			client, err := postgres.NewDatabaseClient(t.Context(), &testClientConfig{connectionString: pg.ConnectionString})
+			client, err := postgres.NewDatabaseClient(t.Context(), &testClientConfig{connectionString: pg.ConnectionString, maxOpenConns: realServerConns})
 			must.NoError(t, err)
 			t.Cleanup(func() { _ = client.Close() })
 

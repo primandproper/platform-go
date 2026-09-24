@@ -20,11 +20,12 @@ WHERE audit_log_chains.scope = sqlc.arg(scope)
 FOR UPDATE;
 
 -- name: CreateAuditChain :execrows
-INSERT IGNORE INTO audit_log_chains (
+INSERT INTO audit_log_chains (
 	scope
 ) VALUES (
 	sqlc.arg(scope)
-);
+)
+ON DUPLICATE KEY UPDATE scope = scope;
 
 -- name: AdvanceAuditChainHead :execrows
 UPDATE audit_log_chains SET
