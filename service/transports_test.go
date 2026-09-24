@@ -603,6 +603,19 @@ func TestDerivedSeams(T *testing.T) {
 		test.ErrorIs(t, err, ErrNoPrincipal)
 	})
 
+	// A privacy request's operation is owned by the person and an
+	// application's by the tenant, so a caller follows both — and only those.
+	T.Run("the owners a caller follows are their tenant and themselves", func(t *testing.T) {
+		t.Parallel()
+
+		owners, err := deriveOwners(withPrincipal, nil)(withCaller)
+		must.NoError(t, err)
+		test.Eq(t, []tenancy.Scope{caller.scope, tenancy.Of(caller.userID)}, owners)
+
+		_, err = deriveOwners(withPrincipal, nil)(context.Background())
+		test.ErrorIs(t, err, callers.ErrNoPrincipal)
+	})
+
 	// The refusal is for want of a caller, and says so on both transports. Each
 	// of the four surfaces behind these seams falls back to a code written for a
 	// resolver that failed — InvalidArgument from audit, a 500 from

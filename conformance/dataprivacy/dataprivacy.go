@@ -102,15 +102,6 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("the operation fulfilling a request is its subject's alone", func(t *testing.T) {
 		t.Parallel()
 
-		// Skipped rather than removed, because it is right and the composition
-		// is not. dataprivacy opens the operation owned by the person the
-		// request is about; service mounts operations/http resolving the owner
-		// as the caller's tenant; the two are never the same value, so the
-		// progress link a receipt hands its subject answers them 404. The
-		// assertion below is the one that proved it, and the one that will
-		// say when it is fixed.
-		t.Skip("conformance: on a service built by service.New, operations/http resolves an operation's owner as the caller's tenant while dataprivacy owns its operations by person, so a subject cannot read the progress of their own request")
-
 		mine, theirs := twoPeople(t, s)
 		if !mine.HTTP.Operations {
 			t.Skip("conformance: this subject serves privacy requests but not the operations that fulfill them")
@@ -132,6 +123,15 @@ func run(t *testing.T, s *conformance.Session) {
 
 		status, _ = call(t, theirs, http.MethodGet, path, nil)
 		test.EqOp(t, http.StatusNotFound, status)
+
+		// A colleague shares the tenant but not the person, and the operation
+		// is the person's: following somebody's export is not something being
+		// in their tenant grants.
+		colleague := s.Subject(t, conformance.InTenant(mine.Scope))
+
+		status, _ = call(t, colleague, http.MethodGet, path, nil)
+		test.EqOp(t, http.StatusNotFound, status,
+			test.Sprint("a colleague in the same tenant could follow somebody's privacy request"))
 	})
 
 	t.Run("a request of a kind nobody offers is refused", func(t *testing.T) {

@@ -54,6 +54,14 @@ one tenant is the query rather than a comparison a handler remembered to make
 afterwards. That comparison used to be here, and it is gone: this surface made
 it and the next one would have been the one that did not.
 
+A deployment that starts operations under more than one owner — its own work
+under a tenant, dataprivacy's under the person a request is about — supplies an
+OwnersResolver instead, and every read fans out across the set: an operation is
+answered by whichever owner holds it, and a listing is the union in identifier
+order. service mounts this surface that way, with the caller's tenant and the
+caller, so the progress link a privacy request's receipt hands its subject is
+one that subject can follow and a colleague cannot.
+
 A resolver that returns the zero Scope fails the request at the driver rather
 than widening it. A single-tenant deployment that genuinely has no owners passes
 GlobalOwner instead, which is a name rather than an omission: it makes "every

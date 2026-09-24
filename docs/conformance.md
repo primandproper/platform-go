@@ -187,11 +187,12 @@ all three files say so and point at each other.
 | `conformance/audit` | 12 | reads, confinement, paging, verification |
 | `conformance/passwordreset` | 8 | the reset flow end to end |
 | `conformance/oauth2clients` | 7 | the administered registry |
-| `conformance/dataprivacy` | 5 | privacy requests over HTTP; one skipped on a known composition bug |
+| `conformance/dataprivacy` | 5 | privacy requests over HTTP, and the operations that fulfill them |
 
 668 leaf assertions on the Postgres run of the assembled subject, the one that
 serves every surface; SQLite and MySQL 8 run all but the HTTP surfaces that
-need Postgres. Every one passes on all three, with ten skips each, every skip
+need Postgres. Every one passes on all three — nine skips on Postgres, ten on the
+other two where the privacy surface is not served — every skip
 printing its reason.
 
 | subject | where | mounts |
@@ -322,10 +323,12 @@ parallel subtests create definitions; fixed the way identity was, by asking
 before clearing.
 
 **A privacy request's progress link 404s for the person who submitted it**
-(platform-go#884, open). dataprivacy opens the fulfilling operation owned by the
-person; `service` mounts operations/http resolving the owner as the caller's
-tenant; the two never match. Only the assembled subject could see it, and its
-assertion is skipped naming the bug until the ownership is ruled.
+(platform-go#884). dataprivacy opens the fulfilling operation owned by the
+person; `service` mounted operations/http resolving the owner as the caller's
+tenant; the two never matched. Only the assembled subject could see it. Fixed by
+letting operations/http read across a set of owners (`WithOwnersResolver`) and
+mounting it with the caller's tenant and the caller; a colleague in the same
+tenant still gets a 404, and the suite asserts both.
 
 ## What is left
 

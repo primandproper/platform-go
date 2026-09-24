@@ -2,8 +2,10 @@ package http
 
 import (
 	"context"
+	"errors"
 	nethttp "net/http"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,6 +81,35 @@ type OwnerResolver func(ctx context.Context) (tenancy.Scope, error)
 // show.
 func GlobalOwner(context.Context) (tenancy.Scope, error) { return tenancy.Global(), nil }
 
+// OwnersResolver says every owner whose operations a request may read, for a
+// deployment that starts operations under more than one.
+//
+// # Why a deployment has more than one owner
+//
+// An operation's owner is whoever may read its progress, and that is not always
+// a tenant. An application's own work — an import, a report run — naturally
+// belongs to the tenant it was run for. A privacy request's belongs to the
+// person it is about: dataprivacy starts its operations owned by the subject,
+// because a request's confinement may name no tenant at all, and because a
+// colleague in the same tenant has no business reading somebody's export
+// status. A person signed in to that deployment therefore legitimately owns
+// operations under two scopes, their tenant's and their own, and a surface that
+// resolved only one would answer their own receipt's progress link with a 404.
+//
+// Reads fan out across the set. A read by identifier is answered by whichever
+// owner holds it — identifiers are unique, so at most one does — and a listing
+// is the union, merged in identifier order the way each statement orders its
+// own page.
+//
+// # What it must not do
+//
+// Return an owner the caller may not read. The owners it answers with are bound
+// into the statements directly, so a resolver that answered from a request
+// field has handed the caller somebody else's operations. Answer from the
+// principal or the connection — never from the request. An empty set is
+// refused as ErrNoOwners rather than read as "nothing".
+type OwnersResolver func(ctx context.Context) ([]tenancy.Scope, error)
+
 // Handlers is the mountable operations read surface.
 type Handlers struct {
 	svc  operations.Service
@@ -98,6 +129,7 @@ type Handlers struct {
 
 	watcher  *operations.Watcher
 	resolver OwnerResolver
+	owners   OwnersResolver
 
 	// upgrader is built once rather than per request, because the reconnection
 	// hint it writes is the same bytes for every stream and because an Upgrader
@@ -126,7 +158,7 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 
 	o := newOptions(opts)
 
-	if o.resolver == nil {
+	if o.resolver == nil && o.owners == nil {
 		return nil, ErrNilOwnerResolver
 	}
 
@@ -165,6 +197,7 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 		svc:      svc,
 		watcher:  o.watcher,
 		resolver: o.resolver,
+		owners:   o.owners,
 		codec:    encoding.NewClientEncoder(encoding.ContentTypeJSON, encoding.WithLogger(o.logger), encoding.WithTracerProvider(o.tracerProvider)),
 		upgrader: sse.NewUpgrader(
 			sse.WithLogger(o.logger),
@@ -291,16 +324,20 @@ func (h *Handlers) cancel(ctx context.Context, in cancelInput) (*operations.Oper
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(operationIDKey, in.ID))
 	defer span.End()
 
-	scope, err := h.scope(ctx, span)
+	owners, err := h.scopes(ctx, span)
 	if err != nil {
 		return nil, span.Error(err, "resolving operation owner")
 	}
 
 	// There is no read before this one. Cancel is a write reached by an ID and
 	// nothing else, and the scoped read that confines it is one
-	// operations.Service.Cancel now makes for every caller rather than one this
-	// handler makes for itself.
-	op, err := h.svc.Cancel(ctx, scope, in.ID)
+	// operations.Service.Cancel makes for every caller rather than one this
+	// handler makes for itself — so a caller with several owners asks it under
+	// each in turn, and the owner that holds the operation is the one whose
+	// read finds it.
+	op, err := firstOwner(owners, func(owner tenancy.Scope) (*operations.Operation, error) {
+		return h.svc.Cancel(ctx, owner, in.ID)
+	})
 	if err != nil {
 		return nil, span.Error(err, "cancelling operation")
 	}
@@ -315,7 +352,7 @@ func (h *Handlers) list(
 	ctx, span := h.o11y.Begin(ctx)
 	defer span.End()
 
-	scope, err := h.scope(ctx, span)
+	owners, err := h.scopes(ctx, span)
 	if err != nil {
 		return nil, span.Error(err, "resolving operation owner")
 	}
@@ -334,12 +371,98 @@ func (h *Handlers) list(
 		listScope.States = []operations.State{state}
 	}
 
-	results, err := h.svc.List(ctx, scope, listScope, filterFrom(in))
+	results, err := h.listAcrossOwners(ctx, owners, listScope, filterFrom(in))
 	if err != nil {
 		return nil, span.Error(err, "listing operations")
 	}
 
 	return results, nil
+}
+
+// listAcrossOwners is List over every owner the request may read, merged.
+//
+// One owner is one statement, which is every deployment that supplies a single
+// resolver. More are one statement each, merged in identifier order — the order
+// each statement's own page is cut in — and trimmed to the page size, with the
+// cursor the last row emitted rather than the last row any owner returned, so
+// the next page resumes where this one ended. It is audit/grpc's merge across
+// chains, for the same reason: owners are disjoint, so the pages are too.
+func (h *Handlers) listAcrossOwners(
+	ctx context.Context,
+	owners []tenancy.Scope,
+	listScope *operations.ListScope,
+	filter *filtering.QueryFilter,
+) (*filtering.QueryFilteredResult[operations.Operation], error) {
+	if len(owners) == 1 {
+		return h.svc.List(ctx, owners[0], listScope, filter)
+	}
+
+	merged := &filtering.QueryFilteredResult[operations.Operation]{}
+
+	var (
+		filtered, total uint64
+		countsKnown     = true
+	)
+
+	for i, owner := range owners {
+		page, err := h.svc.List(ctx, owner, listScope, filter)
+		if err != nil {
+			return nil, err
+		}
+
+		merged.Data = append(merged.Data, page.Data...)
+
+		// The filter, page size and cursor are the same for every owner, so
+		// the first owner's are the union's. The counts are summed below.
+		if i == 0 {
+			merged.Pagination = page.Pagination
+		}
+
+		ownerFiltered, ownerTotal, known := page.Counts()
+		if !known {
+			countsKnown = false
+
+			continue
+		}
+
+		filtered += ownerFiltered
+		total += ownerTotal
+	}
+
+	descending := filter != nil && filter.SortsDescending()
+
+	slices.SortFunc(merged.Data, func(a, b *operations.Operation) int {
+		if descending {
+			return strings.Compare(b.ID, a.ID)
+		}
+
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	limit := int(filtering.DefaultQueryFilterLimit)
+	if filter != nil && filter.MaxResponseSize != nil {
+		limit = int(*filter.MaxResponseSize)
+	}
+
+	if len(merged.Data) > limit {
+		merged.Data = merged.Data[:limit]
+	}
+
+	merged.Cursor = ""
+	if len(merged.Data) > 0 {
+		merged.Cursor = merged.Data[len(merged.Data)-1].ID
+	}
+
+	// Withheld unless every owner answered: an unanswered pair reads as zero,
+	// and summing one in reports a total short by a whole owner.
+	merged.CountsKnown = countsKnown
+	merged.FilteredCount, merged.TotalCount = 0, 0
+
+	if countsKnown {
+		merged.FilteredCount, merged.TotalCount = filtered, total
+	}
+
+	return merged, nil
 }
 
 // filterFrom builds the shared query filter from the endpoint's own parameters.
@@ -359,20 +482,80 @@ func filterFrom(in listInput) *filtering.QueryFilter {
 	return filter
 }
 
-// scope resolves whose operations this request may see, and records it.
+// scopes resolves every owner whose operations this request may see, and
+// records them.
 //
 // It is one function rather than a call in each handler so that a handler cannot
 // be written that reads without resolving one: there is no path to svc.Get or
-// svc.List from here that does not come through a resolved scope.
-func (h *Handlers) scope(ctx context.Context, span observability.Operation) (tenancy.Scope, error) {
-	scope, err := h.resolver(ctx)
-	if err != nil {
-		return tenancy.Scope{}, err
+// svc.List from here that does not come through resolved owners. A deployment
+// that supplied the single resolver has a set of one.
+func (h *Handlers) scopes(ctx context.Context, span observability.Operation) ([]tenancy.Scope, error) {
+	if h.owners == nil {
+		scope, err := h.resolver(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		span.Set(ownerKey, scope.String())
+
+		return []tenancy.Scope{scope}, nil
 	}
 
-	span.Set(ownerKey, scope.String())
+	resolved, err := h.owners(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	return scope, nil
+	owners := make([]tenancy.Scope, 0, len(resolved))
+	names := make([]string, 0, len(resolved))
+
+	for _, owner := range resolved {
+		if slices.Contains(owners, owner) {
+			continue
+		}
+
+		owners = append(owners, owner)
+		names = append(names, owner.String())
+	}
+
+	if len(owners) == 0 {
+		return nil, ErrNoOwners
+	}
+
+	span.Set(ownerKey, strings.Join(names, ","))
+
+	return owners, nil
+}
+
+// firstOwner asks call under each of the request's owners in turn and answers
+// with the first that finds the operation.
+//
+// Identifiers are unique, so at most one owner holds any operation, and asking
+// each is the whole search. An operation none of them holds reads as
+// ErrOperationNotFound, whether it belongs to somebody else or to nobody — the
+// same answer on purpose; see read. Any other failure is returned at once
+// rather than masked by a later owner's absence. With one owner it is exactly
+// one call, which is every deployment that supplies the single resolver.
+func firstOwner[T any](owners []tenancy.Scope, call func(tenancy.Scope) (T, error)) (T, error) {
+	var (
+		zero   T
+		absent error
+	)
+
+	for _, owner := range owners {
+		found, err := call(owner)
+		if err == nil {
+			return found, nil
+		}
+
+		if !errors.Is(err, operations.ErrOperationNotFound) {
+			return zero, err
+		}
+
+		absent = err
+	}
+
+	return zero, absent
 }
 
 // read fetches an operation in the scope the request resolved to.
@@ -388,17 +571,14 @@ func (h *Handlers) read(
 	span observability.Operation,
 	id string,
 ) (*operations.Operation, error) {
-	scope, err := h.scope(ctx, span)
+	owners, err := h.scopes(ctx, span)
 	if err != nil {
 		return nil, err
 	}
 
-	op, err := h.svc.Get(ctx, scope, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return op, nil
+	return firstOwner(owners, func(owner tenancy.Scope) (*operations.Operation, error) {
+		return h.svc.Get(ctx, owner, id)
+	})
 }
 
 // Accepted renders the 202 body a consumer's own start endpoint returns, with
