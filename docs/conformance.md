@@ -334,9 +334,10 @@ assertion is skipped naming the bug until the ownership is ruled.
    coverage the gate counts while the conversion adds coverage it does not.
    Measured on identity: `identity/grpc` goes from 94.0% to 61.1% (271 of 822
    statements), which is 0.65% of the 41,416 statements Codecov counts —
-   over its 0.5% threshold, from one surface of eleven. The deletions are
-   therefore on `conformance-deletions`, stacked on this branch, until one of
-   these is chosen:
+   over its 0.5% threshold from one surface alone. All eleven together cost
+   1,365 statements, 3.29%, and each deletion commit carries its per-package
+   numbers. The deletions are therefore on `conformance-deletions`, stacked on
+   this branch, until one of these is chosen:
 
    - **Credit conformance to what it executes.** Run the assembled subject in
      the coverage job with `-coverpkg` over the module, so a line an assertion
