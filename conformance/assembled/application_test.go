@@ -98,8 +98,10 @@ func registerApplication(i do.Injector, prefix string) {
 			return nil, err
 		}
 
+		// The mailbox assemble registered, which is where the reset suite reads
+		// the link a person would have been sent.
 		return passwordreset.NewService(db, resetTokens, do.MustInvoke[identity.Store](i),
-			argon2.NewArgon2Authenticator(), discardMailer{})
+			argon2.NewArgon2Authenticator(), do.MustInvoke[*resetMailbox](i))
 	})
 
 	do.Provide(i, func(i do.Injector) (*signin.Service, error) {
@@ -131,15 +133,6 @@ func operationsConfig(prefix string) *operationscfg.Config {
 
 	return cfg
 }
-
-// discardMailer sends nothing. No assertion here reads a reset mail; a suite
-// that needs one will need an action seam that reports it, the way Credentialed
-// reports a fragment, rather than a mailbox this harness keeps.
-type discardMailer struct{}
-
-var _ passwordreset.Mailer = discardMailer{}
-
-func (discardMailer) SendPasswordReset(context.Context, *passwordreset.Mail) error { return nil }
 
 // authorizers are this harness's rules about which rows a caller has standing
 // in, and there is one rule: a caller's own user and their active account, and

@@ -21,6 +21,7 @@ import (
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
+	"github.com/primandproper/platform-go/v14/billing"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
@@ -177,6 +178,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	// to be mailed. identity/config resolves them when it builds the service.
 	invites := &invitationTokens{}
 	do.ProvideValue[identity.Hooks](i, invites)
+
+	// And the consumer's reset mailer, which is where a reset link goes.
+	mailbox := &resetMailbox{}
+	do.ProvideValue(i, mailbox)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
@@ -272,10 +277,15 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 					MediaRegistry: true,
 					Operations:    servesOperations,
 				},
+				// The scope travels as its owner identifier rather than its
+				// String, which is prose: String renders the global scope as a
+				// placeholder, and the interceptor would read that back as a
+				// tenant of that name rather than as the scope belonging to
+				// nobody.
 				Decorate: func(ctx context.Context) context.Context {
 					return metadata.NewOutgoingContext(ctx, metadata.Pairs(
 						mdUserID, reg.User.ID,
-						mdScope, scope.String(),
+						mdScope, scope.Owner(),
 						mdAccount, reg.Account.ID,
 					))
 				},
@@ -283,8 +293,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		},
 
 		Actions: conformance.Actions{
-			InvitationToken: invites.token,
-			EmailVerified:   verifyEmail(client, identityStore),
+			InvitationToken:    invites.token,
+			EmailVerified:      verifyEmail(client, identityStore),
+			Subscribed:         subscribe(client, do.MustInvoke[billing.Store](i)),
+			PasswordResetToken: mailbox.token,
 
 			// The recorder the composition root built, inside a transaction on
 			// the client it built — the end of the path a consumer's handler
@@ -564,7 +576,7 @@ type credentialTransport struct {
 func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Set(mdUserID, c.userID)
-	req.Header.Set(mdScope, c.scope.String())
+	req.Header.Set(mdScope, c.scope.Owner())
 	req.Header.Set(mdAccount, c.accountID)
 
 	return http.DefaultTransport.RoundTrip(req)

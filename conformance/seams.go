@@ -271,8 +271,9 @@ type Actions struct {
 	// that answer only a verified caller are asserted through it.
 	EmailVerified func(ctx context.Context, scope tenancy.Scope, userID string) error
 
-	// Subscribed makes a paid subscription exist for this tenant, the way the
-	// payment provider's webhook handler does.
+	// Subscribed makes a paid subscription exist for one account in this
+	// tenant, the way the payment provider's webhook handler does, with a paid
+	// period that covers the moment it was made.
 	//
 	// There is no CreateSubscription RPC and that is a ruling rather than a
 	// gap: a subscription mirrors what a payment provider says is paid for, so
@@ -280,7 +281,25 @@ type Actions struct {
 	// them. A consumer's own suite documented this as an assertion it could not
 	// write — "needs data seeding the harness does not currently provide" — and
 	// omitted it rather than write it flaky. This is the seam that closes it.
-	Subscribed func(ctx context.Context, scope tenancy.Scope) (*billing.Subscription, error)
+	//
+	// It names the account because a subscription belongs to one, and the reads
+	// that matter most about it are the ones confining an account to its own:
+	// a tenant-wide subscription would be a row no account-keyed read could be
+	// asserted against.
+	Subscribed func(ctx context.Context, scope tenancy.Scope, accountID string) (*billing.Subscription, error)
+
+	// PasswordResetToken reports the secret the deployment most recently mailed
+	// to an address as a password reset link — the secret a person who cannot
+	// sign in clicks through with.
+	//
+	// There is no RPC that returns it, deliberately: RequestPasswordReset
+	// answers a known address and an unknown one identically, and the secret
+	// reaches the person through the deployment's passwordreset.Mailer. A
+	// consumer implements this by reading the mail their deployment sent; this
+	// module's harnesses by a mailer that remembers what it was handed. Either
+	// way the secret is the deployment's, which is what makes completing a reset
+	// with it a real reset rather than one the suite forged.
+	PasswordResetToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
 }
 
 // Audited is what an auditable action touched, as the entry recording it will
