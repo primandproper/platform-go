@@ -22,5 +22,14 @@ RUN_CONTAINER_TESTS="${RUN_CONTAINER_TESTS:-true}" "${SCRIPT_DIR}/pull_test_cont
 # what keeps this an exclusion from the coverage number rather than from CI.
 # See .github/workflows/conformance.yaml.
 #
+# The per-package timeout is raised from go test's default of ten minutes, which
+# nobody chose for this job. It runs every package at once, under the race
+# detector, with every container suite sharing one runner's Docker daemon, and
+# identity — whose container suites render a fresh schema per subtest — crossed
+# ten minutes there once its MySQL suites moved from MariaDB to MySQL 8, whose
+# DDL is several times slower. The same package takes under two minutes on a
+# developer's machine. Twenty minutes is headroom inside the workflow's own
+# forty-five, not a budget for tests to grow into.
+#
 # shellcheck disable=SC2086,SC2046
-CGO_ENABLED=1 go test -shuffle=on -race -vet=all -failfast -covermode=atomic -coverprofile="${OUTPUT_FILE}" $(go list ./... | grep -Ev '(mock|testutils|/conformance)')
+CGO_ENABLED=1 go test -shuffle=on -race -vet=all -failfast -timeout 20m -covermode=atomic -coverprofile="${OUTPUT_FILE}" $(go list ./... | grep -Ev '(mock|testutils|/conformance)')
