@@ -42,6 +42,7 @@ import (
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	mediaregistrymigrations "github.com/primandproper/platform-go/v14/mediaregistry/migrations"
+	"github.com/primandproper/platform-go/v14/notifications"
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	notificationsclient "github.com/primandproper/platform-go/v14/notifications/grpc/client"
 	notificationsmigrations "github.com/primandproper/platform-go/v14/notifications/migrations"
@@ -297,6 +298,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			EmailVerified:      verifyEmail(client, identityStore),
 			Subscribed:         subscribe(client, do.MustInvoke[billing.Store](i)),
 			PasswordResetToken: mailbox.token,
+			Notified:           notify(client, do.MustInvoke[notifications.Inbox](i)),
 
 			// The recorder the composition root built, inside a transaction on
 			// the client it built — the end of the path a consumer's handler

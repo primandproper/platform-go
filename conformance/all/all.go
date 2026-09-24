@@ -23,6 +23,8 @@ import (
 	conformancedataprivacy "github.com/primandproper/platform-go/v14/conformance/dataprivacy"
 	conformancefilters "github.com/primandproper/platform-go/v14/conformance/filters"
 	conformanceidentity "github.com/primandproper/platform-go/v14/conformance/identity"
+	conformanceissuereports "github.com/primandproper/platform-go/v14/conformance/issuereports"
+	conformancenotifications "github.com/primandproper/platform-go/v14/conformance/notifications"
 	conformanceoauth2clients "github.com/primandproper/platform-go/v14/conformance/oauth2clients"
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
 	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
@@ -52,6 +54,8 @@ func Suites() []conformance.Suite {
 		conformanceoauth2clients.Suite(),
 		conformancepasswordreset.Suite(),
 		conformancewaitlists.Suite(),
+		conformanceissuereports.Suite(),
+		conformancenotifications.Suite(),
 	}
 }
 

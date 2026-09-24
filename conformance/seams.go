@@ -319,6 +319,24 @@ type Actions struct {
 	// way the secret is the deployment's, which is what makes completing a reset
 	// with it a real reset rather than one the suite forged.
 	PasswordResetToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
+
+	// Notified does something in this tenant the deployment tells a user
+	// about, and reports the identifier of the notification that landed in
+	// their inbox.
+	//
+	// There is no RPC that files a notification, and that is the design rather
+	// than a gap: a notification is the application telling somebody something
+	// happened, so a client that could file one could put words in the
+	// application's mouth on anybody's lock screen. Every inbox therefore fills
+	// the same way in every deployment — the application's own code, inside the
+	// transaction of whatever it is announcing. A consumer implements this by
+	// doing one of those things; this module's harnesses by calling the inbox
+	// the composition root built, which is where that path ends anyway.
+	//
+	// The identifier comes back rather than going in for Audited's reason: the
+	// deployment decides what a notification says, and the suite finds it by
+	// what the deployment reports rather than by words it guessed.
+	Notified func(ctx context.Context, scope tenancy.Scope, userID string) (string, error)
 }
 
 // Audited is what an auditable action touched, as the entry recording it will
