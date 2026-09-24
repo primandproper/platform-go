@@ -235,7 +235,7 @@ func serve(t *testing.T, srv *identitygrpc.Server) *grpc.ClientConn {
 	))
 	srv.RegisterOn(grpcServer)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	must.NoError(t, err)
 
 	go func() { _ = grpcServer.Serve(listener) }()
