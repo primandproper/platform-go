@@ -325,9 +325,10 @@ type PasswordUpdate struct {
 	CurrentPassword string `json:"-"`
 
 	// NewPassword is what replaces it. Whether it is long enough, unusual
-	// enough, or unlike the last four is the consumer's rule, applied before
-	// this call — this package holds no password policy and validating one here
-	// would be a policy every consumer then had to work around.
+	// enough, or unlike the last four is the consumer's rule — this package
+	// holds no password policy, and validating one here would be a policy every
+	// consumer then had to work around. The consumer's own is applied here if
+	// the service was built with WithPasswordPolicy.
 	NewPassword string `json:"-"`
 
 	// TOTPCode is the second-factor code, required from a user who holds a
@@ -402,6 +403,10 @@ type Service struct {
 	// sent is a sign-in nobody can complete; the redemption door needs only the
 	// store.
 	magicLinkMailer MagicLinkMailer
+
+	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
+	// any password that is not empty.
+	passwordPolicy PasswordPolicy
 
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger

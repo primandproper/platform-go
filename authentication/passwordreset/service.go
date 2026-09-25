@@ -145,7 +145,7 @@ func (f MailerFunc) SendPasswordReset(ctx context.Context, mail *Mail) error {
 //
 // It owns no table beyond the one Store already owns, and it holds no policy.
 // Whether the new password is long enough, unusual enough or unlike the last
-// four is the consumer's rule, applied before Complete is called; which engine
+// four is the consumer's rule, which WithPasswordPolicy hands in; which engine
 // hashes it is the consumer's Authenticator; what the mail says is the
 // consumer's Mailer. What this adds is the order those are used in, and the two
 // things that order is for:
@@ -175,12 +175,16 @@ type Service struct {
 	clk           clock.Clock
 	o11y          observability.Observer
 
-	instruments *metrics.OperationSet
-
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
+
+	instruments *metrics.OperationSet
+
+	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
+	// any password that is not empty.
+	passwordPolicy PasswordPolicy
 
 	lifetime     time.Duration
 	requestFloor time.Duration
@@ -285,8 +289,9 @@ func (s *Service) begin(ctx context.Context, name string, values ...observabilit
 		// the reason isTokenError gives: somebody following an expired link is
 		// this flow working, and a dashboard that charted it as an error would
 		// bury the driver failures that belong there under the most routine
-		// event in the package.
-		if err != nil && !isTokenError(err) {
+		// event in the package. A refused password is the fourth such outcome,
+		// and is not counted for the same reason.
+		if err != nil && !isTokenError(err) && !stderrors.Is(err, ErrPasswordRefused) {
 			s.instruments.Failed(ctx, attr)
 		}
 
@@ -415,12 +420,13 @@ func (s *Service) Verify(ctx context.Context, scope tenancy.Scope, secret string
 // Authenticator does not hold a row lock for a fraction of a second per
 // redemption.
 //
-// Whether the new password is acceptable is the consumer's rule, applied before
-// this call — this package holds no password policy, for the reason
-// authentication/signin does not. The one rule it does apply is that the
-// password is not empty, which is not a policy but a write that would lock the
-// user out, and it is applied before the token is spent so a client that
-// submitted an empty form still holds its link.
+// Whether the new password is acceptable is the consumer's rule — this package
+// holds no password policy, for the reason authentication/signin does not. A
+// Service built with [WithPasswordPolicy] applies the consumer's here, and a
+// refusal is [ErrPasswordRefused]. The one rule it applies of its own is that
+// the password is not empty, which is not a policy but a write that would lock
+// the user out. Both are applied before the token is spent, so a client that
+// submitted an empty form or a refused password still holds its link.
 //
 // What comes back is the token as it was spent, RedeemedAt set, which is what an
 // audit entry or a log line names. The secret is not on it and never was.
@@ -434,6 +440,12 @@ func (s *Service) Complete(
 
 	if newPassword == "" {
 		return nil, op.Error(ErrEmptyNewPassword, "completing a password reset")
+	}
+
+	// Returned bare, as the three token outcomes are: somebody choosing a
+	// password the policy refuses is this flow working, not failing.
+	if err = s.checkPassword(ctx, newPassword); err != nil {
+		return nil, err
 	}
 
 	hashed, err := s.authenticator.HashPassword(ctx, newPassword)

@@ -279,8 +279,10 @@ func (s *Server) GetSelf(
 // user who holds a proven one: being signed in is not by itself proof enough to
 // change the credential the sign-in was obtained with.
 //
-// Whether the new password is acceptable is the consumer's rule, in front of
-// this call. Nothing here holds a password policy.
+// Whether the new password is acceptable is the consumer's rule, which the
+// service applies if it was built with signin.WithPasswordPolicy — a refusal is
+// InvalidArgument carrying PASSWORD_REFUSED. Nothing here holds a policy of its
+// own.
 func (s *Server) UpdatePassword(
 	ctx context.Context,
 	request *signinpb.UpdatePasswordRequest,
