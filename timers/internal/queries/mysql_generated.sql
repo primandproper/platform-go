@@ -7,14 +7,16 @@ INSERT INTO scheduled_timers (
 	run_at,
 	payload,
 	attempts,
-	lease_until
+	lease_until,
+	created_at
 ) VALUES (
 	sqlc.arg(timer_set),
 	sqlc.arg(timer_key),
 	(CAST('1970-01-01 00:00:00' AS DATETIME(6)) + INTERVAL sqlc.arg(run_at_microseconds) MICROSECOND),
 	sqlc.narg(payload),
 	0,
-	'1970-01-01 00:00:00'
+	'1970-01-01 00:00:00',
+	(UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 )
 ON DUPLICATE KEY UPDATE
 	lease_until = CASE
@@ -30,15 +32,15 @@ ON DUPLICATE KEY UPDATE
 	attempts = 0,
 	last_error = NULL,
 	fired_at = NULL,
-	last_updated_at = CURRENT_TIMESTAMP(6);
+	last_updated_at = (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND);
 
 -- name: SelectDueTimers :many
 SELECT scheduled_timers.timer_key
 FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
-	AND scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling))
 ORDER BY scheduled_timers.run_at, scheduled_timers.timer_key
 LIMIT ?, ?;
@@ -47,24 +49,24 @@ LIMIT ?, ?;
 SELECT
 	scheduled_timers.timer_key,
 	(scheduled_timers.lease_until > '1970-01-01 00:00:00') AS reclaimed
-FROM scheduled_timers
+FROM scheduled_timers FORCE INDEX (PRIMARY)
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
-	AND scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling))
 	AND scheduled_timers.timer_key IN (sqlc.slice(timer_keys))
 FOR UPDATE SKIP LOCKED;
 
 -- name: LeaseTimers :execrows
-UPDATE scheduled_timers SET
-	lease_until = (CURRENT_TIMESTAMP(6) + INTERVAL sqlc.arg(lease_microseconds) MICROSECOND),
+UPDATE scheduled_timers FORCE INDEX (PRIMARY) SET
+	lease_until = ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) + INTERVAL sqlc.arg(lease_microseconds) MICROSECOND),
 	leased_by = sqlc.arg(leased_by),
 	attempts = scheduled_timers.attempts + 1
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
-	AND scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling))
 	AND scheduled_timers.timer_key IN (sqlc.slice(timer_keys))
 ORDER BY scheduled_timers.timer_key;
@@ -75,7 +77,7 @@ SELECT
 	scheduled_timers.payload,
 	(scheduled_timers.payload IS NOT NULL) AS has_payload,
 	scheduled_timers.run_at,
-	CAST(TIMESTAMPDIFF(MICROSECOND, scheduled_timers.run_at, CURRENT_TIMESTAMP(6)) AS SIGNED) AS late_microseconds,
+	CAST(TIMESTAMPDIFF(MICROSECOND, scheduled_timers.run_at, (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)) AS SIGNED) AS late_microseconds,
 	scheduled_timers.attempts
 FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
@@ -85,15 +87,15 @@ ORDER BY scheduled_timers.run_at, scheduled_timers.timer_key;
 -- name: ReadNextDueTimer :one
 SELECT
 	COUNT(*) AS outstanding,
-	CAST(COALESCE(-TIMESTAMPDIFF(MICROSECOND, MIN(GREATEST(scheduled_timers.run_at, scheduled_timers.lease_until)), CURRENT_TIMESTAMP(6)), 0) AS SIGNED) AS next_due_microseconds
+	CAST(COALESCE(-TIMESTAMPDIFF(MICROSECOND, MIN(GREATEST(scheduled_timers.run_at, scheduled_timers.lease_until)), (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)), 0) AS SIGNED) AS next_due_microseconds
 FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
 	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling));
 
 -- name: CompleteTimers :execrows
-UPDATE scheduled_timers SET
-	fired_at = CURRENT_TIMESTAMP(6),
+UPDATE scheduled_timers FORCE INDEX (PRIMARY) SET
+	fired_at = (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND),
 	lease_until = '1970-01-01 00:00:00',
 	leased_by = NULL,
 	last_error = NULL
@@ -103,10 +105,10 @@ WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 ORDER BY scheduled_timers.timer_key;
 
 -- name: ReleaseTimers :execrows
-UPDATE scheduled_timers SET
+UPDATE scheduled_timers FORCE INDEX (PRIMARY) SET
 	lease_until = '1970-01-01 00:00:00',
 	leased_by = NULL,
-	run_at = (CURRENT_TIMESTAMP(6) + INTERVAL sqlc.arg(delay_microseconds) MICROSECOND),
+	run_at = ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) + INTERVAL sqlc.arg(delay_microseconds) MICROSECOND),
 	last_error = sqlc.narg(last_error)
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
@@ -115,7 +117,7 @@ WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 ORDER BY scheduled_timers.timer_key;
 
 -- name: CancelTimers :execrows
-DELETE FROM scheduled_timers
+DELETE /*+ INDEX(scheduled_timers PRIMARY) */ FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.timer_key IN (sqlc.slice(timer_keys))
 ORDER BY scheduled_timers.timer_key;
@@ -125,15 +127,15 @@ SELECT scheduled_timers.timer_key
 FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NOT NULL
-	AND scheduled_timers.fired_at < (CURRENT_TIMESTAMP(6) - INTERVAL sqlc.arg(retention_microseconds) MICROSECOND)
+	AND scheduled_timers.fired_at < ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) - INTERVAL sqlc.arg(retention_microseconds) MICROSECOND)
 ORDER BY scheduled_timers.fired_at
 LIMIT ?;
 
 -- name: DeleteReapedTimers :execrows
-DELETE FROM scheduled_timers
+DELETE /*+ INDEX(scheduled_timers PRIMARY) */ FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NOT NULL
-	AND scheduled_timers.fired_at < (CURRENT_TIMESTAMP(6) - INTERVAL sqlc.arg(retention_microseconds) MICROSECOND)
+	AND scheduled_timers.fired_at < ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) - INTERVAL sqlc.arg(retention_microseconds) MICROSECOND)
 	AND scheduled_timers.timer_key IN (sqlc.slice(timer_keys))
 ORDER BY scheduled_timers.timer_key;
 
@@ -142,17 +144,17 @@ SELECT
 	CAST(COALESCE(SUM(CASE WHEN scheduled_timers.fired_at IS NULL THEN 1 ELSE 0 END), 0) AS SIGNED) AS outstanding,
 	CAST(COALESCE(SUM(CASE WHEN scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
-	AND scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling)) THEN 1 ELSE 0 END), 0) AS SIGNED) AS due,
-	CAST(COALESCE(SUM(CASE WHEN scheduled_timers.fired_at IS NULL AND scheduled_timers.lease_until > CURRENT_TIMESTAMP(6) THEN 1 ELSE 0 END), 0) AS SIGNED) AS leased,
+	CAST(COALESCE(SUM(CASE WHEN scheduled_timers.fired_at IS NULL AND scheduled_timers.lease_until > (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) THEN 1 ELSE 0 END), 0) AS SIGNED) AS leased,
 	CAST(COALESCE(SUM(CASE WHEN scheduled_timers.fired_at IS NULL AND sqlc.arg(attempt_ceiling) > 0
 		AND scheduled_timers.attempts >= sqlc.arg(attempt_ceiling) THEN 1 ELSE 0 END), 0) AS SIGNED) AS stalled,
 	CAST(COALESCE(SUM(CASE WHEN scheduled_timers.fired_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS SIGNED) AS fired,
 	CAST(COALESCE(TIMESTAMPDIFF(MICROSECOND, MIN(CASE WHEN scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.fired_at IS NULL
-	AND scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
-	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling)) THEN scheduled_timers.run_at END), CURRENT_TIMESTAMP(6)), 0) AS SIGNED) AS oldest_due_microseconds
+	AND scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND (sqlc.arg(attempt_ceiling) <= 0 OR scheduled_timers.attempts < sqlc.arg(attempt_ceiling)) THEN scheduled_timers.run_at END), (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)), 0) AS SIGNED) AS oldest_due_microseconds
 FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set);

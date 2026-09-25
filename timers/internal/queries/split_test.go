@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -335,6 +336,75 @@ func TestRenderSplit_TheClockIsTheServersAtItsFinestGrain(T *testing.T) {
 				test.StrNotContains(T, body, "CURRENT_TIMESTAMP", test.Sprintf("sqlite %s reads a second-granular clock", name))
 			}
 		}
+	}
+}
+
+// TestRenderSplit_TheMySQLClockIsUTC. run_at is the UTC wall clock whatever the
+// session's time zone, so every clock a MySQL statement reads has to be the UTC
+// one: a statement that compared run_at with CURRENT_TIMESTAMP would fire every
+// timer early or late by the session's offset. CURRENT_TIMESTAMP appears only
+// inside now, for the fraction of a second a zone cannot change. created_at is
+// the one column whose DEFAULT reads the session's clock, so the insert writes
+// it rather than leaving it to the DEFAULT.
+func TestRenderSplit_TheMySQLClockIsUTC(T *testing.T) {
+	T.Parallel()
+
+	now := newSplit(dialect.MySQL).now()
+	test.StrContains(T, now, "UTC_TIMESTAMP()")
+
+	for name, body := range splitCorpus(T, dialect.MySQL) {
+		rest := strings.ReplaceAll(body, now, "")
+
+		for _, clock := range []string{"CURRENT_TIMESTAMP", "UTC_TIMESTAMP", "NOW(", "SYSDATE", "LOCALTIMESTAMP"} {
+			test.StrNotContains(T, rest, clock, test.Sprintf("mysql %s reads %s outside now", name, clock))
+		}
+	}
+
+	schedule := splitStatement(T, dialect.MySQL, "ScheduleTimer")
+	inserted, _, _ := strings.Cut(schedule, "ON DUPLICATE KEY UPDATE")
+	test.StrContains(T, inserted, "\t"+querygen.CreatedAtColumn+"\n)")
+	test.StrContains(T, inserted, "\t"+now+"\n)")
+}
+
+// TestRenderSplit_TheKeyedStatementsForceThePrimaryKeyOnMySQL. A keyed
+// statement names the whole primary key, and the claim's, the hand-back's and
+// the reaper's also carry a range over the due index; were MySQL to take that
+// range instead, it would lock the first record past it, which is as often as
+// not another set's earliest due timer. So every statement that binds the keys
+// is forced onto the primary key — FORCE INDEX where MySQL takes it, the
+// optimizer hint on a DELETE, which does not — and the candidate reads, which
+// lock nothing and are what the due index is for, are left alone.
+func TestRenderSplit_TheKeyedStatementsForceThePrimaryKeyOnMySQL(T *testing.T) {
+	T.Parallel()
+
+	keyed := 0
+
+	for name, body := range splitCorpus(T, dialect.MySQL) {
+		if !strings.Contains(body, "sqlc.slice("+KeysArg+")") {
+			test.StrNotContains(T, body, "INDEX", test.Sprintf("mysql %s", name))
+
+			continue
+		}
+
+		keyed++
+
+		switch {
+		case strings.HasPrefix(body, "DELETE "):
+			test.True(T, strings.HasPrefix(body, "DELETE /*+ INDEX("+TimersTable+" PRIMARY) */ FROM "+TimersTable+"\n"),
+				test.Sprintf("mysql %s:\n%s", name, body))
+		case strings.HasPrefix(body, "UPDATE "):
+			test.True(T, strings.HasPrefix(body, "UPDATE "+TimersTable+" FORCE INDEX (PRIMARY) SET\n"),
+				test.Sprintf("mysql %s:\n%s", name, body))
+		default:
+			test.StrContains(T, body, "\nFROM "+TimersTable+" FORCE INDEX (PRIMARY)\n", test.Sprintf("mysql %s", name))
+		}
+	}
+
+	// The lock, the lease, the two outcome writes, the cancel and the reap.
+	test.EqOp(T, 6, keyed)
+
+	for name, body := range splitCorpus(T, dialect.SQLite) {
+		test.StrNotContains(T, body, "INDEX", test.Sprintf("sqlite %s", name))
 	}
 }
 

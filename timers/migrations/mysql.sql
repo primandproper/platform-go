@@ -11,8 +11,9 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}scheduled_timers (
     timer_set       VARBINARY(2048) NOT NULL,
     timer_key       VARBINARY(512)  NOT NULL,
     -- The schedule, as the UTC wall clock at microseconds. It is written from a
-    -- count of microseconds since the epoch rather than from a bound time, so
-    -- the session's time zone never enters it.
+    -- count of microseconds since the epoch rather than from a bound time, and
+    -- every statement compares it with the UTC clock rather than
+    -- CURRENT_TIMESTAMP, so the session's time zone enters neither side.
     run_at          DATETIME(6)     NOT NULL,
     -- MEDIUMBLOB rather than BLOB, because BLOB holds 65535 bytes and
     -- MaxPayloadSize is 65536: the largest payload the package admits would
@@ -20,6 +21,11 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}scheduled_timers (
     -- Postgres schema gives.
     payload         MEDIUMBLOB      NULL,
     attempts        INT             NOT NULL DEFAULT 0,
+    -- The DEFAULT reads the session's clock, and so is not what a schedule
+    -- relies on: the insert writes the UTC clock itself, so every instant on
+    -- the row is on one clock. The UTC clock cannot be the DEFAULT instead:
+    -- MySQL 8 takes it there only as an expression default, which sqlc's
+    -- parser refuses.
     created_at      DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6)     NULL,
     archived_at     DATETIME(6)     NULL,

@@ -140,6 +140,23 @@ func (s split) scheduleTimer() string {
 
 	moved := existing(RunAtColumn) + " <> " + incoming(RunAtColumn)
 
+	columns := InsertColumns()
+	values := []string{
+		"sqlc.arg(" + SetArg + ")",
+		"sqlc.arg(" + KeyArg + ")",
+		s.instant(RunAtArg),
+		"sqlc.narg(" + PayloadArg + ")",
+		"0",
+		s.epoch(),
+	}
+
+	// MySQL's created_at DEFAULT reads the session's clock, which is not the
+	// one now reads; the insert writes the right one itself. See the schema.
+	if s.d == dialect.MySQL {
+		columns = append(columns, querygen.CreatedAtColumn)
+		values = append(values, s.now())
+	}
+
 	return fmt.Sprintf(`INSERT INTO %[1]s (
 	%[2]s
 ) VALUES (
@@ -161,15 +178,8 @@ func (s split) scheduleTimer() string {
 	%[17]s = NULL,
 	%[18]s = %[19]s`,
 		TimersTable,
-		strings.Join(InsertColumns(), ",\n\t"),
-		strings.Join([]string{
-			"sqlc.arg(" + SetArg + ")",
-			"sqlc.arg(" + KeyArg + ")",
-			s.instant(RunAtArg),
-			"sqlc.narg(" + PayloadArg + ")",
-			"0",
-			s.epoch(),
-		}, ",\n\t"),
+		strings.Join(columns, ",\n\t"),
+		strings.Join(values, ",\n\t"),
 		s.conflictHeader(),
 		LeaseColumn, moved, s.epoch(), existing(LeaseColumn),
 		HolderColumn, existing(HolderColumn),
@@ -236,7 +246,8 @@ ORDER BY %[4]s, %[1]s
 // snapshot and this reads the rows as they are now: one another claimant
 // leased and committed in between is locked here and is no longer due. The keys
 // name every column of the primary key, which is what keeps the lock to the
-// row — a unique lookup locks the record it finds and no gap beside it.
+// row — a unique lookup locks the record it finds and no gap beside it — and
+// byKey is what keeps MySQL on that key.
 //
 // SQLite has no row lock to skip and needs none: it has one writer, and the set
 // holds these statements in a transaction on it.
@@ -248,7 +259,7 @@ func (s split) lockDueTimers() string {
 	return fmt.Sprintf(`SELECT
 	%[1]s,
 	(%[2]s > %[3]s) AS reclaimed
-FROM %[4]s
+FROM %[4]s%[8]s
 WHERE %[5]s
 	AND %[6]s%[7]s`,
 		querygen.Qualify(TimersTable, KeyColumn),
@@ -258,6 +269,7 @@ WHERE %[5]s
 		s.due(),
 		s.keys(),
 		s.skipLocked(),
+		s.byKey(),
 	)
 }
 
@@ -274,7 +286,7 @@ WHERE %[5]s
 // The lease is rounded up and padded on SQLite; see after. MySQL assigns left
 // to right, and nothing here reads a column an earlier assignment wrote.
 func (s split) leaseTimers() string {
-	return fmt.Sprintf(`UPDATE %[1]s SET
+	return fmt.Sprintf(`UPDATE %[1]s%[11]s SET
 	%[2]s = %[3]s,
 	%[4]s = sqlc.arg(%[5]s),
 	%[6]s = %[7]s + 1
@@ -287,6 +299,7 @@ WHERE %[8]s
 		s.due(),
 		s.keys(),
 		s.keyOrder(),
+		s.byKey(),
 	)
 }
 
@@ -349,7 +362,7 @@ WHERE %[3]s`,
 // Every row it matches changes — leased_by goes from a name to NULL — so MySQL's
 // changed-row count is the matched count here.
 func (s split) completeTimers() string {
-	return fmt.Sprintf(`UPDATE %[1]s SET
+	return fmt.Sprintf(`UPDATE %[1]s%[10]s SET
 	%[2]s = %[3]s,
 	%[4]s = %[5]s,
 	%[6]s = NULL,
@@ -362,6 +375,7 @@ WHERE %[8]s%[9]s`,
 		LastErrorColumn,
 		s.heldBy(false),
 		s.keyOrder(),
+		s.byKey(),
 	)
 }
 
@@ -374,7 +388,7 @@ WHERE %[8]s%[9]s`,
 // reads, and the name goes with the lease — which is what keeps the name alone
 // a fence for the instant too; see heldBy.
 func (s split) releaseTimers() string {
-	return fmt.Sprintf(`UPDATE %[1]s SET
+	return fmt.Sprintf(`UPDATE %[1]s%[11]s SET
 	%[2]s = %[3]s,
 	%[4]s = NULL,
 	%[5]s = %[6]s,
@@ -387,19 +401,21 @@ WHERE %[9]s%[10]s`,
 		LastErrorColumn, LastErrorArg,
 		s.heldBy(true),
 		s.keyOrder(),
+		s.byKey(),
 	)
 }
 
 // cancelTimers deletes named timers whatever their state; the one keyed write
 // fenced on nothing but the set.
 func (s split) cancelTimers() string {
-	return fmt.Sprintf(`DELETE FROM %[1]s
+	return fmt.Sprintf(`DELETE %[6]sFROM %[1]s
 WHERE %[2]s = sqlc.arg(%[3]s)
 	AND %[4]s%[5]s`,
 		TimersTable,
 		querygen.Qualify(TimersTable, SetColumn), SetArg,
 		s.keys(),
 		s.keyOrder(),
+		s.deleteByKey(),
 	)
 }
 
@@ -436,13 +452,14 @@ LIMIT %[5]s`,
 // The locks are taken in key order, as every other keyed writer takes them, so
 // the wait is a queue rather than half of a deadlock.
 func (s split) deleteReapedTimers() string {
-	return fmt.Sprintf(`DELETE FROM %[1]s
+	return fmt.Sprintf(`DELETE %[5]sFROM %[1]s
 WHERE %[2]s
 	AND %[3]s%[4]s`,
 		TimersTable,
 		s.reapable(),
 		s.keys(),
 		s.keyOrder(),
+		s.deleteByKey(),
 	)
 }
 
@@ -575,6 +592,43 @@ func (s split) keyOrder() string {
 	return "\nORDER BY " + querygen.Qualify(TimersTable, KeyColumn)
 }
 
+// byKey keeps a keyed statement on the primary key, on MySQL.
+//
+// Every statement that binds the key set also binds the set, so it names the
+// whole primary key, and that is what keeps its locks to the rows it names: a
+// unique lookup locks the record it finds and no gap beside it. But naming the
+// key is not choosing it. The claim's statements and the reaper's also carry a
+// due or reapable test, the hand-back carries `fired_at IS NULL`, and each of
+// those is a range over scheduled_timers_due_idx that an optimizer may cost as
+// the cheaper path — a small set, drifted statistics. A statement that took
+// that path would lock by range, and the first record past a set's range is,
+// as often as not, the next set's earliest due timer: the lock
+// selectDueTimers exists to avoid, back by another door. The hint takes the
+// choice away.
+//
+// FORCE INDEX on a SELECT and an UPDATE. MySQL takes no index hint on a
+// single-table DELETE, so the deletes say it with deleteByKey instead.
+func (s split) byKey() string {
+	if s.d != dialect.MySQL {
+		return ""
+	}
+
+	return " FORCE INDEX (PRIMARY)"
+}
+
+// deleteByKey is byKey for a single-table DELETE, which refuses FORCE INDEX
+// and accepts the optimizer hint INDEX — the same instruction, placed where a
+// DELETE can carry it. The hint names the table, and the generated querier
+// prefixes that mention with every other, so it names the table the statement
+// deletes from under any prefix.
+func (s split) deleteByKey() string {
+	if s.d != dialect.MySQL {
+		return ""
+	}
+
+	return "/*+ INDEX(" + TimersTable + " PRIMARY) */ "
+}
+
 // skipLocked is the lock a claim's locking read takes, where the engine has
 // one.
 func (s split) skipLocked() string {
@@ -617,16 +671,25 @@ const sqliteInstant = "'%Y-%m-%d %H:%M:%f'"
 // now is the server's clock as a statement should store it and compare against
 // it.
 //
-// On MySQL that is querygen's stored spelling rather than the bare
-// CURRENT_TIMESTAMP, which is second-granular whatever the column holds. On
-// SQLite it is strftime's %f, the only clock SQLite has that reads finer than a
-// second.
+// On MySQL that is the UTC wall clock, at the microseconds the columns hold.
+// run_at is the UTC wall clock whatever the session says (see instant), so the
+// clock it is compared with has to be too: querygen's stored spelling,
+// CURRENT_TIMESTAMP(6), reads the session's time zone, and on a connection
+// whose zone is not UTC every timer would fire early or late by the offset.
+//
+// UTC_TIMESTAMP(6) is the obvious spelling and sqlc's catalog knows only the
+// argumentless form, which is second-granular. So the whole seconds come from
+// that, and the fraction from CURRENT_TIMESTAMP(6): MySQL reads every clock in
+// a statement once, at the statement's start, so the two are the same instant,
+// and no time zone offset has a fraction of a second in it to change the
+// fraction by. On SQLite it is strftime's %f, the only clock SQLite has that
+// reads finer than a second, and UTC already.
 func (s split) now() string {
 	if s.d == dialect.SQLite {
 		return "strftime(" + sqliteInstant + ", 'now')"
 	}
 
-	return s.g.StoredNow()
+	return "(UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)"
 }
 
 // instant renders a bound count of microseconds since the Unix epoch as the
@@ -642,7 +705,8 @@ func (s split) now() string {
 //
 // The arithmetic is on DATETIME rather than through FROM_UNIXTIME on MySQL,
 // which would read the count in the session's time zone; an epoch plus an
-// interval is the UTC wall clock the column holds, whatever the session says.
+// interval is the UTC wall clock the column holds, whatever the session says,
+// and now reads the same clock to compare it against.
 func (s split) instant(argument string) string {
 	if s.d == dialect.MySQL {
 		return fmt.Sprintf("(CAST('1970-01-01 00:00:00' AS DATETIME(6)) + INTERVAL sqlc.arg(%s) MICROSECOND)", argument)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -50,11 +51,6 @@ func (c *testClientConfig) GetMaxIdleConns() int              { return 8 }
 func (c *testClientConfig) GetMaxOpenConns() int              { return 16 }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
-// defaultMySQLImage pins the MariaDB flavor the MySQL suite runs against, which
-// is the one this module's other MySQL suites run against; mysqltest's default
-// is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
-
 // everyDialect is the roster the suites below run against.
 var everyDialect = []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite}
 
@@ -82,7 +78,6 @@ func withClient(t *testing.T, d dialect.Dialect, fn func(client database.Client)
 
 			fn(client)
 		},
-			mysqltest.WithImage(defaultMySQLImage),
 			mysqltest.WithCredentials("timerstest", "timerstest", "timerstest"),
 		)
 	case dialect.SQLite:
@@ -1641,5 +1636,86 @@ func runMigrationsTwice(t *testing.T, client database.Client) {
 
 	for _, stmt := range stmts {
 		test.False(t, strings.Contains(stmt, "{{"))
+	}
+}
+
+// TestTimers_MySQLSessionTimeZone runs the clock against a MySQL session whose
+// time zone is not UTC, in both directions. run_at holds the UTC wall clock, so
+// every clock a statement reads beside it has to be the UTC one too: compare it
+// with the session's clock instead and a zone ahead of UTC fires every timer
+// early by the offset, and a zone behind fires every one late by it. The pool
+// is one a consumer would plausibly have — the zone is the connection's, set
+// through the DSN, as it is on any server whose default is not UTC.
+func TestTimers_MySQLSessionTimeZone(T *testing.T) {
+	T.Parallel()
+
+	mysqltest.Run(T, func(ctx context.Context, my *mysqltest.Instance) {
+		createTable(T, openMySQL(T, ctx, my.ConnectionString), DefaultTablePrefix)
+
+		for _, zone := range []string{"+05:00", "-05:00"} {
+			T.Run(zone, func(t *testing.T) {
+				t.Parallel()
+
+				runTheSessionTimeZoneNeverEnters(t,
+					openMySQL(t, ctx, my.ConnectionString+"&time_zone="+url.QueryEscape("'"+zone+"'")))
+			})
+		}
+	},
+		mysqltest.WithCredentials("timerstest", "timerstest", "timerstest"),
+	)
+}
+
+// openMySQL builds a client over one DSN on the suite's server.
+func openMySQL(t *testing.T, ctx context.Context, connectionString string) database.Client {
+	t.Helper()
+
+	client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: connectionString})
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	return client
+}
+
+// runTheSessionTimeZoneNeverEnters is the offset's two directions, each an
+// hour inside a five-hour zone: a timer an hour out is not claimable yet, one
+// an hour past is, and each is measured from its true instant. The columns the
+// database stamps for itself are read back raw, because nothing in the API
+// surfaces them and a created_at five hours off is still a lie on the row.
+func runTheSessionTimeZoneNeverEnters(t *testing.T, client database.Client) {
+	t.Helper()
+
+	ctx := t.Context()
+	set := newSet(t, client, nil)
+
+	must.NoError(t, set.ScheduleAt(ctx, "ahead", time.Now().Add(time.Hour), nil))
+	must.NoError(t, set.ScheduleAt(ctx, "behind", past(), nil))
+
+	claimed, err := set.Claim(ctx, 10, time.Minute)
+	must.NoError(t, err)
+	must.Eq(t, []string{"behind"}, dueKeys(claimed))
+	test.Between(t, 59*time.Minute, claimed[0].Late, 61*time.Minute)
+
+	// Retired, so the sleep hint measures to the timer still ahead rather
+	// than to this one's lease.
+	must.NoError(t, set.Complete(ctx, claimed...))
+
+	next, outstanding, err := set.NextDue(ctx)
+	must.NoError(t, err)
+	must.True(t, outstanding)
+	test.Between(t, 59*time.Minute, next, 61*time.Minute)
+
+	// A reschedule, so last_updated_at has been written as well as created_at.
+	must.NoError(t, set.ScheduleAt(ctx, "ahead", time.Now().Add(2*time.Hour), nil))
+
+	var createdAt, lastUpdatedAt time.Time
+
+	must.NoError(t, client.Reader().QueryRowContext(ctx,
+		"SELECT created_at, last_updated_at FROM scheduled_timers WHERE timer_set = ? AND timer_key = ?",
+		set.Name(), "ahead").Scan(&createdAt, &lastUpdatedAt))
+
+	now := time.Now()
+	for column, stamped := range map[string]time.Time{"created_at": createdAt, "last_updated_at": lastUpdatedAt} {
+		test.Less(t, time.Minute, now.Sub(stamped).Abs(),
+			test.Sprintf("%s was stamped %s, %s from now", column, stamped.Format(time.RFC3339Nano), now.Sub(stamped)))
 	}
 }

@@ -11,13 +11,13 @@ import (
 	"time"
 )
 
-const cancelTimersMySQL = `DELETE FROM {{prefix}}scheduled_timers
+const cancelTimersMySQL = `DELETE /*+ INDEX({{prefix}}scheduled_timers PRIMARY) */ FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.timer_key IN (/*SLICE:timer_keys*/?)
 ORDER BY {{prefix}}scheduled_timers.timer_key`
 
-const completeTimersMySQL = `UPDATE {{prefix}}scheduled_timers SET
-	fired_at = CURRENT_TIMESTAMP(6),
+const completeTimersMySQL = `UPDATE {{prefix}}scheduled_timers FORCE INDEX (PRIMARY) SET
+	fired_at = (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND),
 	lease_until = '1970-01-01 00:00:00',
 	leased_by = NULL,
 	last_error = NULL
@@ -26,10 +26,10 @@ WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.timer_key IN (/*SLICE:timer_keys*/?)
 ORDER BY {{prefix}}scheduled_timers.timer_key`
 
-const deleteReapedTimersMySQL = `DELETE FROM {{prefix}}scheduled_timers
+const deleteReapedTimersMySQL = `DELETE /*+ INDEX({{prefix}}scheduled_timers PRIMARY) */ FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NOT NULL
-	AND {{prefix}}scheduled_timers.fired_at < (CURRENT_TIMESTAMP(6) - INTERVAL ? MICROSECOND)
+	AND {{prefix}}scheduled_timers.fired_at < ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) - INTERVAL ? MICROSECOND)
 	AND {{prefix}}scheduled_timers.timer_key IN (/*SLICE:timer_keys*/?)
 ORDER BY {{prefix}}scheduled_timers.timer_key`
 
@@ -38,21 +38,21 @@ const fetchLeasedTimersMySQL = `SELECT
 	{{prefix}}scheduled_timers.payload,
 	({{prefix}}scheduled_timers.payload IS NOT NULL) AS has_payload,
 	{{prefix}}scheduled_timers.run_at,
-	CAST(TIMESTAMPDIFF(MICROSECOND, {{prefix}}scheduled_timers.run_at, CURRENT_TIMESTAMP(6)) AS SIGNED) AS late_microseconds,
+	CAST(TIMESTAMPDIFF(MICROSECOND, {{prefix}}scheduled_timers.run_at, (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)) AS SIGNED) AS late_microseconds,
 	{{prefix}}scheduled_timers.attempts
 FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.leased_by = ?
 ORDER BY {{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.timer_key`
 
-const leaseTimersMySQL = `UPDATE {{prefix}}scheduled_timers SET
-	lease_until = (CURRENT_TIMESTAMP(6) + INTERVAL ? MICROSECOND),
+const leaseTimersMySQL = `UPDATE {{prefix}}scheduled_timers FORCE INDEX (PRIMARY) SET
+	lease_until = ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) + INTERVAL ? MICROSECOND),
 	leased_by = ?,
 	attempts = {{prefix}}scheduled_timers.attempts + 1
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
-	AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND {{prefix}}scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND {{prefix}}scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (? <= 0 OR {{prefix}}scheduled_timers.attempts < ?)
 	AND {{prefix}}scheduled_timers.timer_key IN (/*SLICE:timer_keys*/?)
 ORDER BY {{prefix}}scheduled_timers.timer_key`
@@ -60,18 +60,18 @@ ORDER BY {{prefix}}scheduled_timers.timer_key`
 const lockDueTimersMySQL = `SELECT
 	{{prefix}}scheduled_timers.timer_key,
 	({{prefix}}scheduled_timers.lease_until > '1970-01-01 00:00:00') AS reclaimed
-FROM {{prefix}}scheduled_timers
+FROM {{prefix}}scheduled_timers FORCE INDEX (PRIMARY)
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
-	AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND {{prefix}}scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND {{prefix}}scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (? <= 0 OR {{prefix}}scheduled_timers.attempts < ?)
 	AND {{prefix}}scheduled_timers.timer_key IN (/*SLICE:timer_keys*/?)
 FOR UPDATE SKIP LOCKED`
 
 const readNextDueTimerMySQL = `SELECT
 	COUNT(*) AS outstanding,
-	CAST(COALESCE(-TIMESTAMPDIFF(MICROSECOND, MIN(GREATEST({{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.lease_until)), CURRENT_TIMESTAMP(6)), 0) AS SIGNED) AS next_due_microseconds
+	CAST(COALESCE(-TIMESTAMPDIFF(MICROSECOND, MIN(GREATEST({{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.lease_until)), (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)), 0) AS SIGNED) AS next_due_microseconds
 FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
@@ -81,25 +81,25 @@ const readTimerStatsMySQL = `SELECT
 	CAST(COALESCE(SUM(CASE WHEN {{prefix}}scheduled_timers.fired_at IS NULL THEN 1 ELSE 0 END), 0) AS SIGNED) AS outstanding,
 	CAST(COALESCE(SUM(CASE WHEN {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
-	AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND {{prefix}}scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND {{prefix}}scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (? <= 0 OR {{prefix}}scheduled_timers.attempts < ?) THEN 1 ELSE 0 END), 0) AS SIGNED) AS due,
-	CAST(COALESCE(SUM(CASE WHEN {{prefix}}scheduled_timers.fired_at IS NULL AND {{prefix}}scheduled_timers.lease_until > CURRENT_TIMESTAMP(6) THEN 1 ELSE 0 END), 0) AS SIGNED) AS leased,
+	CAST(COALESCE(SUM(CASE WHEN {{prefix}}scheduled_timers.fired_at IS NULL AND {{prefix}}scheduled_timers.lease_until > (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) THEN 1 ELSE 0 END), 0) AS SIGNED) AS leased,
 	CAST(COALESCE(SUM(CASE WHEN {{prefix}}scheduled_timers.fired_at IS NULL AND ? > 0
 		AND {{prefix}}scheduled_timers.attempts >= ? THEN 1 ELSE 0 END), 0) AS SIGNED) AS stalled,
 	CAST(COALESCE(SUM(CASE WHEN {{prefix}}scheduled_timers.fired_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS SIGNED) AS fired,
 	CAST(COALESCE(TIMESTAMPDIFF(MICROSECOND, MIN(CASE WHEN {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
-	AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
-	AND (? <= 0 OR {{prefix}}scheduled_timers.attempts < ?) THEN {{prefix}}scheduled_timers.run_at END), CURRENT_TIMESTAMP(6)), 0) AS SIGNED) AS oldest_due_microseconds
+	AND {{prefix}}scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND {{prefix}}scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND (? <= 0 OR {{prefix}}scheduled_timers.attempts < ?) THEN {{prefix}}scheduled_timers.run_at END), (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)), 0) AS SIGNED) AS oldest_due_microseconds
 FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?`
 
-const releaseTimersMySQL = `UPDATE {{prefix}}scheduled_timers SET
+const releaseTimersMySQL = `UPDATE {{prefix}}scheduled_timers FORCE INDEX (PRIMARY) SET
 	lease_until = '1970-01-01 00:00:00',
 	leased_by = NULL,
-	run_at = (CURRENT_TIMESTAMP(6) + INTERVAL ? MICROSECOND),
+	run_at = ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) + INTERVAL ? MICROSECOND),
 	last_error = ?
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
@@ -114,14 +114,16 @@ INSERT INTO {{prefix}}scheduled_timers (
 	run_at,
 	payload,
 	attempts,
-	lease_until
+	lease_until,
+	created_at
 ) VALUES (
 	?,
 	?,
 	(CAST('1970-01-01 00:00:00' AS DATETIME(6)) + INTERVAL ? MICROSECOND),
 	?,
 	0,
-	'1970-01-01 00:00:00'
+	'1970-01-01 00:00:00',
+	(UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 )
 ON DUPLICATE KEY UPDATE
 	lease_until = CASE
@@ -137,14 +139,14 @@ ON DUPLICATE KEY UPDATE
 	attempts = 0,
 	last_error = NULL,
 	fired_at = NULL,
-	last_updated_at = CURRENT_TIMESTAMP(6)`
+	last_updated_at = (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)`
 
 const selectDueTimersMySQL = `SELECT {{prefix}}scheduled_timers.timer_key
 FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NULL
-	AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP(6)
-	AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP(6)
+	AND {{prefix}}scheduled_timers.lease_until <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
+	AND {{prefix}}scheduled_timers.run_at <= (UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND)
 	AND (? <= 0 OR {{prefix}}scheduled_timers.attempts < ?)
 ORDER BY {{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.timer_key
 LIMIT ?, ?`
@@ -153,7 +155,7 @@ const selectReapableTimersMySQL = `SELECT {{prefix}}scheduled_timers.timer_key
 FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?
 	AND {{prefix}}scheduled_timers.fired_at IS NOT NULL
-	AND {{prefix}}scheduled_timers.fired_at < (CURRENT_TIMESTAMP(6) - INTERVAL ? MICROSECOND)
+	AND {{prefix}}scheduled_timers.fired_at < ((UTC_TIMESTAMP() + INTERVAL MICROSECOND(CURRENT_TIMESTAMP(6)) MICROSECOND) - INTERVAL ? MICROSECOND)
 ORDER BY {{prefix}}scheduled_timers.fired_at
 LIMIT ?`
 
