@@ -57,13 +57,21 @@ func withAuthenticator(i do.Injector) do.Injector {
 	return i
 }
 
+// withRegistrar registers what open registration needs, which is every case's
+// but the ones about registration.
+func withRegistrar(i do.Injector) do.Injector {
+	do.ProvideValue(i, &identity.Service{})
+
+	return i
+}
+
 func TestRegisterService(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{}))
+		i := withRegistrar(withAuthenticator(base(t, &Config{})))
 		RegisterService(i)
 
 		svc, err := do.Invoke[*signin.Service](i)
@@ -114,10 +122,10 @@ func TestRegisterService(T *testing.T) {
 		test.StrContains(t, err.Error(), do.NameOf[identity.Store]())
 	})
 
-	T.Run("a registration block needs identity's service", func(t *testing.T) {
+	T.Run("open registration needs identity's service", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{Registration: &RegistrationConfig{VerificationLinkTTL: time.Hour}}))
+		i := withAuthenticator(base(t, &Config{}))
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -125,10 +133,23 @@ func TestRegisterService(T *testing.T) {
 		test.StrContains(t, err.Error(), do.NameOf[*identity.Service]())
 	})
 
+	T.Run("disabled registration needs no identity service", func(t *testing.T) {
+		t.Parallel()
+
+		i := withAuthenticator(base(t, &Config{Registration: RegistrationConfig{Disabled: true}}))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		_, err = svc.Register(t.Context(), tenancy.Of("tenant"), &signin.Registration{User: &identity.User{}})
+		test.ErrorIs(t, err, signin.ErrRegistrationNotConfigured)
+	})
+
 	T.Run("a magic links block needs a mailer", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}}))
+		i := withRegistrar(withAuthenticator(base(t, &Config{MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}})))
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -139,11 +160,11 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a magic links block uses the registered mailer", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{MagicLinks: &MagicLinksConfig{
+		i := withRegistrar(withAuthenticator(base(t, &Config{MagicLinks: &MagicLinksConfig{
 			TablePrefix:   "ddb",
 			SweepInterval: pointer.To(time.Duration(0)),
 			RequestFloor:  time.Millisecond,
-		}}))
+		}})))
 		do.ProvideValue[signin.MagicLinkMailer](i, discardingMailer{})
 		RegisterService(i)
 
@@ -157,8 +178,7 @@ func TestRegisterService(T *testing.T) {
 
 		refused := errors.New("too short")
 
-		i := withAuthenticator(base(t, &Config{Registration: &RegistrationConfig{VerificationLinkTTL: time.Hour}}))
-		do.ProvideValue(i, &identity.Service{})
+		i := withRegistrar(withAuthenticator(base(t, &Config{Registration: RegistrationConfig{VerificationLinkTTL: time.Hour}})))
 		do.ProvideValue(i, signin.PasswordPolicy(func(context.Context, string) error { return refused }))
 		RegisterService(i)
 
@@ -178,7 +198,7 @@ func TestRegisterService(T *testing.T) {
 
 		broken := errors.New("hooks could not be built")
 
-		i := withAuthenticator(base(t, &Config{}))
+		i := withRegistrar(withAuthenticator(base(t, &Config{})))
 		do.Provide(i, func(do.Injector) (signin.Hooks, error) { return nil, broken })
 		RegisterService(i)
 

@@ -547,13 +547,14 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		tokenscfg.RegisterTokenIssuer(i)
 	}
 
-	// The service, which is built with whichever stores its nested blocks switch
-	// on. Its token issuer comes from the Tokens block and its directory from
+	// The service, which is built with the refresh token and recovery code
+	// stores always and the magic link store when its block is present. Its
+	// token issuer comes from the Tokens block and its directory from
 	// the Identity block, so it needs both of them beside it. The authenticator
 	// is the application's and is resolved under the same key passwordreset
-	// resolves it, so a reset writes a password sign-in can check. A
-	// Registration block also needs the *identity.Service that
-	// identitycfg.RegisterService provides. It is not registered here, because
+	// resolves it, so a reset writes a password sign-in can check.
+	// Registration, unless the block disables it, also needs the
+	// *identity.Service that identitycfg.RegisterService provides. It is not registered here, because
 	// an application that already calls that function would then register it
 	// twice. A container missing any of these fails at boot naming it.
 	//

@@ -295,7 +295,8 @@ func TestRegisterTransports(T *testing.T) {
 		// Nothing about either service is hand-built. The application registers
 		// one authenticator, and both blocks resolve it, so a reset writes a
 		// password this sign-in can check. It also registers the two mailers,
-		// and nothing else.
+		// and nothing else, so registration is disabled: open registration
+		// would need identity's service, which only the application registers.
 		cfg := &Config{
 			Name:          "example",
 			Database:      sqliteDatabase(t),
@@ -304,9 +305,10 @@ func TestRegisterTransports(T *testing.T) {
 			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
 			SignIn: &signincfg.Config{
 				TOTPIssuer:    "Example",
-				RefreshTokens: &signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
 				MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: storePrefix},
-				RecoveryCodes: &signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+				RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+				Registration:  signincfg.RegistrationConfig{Disabled: true},
 			},
 		}
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))

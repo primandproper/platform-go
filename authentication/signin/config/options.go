@@ -12,15 +12,15 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
 )
 
-// Option configures how NewService assembles the service and the stores its
-// blocks switch on.
+// Option configures how NewService assembles the service and the stores it
+// builds.
 //
 // The observability dependencies are options because each one is optional:
 // without a logger nothing is logged, without a tracer provider nothing is
 // traced, and without a metrics provider nothing is recorded. The registrar and
 // the magic-link mailer are options for a different reason. Each is required
-// only when its block is present, and NewService refuses a present block that
-// arrives without its dependency.
+// only when its door is on, and NewService refuses an open door that arrives
+// without its dependency.
 type Option func(*options)
 
 // options collects what the options set.
@@ -77,8 +77,8 @@ func WithPillars(p *observability.Pillars) Option {
 	return func(o *options) { o.logger, o.tracerProvider, o.metricsProvider = p.Deps() }
 }
 
-// WithRegistrar supplies the registrar the Registration block needs. It must be
-// supplied exactly when that block is present. identity's Service satisfies
+// WithRegistrar supplies the registrar the registration door needs. It must be
+// supplied unless Registration.Disabled is set. identity's Service satisfies
 // it.
 func WithRegistrar(registrar signin.Registrar) Option {
 	return func(o *options) { o.registrar = registrar }

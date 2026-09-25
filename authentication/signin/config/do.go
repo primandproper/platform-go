@@ -28,8 +28,9 @@ import (
 // so a container holding both blocks hashes a reset's password with the engine
 // sign-in verifies it with. The context bounds the sweepers' lives.
 //
-// Two more are required when their block is present. A Registration block
-// needs the *identity.Service identitycfg.RegisterService provides. That
+// Two more are required when their door is on. Registration, unless
+// Registration.Disabled is set, needs the *identity.Service
+// identitycfg.RegisterService provides. That
 // service is not registered here, because an application that already calls
 // RegisterService would then hold two providers under one key. A MagicLinks
 // block needs a signin.MagicLinkMailer. A missing one fails when the Service is
@@ -91,11 +92,11 @@ func RegisterService(i do.Injector) {
 
 		opts := []Option{WithPillars(pillars)}
 
-		if cfg.Registration != nil {
+		if !cfg.Registration.Disabled {
 			registrar, registrarErr := do.Invoke[*identity.Service](i)
 			if registrarErr != nil {
 				return nil, platformerrors.Wrapf(registrarErr,
-					"resolving %s: the registration block registers people through it",
+					"resolving %s: registration is open and registers people through it; set Registration.Disabled to close it",
 					do.NameOf[*identity.Service]())
 			}
 

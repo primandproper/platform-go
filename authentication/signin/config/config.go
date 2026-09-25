@@ -1,37 +1,41 @@
 /*
 Package signincfg assembles a signin Service from environment configuration.
 
-Sign-in is where "a present block switches a feature on" fits most closely,
-because most of what signin.NewService accepts is an optional store, and each
-store is a feature a deployment turns on. Each one is a nested block here:
+A service built here is a whole sign-in server, so it turns on what nearly
+every deployment wants and leaves opt-in only what has a reason to be:
 
-  - RefreshTokens is refresh-token rotation. When it is present, a sign-in mints
-    a rotating pair over the refreshtokens table. When it is absent, the service
-    issues one token per sign-in and the three refresh doors refuse, as
-    signin.WithRefreshTokenStore documents.
-  - MagicLinks is the passwordless door. When it is present, the service mints
-    and redeems sign-in links over the magiclinks table. When it is absent, both
-    of those doors refuse.
+  - RefreshTokens is refresh-token rotation, and it is always on. A sign-in
+    mints a rotating pair over the refreshtokens table, so a person stays
+    signed in past the access token's hour without typing a password again.
+    The block holds the store's settings, not a switch.
   - RecoveryCodes is the way back in for somebody who has lost their
-    authenticator. When it is present, a second-factor code that is not the
-    TOTP code is tried as a recovery code. When it is absent, a second factor is
-    a TOTP code and nothing else.
-  - Registration is the door that creates people. When it is present, the
-    service registers through identity's Service. When it is absent,
-    Service.Register refuses. It has no table of its own, but it is still a
-    block and not a flag, because whether a public service creates accounts is
-    a decision a deployment makes deliberately, and the verification link's
-    lifetime only means something when the door is open.
+    authenticator, and it is always on. A second-factor code that is not the
+    TOTP code is tried as a recovery code. Without it a lost phone is a support
+    ticket, which is not a choice a deployment should make by leaving a block
+    out.
+  - Registration is the door that creates people. It is on unless its Disabled
+    field is set, and while it is on the service registers through identity's
+    Service. Disabled is a field rather than an absent block, because the
+    decision it records is to keep strangers from creating accounts, and that
+    decision should be written down.
+  - MagicLinks is the passwordless door, and it is the one opt-in block. It is
+    on when the block is present, and then the service mints and redeems
+    sign-in links over the magiclinks table. It cannot work until the
+    application supplies what delivers the mail, so a deployment switches it on
+    by supplying that and naming the block.
 
-Presence means what service.Config means by it, because the rule is the same
-one applied one level further down. Environment parsing allocates every
-block, so a block that holds nothing beyond what an empty environment parses
-to is released before it is read. As a result, SIGN_IN_REFRESH_TOKENS_TABLE_PREFIX
-switches rotation on and an unset environment switches nothing on. That
-includes the edge service.Config documents: a block that spells out nothing
-but defaults configures nothing. A block assembled in code or in a file turns
-its feature on by naming anything in it, which is almost always its table
-prefix.
+MagicLinks' presence means what service.Config means by it, because the rule
+is the same one applied one level further down. Environment parsing allocates
+the block, and a block that holds nothing beyond what an empty environment
+parses to is released before it is read. So SIGN_IN_MAGIC_LINKS_TABLE_PREFIX
+switches the door on and an unset environment leaves it off. A block that
+spells out nothing but defaults configures nothing, which is the edge
+service.Config documents.
+
+A deployment that wants neither rotation nor recovery codes, such as one that
+checks a password here and keeps people signed in through its own sessions,
+builds the service with signin.NewService, which attaches only the stores it is
+handed.
 
 What this package does not hold, and why:
 
@@ -47,10 +51,10 @@ What this package does not hold, and why:
     signin.WithVerifications off a hand-built service compiles and yields a
     service with no email verification, and a block cannot make that mistake.
   - The registrar and the magic-link mailer. They are the application's, and
-    each is required exactly when its block is present. A Registration block
-    whose container holds no *identity.Service, or a MagicLinks block whose
-    container holds no signin.MagicLinkMailer, fails at boot naming what it
-    wanted, rather than mounting a door that refuses every request.
+    each is required exactly when its door is on. A container that leaves
+    registration open and holds no *identity.Service, or that names a
+    MagicLinks block and holds no signin.MagicLinkMailer, fails at boot naming
+    what it wanted, rather than mounting a door that refuses every request.
   - Hooks, a password policy and a claims builder. These are code rather than
     configuration, so RegisterService uses whichever of them the application
     registered and leaves the service's default in place otherwise, which is
@@ -96,18 +100,10 @@ var secondFactors = map[string]signin.SecondFactorPolicy{
 type Config struct {
 	_ struct{} `json:"-" yaml:"-"`
 
-	// MagicLinks switches the passwordless door on. See the package
-	// documentation for what presence means.
+	// MagicLinks switches the passwordless door on. It is the one block whose
+	// presence is the switch. See the package documentation for what presence
+	// means.
 	MagicLinks *MagicLinksConfig `env:",init" envPrefix:"MAGIC_LINKS_" json:"magicLinks,omitempty" yaml:"magicLinks,omitempty"`
-
-	// RecoveryCodes switches recovery codes on.
-	RecoveryCodes *RecoveryCodesConfig `env:",init" envPrefix:"RECOVERY_CODES_" json:"recoveryCodes,omitempty" yaml:"recoveryCodes,omitempty"`
-
-	// RefreshTokens switches refresh-token rotation on.
-	RefreshTokens *RefreshTokensConfig `env:",init" envPrefix:"REFRESH_TOKENS_" json:"refreshTokens,omitempty" yaml:"refreshTokens,omitempty"`
-
-	// Registration switches the registration door on.
-	Registration *RegistrationConfig `env:",init" envPrefix:"REGISTRATION_" json:"registration,omitempty" yaml:"registration,omitempty"`
 
 	// SecondFactor is what happens to a user who holds no proven second factor:
 	// SecondFactorWhenEnrolled, which is the default, or SecondFactorRequired.
@@ -119,10 +115,22 @@ type Config struct {
 	// deployment that enrolls nobody needs none.
 	TOTPIssuer string `env:"TOTP_ISSUER" json:"totpIssuer,omitempty" yaml:"totpIssuer,omitempty"`
 
+	// RecoveryCodes is the recovery code store's settings. Recovery codes are
+	// always on.
+	RecoveryCodes RecoveryCodesConfig `envPrefix:"RECOVERY_CODES_" json:"recoveryCodes" yaml:"recoveryCodes"`
+
 	// AdminServiceRoles names the identity service roles that admit an
 	// administrative sign-in. Empty means the service has no administrative
 	// door, as signin.WithAdminServiceRoles documents.
 	AdminServiceRoles []string `env:"ADMIN_SERVICE_ROLES" json:"adminServiceRoles,omitempty" yaml:"adminServiceRoles,omitempty"`
+
+	// RefreshTokens is the refresh token store's settings. Rotation is always
+	// on.
+	RefreshTokens RefreshTokensConfig `envPrefix:"REFRESH_TOKENS_" json:"refreshTokens" yaml:"refreshTokens"`
+
+	// Registration is the registration door's settings. The door is on unless
+	// Registration.Disabled is set.
+	Registration RegistrationConfig `envPrefix:"REGISTRATION_" json:"registration" yaml:"registration"`
 
 	// TokenTTL is how long an ordinary sign-in's token lives. Unset takes
 	// signin.DefaultTokenTTL.
@@ -194,6 +202,10 @@ type RecoveryCodesConfig struct {
 type RegistrationConfig struct {
 	_ struct{} `json:"-" yaml:"-"`
 
+	// Disabled closes the registration door, so Service.Register refuses and
+	// no *identity.Service is needed. Unset leaves it open.
+	Disabled bool `env:"DISABLED" json:"disabled,omitempty" yaml:"disabled,omitempty"`
+
 	// VerificationLinkTTL is how long the link minted at registration stays
 	// answerable. Unset takes signin.DefaultVerificationLinkTTL.
 	VerificationLinkTTL time.Duration `env:"VERIFICATION_LINK_TTL" json:"verificationLinkTTL,omitempty" yaml:"verificationLinkTTL,omitempty"`
@@ -264,15 +276,18 @@ func (cfg *RegistrationConfig) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ValidateWithContext releases the blocks that configure nothing, applies the
-// survivors' defaults, and then validates what is left.
+// ValidateWithContext releases a MagicLinks block that configures nothing,
+// applies every block's defaults, and then validates what is left.
 //
 // It follows service.Config's order for service.Config's reason. Until the
-// blocks that `env:",init"` allocated have been released, every feature looks
-// switched on. Defaulting before the release would fill every allocated block
-// in, and none would ever look unconfigured again. So the release is part of
+// MagicLinks block that `env:",init"` allocated has been released, the door
+// looks switched on. Defaulting before the release would fill the block in,
+// and it would never look unconfigured again. So the release is part of
 // validation and not a separate step, and a caller holding a validated Config
-// holds one whose nil blocks are the features that are off.
+// holds one whose nil MagicLinks means the door is off.
+//
+// The three blocks held by value are defaulted here directly, because
+// cfgnorm.EnsureSubDefaults reaches only the pointer blocks.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	if err := cfgnorm.UnconfiguredToNil(cfg); err != nil {
 		return err
@@ -281,6 +296,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	if err := cfgnorm.EnsureSubDefaults(cfg); err != nil {
 		return err
 	}
+
+	cfg.RefreshTokens.EnsureDefaults()
 
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.SecondFactor, validation.By(func(any) error {
@@ -292,9 +309,20 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		})),
 		validation.Field(&cfg.TokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.AdminTokenTTL, validation.Min(time.Duration(0))),
-		validation.Field(&cfg.RefreshTokens),
+		validation.Field(&cfg.RefreshTokens, byValue(&cfg.RefreshTokens)),
 		validation.Field(&cfg.MagicLinks),
-		validation.Field(&cfg.RecoveryCodes),
-		validation.Field(&cfg.Registration),
+		validation.Field(&cfg.RecoveryCodes, byValue(&cfg.RecoveryCodes)),
+		validation.Field(&cfg.Registration, byValue(&cfg.Registration)),
 	)
+}
+
+// byValue validates a block the Config holds by value.
+//
+// ozzo validates a field through the field's value, and a value does not carry
+// the pointer-receiver ValidateWithContext these blocks declare. Without this
+// rule the three blocks held by value would pass validation unexamined.
+func byValue(block validation.ValidatableWithContext) validation.Rule {
+	return validation.WithContext(func(ctx context.Context, _ any) error {
+		return block.ValidateWithContext(ctx)
+	})
 }

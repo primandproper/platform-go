@@ -124,7 +124,7 @@ func zeroValueCases() []zeroValueCase {
 		// The zero config is decisive for the same reason passwordreset's is:
 		// the authenticator and the token issuer are resolved from the injector
 		// when the service is invoked, not checked here.
-		{name: "authentication/signin", cfg: &signincfg.Config{}, why: "every optional door is off until its block is present, and the lifetimes default"},
+		{name: "authentication/signin", cfg: &signincfg.Config{}, why: "rotation, recovery codes and registration are on at their defaults, the magic link door is off until its block is present, and the lifetimes default"},
 		{name: "authentication/webauthnsessions", cfg: &webauthnsessionscfg.Config{}, needs: "rpID"},
 		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
 		{name: "billing", cfg: &billingcfg.Config{}, why: "the table prefix is the only field, and what a deployment sells is rows rather than environment"},

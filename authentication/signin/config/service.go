@@ -25,15 +25,18 @@ type Directory interface {
 	signin.Verifications
 }
 
-// NewService builds the sign-in service and whichever stores its blocks switch
-// on.
+// NewService builds the sign-in service, the refresh token and recovery code
+// stores, and the magic link store when its block is present.
 //
 // client, directory, authenticator and issuer are parameters, not fields. The
 // package documentation explains why, and RegisterService resolves all four
-// from the injector. A present Registration block requires WithRegistrar, and a
+// from the injector. Registration left open requires WithRegistrar, and a
 // present MagicLinks block requires WithMagicLinkMailer. Either one missing is
 // refused here, so it is never discovered by a caller of a door that refuses
 // every request.
+//
+// The refresh token and recovery code stores are always built, so their tables
+// must be migrated before the service is used.
 //
 // The sweepers, when their blocks start them, are bound to ctx.
 func NewService(
@@ -57,8 +60,8 @@ func NewService(
 
 	// Both checked before any store is built, so a refusal here has started no
 	// sweeper.
-	if cfg.Registration != nil && options.registrar == nil {
-		return nil, errors.New("the registration block is present but no registrar was supplied")
+	if !cfg.Registration.Disabled && options.registrar == nil {
+		return nil, errors.New("registration is not disabled but no registrar was supplied")
 	}
 
 	if cfg.MagicLinks != nil && options.magicLinkMailer == nil {
@@ -77,42 +80,40 @@ func NewService(
 		signin.WithAdminTokenTTL(cfg.AdminTokenTTL),
 	}
 
-	if block := cfg.Registration; block != nil {
+	if block := cfg.Registration; !block.Disabled {
 		serviceOpts = append(serviceOpts,
 			signin.WithRegistrar(options.registrar),
 			signin.WithVerificationLinkTTL(block.VerificationLinkTTL),
 		)
 	}
 
-	if block := cfg.RefreshTokens; block != nil {
-		store, err := refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: block.TablePrefix}, client,
-			append([]refreshtokens.Option{
-				refreshtokens.WithLogger(options.logger),
-				refreshtokens.WithTracerProvider(options.tracerProvider),
-				refreshtokens.WithMetricsProvider(options.metricsProvider),
-				refreshtokens.WithSweeper(ctx, pointer.Dereference(block.SweepInterval)),
-			}, options.refreshTokens...)...)
-		if err != nil {
-			return nil, errors.Wrap(err, "building the refresh token store")
-		}
-
-		serviceOpts = append(serviceOpts,
-			signin.WithRefreshTokenStore(store),
-			signin.WithRefreshTokenTTL(block.TTL),
-			signin.WithAdminRefreshTokenTTL(block.AdminTTL),
-		)
+	refreshTokenStore, err := refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: cfg.RefreshTokens.TablePrefix}, client,
+		append([]refreshtokens.Option{
+			refreshtokens.WithLogger(options.logger),
+			refreshtokens.WithTracerProvider(options.tracerProvider),
+			refreshtokens.WithMetricsProvider(options.metricsProvider),
+			refreshtokens.WithSweeper(ctx, pointer.Dereference(cfg.RefreshTokens.SweepInterval)),
+		}, options.refreshTokens...)...)
+	if err != nil {
+		return nil, errors.Wrap(err, "building the refresh token store")
 	}
 
+	serviceOpts = append(serviceOpts,
+		signin.WithRefreshTokenStore(refreshTokenStore),
+		signin.WithRefreshTokenTTL(cfg.RefreshTokens.TTL),
+		signin.WithAdminRefreshTokenTTL(cfg.RefreshTokens.AdminTTL),
+	)
+
 	if block := cfg.MagicLinks; block != nil {
-		store, err := magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: block.TablePrefix}, client,
+		store, storeErr := magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: block.TablePrefix}, client,
 			append([]magiclinks.Option{
 				magiclinks.WithLogger(options.logger),
 				magiclinks.WithTracerProvider(options.tracerProvider),
 				magiclinks.WithMetricsProvider(options.metricsProvider),
 				magiclinks.WithSweeper(ctx, pointer.Dereference(block.SweepInterval)),
 			}, options.magicLinks...)...)
-		if err != nil {
-			return nil, errors.Wrap(err, "building the sign-in link store")
+		if storeErr != nil {
+			return nil, errors.Wrap(storeErr, "building the sign-in link store")
 		}
 
 		serviceOpts = append(serviceOpts,
@@ -123,21 +124,19 @@ func NewService(
 		)
 	}
 
-	if block := cfg.RecoveryCodes; block != nil {
-		store, err := recoverycodes.NewSQLStore(&recoverycodes.Config{TablePrefix: block.TablePrefix}, client,
-			append([]recoverycodes.Option{
-				recoverycodes.WithLogger(options.logger),
-				recoverycodes.WithTracerProvider(options.tracerProvider),
-			}, options.recoveryCodes...)...)
-		if err != nil {
-			return nil, errors.Wrap(err, "building the recovery code store")
-		}
-
-		serviceOpts = append(serviceOpts,
-			signin.WithRecoveryCodeStore(store),
-			signin.WithRecoveryCodeCount(block.Count),
-		)
+	recoveryCodeStore, err := recoverycodes.NewSQLStore(&recoverycodes.Config{TablePrefix: cfg.RecoveryCodes.TablePrefix}, client,
+		append([]recoverycodes.Option{
+			recoverycodes.WithLogger(options.logger),
+			recoverycodes.WithTracerProvider(options.tracerProvider),
+		}, options.recoveryCodes...)...)
+	if err != nil {
+		return nil, errors.Wrap(err, "building the recovery code store")
 	}
+
+	serviceOpts = append(serviceOpts,
+		signin.WithRecoveryCodeStore(recoveryCodeStore),
+		signin.WithRecoveryCodeCount(cfg.RecoveryCodes.Count),
+	)
 
 	return signin.NewService(client, directory, authenticator, issuer, append(serviceOpts, options.service...)...)
 }
