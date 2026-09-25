@@ -8,6 +8,7 @@ import (
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
@@ -120,6 +121,10 @@ func zeroValueCases() []zeroValueCase {
 		// authenticator are the application's, and RegisterService reports a
 		// missing one when it is invoked rather than here.
 		{name: "authentication/passwordreset", cfg: &passwordresetcfg.Config{}, why: "the prefix, the token lifetime, the request floor and the sweep interval all default"},
+		// The zero config is decisive for the same reason passwordreset's is:
+		// the authenticator and the token issuer are resolved from the injector
+		// when the service is invoked, not checked here.
+		{name: "authentication/signin", cfg: &signincfg.Config{}, why: "every optional door is off until its block is present, and the lifetimes default"},
 		{name: "authentication/webauthnsessions", cfg: &webauthnsessionscfg.Config{}, needs: "rpID"},
 		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
 		{name: "billing", cfg: &billingcfg.Config{}, why: "the table prefix is the only field, and what a deployment sells is rows rather than environment"},

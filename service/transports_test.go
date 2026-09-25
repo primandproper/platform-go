@@ -13,6 +13,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
@@ -45,6 +47,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
@@ -284,6 +287,63 @@ func TestRegisterTransports(T *testing.T) {
 
 		test.Eq(t, []string{"password reset gRPC"}, mounted.names)
 		test.SliceLen(t, 1, mounted.registrations)
+	})
+
+	T.Run("the sign-in surface mounts from its config block beside the reset flow's", func(t *testing.T) {
+		t.Parallel()
+
+		// Nothing about either service is hand-built. The application registers
+		// one authenticator, and both blocks resolve it, so a reset writes a
+		// password this sign-in can check. It also registers the two mailers,
+		// and nothing else.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteDatabase(t),
+			Identity:      &identitycfg.Config{TablePrefix: storePrefix},
+			Tokens:        testTokens(),
+			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
+			SignIn: &signincfg.Config{
+				TOTPIssuer:    "Example",
+				RefreshTokens: &signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: storePrefix},
+				RecoveryCodes: &signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+			},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue[passwordreset.Mailer](i, stubResetMailer{})
+		do.ProvideValue[signin.MagicLinkMailer](i, stubMagicLinkMailer{})
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.SliceContainsAll(t, []string{"password reset gRPC", "sign-in gRPC"}, mounted.names)
+		test.SliceLen(t, 2, mounted.registrations)
+	})
+
+	T.Run("a sign-in block with no authenticator fails naming it rather than defaulting", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Name:     "example",
+			Database: sqliteDatabase(t),
+			Identity: &identitycfg.Config{TablePrefix: storePrefix},
+			Tokens:   testTokens(),
+			SignIn:   &signincfg.Config{TOTPIssuer: "Example"},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal})
+
+		_, err := do.Invoke[*mountedTransports](i)
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), do.NameOf[authentication.Authenticator]())
 	})
 
 	T.Run("a surface whose store is unconfigured does not mount, and that is not an error", func(t *testing.T) {
@@ -758,6 +818,21 @@ func (stubResetDirectory) UpdateUserPassword(
 type stubResetMailer struct{}
 
 func (stubResetMailer) SendPasswordReset(context.Context, *passwordreset.Mail) error { return nil }
+
+type stubMagicLinkMailer struct{}
+
+func (stubMagicLinkMailer) SendMagicLink(context.Context, *signin.MagicLinkMail) error { return nil }
+
+// testTokens is a JWT issuer with a fixed key, which is enough for a sign-in
+// service to be built over. Nothing here mints a token.
+func testTokens() *tokenscfg.Config {
+	return &tokenscfg.Config{
+		Provider:                tokenscfg.ProviderJWT,
+		Issuer:                  "example",
+		Audience:                "example",
+		Base64EncodedSigningKey: "c2lnbmluZy1rZXktZm9yLXNlcnZpY2UtdGVzdHMtMzI=",
+	}
+}
 
 // TestRegisterTransports_tenantOfReachesTheMountedSurface is the assertion the
 // unit tests above cannot make: that the three surfaces meaning the tenant are

@@ -7,6 +7,7 @@ import (
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
@@ -544,6 +545,23 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	if cfg.Tokens != nil {
 		do.ProvideValue(i, cfg.Tokens)
 		tokenscfg.RegisterTokenIssuer(i)
+	}
+
+	// The service, which is built with whichever stores its nested blocks switch
+	// on. Its token issuer comes from the Tokens block and its directory from
+	// the Identity block, so it needs both of them beside it. The authenticator
+	// is the application's and is resolved under the same key passwordreset
+	// resolves it, so a reset writes a password sign-in can check. A
+	// Registration block also needs the *identity.Service that
+	// identitycfg.RegisterService provides. It is not registered here, because
+	// an application that already calls that function would then register it
+	// twice. A container missing any of these fails at boot naming it.
+	//
+	// The duplicate-registration note on PasswordReset applies here as well.
+	// Configure the block or keep a hand-registered *signin.Service, not both.
+	if cfg.SignIn != nil {
+		do.ProvideValue(i, cfg.SignIn)
+		signincfg.RegisterService(i)
 	}
 
 	// The ceremony store from this module's half and the relying party from

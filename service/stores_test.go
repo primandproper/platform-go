@@ -209,11 +209,20 @@ func TestRegisterStores(T *testing.T) {
 			"PASSWORD_RESET_TABLE_PREFIX":  storePrefix,
 			"WAITLISTS_TABLE_PREFIX":       storePrefix,
 			"RETENTION_SWEEPER_BATCH_SIZE": "500",
+			// A nested block, which survives both levels of normalization
+			// because it names something and switches rotation on alone.
+			"SIGN_IN_REFRESH_TOKENS_TABLE_PREFIX": storePrefix,
 		}}))
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
-		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "OAuth2Clients", "PasswordReset", "Retention", "Settings", "Waitlists"}, present(t, cfg))
+		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "OAuth2Clients", "PasswordReset", "Retention", "Settings", "SignIn", "Waitlists"}, present(t, cfg))
+
+		must.NotNil(t, cfg.SignIn.RefreshTokens)
+		test.EqOp(t, storePrefix, cfg.SignIn.RefreshTokens.TablePrefix)
+		test.Nil(t, cfg.SignIn.MagicLinks)
+		test.Nil(t, cfg.SignIn.RecoveryCodes)
+		test.Nil(t, cfg.SignIn.Registration)
 	})
 
 	T.Run("builds the retention sweeper over the application's policies", func(t *testing.T) {

@@ -268,11 +268,12 @@ type Authorizers struct {
 // registered one is an absence and contributes nothing, while one that was
 // registered and cannot be built is an error naming the surface. That single
 // rule is what makes a Config naming no billing mount no billing surface, and
-// it is also what makes identity and signin behave sensibly without a special
-// case — their servers are built over a service Register does not register, so
-// they mount for an application that registered one and stay absent for an
-// application that did not. oauth2clients mounts over a service Register does
-// register, from Config.OAuth2Clients.
+// it is also what makes identity behave sensibly without a special case — its
+// server is built over a service Register does not register, so it mounts for
+// an application that registered one and stays absent for an application that
+// did not. oauth2clients, passwordreset and signin mount over services Register
+// does register, from Config.OAuth2Clients, Config.PasswordReset and
+// Config.SignIn.
 //
 // # What it owns
 //
@@ -978,6 +979,9 @@ func (m *mount) passwordReset() {
 // extract, so a resolver that refuses a request with no principal would refuse
 // the act of signing in — and, since registration landed here, the act of
 // finishing one.
+//
+// Config.SignIn registers the *signin.Service this mounts over, and it stays
+// absent for a service that configured none.
 func (m *mount) signIn() {
 	svc, ok := need[*signin.Service](m)
 	if !ok {

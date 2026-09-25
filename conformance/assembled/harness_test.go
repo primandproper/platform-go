@@ -20,6 +20,8 @@ import (
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
@@ -149,6 +151,18 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
 		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
 
+		// Sign-in with every door the suites knock on switched on by its
+		// block: rotation, the passwordless door and registration. Registration
+		// names its link lifetime at the default only so that the block names
+		// something — the package documentation says why an empty block is
+		// released.
+		SignIn: &signincfg.Config{
+			TOTPIssuer:    "conformance",
+			RefreshTokens: &signincfg.RefreshTokensConfig{TablePrefix: prefix},
+			MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: prefix},
+			Registration:  &signincfg.RegistrationConfig{VerificationLinkTTL: signin.DefaultVerificationLinkTTL},
+		},
+
 		// And the HTTP surface every dialect can serve.
 		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
 	}
@@ -186,9 +200,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	mailbox := &resetMailbox{}
 	do.ProvideValue(i, mailbox)
 
-	// And the consumer's sign-in link mailer.
+	// And the consumer's sign-in link mailer, under the key the sign-in block
+	// resolves as well as its own, which is where the sign-in suite reads the
+	// link a person would have been sent.
 	links := &magicLinkMailbox{}
 	do.ProvideValue(i, links)
+	do.ProvideValue[signin.MagicLinkMailer](i, links)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
