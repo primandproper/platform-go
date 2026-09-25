@@ -105,9 +105,11 @@
 // as a request field on the two RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
-// No passkeys, no password reset and no session management. Each is a flow of
-// its own over an engine this module already ships, and each is its own file
-// rather than a branch in this one. Email-link sign-in -- a door that mints a
+// No passkeys and no password reset. Each is a flow of its own over an engine
+// this module already ships, and each is its own file rather than a branch in
+// this one. The logins a person holds are here -- ListSignIns and EndSignIn read
+// and end the refresh token families above -- and a session in the sense of
+// github.com/primandproper/platform-go/v14/sessions still is not. Email-link sign-in -- a door that mints a
 // token from a clicked link rather than from a password -- is not here either:
 // it is a sibling of LoginForToken rather than a branch inside it, and it is
 // the one thing a registrant who named no password still needs.
@@ -359,6 +361,91 @@ message SignOutEverywhereRequest {
 // SignOutEverywhereResponse is empty -- see SignOutResponse, whose reasoning
 // applies here with more force, since this count spans every login.
 message SignOutEverywhereResponse {}
+
+// ActiveSignIn is one live login, as a "where you're signed in" screen shows
+// it.
+//
+// It carries no device, no browser and no address, and that is a decision
+// rather than a gap. Whether any of those is recorded at all is the consumer's,
+// and a consumer that does record them keys them on family_id -- signin's
+// AfterIssueToken hook runs inside every mint with the family on it -- and joins
+// them to this.
+message ActiveSignIn {
+  reserved "scope";
+
+  // family_id names the login: the value every IssuedToken it produced carried,
+  // the access token's "sid" claim, and what EndSignInRequest names.
+  string family_id = 1 [json_name = "familyID"];
+
+  // signed_in_at is when the login began. Refreshing does not move it.
+  google.protobuf.Timestamp signed_in_at = 2;
+
+  // last_refreshed_at is when the login last exchanged a refresh token, or
+  // signed_in_at for a login that never has.
+  google.protobuf.Timestamp last_refreshed_at = 3;
+
+  // expires_at is when the login ends if nothing refreshes it before then.
+  google.protobuf.Timestamp expires_at = 4;
+
+  // active_account_id is the account the login's tokens are for.
+  string active_account_id = 5 [json_name = "activeAccountID"];
+
+  // administrative reports whether the login came through the administrative
+  // door.
+  bool administrative = 6;
+
+  // current reports whether this is the login the request itself was made
+  // through. It is false on every entry when the server cannot tell -- a
+  // consumer whose principal does not carry the access token's "sid" -- which
+  // is the answer that marks nothing rather than guessing.
+  bool current = 7;
+}
+
+// ListSignInsRequest asks for the calling user's live logins, most recently
+// refreshed first.
+//
+// It requires a caller and names nobody, which is SignOutEverywhereRequest's
+// rule for SignOutEverywhereRequest's reason: an operator listing somebody
+// else's logins is a different act with a different permission, and it is
+// signin.Service's method rather than this RPC.
+message ListSignInsRequest {
+  reserved "scope";
+
+  // limit is how many to answer with. Zero is the service's default and a
+  // value past its ceiling is the ceiling; see signin.DefaultSignInListLimit and
+  // signin.MaxSignInListLimit. What a limit leaves out is what has been idle
+  // longest.
+  uint32 limit = 1;
+}
+
+message ListSignInsResponse {
+  repeated ActiveSignIn sign_ins = 1;
+}
+
+// EndSignInRequest ends one of the calling user's logins, named by its family.
+//
+// It is the door SignOutRequest could not be. That one carries the login's
+// refresh token, which only the device holding it has; this one carries the
+// family identifier a ListSignInsResponse handed out, so a person can end the
+// login on the phone they lost from the laptop in front of them.
+//
+// A family identifier is not a secret, and that is why this requires a caller
+// and why the caller is part of the key: a family that is not theirs matches
+// nothing. The answer does not say whether anything was ended -- a family that
+// is somebody else's, one that never existed and one already ended all answer
+// the same, so the RPC cannot be used to learn which identifiers are live.
+//
+// Ending the login the request was made through is allowed and is a sign-out.
+// Like SignOut, it stops that login's access tokens being replaced rather than
+// stopping the one already issued.
+message EndSignInRequest {
+  reserved "scope";
+
+  string family_id = 1 [json_name = "familyID"];
+}
+
+// EndSignInResponse is empty -- see SignOutResponse.
+message EndSignInResponse {}
 
 // GetAuthStatusRequest names nobody. The subject is whoever is calling, and a
 // field naming somebody else would be a directory read wearing a whoami's
@@ -669,10 +756,10 @@ message RedeemMagicLinkResponse {
 
 // SignInService is sign-in.
 //
-// Nine of its RPCs are anonymous by definition and six require a caller. What
+// Nine of its RPCs are anonymous by definition and eight require a caller. What
 // none of them requires is a permission: there is no grant that would make
-// "sign in" safer, and the four authenticated ones take their subject from the
-// caller and have no field that could name anybody else. See
+// "sign in" safer, and every authenticated one but Register takes its subject
+// from the caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 service SignInService {
@@ -710,6 +797,13 @@ service SignInService {
   // through a consumer's own administrative surface.
   rpc SignOut(SignOutRequest) returns (SignOutResponse);
   rpc SignOutEverywhere(SignOutEverywhereRequest) returns (SignOutEverywhereResponse);
+
+  // The screen between those two sizes: the calling user's live logins, and
+  // ending one of them by name. Both need a caller and name nobody else; an
+  // operator doing either for somebody else calls signin.Service's methods
+  // through their own administrative surface.
+  rpc ListSignIns(ListSignInsRequest) returns (ListSignInsResponse);
+  rpc EndSignIn(EndSignInRequest) returns (EndSignInResponse);
 
   // The two reads a client makes on load.
   rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);

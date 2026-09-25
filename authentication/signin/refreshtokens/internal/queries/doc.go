@@ -1,7 +1,7 @@
 /*
 Package queries is the sign-in refresh token schema described as data: the
 canonical table name, its columns in the order every read projects them, the
-subsets a write assigns, and the six statements the store executes over them.
+subsets a write assigns, and the statements the store executes over them.
 
 It exists because those facts have two consumers that must not disagree. The
 generator behind `make generate` renders them through database/querygen into the
@@ -10,7 +10,7 @@ querier sqlc-gen-unison generates from those files. A column list spelled in bot
 places could differ in one name, and the symptom would be a check that passes
 over SQL nobody executes.
 
-# The six statements
+# The statements
 
   - InsertRefreshToken writes one mint, and serves both of them: the token a
     sign-in issues and the successor an exchange issues into the same family. It
@@ -26,8 +26,14 @@ over SQL nobody executes.
     requests present one at once.
   - RevokeRefreshTokenFamily ends one login, which is what a detected reuse
     does.
+  - RevokeRefreshTokenFamilyForSubject ends one login on behalf of the person
+    it belongs to: the family revocation with the subject added to its key, so
+    a self-service door handed a family id cannot end anybody else's.
   - RevokeRefreshTokensForSubject ends every login one person holds. It is not
     assembled out of family revocations, and [Render] says why it cannot be.
+  - ListLiveRefreshTokenFamilies lists one person's live logins, one row per
+    family, under the exchange's own three guards, most recently refreshed
+    first and bounded by a limit.
   - SweepRefreshTokens removes everything past its purge deadline, against a
     horizon the store binds from its own clock.
 

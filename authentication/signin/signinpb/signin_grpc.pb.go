@@ -105,9 +105,11 @@
 // as a request field on the two RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
-// No passkeys, no password reset and no session management. Each is a flow of
-// its own over an engine this module already ships, and each is its own file
-// rather than a branch in this one. Email-link sign-in -- a door that mints a
+// No passkeys and no password reset. Each is a flow of its own over an engine
+// this module already ships, and each is its own file rather than a branch in
+// this one. The logins a person holds are here -- ListSignIns and EndSignIn read
+// and end the refresh token families above -- and a session in the sense of
+// github.com/primandproper/platform-go/v14/sessions still is not. Email-link sign-in -- a door that mints a
 // token from a clicked link rather than from a password -- is not here either:
 // it is a sibling of LoginForToken rather than a branch inside it, and it is
 // the one thing a registrant who named no password still needs.
@@ -144,6 +146,8 @@ const (
 	SignInService_ExchangeRefreshToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
 	SignInService_SignOut_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/SignOut"
 	SignInService_SignOutEverywhere_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
+	SignInService_ListSignIns_FullMethodName          = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
+	SignInService_EndSignIn_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/EndSignIn"
 	SignInService_GetAuthStatus_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
 	SignInService_GetSelf_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/GetSelf"
 	SignInService_UpdatePassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
@@ -157,10 +161,10 @@ const (
 //
 // SignInService is sign-in.
 //
-// Nine of its RPCs are anonymous by definition and six require a caller. What
+// Nine of its RPCs are anonymous by definition and eight require a caller. What
 // none of them requires is a permission: there is no grant that would make
-// "sign in" safer, and the four authenticated ones take their subject from the
-// caller and have no field that could name anybody else. See
+// "sign in" safer, and every authenticated one but Register takes its subject
+// from the caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 type SignInServiceClient interface {
@@ -195,6 +199,12 @@ type SignInServiceClient interface {
 	// through a consumer's own administrative surface.
 	SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*SignOutResponse, error)
 	SignOutEverywhere(ctx context.Context, in *SignOutEverywhereRequest, opts ...grpc.CallOption) (*SignOutEverywhereResponse, error)
+	// The screen between those two sizes: the calling user's live logins, and
+	// ending one of them by name. Both need a caller and name nobody else; an
+	// operator doing either for somebody else calls signin.Service's methods
+	// through their own administrative surface.
+	ListSignIns(ctx context.Context, in *ListSignInsRequest, opts ...grpc.CallOption) (*ListSignInsResponse, error)
+	EndSignIn(ctx context.Context, in *EndSignInRequest, opts ...grpc.CallOption) (*EndSignInResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error)
 	GetSelf(ctx context.Context, in *GetSelfRequest, opts ...grpc.CallOption) (*GetSelfResponse, error)
@@ -312,6 +322,26 @@ func (c *signInServiceClient) SignOutEverywhere(ctx context.Context, in *SignOut
 	return out, nil
 }
 
+func (c *signInServiceClient) ListSignIns(ctx context.Context, in *ListSignInsRequest, opts ...grpc.CallOption) (*ListSignInsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSignInsResponse)
+	err := c.cc.Invoke(ctx, SignInService_ListSignIns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) EndSignIn(ctx context.Context, in *EndSignInRequest, opts ...grpc.CallOption) (*EndSignInResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndSignInResponse)
+	err := c.cc.Invoke(ctx, SignInService_EndSignIn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *signInServiceClient) GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetAuthStatusResponse)
@@ -368,10 +398,10 @@ func (c *signInServiceClient) VerifyTOTPSecret(ctx context.Context, in *VerifyTO
 //
 // SignInService is sign-in.
 //
-// Nine of its RPCs are anonymous by definition and six require a caller. What
+// Nine of its RPCs are anonymous by definition and eight require a caller. What
 // none of them requires is a permission: there is no grant that would make
-// "sign in" safer, and the four authenticated ones take their subject from the
-// caller and have no field that could name anybody else. See
+// "sign in" safer, and every authenticated one but Register takes its subject
+// from the caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 type SignInServiceServer interface {
@@ -406,6 +436,12 @@ type SignInServiceServer interface {
 	// through a consumer's own administrative surface.
 	SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error)
 	SignOutEverywhere(context.Context, *SignOutEverywhereRequest) (*SignOutEverywhereResponse, error)
+	// The screen between those two sizes: the calling user's live logins, and
+	// ending one of them by name. Both need a caller and name nobody else; an
+	// operator doing either for somebody else calls signin.Service's methods
+	// through their own administrative surface.
+	ListSignIns(context.Context, *ListSignInsRequest) (*ListSignInsResponse, error)
+	EndSignIn(context.Context, *EndSignInRequest) (*EndSignInResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error)
 	GetSelf(context.Context, *GetSelfRequest) (*GetSelfResponse, error)
@@ -452,6 +488,12 @@ func (UnimplementedSignInServiceServer) SignOut(context.Context, *SignOutRequest
 }
 func (UnimplementedSignInServiceServer) SignOutEverywhere(context.Context, *SignOutEverywhereRequest) (*SignOutEverywhereResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SignOutEverywhere not implemented")
+}
+func (UnimplementedSignInServiceServer) ListSignIns(context.Context, *ListSignInsRequest) (*ListSignInsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSignIns not implemented")
+}
+func (UnimplementedSignInServiceServer) EndSignIn(context.Context, *EndSignInRequest) (*EndSignInResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EndSignIn not implemented")
 }
 func (UnimplementedSignInServiceServer) GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthStatus not implemented")
@@ -669,6 +711,42 @@ func _SignInService_SignOutEverywhere_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SignInService_ListSignIns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSignInsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).ListSignIns(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_ListSignIns_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).ListSignIns(ctx, req.(*ListSignInsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_EndSignIn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndSignInRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).EndSignIn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_EndSignIn_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).EndSignIn(ctx, req.(*EndSignInRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SignInService_GetAuthStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAuthStatusRequest)
 	if err := dec(in); err != nil {
@@ -805,6 +883,14 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SignOutEverywhere",
 			Handler:    _SignInService_SignOutEverywhere_Handler,
+		},
+		{
+			MethodName: "ListSignIns",
+			Handler:    _SignInService_ListSignIns_Handler,
+		},
+		{
+			MethodName: "EndSignIn",
+			Handler:    _SignInService_EndSignIn_Handler,
 		},
 		{
 			MethodName: "GetAuthStatus",

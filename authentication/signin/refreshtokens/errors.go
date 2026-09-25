@@ -25,6 +25,17 @@ var (
 	// ErrEmptySubjectID indicates a mint or a revocation naming nobody.
 	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject ID for a refresh token")
 
+	// ErrNilExecutor indicates a listing handed no executor to read on.
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor for listing refresh token families")
+
+	// ErrZeroLimit indicates a listing that asked for no rows at all.
+	//
+	// It is refused rather than read as a default, because the default is the
+	// sign-in service's — signin.DefaultSignInListLimit, resolved before the
+	// call — and a store holding one of its own would be a second place that
+	// policy lived.
+	ErrZeroLimit = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "zero limit on a listing of refresh token families")
+
 	// ErrEmptySecret indicates a redemption presenting nothing.
 	ErrEmptySecret = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token secret")
 

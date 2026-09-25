@@ -670,7 +670,7 @@ func (s *Service) redeem(
 		return nil, platformerrors.Wrap(err, "issuing a token")
 	}
 
-	if err = s.mintRefreshToken(ctx, tx, scope, signIn, familyID); err != nil {
+	if err = s.mintRefreshToken(ctx, tx, scope, signIn, familyID, time.Time{}); err != nil {
 		return nil, err
 	}
 

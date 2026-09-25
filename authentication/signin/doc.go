@@ -80,6 +80,12 @@ lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
 consumer's interceptor refuse administrative work under an ordinary login by the
 same person.
 
+A person's live families are what [Service.ListSignIns] answers and what
+[Service.EndSignIn] ends one of, for a "where you're signed in" screen. Both need
+a store that implements [SignInListingStore] as well — the refreshtokens store
+does — and each entry carries the family, so a consumer that records a device
+per login from [Hooks.AfterIssueToken] joins it on that.
+
 # The transaction, and what is outside it
 
 Verifying a password is expensive by design — that is what argon2 is for — and

@@ -631,6 +631,10 @@ var Matrix = map[string]map[string]Decision{
 		"ErrRefreshTokenTTLTooShort":    {Err: signin.ErrRefreshTokenTTLTooShort, Is: Unhandled},
 		"ErrRefreshTokensNotConfigured": {Err: signin.ErrRefreshTokensNotConfigured, Is: Unhandled},
 
+		// The listing doors on a service whose store mints refresh tokens and
+		// cannot enumerate them. Wiring again, and nothing a caller sent.
+		"ErrSignInListingNotSupported": {Err: signin.ErrSignInListingNotSupported, Is: Unhandled},
+
 		// The two registration wiring failures: a service that was given nothing
 		// to register through, and one that was given nothing to finish a
 		// registration with. Neither is anything a caller sent.

@@ -97,6 +97,37 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		must.NotNil(t, spent.RedeemedAt)
 	})
 
+	// The listing is the one statement here with a LIMIT, which is the clause
+	// the three engines spell least alike, and it compares the store's clock
+	// against real temporal columns rather than SQLite's text.
+	t.Run("lists a subject's live logins and ends one for its owner", func(t *testing.T) {
+		began := c.Now().UTC()
+
+		phone := mint(t, "family_list_phone", "user_list", time.Hour)
+		c.advance(time.Minute)
+		mint(t, "family_list_laptop", "user_list", time.Hour)
+		c.advance(time.Minute)
+		rotate(t, store, testScope(), phone.Secret)
+
+		signIns := listSignIns(t, store, testScope(), "user_list", 10)
+		test.Eq(t, []string{"family_list_phone", "family_list_laptop"}, familyIDs(signIns))
+		must.SliceLen(t, 2, signIns)
+		test.True(t, began.Equal(signIns[0].SignedInAt),
+			test.Sprintf("began %v, listed %v", began, signIns[0].SignedInAt))
+
+		test.Eq(t, []string{"family_list_phone"}, familyIDs(listSignIns(t, store, testScope(), "user_list", 1)))
+
+		revoked, revokeErr := revokeFamilyForSubject(t, store, testScope(), "user_other", "family_list_phone")
+		must.NoError(t, revokeErr)
+		test.EqOp(t, 0, revoked)
+
+		revoked, revokeErr = revokeFamilyForSubject(t, store, testScope(), "user_list", "family_list_phone")
+		must.NoError(t, revokeErr)
+		test.EqOp(t, 2, revoked)
+
+		test.Eq(t, []string{"family_list_laptop"}, familyIDs(listSignIns(t, store, testScope(), "user_list", 10)))
+	})
+
 	// The whole reason the exchange is a guarded update. On SQLite every writer
 	// is serialized by the file, so the case proves nothing there; here each
 	// contender opens its own transaction on its own connection to a real server,

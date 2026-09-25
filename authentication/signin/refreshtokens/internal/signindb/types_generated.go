@@ -33,6 +33,7 @@ type GetRefreshTokenRow struct {
 	ActiveAccountID string
 	Administrative  bool
 	IssuedAt        time.Time
+	SignedInAt      time.Time
 	ExpiresAt       time.Time
 	PurgeAfter      time.Time
 	RedeemedAt      *time.Time
@@ -60,8 +61,27 @@ type InsertRefreshTokenParams struct {
 	ActiveAccountID string
 	Administrative  bool
 	IssuedAt        time.Time
+	SignedInAt      time.Time
 	ExpiresAt       time.Time
 	PurgeAfter      time.Time
+}
+
+// ListLiveRefreshTokenFamiliesParams are the arguments to ListLiveRefreshTokenFamilies.
+type ListLiveRefreshTokenFamiliesParams struct {
+	Scope       tenancy.Scope
+	SubjectID   string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// ListLiveRefreshTokenFamiliesRow is one row of ListLiveRefreshTokenFamilies's result.
+type ListLiveRefreshTokenFamiliesRow struct {
+	FamilyID        string
+	ActiveAccountID string
+	Administrative  bool
+	IssuedAt        time.Time
+	SignedInAt      time.Time
+	ExpiresAt       time.Time
 }
 
 // RecordRefreshTokenSuccessorParams are the arguments to RecordRefreshTokenSuccessor.
@@ -99,6 +119,14 @@ type RevokeRefreshTokenParams struct {
 type RevokeRefreshTokenFamilyParams struct {
 	RevokedAt *time.Time
 	Scope     tenancy.Scope
+	FamilyID  string
+}
+
+// RevokeRefreshTokenFamilyForSubjectParams are the arguments to RevokeRefreshTokenFamilyForSubject.
+type RevokeRefreshTokenFamilyForSubjectParams struct {
+	RevokedAt *time.Time
+	Scope     tenancy.Scope
+	SubjectID string
 	FamilyID  string
 }
 

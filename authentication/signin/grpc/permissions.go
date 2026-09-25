@@ -10,15 +10,17 @@ import (
 // rather than a map of permissions.
 //
 // Nothing here is permissioned, and that is a conclusion rather than an
-// omission. Nine of the fifteen RPCs are how a caller becomes somebody at all —
-// or, in SignOut's case, stops being them — so there is no grant that could gate
-// them: a permission check in front of sign-in is a check against the caller's
-// roles, and an anonymous caller has none. Five take their subject from the
-// principal and have no field that could name anybody else — the whole of their
-// authorization is "this is the caller's own row", checked by the method having
-// no way to be about another one.
+// omission. Nine of the seventeen RPCs are how a caller becomes somebody at all
+// — or, in SignOut's case, stops being them — so there is no grant that could
+// gate them: a permission check in front of sign-in is a check against the
+// caller's roles, and an anonymous caller has none. Seven take their subject
+// from the principal and have no field that could name anybody else — the whole
+// of their authorization is "this is the caller's own row", checked by the
+// method having no way to be about another one. EndSignIn names a login rather
+// than a person, and is among them because the caller is part of what it
+// matches: a family that is not theirs ends nothing.
 //
-// The fifteenth is Register, which is neither: it requires a caller and is not
+// The seventeenth is Register, which is neither: it requires a caller and is not
 // about them. It is still ungated, and that is the same conclusion identity's
 // namesake reaches — the registrar is the consumer's own service, the policy
 // that decides who may sign up is theirs and sits in front of the call, and a
@@ -28,7 +30,7 @@ import (
 //
 // So there is no Permissions map here, unlike identity/grpc, and a consumer
 // looking for one is looking for something that would be wrong to have. What
-// there is instead is [Require], which declares all fifteen to an authorization
+// there is instead is [Require], which declares all seventeen to an authorization
 // policy explicitly. The difference between "declared and requires nothing" and
 // "not declared" is the difference between a service that works and one whose
 // every method is denied by the enforcer's fail-closed rule, and nothing reports
@@ -101,7 +103,9 @@ func RegistrarMethods() []string {
 // Every one takes its subject from the principal. There is no permission that
 // would make these safer and one would make them wrong: an operator holding a
 // directory-wide grant would not thereby be able to change somebody else's
-// password — or end their sessions — because the method has no way to name one.
+// password — or list or end their logins — because the method has no way to
+// name one. EndSignIn names a login, and the service matches it against the
+// caller as well, so a family identifier that is somebody else's ends nothing.
 func SelfServiceMethods() []string {
 	return []string{
 		signinpb.SignInService_GetSelf_FullMethodName,
@@ -109,6 +113,8 @@ func SelfServiceMethods() []string {
 		signinpb.SignInService_RefreshTOTPSecret_FullMethodName,
 		signinpb.SignInService_VerifyTOTPSecret_FullMethodName,
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
+		signinpb.SignInService_ListSignIns_FullMethodName,
+		signinpb.SignInService_EndSignIn_FullMethodName,
 	}
 }
 
@@ -116,7 +122,7 @@ func SelfServiceMethods() []string {
 // builder, all of them as public.
 //
 // Public there means "no authorization check", not "no authentication": the
-// consumer's authentication interceptor still runs, and the five self-service
+// consumer's authentication interceptor still runs, and the seven self-service
 // methods and Register refuse a request with no principal on them. The nine
 // anonymous ones are the service working as intended.
 //

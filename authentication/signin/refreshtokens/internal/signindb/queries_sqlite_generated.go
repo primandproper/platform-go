@@ -26,6 +26,7 @@ const getRefreshTokenSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.active_account_id,
 	{{prefix}}signin_refresh_tokens.administrative,
 	{{prefix}}signin_refresh_tokens.issued_at,
+	{{prefix}}signin_refresh_tokens.signed_in_at,
 	{{prefix}}signin_refresh_tokens.expires_at,
 	{{prefix}}signin_refresh_tokens.purge_after,
 	{{prefix}}signin_refresh_tokens.redeemed_at,
@@ -50,6 +51,7 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	active_account_id,
 	administrative,
 	issued_at,
+	signed_in_at,
 	expires_at,
 	purge_after
 ) VALUES (
@@ -61,8 +63,25 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	?6,
 	?7,
 	?8,
-	?9
+	?9,
+	?10
 )`
+
+const listLiveRefreshTokenFamiliesSQLite = `SELECT
+	{{prefix}}signin_refresh_tokens.family_id,
+	{{prefix}}signin_refresh_tokens.active_account_id,
+	{{prefix}}signin_refresh_tokens.administrative,
+	{{prefix}}signin_refresh_tokens.issued_at,
+	{{prefix}}signin_refresh_tokens.signed_in_at,
+	{{prefix}}signin_refresh_tokens.expires_at
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?1
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?2
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?3
+ORDER BY {{prefix}}signin_refresh_tokens.issued_at DESC, {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT COALESCE(?4, 50)`
 
 const recordRefreshTokenSuccessorSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
 	successor_hash = ?1
@@ -98,6 +117,13 @@ WHERE scope = ?2
 	AND family_id = ?3
 	AND revoked_at IS NULL`
 
+const revokeRefreshTokenFamilyForSubjectSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
+	revoked_at = ?1
+WHERE scope = ?2
+	AND subject_id = ?3
+	AND family_id = ?4
+	AND revoked_at IS NULL`
+
 const revokeRefreshTokensForSubjectSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
 	revoked_at = ?1
 WHERE scope = ?2
@@ -109,34 +135,38 @@ WHERE purge_after <= ?1`
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
-	claimRefreshTokenRemint       string
-	getRefreshToken               string
-	getRefreshTokenRedemption     string
-	insertRefreshToken            string
-	recordRefreshTokenSuccessor   string
-	redeemRefreshToken            string
-	redeemRefreshTokenWithKey     string
-	revokeRefreshToken            string
-	revokeRefreshTokenFamily      string
-	revokeRefreshTokensForSubject string
-	sweepRefreshTokens            string
+	claimRefreshTokenRemint            string
+	getRefreshToken                    string
+	getRefreshTokenRedemption          string
+	insertRefreshToken                 string
+	listLiveRefreshTokenFamilies       string
+	recordRefreshTokenSuccessor        string
+	redeemRefreshToken                 string
+	redeemRefreshTokenWithKey          string
+	revokeRefreshToken                 string
+	revokeRefreshTokenFamily           string
+	revokeRefreshTokenFamilyForSubject string
+	revokeRefreshTokensForSubject      string
+	sweepRefreshTokens                 string
 }
 
 // newSQLite returns the sqlite querier with prefix substituted into every
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
-		claimRefreshTokenRemint:       strings.ReplaceAll(claimRefreshTokenRemintSQLite, prefixMarker, prefix),
-		getRefreshToken:               strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
-		getRefreshTokenRedemption:     strings.ReplaceAll(getRefreshTokenRedemptionSQLite, prefixMarker, prefix),
-		insertRefreshToken:            strings.ReplaceAll(insertRefreshTokenSQLite, prefixMarker, prefix),
-		recordRefreshTokenSuccessor:   strings.ReplaceAll(recordRefreshTokenSuccessorSQLite, prefixMarker, prefix),
-		redeemRefreshToken:            strings.ReplaceAll(redeemRefreshTokenSQLite, prefixMarker, prefix),
-		redeemRefreshTokenWithKey:     strings.ReplaceAll(redeemRefreshTokenWithKeySQLite, prefixMarker, prefix),
-		revokeRefreshToken:            strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
-		revokeRefreshTokenFamily:      strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
-		revokeRefreshTokensForSubject: strings.ReplaceAll(revokeRefreshTokensForSubjectSQLite, prefixMarker, prefix),
-		sweepRefreshTokens:            strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
+		claimRefreshTokenRemint:            strings.ReplaceAll(claimRefreshTokenRemintSQLite, prefixMarker, prefix),
+		getRefreshToken:                    strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
+		getRefreshTokenRedemption:          strings.ReplaceAll(getRefreshTokenRedemptionSQLite, prefixMarker, prefix),
+		insertRefreshToken:                 strings.ReplaceAll(insertRefreshTokenSQLite, prefixMarker, prefix),
+		listLiveRefreshTokenFamilies:       strings.ReplaceAll(listLiveRefreshTokenFamiliesSQLite, prefixMarker, prefix),
+		recordRefreshTokenSuccessor:        strings.ReplaceAll(recordRefreshTokenSuccessorSQLite, prefixMarker, prefix),
+		redeemRefreshToken:                 strings.ReplaceAll(redeemRefreshTokenSQLite, prefixMarker, prefix),
+		redeemRefreshTokenWithKey:          strings.ReplaceAll(redeemRefreshTokenWithKeySQLite, prefixMarker, prefix),
+		revokeRefreshToken:                 strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
+		revokeRefreshTokenFamily:           strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
+		revokeRefreshTokenFamilyForSubject: strings.ReplaceAll(revokeRefreshTokenFamilyForSubjectSQLite, prefixMarker, prefix),
+		revokeRefreshTokensForSubject:      strings.ReplaceAll(revokeRefreshTokensForSubjectSQLite, prefixMarker, prefix),
+		sweepRefreshTokens:                 strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
 	}
 }
 
@@ -201,6 +231,7 @@ func (q *sqliteQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRef
 		&i.ActiveAccountID,
 		&i.Administrative,
 		&i.IssuedAt,
+		&i.SignedInAt,
 		&i.ExpiresAt,
 		&i.PurgeAfter,
 		&i.RedeemedAt,
@@ -237,11 +268,52 @@ func (q *sqliteQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Ins
 		arg.ActiveAccountID,
 		arg.Administrative,
 		timeText(arg.IssuedAt),
+		timeText(arg.SignedInAt),
 		timeText(arg.ExpiresAt),
 		timeText(arg.PurgeAfter),
 	)
 
 	return err
+}
+
+// ListLiveRefreshTokenFamilies runs the :many query against sqlite.
+func (q *sqliteQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListLiveRefreshTokenFamiliesParams) ([]ListLiveRefreshTokenFamiliesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listLiveRefreshTokenFamilies,
+		arg.Scope,
+		arg.SubjectID,
+		timeText(arg.Now),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListLiveRefreshTokenFamiliesRow
+
+	for rows.Next() {
+		var i ListLiveRefreshTokenFamiliesRow
+
+		if err := rows.Scan(
+			&i.FamilyID,
+			&i.ActiveAccountID,
+			&i.Administrative,
+			&i.IssuedAt,
+			&i.SignedInAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 // RecordRefreshTokenSuccessor runs the :execrows query against sqlite.
@@ -317,6 +389,21 @@ func (q *sqliteQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBTX, a
 	return result.RowsAffected()
 }
 
+// RevokeRefreshTokenFamilyForSubject runs the :execrows query against sqlite.
+func (q *sqliteQueries) RevokeRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenFamilyForSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshTokenFamilyForSubject,
+		timeTextPtr(arg.RevokedAt),
+		arg.Scope,
+		arg.SubjectID,
+		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RevokeRefreshTokensForSubject runs the :execrows query against sqlite.
 func (q *sqliteQueries) RevokeRefreshTokensForSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokensForSubjectParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.revokeRefreshTokensForSubject,
@@ -367,6 +454,7 @@ var (
 		ActiveAccountID string
 		Administrative  bool
 		IssuedAt        time.Time
+		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		PurgeAfter      time.Time
 		RedeemedAt      *time.Time
@@ -388,9 +476,24 @@ var (
 		ActiveAccountID string
 		Administrative  bool
 		IssuedAt        time.Time
+		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		PurgeAfter      time.Time
 	}(InsertRefreshTokenParams{})
+	_ = struct {
+		Scope       tenancy.Scope
+		SubjectID   string
+		Now         time.Time
+		ResultLimit int64
+	}(ListLiveRefreshTokenFamiliesParams{})
+	_ = struct {
+		FamilyID        string
+		ActiveAccountID string
+		Administrative  bool
+		IssuedAt        time.Time
+		SignedInAt      time.Time
+		ExpiresAt       time.Time
+	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
 		SuccessorHash *string
 		Hash          string
@@ -419,6 +522,12 @@ var (
 		Scope     tenancy.Scope
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		Scope     tenancy.Scope
+		SubjectID string
+		FamilyID  string
+	}(RevokeRefreshTokenFamilyForSubjectParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		Scope     tenancy.Scope
