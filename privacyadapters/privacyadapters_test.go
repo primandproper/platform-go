@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	grantsmock "github.com/primandproper/platform-go/v14/authentication/grants/mock"
 	oauth2clientsmock "github.com/primandproper/platform-go/v14/authentication/oauth2clients/mock"
 	passkeysmock "github.com/primandproper/platform-go/v14/authentication/passkeys/mock"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
@@ -62,6 +63,7 @@ func everything() *privacyadapters.Adapters {
 		Waitlists:     &privacyadapters.WaitlistsAdapter{Store: &waitlistsmock.SignupStoreMock{}, Resolve: resolve},
 		MediaRegistry: &privacyadapters.MediaRegistryAdapter{Store: &mediaregistrymock.StoreMock{}, Resolve: resolve},
 		OAuth2Clients: &privacyadapters.OAuth2ClientsAdapter{Store: &oauth2clientsmock.StoreMock{}, Resolve: resolve},
+		Grants:        &privacyadapters.GrantsAdapter{Store: &grantsmock.StoreMock{}, Resolve: resolve},
 		Passkeys:      &privacyadapters.PasskeysAdapter{Store: &passkeysmock.StoreMock{}, Resolve: resolve},
 		PasswordReset: &privacyadapters.PasswordResetAdapter{Store: &passwordresetmock.StoreMock{}, Resolve: resolve},
 		RecoveryCodes: &privacyadapters.RecoveryCodesAdapter{Store: &recoverycodesmock.StoreMock{}, Resolve: resolve},
@@ -502,6 +504,7 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 	found := shippedAdapters(T)
 
 	for _, dir := range []string{
+		"authentication/grants/privacy",
 		"authentication/oauth2clients/privacy",
 		"authentication/passkeys/privacy",
 		"authentication/passwordreset/privacy",
@@ -520,5 +523,5 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 		test.True(T, ok, test.Sprintf("the walk did not find %s, so nothing in this file asserted about it", dir))
 	}
 
-	test.MapLen(T, 13, found)
+	test.MapLen(T, 14, found)
 }

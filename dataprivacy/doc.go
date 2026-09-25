@@ -313,7 +313,7 @@ the three readings a read's scope has and why they need a pointer to hold them.
 The fan-out follows the same rule: Collector.Collect and Eraser.Erase are handed
 the confinement beside the subject, so a domain that scopes its rows narrows by
 a value it was passed rather than one it dug out. The privacy adapters this
-module ships — authentication/oauth2clients/privacy,
+module ships — authentication/grants/privacy, authentication/oauth2clients/privacy,
 authentication/passkeys/privacy, authentication/passwordreset/privacy,
 authentication/signin/recoverycodes/privacy, billing/privacy, comments/privacy, identity/privacy, issuereports/privacy,
 mediaregistry/privacy, notifications/privacy's two pairs, settings/privacy,

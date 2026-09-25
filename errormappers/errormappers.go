@@ -2,6 +2,7 @@ package errormappers
 
 import (
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/authentication/grants"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -228,4 +229,12 @@ func Register() {
 	// name a thing a consumer's upload form is about to re-send — a key, a
 	// belongs-to subject, a list of ids — and the message the mapper writes says
 	// which one.
+
+	httperrors.RegisterHTTPErrorMapper(grants.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(grants.GRPCMapper)
+
+	// No client-safe sentinels for grants. Its refusals reach a consumer's own
+	// consent callback or sync handler rather than a person, and the one a person
+	// does end up acting on — connect the account again — is the HTTP mapper's
+	// message, which already says so.
 }
