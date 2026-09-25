@@ -34,9 +34,13 @@ type Store interface {
 	//
 	// A re-consent replaces rather than updates. The new grant is a new
 	// credential with a new id, so a refresh still in flight against the old
-	// one finds no grant under the id it read and is refused with
-	// ErrGrantNotFound, rather than writing the old grant's refreshed tokens
-	// over the new consent.
+	// one is refused rather than writing the old grant's refreshed tokens over
+	// the new consent. Which refusal depends on where the re-consent lands: one
+	// that commits before Refreshed reads the grant leaves no row under the old
+	// id, and the answer is ErrGrantNotFound; one that lands between that read
+	// and Refreshed's write has moved the same row to a new id, the
+	// compare-and-set matches nothing, and the answer is ErrStaleRefresh.
+	// Neither stores the stale tokens.
 	//
 	// The consent is not modified. A nil tx is an error wrapping
 	// ErrNilExecutor.
@@ -64,8 +68,10 @@ type Store interface {
 	//
 	// A tokens value with no RefreshToken leaves the stored one standing, which
 	// is what a provider that does not rotate means by omitting it. A grant
-	// that is revoked, in another scope or absent is ErrGrantNotFound. A nil tx
-	// is an error wrapping ErrNilExecutor.
+	// that is revoked, in another scope or absent is ErrGrantNotFound when this
+	// call reads it; one revoked or replaced by a consent after that read and
+	// before the write is ErrStaleRefresh, because the write's predicate is
+	// what refuses it. A nil tx is an error wrapping ErrNilExecutor.
 	Refreshed(ctx context.Context, tx database.Tx, scope tenancy.Scope, id, expectedAccessToken string, tokens *Tokens) (*Grant, error)
 
 	// Revoke marks a live grant revoked, through the caller's transaction,

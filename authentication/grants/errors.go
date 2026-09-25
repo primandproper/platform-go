@@ -40,8 +40,9 @@ var (
 	// ErrEmptyProvider indicates a write or read that named no provider.
 	ErrEmptyProvider = platformerrors.New("grant provider is required")
 
-	// ErrEmptyAccessToken indicates a consent or a refresh carrying no access
-	// token. A grant is its access token; one without is not a grant.
+	// ErrEmptyAccessToken indicates a consent, or tokens handed to
+	// Store.Refreshed, carrying no access token. A grant is its access token;
+	// one without is not a grant.
 	ErrEmptyAccessToken = platformerrors.New("grant access token is required")
 
 	// ErrInvalidGrantedScope indicates a granted scope that is not an RFC 6749
@@ -90,4 +91,13 @@ var (
 	// and RevokedByProvider, which is what stops whatever retries refreshes
 	// from retrying this one forever.
 	ErrProviderRevoked = platformerrors.New("the provider refused the grant's refresh token")
+
+	// ErrProviderReturnedNoAccessToken indicates a refresh the provider answered
+	// with success and no access token. It is the provider's fault rather than
+	// the caller's, which is why it is not ErrEmptyAccessToken: that one is a
+	// consent or a Store.Refreshed the caller assembled without a token, and is
+	// answered as a bad request. Nothing is stored and nothing is revoked — the
+	// grant still holds what it held, and whether a retry fares better is the
+	// provider's to say.
+	ErrProviderReturnedNoAccessToken = platformerrors.New("the provider answered a grant refresh with no access token")
 )

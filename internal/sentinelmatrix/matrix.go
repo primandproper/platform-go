@@ -1093,6 +1093,13 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyAccessToken":    {Err: grants.ErrEmptyAccessToken, Is: Mapped},
 		"ErrInvalidGrantedScope": {Err: grants.ErrInvalidGrantedScope, Is: Mapped},
 
+		// The provider answering a refresh with success and no token. Nobody on
+		// the far side of the consumer's endpoint caused it or can fix it, and
+		// nothing in the module maps a misbehaving third party to a code of its
+		// own, so a 500 is the honest answer — the same one every other failure
+		// of the provider's already gets from Refresh.
+		"ErrProviderReturnedNoAccessToken": {Err: grants.ErrProviderReturnedNoAccessToken, Is: Unhandled},
+
 		// Two that wrap errors.ErrUnrecognizedInputValue, and the nil arguments,
 		// which wrap errors.ErrNilInputParameter.
 		"ErrValueTooLong":            {Err: grants.ErrValueTooLong, Is: Platform},

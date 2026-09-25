@@ -22,8 +22,10 @@ import (
 //
 // The nil arguments, ErrValueTooLong and ErrUnknownRevocationReason are absent
 // from both switches on purpose: they wrap a platform sentinel the platform
-// mappers already answer. internal/sentinelmatrix records which sentinel is in
-// which state.
+// mappers already answer. So is ErrProviderReturnedNoAccessToken, for a
+// different reason: it is the provider misbehaving, which the caller of the
+// consumer's endpoint neither caused nor can fix, and a 500 says exactly that.
+// internal/sentinelmatrix records which sentinel is in which state.
 var (
 	// HTTPMapper maps this package's sentinels onto HTTP error codes.
 	HTTPMapper httperrors.HTTPErrorMapper = httpMapper{}

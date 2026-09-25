@@ -114,7 +114,22 @@ func TestRefresh(T *testing.T) {
 		test.False(t, errors.Is(err, grants.ErrProviderRevoked))
 	})
 
-	T.Run("a response with no access token is refused", func(t *testing.T) {
+	T.Run("a response with no access token is the provider's fault", func(t *testing.T) {
+		t.Parallel()
+
+		config, _ := tokenEndpoint(t, http.StatusOK, map[string]any{"token_type": "Bearer", "refresh_token": "r"})
+
+		_, err := grants.Refresh(t.Context(), config, &grants.Grant{RefreshToken: "held-refresh"})
+		must.Error(t, err)
+
+		// x/oauth2 refuses the response before Refresh sees it, so what arrives
+		// is its error rather than this package's sentinel. What matters is
+		// what it is not: the caller's bad request, or a revocation.
+		test.False(t, errors.Is(err, grants.ErrEmptyAccessToken))
+		test.False(t, errors.Is(err, grants.ErrProviderRevoked))
+	})
+
+	T.Run("a token source answering with no access token is the provider's fault", func(t *testing.T) {
 		t.Parallel()
 
 		exchanger := &grantsmock.ExchangerMock{
@@ -124,7 +139,8 @@ func TestRefresh(T *testing.T) {
 		}
 
 		_, err := grants.Refresh(t.Context(), exchanger, &grants.Grant{RefreshToken: "held-refresh"})
-		test.ErrorIs(t, err, grants.ErrEmptyAccessToken)
+		test.ErrorIs(t, err, grants.ErrProviderReturnedNoAccessToken)
+		test.False(t, errors.Is(err, grants.ErrEmptyAccessToken))
 	})
 
 	T.Run("a grant with no refresh token makes no call", func(t *testing.T) {

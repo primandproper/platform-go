@@ -43,6 +43,14 @@ const invalidGrant = "invalid_grant"
 // other failure — the provider unreachable, a 500, a context cancelled — is
 // returned as it came and is worth retrying.
 //
+// A provider that answers with success and no access token is
+// ErrProviderReturnedNoAccessToken. The fault is the provider's, so it is not
+// the ErrEmptyAccessToken a caller's own malformed consent gets. Through an
+// *oauth2.Config the sentinel is not what arrives: x/oauth2 refuses such a
+// response itself, with an error of its own that is returned as it came like
+// any other failure. The sentinel is for an Exchanger that lets one through.
+// Both are unmapped, so a consumer's endpoint answers either with a 500.
+//
 // A grant holding no refresh token is ErrNoRefreshToken without a call being
 // made.
 func Refresh(ctx context.Context, exchanger Exchanger, grant *Grant) (*Tokens, error) {
@@ -74,7 +82,7 @@ func Refresh(ctx context.Context, exchanger Exchanger, grant *Grant) (*Tokens, e
 	}
 
 	if fresh == nil || fresh.AccessToken == "" {
-		return nil, platformerrors.Wrap(ErrEmptyAccessToken, "the provider's refresh response")
+		return nil, platformerrors.Wrap(ErrProviderReturnedNoAccessToken, "refreshing grant")
 	}
 
 	return &Tokens{

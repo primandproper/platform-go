@@ -101,7 +101,7 @@ func TestMappers(T *testing.T) {
 func TestMappers_LeaveTheRestAlone(T *testing.T) {
 	T.Parallel()
 
-	for _, err := range []error{nil, grants.ErrValueTooLong, grants.ErrNilExecutor, platformerrors.New("something else")} {
+	for _, err := range []error{nil, grants.ErrValueTooLong, grants.ErrNilExecutor, grants.ErrProviderReturnedNoAccessToken, platformerrors.New("something else")} {
 		_, _, ok := grants.HTTPMapper.Map(err)
 		test.False(T, ok)
 
