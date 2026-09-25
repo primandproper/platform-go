@@ -393,7 +393,15 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	// the authentication.Authenticator sign-in hashes with, which
 	// RegisterService resolves as required rather than defaulting — see
 	// passwordresetcfg for why a default authenticator is the wrong kindness.
-	// Its directory is the identity.Store the block above registers.
+	// Its directory is the identity.Store the block above registers, so the
+	// block needs Identity beside it; a container missing any of the three fails
+	// at boot naming it.
+	//
+	// A container that also registers a passwordreset.Store or a
+	// *passwordreset.Service by hand — which was the only way to mount the
+	// surface before this block existed — holds two providers under one key, and
+	// samber/do panics on the second registration. Configure the block or keep
+	// the hand registration, not both.
 	if cfg.PasswordReset != nil {
 		do.ProvideValue(i, cfg.PasswordReset)
 		passwordresetcfg.RegisterStore(i)

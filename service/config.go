@@ -138,28 +138,19 @@ type Config struct {
 	OAuth2Server         *oauth2serverstorecfg.Config `env:",init" envPrefix:"OAUTH2_SERVER_"          json:"oauth2Server,omitempty"         yaml:"oauth2Server,omitempty"`
 	Operations           *operationscfg.Config        `env:",init" envPrefix:"OPERATIONS_"             json:"operations,omitempty"           yaml:"operations,omitempty"`
 	Outbox               *outboxcfg.Config            `env:",init" envPrefix:"OUTBOX_"                 json:"outbox,omitempty"               yaml:"outbox,omitempty"`
-	// PasswordReset registers the reset flow's store and its service, which is
-	// what its gRPC surface mounts over. The service resolves two things only
-	// the application can supply — a passwordreset.Mailer and the
-	// authentication.Authenticator sign-in hashes with — and identity.Store as
-	// its directory, so the block needs Identity beside it; a container missing
-	// any of the three fails at boot naming it. A container that also registers
-	// a passwordreset.Store or a *passwordreset.Service by hand, which was the
-	// only way to mount the surface before this field existed, holds two
-	// providers under one key, and samber/do panics on the second registration.
-	PasswordReset *passwordresetcfg.Config    `env:",init" envPrefix:"PASSWORD_RESET_" json:"passwordReset,omitempty" yaml:"passwordReset,omitempty"`
-	RateLimiting  *ratelimitingcfg.Config     `env:",init" envPrefix:"RATE_LIMITING_"  json:"rateLimiting,omitempty"  yaml:"rateLimiting,omitempty"`
-	Retention     *retentioncfg.Config        `env:",init" envPrefix:"RETENTION_"      json:"retention,omitempty"     yaml:"retention,omitempty"`
-	Retry         *retrycfg.Config            `env:",init" envPrefix:"RETRY_"          json:"retry,omitempty"         yaml:"retry,omitempty"`
-	Routing       *routingcfg.Config          `env:",init" envPrefix:"ROUTING_"        json:"routing,omitempty"       yaml:"routing,omitempty"`
-	Saga          *sagacfg.Config             `env:",init" envPrefix:"SAGA_"           json:"saga,omitempty"          yaml:"saga,omitempty"`
-	Secrets       *secretscfg.Config          `env:",init" envPrefix:"SECRETS_"        json:"secrets,omitempty"       yaml:"secrets,omitempty"`
-	Settings      *settingscfg.Config         `env:",init" envPrefix:"SETTINGS_"       json:"settings,omitempty"      yaml:"settings,omitempty"`
-	Tokens        *tokenscfg.Config           `env:",init" envPrefix:"TOKENS_"         json:"tokens,omitempty"        yaml:"tokens,omitempty"`
-	Uploads       *uploadscfg.Config          `env:",init" envPrefix:"UPLOADS_"        json:"uploads,omitempty"       yaml:"uploads,omitempty"`
-	Waitlists     *waitlistscfg.Config        `env:",init" envPrefix:"WAITLISTS_"      json:"waitlists,omitempty"     yaml:"waitlists,omitempty"`
-	WebAuthn      *webauthnsessionscfg.Config `env:",init" envPrefix:"WEBAUTHN_"       json:"webAuthn,omitempty"      yaml:"webAuthn,omitempty"`
-	Webhooks      *webhookscfg.Config         `env:",init" envPrefix:"WEBHOOKS_"       json:"webhooks,omitempty"      yaml:"webhooks,omitempty"`
+	PasswordReset        *passwordresetcfg.Config     `env:",init" envPrefix:"PASSWORD_RESET_"         json:"passwordReset,omitempty"        yaml:"passwordReset,omitempty"`
+	RateLimiting         *ratelimitingcfg.Config      `env:",init" envPrefix:"RATE_LIMITING_"          json:"rateLimiting,omitempty"         yaml:"rateLimiting,omitempty"`
+	Retention            *retentioncfg.Config         `env:",init" envPrefix:"RETENTION_"              json:"retention,omitempty"            yaml:"retention,omitempty"`
+	Retry                *retrycfg.Config             `env:",init" envPrefix:"RETRY_"                  json:"retry,omitempty"                yaml:"retry,omitempty"`
+	Routing              *routingcfg.Config           `env:",init" envPrefix:"ROUTING_"                json:"routing,omitempty"              yaml:"routing,omitempty"`
+	Saga                 *sagacfg.Config              `env:",init" envPrefix:"SAGA_"                   json:"saga,omitempty"                 yaml:"saga,omitempty"`
+	Secrets              *secretscfg.Config           `env:",init" envPrefix:"SECRETS_"                json:"secrets,omitempty"              yaml:"secrets,omitempty"`
+	Settings             *settingscfg.Config          `env:",init" envPrefix:"SETTINGS_"               json:"settings,omitempty"             yaml:"settings,omitempty"`
+	Tokens               *tokenscfg.Config            `env:",init" envPrefix:"TOKENS_"                 json:"tokens,omitempty"               yaml:"tokens,omitempty"`
+	Uploads              *uploadscfg.Config           `env:",init" envPrefix:"UPLOADS_"                json:"uploads,omitempty"              yaml:"uploads,omitempty"`
+	Waitlists            *waitlistscfg.Config         `env:",init" envPrefix:"WAITLISTS_"              json:"waitlists,omitempty"            yaml:"waitlists,omitempty"`
+	WebAuthn             *webauthnsessionscfg.Config  `env:",init" envPrefix:"WEBAUTHN_"               json:"webAuthn,omitempty"             yaml:"webAuthn,omitempty"`
+	Webhooks             *webhookscfg.Config          `env:",init" envPrefix:"WEBHOOKS_"               json:"webhooks,omitempty"             yaml:"webhooks,omitempty"`
 
 	// Name identifies the service. It is the name the HTTP server reports and
 	// the default ServiceName for each observability pillar.
