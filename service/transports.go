@@ -823,11 +823,13 @@ func (m *mount) settings() {
 // default for sign-in's reason, with no exception to make — every RPC on it
 // arrives with nobody on it, not just six of them.
 //
-// A consumer provides the *passwordreset.Service the way they provide
-// *signin.Service, and this mounts the surface over it if they did. What that
-// service needs beyond a store — a Mailer, and the authenticator that hashes the
-// password a reset writes — has no default this module could supply, which is
-// why neither is a config field here.
+// Config.PasswordReset registers the *passwordreset.Service this mounts over,
+// and it stays absent for a service that configured none. What that service
+// needs beyond a store — a Mailer, and the authenticator that hashes the
+// password a reset writes — has no default this module could supply, which is a
+// reason for no field rather than for no block: passwordresetcfg resolves both
+// from the injector, and a block whose application registered neither fails at
+// boot naming the one it wanted.
 func (m *mount) passwordReset() {
 	svc, ok := need[*passwordreset.Service](m)
 	if !ok {

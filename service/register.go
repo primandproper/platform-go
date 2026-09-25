@@ -5,6 +5,7 @@ import (
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
@@ -384,6 +385,19 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	if cfg.Identity != nil {
 		do.ProvideValue(i, cfg.Identity)
 		identitycfg.RegisterStore(i)
+	}
+
+	// The store and the service both, because the reset surface mounts over the
+	// service and every setting either reads is a number. What is not a number
+	// is the application's: the passwordreset.Mailer that delivers a link and
+	// the authentication.Authenticator sign-in hashes with, which
+	// RegisterService resolves as required rather than defaulting — see
+	// passwordresetcfg for why a default authenticator is the wrong kindness.
+	// Its directory is the identity.Store the block above registers.
+	if cfg.PasswordReset != nil {
+		do.ProvideValue(i, cfg.PasswordReset)
+		passwordresetcfg.RegisterStore(i)
+		passwordresetcfg.RegisterService(i)
 	}
 
 	// The store only. issuereports/privacy's collector and eraser need a mapping
