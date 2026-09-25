@@ -54,14 +54,39 @@ func TestNew(T *testing.T) {
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
 	})
 
-	// Degrading to a lease-only claim on a dialect without SKIP LOCKED would
-	// look like it worked while quietly handing the same item to every worker,
-	// so the dialects this package has no SQL for are refused outright.
-	T.Run("refuses any dialect but postgres", func(t *testing.T) {
+	T.Run("builds a queue over every dialect the module names", func(t *testing.T) {
 		t.Parallel()
 
-		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite, dialect.Dialect("oracle")} {
-			_, err := New[string](t.Context(), validConfig(), clientFor(d))
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			q, err := New[string](t.Context(), validConfig(), clientFor(d))
+			must.NoError(t, err, must.Sprintf("dialect %q", d))
+			t.Cleanup(func() { _ = q.Close(t.Context()) })
+
+			// One querier or the other, never both and never neither: split
+			// being nil is what every method reads as "this is Postgres".
+			test.EqOp(t, d == dialect.Postgres, q.q != nil, test.Sprintf("dialect %q", d))
+			test.EqOp(t, d != dialect.Postgres, q.split != nil, test.Sprintf("dialect %q", d))
+		}
+	})
+
+	T.Run("refuses a dialect the module does not name", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := New[string](t.Context(), validConfig(), clientFor(dialect.Dialect("oracle")))
+		test.ErrorIs(t, err, dialect.ErrUnsupported)
+	})
+
+	// A channel on a dialect with no NOTIFY would be a deployment that believes
+	// an enqueue wakes its workers and is running on the poll interval instead.
+	T.Run("refuses a notify channel on a dialect without NOTIFY", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
+			cfg := validConfig()
+			cfg.NotifyChannel = "work"
+
+			_, err := New[string](t.Context(), cfg, clientFor(d))
+			test.ErrorIs(t, err, ErrNotifyUnsupported, test.Sprintf("dialect %q", d))
 			test.ErrorIs(t, err, dialect.ErrUnsupported, test.Sprintf("dialect %q", d))
 		}
 	})

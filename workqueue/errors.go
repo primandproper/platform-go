@@ -2,6 +2,7 @@ package workqueue
 
 import (
 	"github.com/primandproper/primitives-go/v2/batching"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
@@ -82,6 +83,16 @@ var (
 	// type other than the Queue's. Option carries no type parameter, so the
 	// compiler cannot catch this; New reports it instead, at construction.
 	ErrKeyCodecTypeMismatch = platformerrors.New("key codec type does not match queue key type")
+
+	// ErrNotifyUnsupported indicates Config.NotifyChannel was set on a dialect
+	// with no LISTEN/NOTIFY. It wraps dialect.ErrUnsupported, so a caller may
+	// check either.
+	//
+	// Refused rather than ignored: a queue that dropped the channel would be a
+	// deployment that believes an enqueue wakes its workers and is in fact
+	// running on the poll interval, which looks like working until somebody
+	// measures the latency.
+	ErrNotifyUnsupported = platformerrors.Wrap(dialect.ErrUnsupported, "work queue notifications require postgres")
 
 	// ErrClosed indicates an Enqueue that arrived after Close. It is returned
 	// rather than parking the caller on a batch nothing will ever flush.

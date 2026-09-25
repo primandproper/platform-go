@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
+	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuesplitdb"
 
 	"github.com/primandproper/primitives-go/v2/batching"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -117,7 +118,7 @@ type Stats struct {
 	Completed int64
 }
 
-// Queue is a leased work queue over one Postgres table.
+// Queue is a leased work queue over one table.
 //
 // It is safe for concurrent use, and is meant to be shared: one Queue per
 // process per logical queue, handed to every goroutine that enqueues or claims.
@@ -136,9 +137,13 @@ type Queue[K comparable] struct {
 	o11y     observability.Observer
 
 	// q is the querier sqlc-gen-unison generated from
-	// workqueue/internal/queries. Nothing in this package composes SQL; see the
-	// package comment.
-	q workqueuedb.Querier
+	// workqueue/internal/queries' Postgres corpus, and split the one it
+	// generated from the corpus MySQL and SQLite share. Exactly one is set, by
+	// New, from the client's dialect; split being nil is what "this is
+	// Postgres" means everywhere below. Nothing in this package composes SQL;
+	// see the package comment.
+	q     workqueuedb.Querier
+	split workqueuesplitdb.Querier
 
 	enqueuedCounter  metrics.Int64Counter
 	claimedCounter   metrics.Int64Counter
@@ -183,8 +188,10 @@ type Queue[K comparable] struct {
 	wakeMu sync.Mutex
 }
 
-// New builds a Queue over client, which must speak Postgres and must be the
-// database holding the queue table.
+// New builds a Queue over client, which must be the database holding the queue
+// table. Postgres, MySQL and SQLite are all served; see the package doc for what
+// differs between them, which is the number of round trips and nothing a caller
+// can otherwise observe.
 //
 // ctx is used to validate the config and is not retained; every method takes its
 // own.
@@ -201,8 +208,9 @@ func New[K comparable](
 		return nil, ErrNilDatabaseClient
 	}
 
-	if err := dialect.RequirePostgres("work queue", client.Dialect()); err != nil {
-		return nil, err
+	d := client.Dialect()
+	if !d.Valid() {
+		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "work queue dialect %q", d)
 	}
 
 	cfg.EnsureDefaults()
@@ -219,20 +227,32 @@ func New[K comparable](
 		return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "work queue table %q", cfg.resolvedTable())
 	}
 
-	// The channel is bound as text by the statement this package emits, but the
-	// listener on the other end has to render it into a LISTEN, which takes no
-	// parameters. Vetting it here is what keeps that end from having to.
-	if cfg.NotifyChannel != "" && !dialect.ValidIdentifier(cfg.NotifyChannel) {
-		return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "work queue notify channel %q", cfg.NotifyChannel)
+	if cfg.NotifyChannel != "" {
+		if !d.SupportsNotify() {
+			return nil, platformerrors.Wrapf(ErrNotifyUnsupported, "work queue dialect %q", d)
+		}
+
+		// The channel is bound as text by the statement this package emits, but
+		// the listener on the other end has to render it into a LISTEN, which
+		// takes no parameters. Vetting it here is what keeps that end from
+		// having to.
+		if !dialect.ValidIdentifier(cfg.NotifyChannel) {
+			return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "work queue notify channel %q", cfg.NotifyChannel)
+		}
 	}
 
-	// The generated querier, instantiated once the prefix is settled. The
-	// dialect is not a choice here the way it is for a three-dialect store:
-	// RequirePostgres has already refused everything else, and the generated
-	// package was generated for a roster of one.
-	querier, querierErr := workqueuedb.New(workqueuedb.DialectPostgreSQL, ddl.Qualify(cfg.TablePrefix))
-	if querierErr != nil {
-		return nil, platformerrors.Wrap(querierErr, "building the work queue querier")
+	q := &Queue[K]{
+		cfg:    *cfg,
+		client: client,
+		codec:  DefaultKeyCodec[K](),
+		attrs:  metric.WithAttributes(attribute.String(queueNameKey, cfg.Name)),
+	}
+
+	// The generated querier, instantiated once the prefix is settled: one of
+	// two, because the dialects are served by two statement sets. See
+	// workqueue/internal/queries.
+	if err := q.buildQuerier(d, ddl.Qualify(cfg.TablePrefix)); err != nil {
+		return nil, err
 	}
 
 	var (
@@ -240,14 +260,7 @@ func New[K comparable](
 		err error
 	)
 
-	q := &Queue[K]{
-		q:      querier,
-		cfg:    *cfg,
-		client: client,
-		codec:  DefaultKeyCodec[K](),
-		wakeup: o.wakeup,
-		attrs:  metric.WithAttributes(attribute.String(queueNameKey, cfg.Name)),
-	}
+	q.wakeup = o.wakeup
 
 	// Asserted rather than assumed: Option cannot name K, so this is where a
 	// codec built for another key type is caught. Failing here means it is
@@ -293,6 +306,33 @@ func New[K comparable](
 	}
 
 	return q, nil
+}
+
+// buildQuerier instantiates the generated querier the dialect is served by.
+//
+// The set is closed on both sides — New has already refused anything Valid
+// declines — so the default arm is reachable only when this module learns a
+// dialect neither generated package was generated for, which is a construction
+// failure naming the dialect rather than a panic.
+func (q *Queue[K]) buildQuerier(d dialect.Dialect, prefix string) error {
+	var err error
+
+	switch d {
+	case dialect.Postgres:
+		q.q, err = workqueuedb.New(workqueuedb.DialectPostgreSQL, prefix)
+	case dialect.MySQL:
+		q.split, err = workqueuesplitdb.New(workqueuesplitdb.DialectMySQL, prefix)
+	case dialect.SQLite:
+		q.split, err = workqueuesplitdb.New(workqueuesplitdb.DialectSQLite, prefix)
+	default:
+		err = platformerrors.Wrapf(dialect.ErrUnsupported, "no generated work queue queries for dialect %q", d)
+	}
+
+	if err != nil {
+		return platformerrors.Wrap(err, "building the work queue querier")
+	}
+
+	return nil
 }
 
 // buildInstruments creates every metric the queue records. Split out of New
@@ -478,8 +518,9 @@ func (q *Queue[K]) reserveWake() time.Duration {
 }
 
 // Claim leases up to limit of the queue's due items for the given lease
-// duration, in one statement: nothing is selected without also being leased, so
-// two claimers can never see the same item.
+// duration, atomically: nothing is selected without also being leased, so two
+// claimers can never see the same item. On Postgres that is one statement; on
+// MySQL and SQLite it is three in one transaction — see the package doc.
 //
 // Due means unfinished, unleased, past its delay, and — when Config.MaxAttempts
 // is set — not yet out of attempts. Ties are broken by priority first and by
@@ -567,13 +608,17 @@ func (q *Queue[K]) claim(ctx context.Context, limit int, lease time.Duration) ([
 
 // claimOnce is one attempt of claim.
 func (q *Queue[K]) claimOnce(ctx context.Context, limit int, lease time.Duration) ([]Item[K], error) {
-	// The writer, not the reader: this is an UPDATE that happens to return rows,
-	// and a read replica would both fail it and lose every lease it handed out.
 	// The name is minted here rather than in claim, so a retried attempt is a
 	// new claim with a name of its own: an attempt that deadlocked may still
 	// have leased rows, and reusing its name would let the retry report on them.
 	leasedBy := identifiers.New()
 
+	if q.split != nil {
+		return q.claimSplit(ctx, limit, lease, leasedBy)
+	}
+
+	// The writer, not the reader: this is an UPDATE that happens to return rows,
+	// and a read replica would both fail it and lose every lease it handed out.
 	rows, err := q.q.ClaimDueItems(ctx, q.client.Writer(), workqueuedb.ClaimDueItemsParams{
 		QueueName:         q.cfg.Name,
 		AttemptCeiling:    int64(q.cfg.attemptCeiling()),
@@ -588,29 +633,36 @@ func (q *Queue[K]) claimOnce(ctx context.Context, limit int, lease time.Duration
 	items := make([]Item[K], 0, len(rows))
 
 	for i := range rows {
-		item := Item[K]{
-			Priority:  int(rows[i].Priority),
-			Attempts:  int(rows[i].Attempts),
-			LeasedBy:  leasedBy,
-			Reclaimed: rows[i].Reclaimed,
-		}
-
-		// A key that will not decode is the one failure here a caller cannot act
-		// on and must not be hidden: it means the table holds rows written under
-		// a different key type or codec, and every claim will keep leasing them.
-		// Failing the whole batch is the loud version of that, and the lease
-		// lapses on its own.
-		key, decodeErr := q.codec.DecodeKey(rows[i].ItemKey)
+		item, decodeErr := q.claimedItem(rows[i].ItemKey, rows[i].Priority, rows[i].Attempts, leasedBy, rows[i].Reclaimed)
 		if decodeErr != nil {
-			return nil, platformerrors.Wrapf(decodeErr, "decoding claimed work queue key %q", rows[i].ItemKey)
+			return nil, decodeErr
 		}
-
-		item.Key = key
 
 		items = append(items, item)
 	}
 
 	return items, nil
+}
+
+// claimedItem assembles one claimed row into the Item a caller is handed.
+//
+// A key that will not decode is the one failure here a caller cannot act on and
+// must not be hidden: it means the table holds rows written under a different
+// key type or codec, and every claim will keep leasing them. Failing the whole
+// batch is the loud version of that, and the lease lapses on its own.
+func (q *Queue[K]) claimedItem(encoded string, priority, attempts int64, leasedBy string, reclaimed bool) (Item[K], error) {
+	key, err := q.codec.DecodeKey(encoded)
+	if err != nil {
+		return Item[K]{}, platformerrors.Wrapf(err, "decoding claimed work queue key %q", encoded)
+	}
+
+	return Item[K]{
+		Key:       key,
+		Priority:  int(priority),
+		Attempts:  int(attempts),
+		LeasedBy:  leasedBy,
+		Reclaimed: reclaimed,
+	}, nil
 }
 
 // Complete retires finished items: the lease is dropped and the item stops being
@@ -647,6 +699,12 @@ func (q *Queue[K]) Complete(ctx context.Context, items ...Item[K]) error {
 			QueueName: q.cfg.Name,
 			ItemKeys:  keys,
 			LeasedBys: holders,
+		})
+	}, func(holder string, keys []string) (int64, error) {
+		return q.split.CompleteItems(ctx, q.client.Writer(), workqueuesplitdb.CompleteItemsParams{
+			QueueName: q.cfg.Name,
+			LeasedBy:  &holder,
+			ItemKeys:  keys,
 		})
 	})
 	if err != nil {
@@ -704,6 +762,8 @@ func (q *Queue[K]) Extend(ctx context.Context, lease time.Duration, items ...Ite
 			ItemKeys:          keys,
 			LeasedBys:         holders,
 		})
+	}, func(holder string, keys []string) (int64, error) {
+		return q.extendHeld(ctx, lease, holder, keys)
 	})
 	if err != nil {
 		return 0, op.Error(err, "extending work queue leases")
@@ -781,6 +841,14 @@ func (q *Queue[K]) Release(ctx context.Context, delay time.Duration, cause error
 			ItemKeys:          keys,
 			LeasedBys:         holders,
 		})
+	}, func(holder string, keys []string) (int64, error) {
+		return q.split.ReleaseItems(ctx, q.client.Writer(), workqueuesplitdb.ReleaseItemsParams{
+			DelayMicroseconds: delay.Microseconds(),
+			LastError:         lastError,
+			QueueName:         q.cfg.Name,
+			LeasedBy:          &holder,
+			ItemKeys:          keys,
+		})
 	})
 	if err != nil {
 		return op.Error(err, "releasing work queue items")
@@ -803,6 +871,13 @@ func (q *Queue[K]) Remove(ctx context.Context, keys ...K) error {
 	defer op.End()
 
 	affected, err := q.writeKeys(ctx, "remove", keys, func(encoded []string) (int64, error) {
+		if q.split != nil {
+			return q.split.RemoveItems(ctx, q.client.Writer(), workqueuesplitdb.RemoveItemsParams{
+				QueueName: q.cfg.Name,
+				ItemKeys:  encoded,
+			})
+		}
+
 		return q.q.RemoveItems(ctx, q.client.Writer(), workqueuedb.RemoveItemsParams{
 			QueueName: q.cfg.Name,
 			ItemKeys:  encoded,
@@ -850,6 +925,13 @@ func (q *Queue[K]) Requeue(ctx context.Context, keys ...K) (int64, error) {
 	defer op.End()
 
 	affected, err := q.writeKeys(ctx, "requeue", keys, func(encoded []string) (int64, error) {
+		if q.split != nil {
+			return q.split.RequeueItems(ctx, q.client.Writer(), workqueuesplitdb.RequeueItemsParams{
+				QueueName: q.cfg.Name,
+				ItemKeys:  encoded,
+			})
+		}
+
 		return q.q.RequeueItems(ctx, q.client.Writer(), workqueuedb.RequeueItemsParams{
 			QueueName: q.cfg.Name,
 			ItemKeys:  encoded,
@@ -892,6 +974,12 @@ func (q *Queue[K]) Reap(ctx context.Context) (int64, error) {
 	err := q.retrier.Do(ctx, "reap", func() error {
 		var execErr error
 
+		if q.split != nil {
+			affected, execErr = q.reapSplit(ctx)
+
+			return execErr
+		}
+
 		affected, execErr = q.q.ReapCompletedItems(ctx, q.client.Writer(), workqueuedb.ReapCompletedItemsParams{
 			QueueName:             q.cfg.Name,
 			RetentionMicroseconds: q.cfg.Retention.Microseconds(),
@@ -927,10 +1015,7 @@ func (q *Queue[K]) Stats(ctx context.Context) (Stats, error) {
 	ctx, op := q.o11y.Begin(ctx)
 	defer op.End()
 
-	row, err := q.q.ReadQueueStats(ctx, q.client.Reader(), workqueuedb.ReadQueueStatsParams{
-		QueueName:      q.cfg.Name,
-		AttemptCeiling: int64(q.cfg.attemptCeiling()),
-	})
+	row, err := q.readStats(ctx)
 	if err != nil {
 		return Stats{}, op.Error(err, "reading work queue stats")
 	}
@@ -961,6 +1046,28 @@ func (q *Queue[K]) Stats(ctx context.Context) (Stats, error) {
 	})
 
 	return stats, nil
+}
+
+// statsRow is the health read's row, which the two generated queriers declare
+// field for field alike.
+type statsRow workqueuedb.ReadQueueStatsRow
+
+// readStats runs the health read against whichever corpus the queue was built
+// over.
+func (q *Queue[K]) readStats(ctx context.Context) (statsRow, error) {
+	if q.split != nil {
+		return q.readStatsSplit(ctx)
+	}
+
+	row, err := q.q.ReadQueueStats(ctx, q.client.Reader(), workqueuedb.ReadQueueStatsParams{
+		QueueName:      q.cfg.Name,
+		AttemptCeiling: int64(q.cfg.attemptCeiling()),
+	})
+	if err != nil {
+		return statsRow{}, err
+	}
+
+	return statsRow(row), nil
 }
 
 // writeKeys is the shape a keyed writer shares: encode the keys, hand the
@@ -1006,9 +1113,15 @@ func (q *Queue[K]) writeKeys(
 	return affected, err
 }
 
-// writeItems is writeKeys for the two writers that report what became of a
-// claim: it splits the batch into the two parallel arrays their statements bind
-// and keeps the nth key and the nth holder one item.
+// writeItems is writeKeys for the three writers that report what became of a
+// claim: it splits the batch into the two parallel arrays their Postgres
+// statements bind and keeps the nth key and the nth holder one item.
+//
+// On MySQL and SQLite there are no arrays to keep parallel, and held is called
+// instead, once per claim the batch names with that claim's keys — see byHolder.
+// That is almost always once: a batch is what one Claim handed out. Each call is
+// retried on its own, so a retry never re-runs a claim's write that already
+// landed.
 //
 // The sort is the same lock-ordering discipline and is on the key, because the
 // key is what the primary key orders by; the holder breaks the remaining ties so
@@ -1020,6 +1133,7 @@ func (q *Queue[K]) writeItems(
 	label string,
 	items []Item[K],
 	write func(keys, holders []string) (int64, error),
+	held func(holder string, keys []string) (int64, error),
 ) (int64, error) {
 	if len(items) == 0 {
 		return 0, nil
@@ -1037,6 +1151,10 @@ func (q *Queue[K]) writeItems(
 	}
 
 	refs = sortAndDedupeItems(refs)
+
+	if q.split != nil {
+		return q.writeHeld(ctx, label, refs, held)
+	}
 
 	keys := make([]string, 0, len(refs))
 	holders := make([]string, 0, len(refs))
@@ -1057,6 +1175,37 @@ func (q *Queue[K]) writeItems(
 	})
 
 	return affected, err
+}
+
+// writeHeld runs a claim writer's statement once per claim the batch names, and
+// sums what they matched.
+func (q *Queue[K]) writeHeld(
+	ctx context.Context,
+	label string,
+	refs []itemRef,
+	held func(holder string, keys []string) (int64, error),
+) (int64, error) {
+	holders, keys := byHolder(refs)
+
+	var total int64
+
+	for _, holder := range holders {
+		var affected int64
+
+		if err := q.retrier.Do(ctx, label, func() error {
+			var execErr error
+
+			affected, execErr = held(holder, keys[holder])
+
+			return execErr
+		}); err != nil {
+			return total, err
+		}
+
+		total += affected
+	}
+
+	return total, nil
 }
 
 // itemRef is one claimed item reduced to what the statements bind: the encoded
