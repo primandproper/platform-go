@@ -432,20 +432,46 @@ func dialectsOf(t *testing.T, render renderer) []dialect.Dialect {
 	return claimed
 }
 
-// createStatement returns the CREATE TABLE for one table, at the empty prefix.
+// createStatement returns what the DDL says about one table's columns, at the
+// empty prefix: its CREATE TABLE, and every CREATE TABLE and ALTER TABLE after
+// it that names the same table, joined in the order they run.
+//
+// One statement used to be the whole answer, and for a schema that ships as a
+// ddl.Migrations it is not. A later version reaches the table through an ALTER
+// — or, on SQLite, through a second CREATE TABLE that rebuilds it — so reading
+// the first CREATE alone would check the table as it first shipped and let a
+// column a later version adds go unread. Every statement is read rather than the
+// last, since an exempt table must never have carried the triple either.
 func createStatement(t *testing.T, render renderer, d dialect.Dialect, table string) string {
 	t.Helper()
 
 	stmts, err := render(d, "")
 	must.NoError(t, err)
 
+	var definition []string
+
 	for _, stmt := range stmts {
-		if createdTable(stmt) == table {
-			return stmt
+		if createdTable(stmt) == table || alteredTable(stmt) == table {
+			definition = append(definition, stmt)
 		}
 	}
 
-	t.Fatalf("dialect %q renders no CREATE TABLE for %q", d, table)
+	if len(definition) == 0 {
+		t.Fatalf("dialect %q renders no CREATE TABLE for %q", d, table)
+	}
+
+	return strings.Join(definition, "\n")
+}
+
+// alterTablePattern captures the name an ALTER TABLE statement changes. It is
+// anchored, unlike createTablePattern, because it has no walk of authored files
+// to serve and an ALTER is always a statement of its own.
+var alterTablePattern = regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+(?:\{\{PREFIX\}\})?([a-z0-9_]+)`)
+
+func alteredTable(stmt string) string {
+	if m := alterTablePattern.FindStringSubmatch(stripComments(stmt)); m != nil {
+		return m[1]
+	}
 
 	return ""
 }
@@ -619,6 +645,11 @@ var conditional = regexp.MustCompile(`(?i)\bIF\s+NOT\s+EXISTS\b`)
 // Fourteen of the module's schemas failed this at once, each of them looking
 // locally correct, which is what a convention nobody checks looks like from
 // inside any one package.
+//
+// What it reads is the creates. A schema that ships as a ddl.Migrations also
+// renders ALTERs, and those are a version's rather than a schema's: a consumer's
+// migration tool records a version once it has run and never runs it again, and
+// MySQL and SQLite have no conditional spelling of ADD COLUMN to reach for.
 func TestSchemaIsRerunnable(T *testing.T) {
 	T.Parallel()
 

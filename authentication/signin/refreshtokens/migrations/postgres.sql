@@ -65,13 +65,6 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}signin_refresh_tokens (
     -- refresh, silently, and in the direction that lengthens it.
     administrative    BOOLEAN NOT NULL,
     issued_at         TIMESTAMPTZ NOT NULL,
-    -- When the login this row belongs to began: the issued_at of the family's
-    -- first token, copied onto every successor. It is a column rather than the
-    -- earliest issued_at a family still has, because that row is swept at its
-    -- purge deadline and a login that has refreshed for longer than a token's
-    -- lifetime would then report having begun at whichever row happened to
-    -- survive. It is what a "where you're signed in" screen says a login began.
-    signed_in_at      TIMESTAMPTZ NOT NULL,
     expires_at        TIMESTAMPTZ NOT NULL,
     -- When the row may be deleted, which is past expires_at by the store's
     -- retention window. It is what the sweep is keyed on, and it is deliberately
@@ -86,29 +79,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}signin_refresh_tokens (
     redeemed_at       TIMESTAMPTZ,
     -- NULL until the token is revoked, either as one of its family's or as one of
     -- a subject's.
-    revoked_at        TIMESTAMPTZ,
-    -- The idempotency key the exchange that spent this row presented, and NULL
-    -- both before the row is spent and when it is spent without one. It is what
-    -- lets a client's own retry of an exchange it never got an answer to be told
-    -- from somebody else's replay of the same request: the retry arrives bearing
-    -- the key that spent the row, and a replay does not.
-    --
-    -- It is cleared again by the re-mint that honors it, which is what bounds
-    -- the whole mechanism to one re-mint per key. Without that, a single captured
-    -- request would mint a fresh live token for as long as the grace window
-    -- lasted, where today a spent token is worth nothing to anybody.
-    redeemed_with_key TEXT,
-    -- The digest of the row this exchange minted, and NULL until it is spent. It
-    -- is the second column the retry path needs and the one that is easy to leave
-    -- out: honoring a retry means revoking the successor the first attempt
-    -- already minted, and "the successor" is not a row anything else here can
-    -- name. Revoking the family instead would be the outcome the retry exists to
-    -- avoid, and revoking nothing would leave one login holding two live refresh
-    -- tokens.
-    --
-    -- It is a digest for the same reason hash is: a column holding the token
-    -- itself would make a backup a live session.
-    successor_hash    TEXT
+    revoked_at        TIMESTAMPTZ
 );
 
 -- Serves the family revocation a detected token reuse triggers. Without it,
@@ -123,8 +94,7 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}signin_refresh_tokens_family_idx
     ON {{PREFIX}}signin_refresh_tokens (scope, family_id);
 
 -- Serves the subject-wide revocation: "disable this account", "sign out
--- everywhere", and the erasure a dataprivacy run performs — and the listing of
--- one person's live logins, which is the same key read rather than written. It cannot be
+-- everywhere", and the erasure a dataprivacy run performs. It cannot be
 -- assembled out of family revocations — a caller holding a subject identifier
 -- cannot enumerate that person's families, and a loop would leave live whatever
 -- was issued while it ran.

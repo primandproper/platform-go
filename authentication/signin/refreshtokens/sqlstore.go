@@ -100,7 +100,8 @@ type SQLStore struct {
 // ListActiveSignIns, which takes whatever executor its caller hands it, and
 // nothing in this package reaches for Client.Reader() on its own.
 //
-// It does not create the table. Hand migrations.SQL to your own migration run.
+// It does not create the table. Hand migrations.SQL to your own migration run,
+// or migrations.SQLSince if an earlier release already created it.
 func NewSQLStore(cfg *Config, db database.Client, opts ...Option) (*SQLStore, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
