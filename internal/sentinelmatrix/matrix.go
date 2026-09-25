@@ -598,6 +598,12 @@ var Matrix = map[string]map[string]Decision{
 		// Password or NoPassword, and a 500 would hide a fixable request.
 		"ErrNoCredentialNamed": {Err: signin.ErrNoCredentialNamed, Is: Mapped},
 
+		// A password the consumer's PasswordPolicy refused. A request to correct
+		// rather than a state to fix, so InvalidArgument and a 400, and
+		// client-safe because it shares that code with the row above and the
+		// remedies differ.
+		"ErrPasswordRefused": {Err: signin.ErrPasswordRefused, Is: Mapped},
+
 		// A consumer who never named the label an authenticator app shows. It is
 		// wiring rather than anything a caller sent, so a 500 is the honest
 		// answer and no mapper claims it.
@@ -870,6 +876,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrTokenNotFound": {Err: passwordreset.ErrTokenNotFound, Is: Mapped},
 		"ErrTokenExpired":  {Err: passwordreset.ErrTokenExpired, Is: Mapped},
 		"ErrTokenRedeemed": {Err: passwordreset.ErrTokenRedeemed, Is: Mapped},
+
+		// The fourth outcome a person meets, and the one that leaves the link
+		// live: a replacement password the consumer's policy refused. It is
+		// InvalidArgument rather than the three's FailedPrecondition because
+		// the remedy is the opposite one, and client-safe for the same reason.
+		"ErrPasswordRefused": {Err: passwordreset.ErrPasswordRefused, Is: Mapped},
 
 		// Two nil arguments and two empty ones, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
@@ -1169,7 +1181,7 @@ func ClientSafeSentinels(pkg string) []error {
 // against those packages' source, so declaring a list is what fails this
 // roster rather than remembering to add a row to it.
 var ClientSafeReasonPackages = []string{
-	signInPkg,
+	signInPkg, passwordResetPkg,
 }
 
 // ClientSafeReasons is the list pkg declares as the identifiers a client may
@@ -1179,6 +1191,8 @@ func ClientSafeReasons(pkg string) []grpcerrors.ClientReason {
 	switch pkg {
 	case signInPkg:
 		return signin.ClientSafeReasons
+	case passwordResetPkg:
+		return passwordreset.ClientSafeReasons
 	default:
 		panic("no client-safe reasons for " + pkg)
 	}

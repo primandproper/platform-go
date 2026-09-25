@@ -117,8 +117,10 @@ afford.
 What it holds no opinion about is everything else: which engine hashes the
 password, whether the password is acceptable, and what the mail says. The first
 is an [github.com/primandproper/primitives-go/v2/authentication.Authenticator]
-the consumer passes, the second is a rule applied before [Service.Complete] is
-called, and the third is a [Mailer].
+the consumer passes, the second is a [PasswordPolicy] the consumer hands in with
+[WithPasswordPolicy] — applied inside [Service.Complete] rather than in front of
+it, because a mounted transport leaves nothing in front of it — and the third is
+a [Mailer].
 
 # This is not links, and the difference is the table
 

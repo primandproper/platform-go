@@ -49,8 +49,9 @@ var (
 )
 
 // The sentinels the flow over the store adds. All six are arguments Service
-// refuses rather than outcomes a person meets — the three outcomes a person
-// meets are the three above, and the flow returns them unchanged.
+// refuses rather than outcomes a person meets — the three token outcomes a
+// person meets are the three above, and the flow returns them unchanged. The
+// fourth outcome, a refused password, is ErrPasswordRefused below.
 var (
 	// ErrNilStore indicates NewService was called without a Store. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
@@ -91,3 +92,14 @@ var (
 	ErrEmptyNewPassword = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter,
 		"no replacement password provided")
 )
+
+// ErrPasswordRefused indicates a replacement password the Service's
+// PasswordPolicy would not let it write. It is the one outcome of Complete a
+// person meets that is not about the link: it is refused before the token is
+// spent, so the link is still live and the remedy is another password rather
+// than another link — which is the distinction a client has to be able to draw,
+// and why it is client-safe alongside the three token outcomes.
+//
+// It is returned joined with the policy's own error, which comes first. See
+// PasswordPolicy.
+var ErrPasswordRefused = platformerrors.New("replacement password does not meet this service's requirements")

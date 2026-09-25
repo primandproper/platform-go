@@ -47,7 +47,10 @@ told apart. The secret is high-entropy, so learning which one happened requires
 already holding the token — and somebody with a day-old link is owed the
 difference between "that link expired" and "that link is not a link". See
 passwordreset.ClientSafeSentinels, which is what puts each sentinel's own words
-on the wire.
+on the wire, and passwordreset.ClientSafeReasons, which gives each an identifier
+a client branches on. A fourth outcome shares the list: a password the
+service's policy refused, which leaves the link live and asks for another
+password rather than another link.
 
 # Errors
 

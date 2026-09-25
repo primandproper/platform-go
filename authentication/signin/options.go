@@ -293,6 +293,18 @@ func WithSecondFactorPolicy(policy SecondFactorPolicy) ServiceOption {
 	}
 }
 
+// WithPasswordPolicy sets the rule every password this service writes must pass
+// — at registration, on a change and on an attachment. A nil policy is ignored,
+// leaving none, which admits any password that is not empty. See
+// [PasswordPolicy].
+func WithPasswordPolicy(policy PasswordPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.passwordPolicy = policy
+		}
+	}
+}
+
 // WithTokenTTL sets how long an ordinary sign-in's token lives. A non-positive
 // duration is ignored, leaving DefaultTokenTTL.
 func WithTokenTTL(ttl time.Duration) ServiceOption {
