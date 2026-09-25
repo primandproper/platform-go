@@ -11,55 +11,66 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// everyDialect is the roster the renderings are asserted over.
+var everyDialect = []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite}
+
 func TestStatements(T *testing.T) {
 	T.Parallel()
 
 	T.Run("renders the table name into every statement", func(t *testing.T) {
 		t.Parallel()
 
-		stmts, err := Statements(dialect.Postgres, "jobs")
-		must.NoError(t, err)
-		must.SliceNotEmpty(t, stmts)
+		for _, d := range everyDialect {
+			stmts, err := Statements(d, "jobs")
+			must.NoError(t, err)
+			must.SliceNotEmpty(t, stmts)
 
-		for _, stmt := range stmts {
-			test.True(t, strings.Contains(stmt, "jobs_work_queue_items"),
-				test.Sprintf("statement missing table name: %s", stmt))
-			test.False(t, strings.Contains(stmt, ddl.Placeholder),
-				test.Sprintf("statement left an unrendered placeholder: %s", stmt))
+			for _, stmt := range stmts {
+				test.True(t, strings.Contains(stmt, "jobs_work_queue_items"),
+					test.Sprintf("%s statement missing table name: %s", d, stmt))
+				test.False(t, strings.Contains(stmt, ddl.Placeholder),
+					test.Sprintf("%s statement left an unrendered placeholder: %s", d, stmt))
+			}
 		}
 	})
 
 	T.Run("puts the table before its indexes", func(t *testing.T) {
 		t.Parallel()
 
-		stmts, err := Statements(dialect.Postgres, "")
-		must.NoError(t, err)
-		must.SliceLen(t, 3, stmts)
+		// MySQL declares its one index inside the table, having no partial
+		// index to give the reaper a second one of its own.
+		want := map[dialect.Dialect]int{dialect.Postgres: 3, dialect.MySQL: 1, dialect.SQLite: 3}
 
-		test.True(t, strings.HasPrefix(stmts[0], "CREATE TABLE"))
-		for _, stmt := range stmts[1:] {
-			test.True(t, strings.HasPrefix(stmt, "CREATE INDEX"))
+		for _, d := range everyDialect {
+			stmts, err := Statements(d, "")
+			must.NoError(t, err)
+			must.SliceLen(t, want[d], stmts, must.Sprintf("dialect %s", d))
+
+			test.True(t, strings.HasPrefix(stmts[0], "CREATE TABLE"))
+			for _, stmt := range stmts[1:] {
+				test.True(t, strings.HasPrefix(stmt, "CREATE INDEX"))
+			}
 		}
 	})
 
 	T.Run("strips comments and empty fragments", func(t *testing.T) {
 		t.Parallel()
 
-		stmts, err := Statements(dialect.Postgres, "")
-		must.NoError(t, err)
+		for _, d := range everyDialect {
+			stmts, err := Statements(d, "")
+			must.NoError(t, err)
 
-		for _, stmt := range stmts {
-			test.False(t, strings.Contains(stmt, "--"), test.Sprintf("statement leaked a comment: %s", stmt))
-			test.EqOp(t, stmt, strings.TrimSpace(stmt))
+			for _, stmt := range stmts {
+				test.False(t, strings.Contains(stmt, "--"), test.Sprintf("%s statement leaked a comment: %s", d, stmt))
+				test.EqOp(t, stmt, strings.TrimSpace(stmt))
+			}
 		}
 	})
 
-	// A dialect with no body would otherwise render zero statements and no
-	// error, leaving a caller with nothing created and no way to tell.
-	T.Run("rejects the dialects this package has no schema for", func(t *testing.T) {
+	T.Run("rejects a dialect this module does not name", func(t *testing.T) {
 		t.Parallel()
 
-		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite, dialect.Dialect("oracle"), ""} {
+		for _, d := range []dialect.Dialect{dialect.Dialect("oracle"), ""} {
 			_, err := Statements(d, "")
 			test.ErrorIs(t, err, dialect.ErrUnsupported, test.Sprintf("dialect %q", d))
 
@@ -97,11 +108,13 @@ func TestSQL(T *testing.T) {
 	T.Run("joins the statements with no comments left in", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := SQL(dialect.Postgres, "jobs")
-		must.NoError(t, err)
+		for _, d := range everyDialect {
+			body, err := SQL(d, "jobs")
+			must.NoError(t, err)
 
-		test.False(t, strings.Contains(body, "--"))
-		test.True(t, strings.Contains(body, "jobs_work_queue_items"))
-		test.True(t, strings.HasSuffix(body, ";\n"))
+			test.False(t, strings.Contains(body, "--"), test.Sprintf("dialect %s", d))
+			test.True(t, strings.Contains(body, "jobs_work_queue_items"), test.Sprintf("dialect %s", d))
+			test.True(t, strings.HasSuffix(body, ";\n"), test.Sprintf("dialect %s", d))
+		}
 	})
 }
