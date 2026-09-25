@@ -1,6 +1,7 @@
 /*
-Package timers is durable one-shot scheduling over Postgres: run this once at
-instant T, exactly once across the fleet, surviving restarts.
+Package timers is durable one-shot scheduling over a SQL table: run this once at
+instant T, exactly once across the fleet, surviving restarts. Postgres, MySQL
+and SQLite are all served; see "Three dialects" below for what differs.
 
 jobs covers periodic work — cron across a fleet — and workqueue covers work that
 should happen as soon as somebody is free. Neither covers the third thing every
@@ -62,10 +63,15 @@ whenever that process thought it was.
 
 An instant does not have that problem. "2026-08-21T09:00:00Z" means the same
 thing to every process that reads it, forever, including the ones that restart in
-between. So the instant is bound absolutely and stored as it was given.
+between. So the instant is bound absolutely and stored as it was given — to the
+engine's precision, and rounded up to it rather than to the nearest: the
+microsecond on Postgres and MySQL, and the millisecond on SQLite, whose only
+sub-second clock is strftime's. A timer for 12:00:00.0007 on SQLite is stored as
+12:00:00.001 and fires a fraction of a millisecond late; rounded the other way
+it would fire early, and early is the one direction a timer must never move in.
 
-Whether a stored instant has arrived is Postgres's now() to answer, always, and
-that is what makes a fleet agree. Every other timestamp that governs
+Whether a stored instant has arrived is the database's clock to answer, always,
+and that is what makes a fleet agree. Every other timestamp that governs
 scheduling — lease expiry, retry delays, lateness, retention — is written and
 compared server-side, and crosses the seam as a duration.
 
@@ -78,8 +84,8 @@ double.
 
 # Exactly once, which means at least once plus idempotence
 
-The lease is the arbiter. A claim selects and leases due timers in one
-SELECT … FOR UPDATE SKIP LOCKED statement, so two claimants can never hold the
+The lease is the arbiter. A claim selects and leases due timers atomically —
+SKIP LOCKED where the engine has row locks — so two claimants can never hold the
 same firing, and a firing is retired by marking the row rather than by anything
 in the worker's memory.
 
@@ -114,7 +120,9 @@ That raises a race a work queue does not have: a timer rescheduled during the
 seconds it is being fired. Claim hands back Due.RunAt, and Complete and Release
 match on it as well as on the key and the claim, so a worker holding a stale
 instant marks nothing and the new schedule stands. Pass the Due value back rather
-than its key and both fences apply without anybody having to think about it.
+than its key and both fences apply without anybody having to think about it. (On
+MySQL and SQLite the claim's name carries the instant's fence too; see "Three
+dialects" below.)
 
 The two answer different races and neither covers the other. The instant catches
 a schedule that moved; the claim catches a lease that was taken over, which the
@@ -218,13 +226,16 @@ and both are load-bearing here for the same reasons.
 
 Every writer takes its row locks in primary-key order. Schedule sorts its rows
 before binding them and the statement orders them again, and Complete, Release,
-and Cancel reach theirs through a CTE that orders and locks them explicitly. Claim is exempt and safe:
-SKIP LOCKED never waits, and a statement that never waits cannot be half of a
-deadlock.
+and Cancel reach theirs through a CTE that orders and locks them explicitly on
+Postgres, and by an UPDATE or DELETE ordered by key on MySQL. Claim is exempt
+and safe: SKIP LOCKED never waits, and a statement that never waits cannot be
+half of a deadlock.
 
-The claim's LIMIT sits above the lock rather than below it, so a claimant gets a
-full batch whenever that many timers are due however many competitors are
-running. A LIMIT pushed into a subquery beneath the lock would still be correct
+A claimant gets a full batch whenever that many timers are due however many
+competitors are running: a timer another claimant holds is skipped and replaced
+rather than counted against the batch. On Postgres that is the claim's LIMIT
+sitting above the lock rather than below it; on MySQL it is the claim reading on
+past what it could not lock. A claim that did otherwise would still be correct
 and would quietly halve throughput under contention, so there is a test pinning
 it against a real server.
 
@@ -241,14 +252,17 @@ timers/internal/queries as a rendered, committed corpus — written out there
 rather than emitted by database/querygen, for the reason that package's comment
 gives — sqlc checks that corpus against the schema timers/migrations renders with
 no database running, and what the set executes is the querier sqlc-gen-unison
-generated from it, in timers/internal/timersdb. A column renamed in a migration
-is a failed `make unison` rather than a scan error in production.
+generated from it — timers/internal/timersdb for Postgres, and
+timers/internal/timerssplitdb for MySQL and SQLite, whose statements have other
+shapes. A column renamed in a migration is a failed `make unison` rather than a
+scan error in production.
 
-A batch reaches those statements as one bound array per column rather than as a
-tuple per row, so the text of a statement does not depend on how many timers are
-in the call. Schedule, Complete, Release, and Cancel each split their batch into
-parallel arrays, in primary-key order, which is where the lock-ordering
-discipline below is applied.
+On Postgres a batch reaches those statements as one bound array per column
+rather than as a tuple per row, so the text of a statement does not depend on
+how many timers are in the call. Schedule, Complete, Release, and Cancel each
+split their batch into parallel arrays, in primary-key order, which is where the
+lock-ordering discipline above is applied. The other two engines have no
+arrays; see below for what they do instead.
 
 # Creating the table
 
@@ -260,23 +274,68 @@ One table serves any number of logical sets: Config.Name partitions it, and is
 the leading column of the primary key. Two Timers values with different names
 share nothing but storage.
 
-# Postgres only
+# Three dialects, and what each costs
 
-Deliberately, and for the same reason workqueue is — see its package
-documentation for which construct binds. The claim is one statement that selects
-due rows, locks them, increments attempts, extends the lease, and hands back the
-keys with their payloads; without RETURNING that becomes a
-SELECT … FOR UPDATE SKIP LOCKED and a separate UPDATE inside a transaction held
-across both round trips, which is a different concurrency shape rather than a
-dialect switch. New returns dialect.ErrUnsupported for anything else.
+Postgres, MySQL and SQLite all run the whole contract above — both fences, the
+reschedule rule, the full batch, the one clock — and one suite of tests runs
+against all three. What differs is how many round trips each operation takes and
+how finely SQLite keeps an instant, and both are stated here rather than
+discovered.
 
-The module README's "SQL Dialect Support" section is where that narrowing is
-spoken module-wide, beside the roster of every other package that stores
-anything through database — the table to read before choosing a dialect, rather
-than after choosing this package.
+On Postgres every operation is one statement. The claim selects due timers,
+locks them, increments their attempts, stamps the lease and the claim's name,
+and hands the timers back with their payloads through RETURNING, so nothing is
+ever selected without also being leased. A batch of any size is one statement,
+because it is bound as arrays.
+
+MySQL has SKIP LOCKED and no RETURNING; SQLite has neither, and no row locks at
+all. On both the claim is four statements held in one transaction: a read of
+the due timers in claim order, a locking read of those by key that skips what
+another claimant holds (and reads on past them until the batch is full), an
+update that leases them — repeating every test the reads made, so it takes
+nothing the rows stopped being — and a read-back by the name the lease stamped.
+The transaction is what makes that one claim: the locks last until it commits,
+so no other claimant can take those timers in between, and on SQLite the
+transaction is the only writer. The price is a transaction held across four
+round trips per claim, and a claimant that dies between them rolls the whole
+claim back rather than leaving half of one.
+
+The lock is by key rather than by the read that found the candidates, and the
+reason is MySQL's. A locking read over an index range under InnoDB's default
+isolation also locks the first record past the range, and past the end of one
+set's due timers is, as often as not, the next set's earliest one — which that
+set's own claimants would then skip for as long as the claim ran. Locked by
+primary key, a claim locks the timers it asked for and nothing beside them.
+
+The rest of the costs follow from there being no arrays to bind:
+
+  - Schedule is a statement per timer in the batch, in one transaction, rather
+    than one statement for the batch.
+  - Complete and Release are a statement per distinct claim the call names —
+    one statement when the call hands back what one Claim handed out, which it
+    almost always does. They match on the claim's name and the key and not on
+    the instant, and nothing is lost by it: every write that moves a timer's
+    instant takes the name with it — a reschedule to a new instant revokes it,
+    a release clears it — so a name still on a row is on the instant its claim
+    was handed.
+  - Reap is a read and a delete in one transaction. The delete waits for a
+    fired timer somebody holds rather than skipping it, which on a fired timer
+    means a reschedule or a cancel landing first.
+
+Config.NotifyChannel is Postgres's alone, because NOTIFY is; New refuses it
+elsewhere with ErrNotifyUnsupported rather than ignoring it, and a poller there
+sleeps until the next instant it knows about or the poll, whichever is sooner.
+WriteAttempts retries only Postgres's serialization failures and deadlocks.
+
+SQLite's single writer also means its claimants take turns rather than running
+side by side. That is SQLite's answer to concurrency rather than this package's,
+and the set is correct under it; it is simply not a fleet.
+
+The module README's "SQL Dialect Support" section carries the matrix for every
+package in this module that stores anything through database, and it is
+generated rather than typed: internal/cmd/readmegen emits it from the DDL each
+package ships.
 */
 package timers
-
-//platform:narrowing claims a due timer in the one statement, and would owe the same split anywhere else
 
 //go:generate go run ./internal/queriesgen

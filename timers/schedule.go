@@ -49,8 +49,8 @@ type encodedTimer struct {
 // when it redelivers "start trial": treating it as a move would free a row
 // somebody is firing and let a second worker fire it too.
 //
-// The whole batch is one statement, so either every timer in it is scheduled or
-// none is. Unlike a work queue's enqueue there is no group commit across
+// The whole batch is one statement on Postgres and one transaction elsewhere,
+// so either every timer in it is scheduled or none is. Unlike a work queue's enqueue there is no group commit across
 // concurrent callers: scheduling is not a per-request write path — one row is
 // created when a trial starts, not on every read of it — so the contention that
 // makes merging worth its complexity does not arise. If you find yourself
@@ -110,12 +110,27 @@ func (t *Timers[K]) Schedule(ctx context.Context, scheduled ...Timer[K]) error {
 
 		rows = append(rows, encodedTimer{
 			key:     key,
-			runAt:   scheduled[i].RunAt.UTC(),
+			runAt:   roundUpToMicrosecond(scheduled[i].RunAt.UTC()),
 			payload: scheduled[i].Payload,
 		})
 	}
 
 	rows = sortAndDedupeTimers(rows)
+
+	// MySQL and SQLite have no array to bind a column of, so the batch is a
+	// statement per timer there instead, in one transaction. Nothing is
+	// notified: New has refused a channel on a dialect with no NOTIFY.
+	if t.split != nil {
+		if err := t.retrier.Do(ctx, "schedule", func() error {
+			return t.scheduleSplit(ctx, rows)
+		}); err != nil {
+			return op.Error(err, "scheduling timers")
+		}
+
+		t.scheduledCounter.Add(ctx, int64(len(rows)), t.attrs)
+
+		return nil
+	}
 
 	// Three parallel arrays rather than a tuple per row: the statement is one
 	// fixed text however large the batch is, and the nth element of each is one
@@ -167,7 +182,7 @@ func (t *Timers[K]) ScheduleAt(ctx context.Context, key K, runAt time.Time, payl
 // stored. Two processes with skewed clocks that say "in three days" a moment
 // apart therefore schedule for slightly different instants, which is exactly
 // what they asked for; what they cannot disagree about is whether a stored
-// instant has arrived, because Postgres answers that.
+// instant has arrived, because the database answers that.
 //
 // A non-positive delay schedules for now, which is due immediately. That is
 // allowed — a timer fired as soon as a worker gets to it is a meaningful request
@@ -195,6 +210,22 @@ func (t *Timers[K]) notify(ctx context.Context) {
 	if _, err := t.client.Writer().ExecContext(ctx, dialect.PostgresNotifyStatement, t.cfg.NotifyChannel); err != nil {
 		t.o11y.Logger().WithValue(notifyChannelKey, t.cfg.NotifyChannel).Error("notifying timer channel", err)
 	}
+}
+
+// roundUpToMicrosecond moves an instant to the next whole microsecond, and
+// leaves one already on it alone.
+//
+// Microseconds are the finest instant Postgres and MySQL store, and a stored
+// instant rounded to the nearest one — which is what Postgres does with the
+// nanoseconds a time.Time carries — is half the time an instant earlier than
+// the one the caller named. Up is the only direction a timer may move. SQLite
+// stores milliseconds, and its statement rounds this up again to one of those.
+func roundUpToMicrosecond(at time.Time) time.Time {
+	if truncated := at.Truncate(time.Microsecond); !truncated.Equal(at) {
+		return truncated.Add(time.Microsecond)
+	}
+
+	return at
 }
 
 // sortAndDedupeTimers puts a batch into primary-key order and collapses repeats
