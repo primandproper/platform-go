@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -328,5 +329,31 @@ func TestNewService(T *testing.T) {
 		svc, err := build(t, cfg, WithServiceOptions(signin.WithTokenTTL(time.Second)))
 		must.NoError(t, err)
 		test.NotNil(t, svc)
+	})
+}
+
+// A build that fails after a sweeper has started stops it again. The sweepers
+// run on the context NewService was handed, and neither store has a way to
+// stop one, so a sweeper left behind by a failed build would run until the
+// caller's context ended — for a caller that retries its boot, once per try.
+func TestNewService_aFailedBuildLeavesNoSweeper(t *testing.T) {
+	t.Parallel()
+
+	client := testDBClient(t)
+
+	synctest.Test(t, func(t *testing.T) {
+		// A context nothing will cancel, so a sweeper left running is durably
+		// blocked when this function returns, which synctest reports as a
+		// deadlock rather than waiting on.
+		ctx := context.Background()
+
+		cfg := &Config{MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}}
+
+		// Both sweepers start, then the service itself refuses the nil
+		// authenticator.
+		svc, err := NewService(ctx, cfg, client, &identitymock.StoreMock{}, nil, stubIssuer{},
+			WithRegistrar(stubRegistrar{}), WithMagicLinkMailer(discardingMailer{}))
+		test.ErrorIs(t, err, signin.ErrNilAuthenticator)
+		test.Nil(t, svc)
 	})
 }

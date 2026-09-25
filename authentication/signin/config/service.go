@@ -38,7 +38,8 @@ type Directory interface {
 // The refresh token and recovery code stores are always built, so their tables
 // must be migrated before the service is used.
 //
-// The sweepers, when their blocks start them, are bound to ctx.
+// The sweepers, when their blocks start them, are bound to ctx, and a build
+// that fails after starting one stops it again before returning.
 func NewService(
 	ctx context.Context,
 	cfg *Config,
@@ -47,19 +48,20 @@ func NewService(
 	authenticator authentication.Authenticator,
 	issuer signin.TokenIssuer,
 	opts ...Option,
-) (*signin.Service, error) {
+) (svc *signin.Service, err error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
 
-	if err := cfg.ValidateWithContext(ctx); err != nil {
+	if err = cfg.ValidateWithContext(ctx); err != nil {
 		return nil, errors.Wrap(err, "validating sign-in config")
 	}
 
 	options := newOptions(opts)
 
 	// Both checked before any store is built, so a refusal here has started no
-	// sweeper.
+	// sweeper. A failure after this point may have started one, and sweepCtx
+	// below is what stops it.
 	if !cfg.Registration.Disabled && options.registrar == nil {
 		return nil, errors.New("registration is not disabled but no registrar was supplied")
 	}
@@ -87,12 +89,24 @@ func NewService(
 		)
 	}
 
+	// The sweepers' context, cancelled if anything after the first of them
+	// fails. Neither store can stop its own sweeper, so a build that refuses
+	// late would otherwise leave one running until ctx ends — once per try, for
+	// a caller that retries its boot. On success it is left to ctx, which is the
+	// lifetime the sweepers were asked for.
+	sweepCtx, cancelSweepers := context.WithCancel(ctx)
+	defer func() {
+		if err != nil {
+			cancelSweepers()
+		}
+	}()
+
 	refreshTokenStore, err := refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: cfg.RefreshTokens.TablePrefix}, client,
 		append([]refreshtokens.Option{
 			refreshtokens.WithLogger(options.logger),
 			refreshtokens.WithTracerProvider(options.tracerProvider),
 			refreshtokens.WithMetricsProvider(options.metricsProvider),
-			refreshtokens.WithSweeper(ctx, pointer.Dereference(cfg.RefreshTokens.SweepInterval)),
+			refreshtokens.WithSweeper(sweepCtx, pointer.Dereference(cfg.RefreshTokens.SweepInterval)),
 		}, options.refreshTokens...)...)
 	if err != nil {
 		return nil, errors.Wrap(err, "building the refresh token store")
@@ -110,7 +124,7 @@ func NewService(
 				magiclinks.WithLogger(options.logger),
 				magiclinks.WithTracerProvider(options.tracerProvider),
 				magiclinks.WithMetricsProvider(options.metricsProvider),
-				magiclinks.WithSweeper(ctx, pointer.Dereference(block.SweepInterval)),
+				magiclinks.WithSweeper(sweepCtx, pointer.Dereference(block.SweepInterval)),
 			}, options.magicLinks...)...)
 		if storeErr != nil {
 			return nil, errors.Wrap(storeErr, "building the sign-in link store")
