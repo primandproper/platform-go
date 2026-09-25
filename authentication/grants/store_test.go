@@ -184,6 +184,71 @@ func runPutCases(t *testing.T, env *storeEnv) {
 		test.SliceLen(t, 1, all)
 	})
 
+	t.Run("two first-time consents racing for one key converge on the later", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		later := newConsent("studio_1", "google")
+		later.Tokens.AccessToken = "later-access"
+
+		raced := make(chan error, 1)
+
+		// The first consent holds its uncommitted row while the second one
+		// starts. On Postgres and MySQL the second writer's upsert waits on that
+		// row and then replaces it. On SQLite it waits for the one writer
+		// connection instead. The pause only lets the second writer reach its
+		// wait; a second writer that has not got there yet runs after the
+		// commit and the assertions still hold.
+		//
+		// A delete of the key followed by an insert fails this on Postgres,
+		// where the second insert meets the first's row in the unique index.
+		// It passes on MySQL, because there the second delete waits on the
+		// first's row too. MySQL's failure was a deadlock between two deletes
+		// that both ran before either insert, which this ordering cannot
+		// produce.
+		err := env.inTx(t, func(tx database.Tx) error {
+			if _, putErr := store.Put(t.Context(), tx, testScope, newConsent("studio_1", "google")); putErr != nil {
+				return putErr
+			}
+
+			go func() {
+				_, putErr := env.put(t, store, testScope, later)
+				raced <- putErr
+			}()
+
+			time.Sleep(200 * time.Millisecond)
+
+			return nil
+		})
+		must.NoError(t, err)
+		must.NoError(t, <-raced)
+
+		got, err := store.Get(t.Context(), env.reader(), testScope, "studio_1", "google")
+		must.NoError(t, err)
+		test.EqOp(t, "later-access", got.AccessToken)
+
+		all, err := store.ListAllForSubject(t.Context(), env.reader(), testScope, "studio_1")
+		must.NoError(t, err)
+		test.SliceLen(t, 1, all)
+	})
+
+	t.Run("a consent that revives a revoked grant clears the revocation", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		first := env.mustPut(t, store, testScope, newConsent("studio_1", "google"))
+		env.mustRevoke(t, store, testScope, first.ID, RevokedByProvider)
+
+		second := env.mustPut(t, store, testScope, newConsent("studio_1", "google"))
+		test.NotEqOp(t, first.ID, second.ID)
+		test.EqOp(t, RevocationReason(""), second.RevocationReason)
+		test.Nil(t, second.RevokedAt)
+		test.EqOp(t, "access-studio_1-google", second.AccessToken)
+		test.True(t, first.CreatedAt.Equal(second.CreatedAt))
+	})
+
 	t.Run("one subject holds one grant per provider", func(t *testing.T) {
 		t.Parallel()
 

@@ -47,10 +47,10 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}oauth2_grants (
 
 -- One grant per subject per provider, revoked or not. It is a plain unique index
 -- rather than a live-rows-only one because a consent replaces the row rather than
--- sitting beside it: the store deletes whatever the key already holds and inserts
--- the new grant in the caller's transaction, so there is never a second row for
--- the index to have to tell apart. Two consents racing for one key reach the
--- index, and the loser's transaction fails rather than leaving two credentials
--- to one account that both think they are current.
+-- sitting beside it: the store upserts onto this key in the caller's transaction,
+-- so there is never a second row for the index to have to tell apart. It is also
+-- the upsert's conflict target. Two consents racing for one key meet here, and
+-- the second waits for the first to commit and then replaces its row, rather
+-- than leaving two credentials to one account that both think they are current.
 CREATE UNIQUE INDEX IF NOT EXISTS {{PREFIX}}oauth2_grants_subject_provider_uniq
     ON {{PREFIX}}oauth2_grants (scope, subject, provider);

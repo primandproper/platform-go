@@ -46,7 +46,7 @@ func TestRender_EmitsEveryStatementTheStoreNames(T *testing.T) {
 	T.Parallel()
 
 	names := []string{
-		CreateGrantQuery,
+		PutGrantQuery,
 		GetGrantQuery,
 		GetGrantForProviderQuery,
 		GetRevokedGrantQuery,
@@ -54,7 +54,6 @@ func TestRender_EmitsEveryStatementTheStoreNames(T *testing.T) {
 		RefreshGrantQuery,
 		RevokeGrantQuery,
 		ArchiveGrantQuery,
-		DeleteGrantForProviderQuery,
 		DeleteGrantsForSubjectQuery,
 	}
 
@@ -135,9 +134,41 @@ func TestInsertColumns_LeaveTheDatabaseItsOwn(t *testing.T) {
 		querygen.CreatedAtColumn,
 		querygen.LastUpdatedAtColumn,
 		querygen.ArchivedAtColumn,
-		RevocationReasonColumn,
 	} {
 		test.False(t, slices.Contains(insert, column), test.Sprintf("column %q", column))
+	}
+}
+
+// TestPut_ReplacesEverythingButTheKeyAndTheCreationStamp is what makes a consent
+// a replacement, asserted against the rendered text. The conflict branch takes
+// a new id, so an in-flight refresh against the old grant matches nothing. It
+// clears the revocation, so a consent revives a revoked key. It leaves
+// created_at alone.
+func TestPut_ReplacesEverythingButTheKeyAndTheCreationStamp(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			statement := statementNamed(t, Render(d), PutGrantQuery)
+			_, branch, found := strings.Cut(statement, "ON ")
+			must.True(t, found)
+
+			for _, column := range []string{
+				querygen.IDColumn,
+				RevocationReasonColumn,
+				AccessTokenColumn,
+				RefreshTokenColumn,
+				querygen.ArchivedAtColumn + " = NULL",
+			} {
+				test.StrContains(t, branch, column, test.Sprintf("column %q", column))
+			}
+
+			for _, column := range []string{ScopeColumn + " =", SubjectColumn + " =", ProviderColumn + " =", querygen.CreatedAtColumn} {
+				test.StrNotContains(t, branch, column, test.Sprintf("column %q", column))
+			}
+		})
 	}
 }
 
@@ -199,12 +230,12 @@ func TestRevokedRead_AssertsTheComplement(T *testing.T) {
 }
 
 // TestSubjectStatements_SeeRevokedRows is the property the privacy pair and the
-// replacement are built on: all three name a subject rather than a row, and all
+// consent are built on: all three name a subject rather than a row, and all
 // three have to reach revoked grants.
 func TestSubjectStatements_SeeRevokedRows(T *testing.T) {
 	T.Parallel()
 
-	for _, name := range []string{ListGrantsForSubjectsQuery, DeleteGrantsForSubjectQuery, DeleteGrantForProviderQuery} {
+	for _, name := range []string{ListGrantsForSubjectsQuery, DeleteGrantsForSubjectQuery, PutGrantQuery} {
 		T.Run(name, func(T *testing.T) {
 			T.Parallel()
 

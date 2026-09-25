@@ -1,6 +1,6 @@
 /*
 Package queries is the third-party grant schema described as data: the canonical
-table name, its columns in the order every read projects them, and the ten
+table name, its columns in the order every read projects them, and the nine
 statements the store executes over them.
 
 It exists because those facts have two consumers that must not disagree. The
@@ -8,10 +8,11 @@ generator behind `make generate` renders them through database/querygen into the
 canonical .sql files sqlc is run over; the store reads the same names through the
 querier sqlc-gen-unison generates from those files.
 
-# The ten statements
+# The nine statements
 
-  - CreateGrant writes one grant, always after DeleteGrantForProvider on the
-    same transaction, which is what makes a consent a replacement.
+  - PutGrant writes a consent as an upsert onto the subject's key, so a new
+    consent replaces whatever grant the key held, live or revoked, and two
+    racing consents converge on the later one rather than colliding.
   - GetGrant reads one live row by id; the writes read back through it.
   - GetGrantForProvider is the read a caller holding a subject makes.
   - GetRevokedGrant is the revocation's read-back, keyed on the complement of
@@ -21,8 +22,7 @@ querier sqlc-gen-unison generates from those files.
   - RefreshGrant is the compare-and-set a refresh writes through.
   - RevokeGrant and ArchiveGrant are the two halves of a revocation: who, with
     the tokens emptied, and then when.
-  - DeleteGrantForProvider and DeleteGrantsForSubject are the replacement's
-    clearing delete and the erasure.
+  - DeleteGrantsForSubject is the erasure.
 
 The rendered .sql files beside this one are the generator's output — see [Render]
 and authentication/grants/internal/queriesgen. They exist so `sqlc compile` can

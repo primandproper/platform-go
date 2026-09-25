@@ -19,9 +19,16 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// testClientConfig is the minimum database.ClientConfig a SQLite client needs.
+// testClientConfig is the minimum database.ClientConfig a client needs.
+//
+// maxOpenConns is 1 when unset, which is what SQLite gets. A real server's
+// client asks for more. With one connection a transaction the suite holds
+// open starves every other writer of the pool, so no write could ever reach
+// the server while another is in flight, and a race case would pass without
+// racing.
 type testClientConfig struct {
 	connectionString string
+	maxOpenConns     int
 }
 
 var _ database.ClientConfig = (*testClientConfig)(nil)
@@ -31,7 +38,7 @@ func (c *testClientConfig) GetWriteConnectionString() string  { return c.connect
 func (c *testClientConfig) GetMaxPingAttempts() uint64        { return 1 }
 func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Millisecond }
 func (c *testClientConfig) GetMaxIdleConns() int              { return 2 }
-func (c *testClientConfig) GetMaxOpenConns() int              { return 1 }
+func (c *testClientConfig) GetMaxOpenConns() int              { return max(1, c.maxOpenConns) }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
 // The tenants the suite stores grants in. otherScope is the neighbor whose rows

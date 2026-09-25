@@ -17,26 +17,6 @@ type ArchiveGrantParams struct {
 	Scope tenancy.Scope
 }
 
-// CreateGrantParams are the arguments to CreateGrant.
-type CreateGrantParams struct {
-	ID                   string
-	Scope                tenancy.Scope
-	Subject              string
-	Provider             string
-	ProviderAccountID    string
-	GrantedScopes        string
-	AccessToken          []byte
-	AccessTokenExpiresAt *time.Time
-	RefreshToken         []byte
-}
-
-// DeleteGrantForProviderParams are the arguments to DeleteGrantForProvider.
-type DeleteGrantForProviderParams struct {
-	Scope    tenancy.Scope
-	Subject  string
-	Provider string
-}
-
 // DeleteGrantsForSubjectParams are the arguments to DeleteGrantsForSubject.
 type DeleteGrantsForSubjectParams struct {
 	Scope   tenancy.Scope
@@ -132,6 +112,20 @@ type ListGrantsForSubjectsRow struct {
 	CreatedAt            time.Time
 	LastUpdatedAt        *time.Time
 	ArchivedAt           *time.Time
+}
+
+// PutGrantParams are the arguments to PutGrant.
+type PutGrantParams struct {
+	ID                   string
+	Scope                tenancy.Scope
+	Subject              string
+	Provider             string
+	ProviderAccountID    string
+	GrantedScopes        string
+	AccessToken          []byte
+	AccessTokenExpiresAt *time.Time
+	RefreshToken         []byte
+	RevocationReason     string
 }
 
 // RefreshGrantParams are the arguments to RefreshGrant.

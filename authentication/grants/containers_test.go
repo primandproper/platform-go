@@ -68,54 +68,15 @@ func TestMigrations_RealServers(T *testing.T) {
 	}
 }
 
-// TestUniqueness_RealServers proves the index, not the replacement's delete, is
-// what guarantees one grant per subject per provider: an insert that skips the
-// delete is refused by the server.
-func TestUniqueness_RealServers(T *testing.T) {
-	T.Parallel()
-
-	T.Run("postgres", func(t *testing.T) {
-		t.Parallel()
-
-		runWithPostgres(t, func(_ context.Context, client database.Client) {
-			assertIndexEnforcesOneGrant(t, &storeEnv{client: client, dialect: dialect.Postgres})
-		})
-	})
-
-	T.Run("mysql", func(t *testing.T) {
-		t.Parallel()
-
-		runWithMySQL(t, func(_ context.Context, client database.Client) {
-			assertIndexEnforcesOneGrant(t, &storeEnv{client: client, dialect: dialect.MySQL})
-		})
-	})
-
-	T.Run("sqlite", func(t *testing.T) {
-		t.Parallel()
-
-		assertIndexEnforcesOneGrant(t, newSQLiteEnv(t))
-	})
-}
-
-func assertIndexEnforcesOneGrant(t *testing.T, env *storeEnv) {
-	t.Helper()
-
-	store := env.newStore(t)
-
-	env.mustPut(t, store, testScope, newConsent("studio_1", "google"))
-
-	params, err := store.createParams(t.Context(), testScope, newConsent("studio_1", "google"))
-	must.NoError(t, err)
-
-	err = store.q.CreateGrant(t.Context(), env.client.Writer(), params)
-	must.Error(t, err)
-}
+// realServerConns is the pool a real server's client gets: enough for a
+// transaction the suite holds open and a second writer racing it.
+const realServerConns = 4
 
 func runWithPostgres(t *testing.T, fn func(ctx context.Context, client database.Client)) {
 	t.Helper()
 
 	pgtest.Run(t, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString, maxOpenConns: realServerConns})
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = client.Close() })
 
@@ -127,7 +88,7 @@ func runWithMySQL(t *testing.T, fn func(ctx context.Context, client database.Cli
 	t.Helper()
 
 	mysqltest.Run(t, func(ctx context.Context, my *mysqltest.Instance) {
-		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString, maxOpenConns: realServerConns})
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = client.Close() })
 

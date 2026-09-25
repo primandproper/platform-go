@@ -20,11 +20,12 @@ import (
 // connection. authentication/grants/privacy exports a shape of its own that has
 // no token fields at all.
 type Grant struct {
-	// CreatedAt is when the consent was stored, from the database's clock. A
-	// re-consent replaces the row, so it is the most recent consent's.
+	// CreatedAt is when the subject first connected the provider in this
+	// scope, from the database's clock. A re-consent replaces the grant's id
+	// and tokens but keeps this stamp, and LastUpdatedAt says when it happened.
 	CreatedAt time.Time `json:"createdAt"`
-	// LastUpdatedAt is when the row last changed — a refresh or a revocation —
-	// from the database's clock.
+	// LastUpdatedAt is when the row last changed — a re-consent, a refresh or a
+	// revocation — from the database's clock.
 	LastUpdatedAt *time.Time `json:"lastUpdatedAt,omitempty"`
 	// AccessTokenExpiresAt is when the provider said the access token stops
 	// working. Nil when it said nothing.

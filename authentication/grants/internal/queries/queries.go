@@ -90,7 +90,7 @@ var MetadataColumns = []string{
 
 // The query names the generated querier's methods are built from.
 const (
-	CreateGrantQuery            = "CreateGrant"
+	PutGrantQuery               = "PutGrant"
 	GetGrantQuery               = "GetGrant"
 	GetGrantForProviderQuery    = "GetGrantForProvider"
 	GetRevokedGrantQuery        = "GetRevokedGrant"
@@ -98,7 +98,6 @@ const (
 	RefreshGrantQuery           = "RefreshGrant"
 	RevokeGrantQuery            = "RevokeGrant"
 	ArchiveGrantQuery           = "ArchiveGrant"
-	DeleteGrantForProviderQuery = "DeleteGrantForProvider"
 	DeleteGrantsForSubjectQuery = "DeleteGrantsForSubject"
 )
 
@@ -114,11 +113,15 @@ const (
 	SubjectsArg = "subjects"
 )
 
-// InsertColumns is what the create supplies values for: everything but the
-// columns the database owns, and the revocation reason, which a grant nobody has
-// revoked leaves at its default.
+// InsertColumns is what a consent supplies values for: everything but the
+// columns the database owns.
+//
+// The revocation reason is among them although a new grant always binds it
+// empty. The write is an upsert, and its conflict branch assigns every column
+// the insert supplies, so binding the empty reason is what clears a revoked
+// grant's when a new consent takes its key.
 func InsertColumns() []string {
-	return querygen.ForInsert(GrantColumns, RevocationReasonColumn)
+	return querygen.ForInsert(GrantColumns)
 }
 
 // RefreshColumns is what the compare-and-set assigns: the three token facts a
@@ -150,12 +153,12 @@ func without(columns []string, dropped ...string) []string {
 	return kept
 }
 
-// Render returns the canonical sqlc input for d: the ten statements this store
+// Render returns the canonical sqlc input for d: the nine statements this store
 // executes, in one file's worth of text.
 //
 // There is no StandardCRUD call. Nothing pages grants — a subject holds one per
 // provider — and every write here is a narrower statement than the standard
-// set's: the create is preceded by a replacement, the update is a
+// set's: the create is an upsert onto the subject's key, the update is a
 // compare-and-set, and the archive travels with a write that empties the tokens.
 func Render(d dialect.Dialect) string {
 	g := querygen.For(d)
@@ -163,7 +166,7 @@ func Render(d dialect.Dialect) string {
 	querygen.RegisterTable(TableNames...)
 
 	return querygen.RenderFile([]*querygen.Query{
-		create(g),
+		put(g),
 		read(g),
 		readForProvider(g),
 		revokedRead(g),
@@ -171,16 +174,33 @@ func Render(d dialect.Dialect) string {
 		refresh(g),
 		revoke(g),
 		archive(g),
-		deleteForProvider(g),
 		deleteForSubject(g),
 	})
 }
 
-// create is the insert of one grant. It always follows [deleteForProvider] on
-// the same transaction, which is what makes a consent a replacement rather than
-// a collision.
-func create(g *querygen.Generator) *querygen.Query {
-	return g.InsertQuery(CreateGrantQuery, GrantsTable, InsertColumns(), nullable)
+// put is the write a consent makes: an upsert onto (scope, subject, provider),
+// the key the unique index holds.
+//
+// It is one statement rather than a delete of the key followed by an insert,
+// because two first-time consents for one key race, and the pair loses that
+// race badly. Both deletes match nothing, so on Postgres the second insert hits
+// the unique index and fails its transaction, and on MySQL each delete's gap
+// lock blocks the other's insert and the pair deadlocks. The upsert makes the
+// second writer wait for the first to commit and then replace its row, so the
+// later consent stands and neither caller sees an error.
+//
+// The conflict branch assigns every inserted column but the key, the id
+// included. A replaced grant takes a new id, so a refresh still in flight
+// against the old one matches nothing. querygen clears archived_at on the way,
+// which with the empty reason the insert binds is what revives a revoked row.
+// created_at is the one column it keeps: querygen never assigns it, so the
+// stamp is when the subject first connected the provider in this scope.
+func put(g *querygen.Generator) *querygen.Query {
+	return g.UpsertQuery(PutGrantQuery, GrantsTable, GrantColumns, InsertColumns(), InsertColumns(), nullable,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectColumn},
+		querygen.Match{Column: ProviderColumn},
+	)
 }
 
 // read is the keyed get: one live grant of the scope, by its id. It is what the
@@ -270,18 +290,6 @@ func revoke(g *querygen.Generator) *querygen.Query {
 func archive(g *querygen.Generator) *querygen.Query {
 	return g.ArchiveQuery(ArchiveGrantQuery, GrantsTable, GrantColumns,
 		querygen.Match{Column: ScopeColumn})
-}
-
-// deleteForProvider clears the key a new consent is about to take, live or
-// revoked. It is what makes a consent a replacement: the row it deletes is the
-// one the unique index would otherwise refuse the insert over.
-func deleteForProvider(g *querygen.Generator) *querygen.Query {
-	return g.DeleteQuery(DeleteGrantForProviderQuery, GrantsTable,
-		without(GrantColumns, querygen.IDColumn, querygen.ArchivedAtColumn),
-		querygen.Match{Column: ScopeColumn},
-		querygen.Match{Column: SubjectColumn},
-		querygen.Match{Column: ProviderColumn},
-	)
 }
 
 // deleteForSubject is the hard delete of every grant one subject holds, revoked

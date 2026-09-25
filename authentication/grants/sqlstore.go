@@ -146,11 +146,14 @@ func (s *SQLStore) failed(ctx context.Context, err error) error {
 // Put stores the grant a consent produced, replacing whatever the subject held
 // at that provider.
 //
-// Three statements on the caller's transaction: the delete that clears the key,
-// the insert, and the read-back. The delete is what makes this a replacement
-// rather than a unique-index violation, and it takes a revoked row as readily
-// as a live one — a subject who disconnects and reconnects has one grant, not a
-// history of them.
+// Two statements on the caller's transaction: an upsert onto the subject's key,
+// and the read-back. The upsert takes a revoked row as readily as a live one,
+// so a subject who disconnects and reconnects has one grant, not a history of
+// them. Two first-time consents racing for one key converge on the later one
+// rather than failing: the second writer waits on the first's row and then
+// replaces it. A delete of the key followed by an insert would fail that race
+// on Postgres and deadlock it on MySQL. See the put statement in
+// internal/queries.
 func (s *SQLStore) Put(ctx context.Context, tx database.Tx, scope tenancy.Scope, consent *Consent) (*Grant, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
@@ -172,22 +175,14 @@ func (s *SQLStore) Put(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 
 	op.Set(subjectKey, consent.Subject).Set(providerKey, consent.Provider)
 
-	params, err := s.createParams(ctx, scope, consent)
+	params, err := s.putParams(ctx, scope, consent)
 	if err != nil {
 		return nil, s.failed(ctx, op.Error(err, "storing grant"))
 	}
 
 	op.Set(idKey, params.ID)
 
-	if _, err = s.q.DeleteGrantForProvider(ctx, tx, grantsdb.DeleteGrantForProviderParams{
-		Scope:    scope,
-		Subject:  consent.Subject,
-		Provider: consent.Provider,
-	}); err != nil {
-		return nil, s.failed(ctx, op.Error(err, "replacing the subject's previous grant"))
-	}
-
-	if err = s.q.CreateGrant(ctx, tx, params); err != nil {
+	if err = s.q.PutGrant(ctx, tx, params); err != nil {
 		return nil, s.failed(ctx, op.Error(err, "writing the grant row"))
 	}
 
@@ -199,25 +194,26 @@ func (s *SQLStore) Put(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 	return grant, nil
 }
 
-// createParams seals a validated consent's tokens and renders it as the
-// insert's arguments, under a freshly minted id.
-func (s *SQLStore) createParams(ctx context.Context, scope tenancy.Scope, c *Consent) (grantsdb.CreateGrantParams, error) {
+// putParams seals a validated consent's tokens and renders it as the upsert's
+// arguments, under a freshly minted id and with no revocation reason, which is
+// what clears a revoked row the consent replaces.
+func (s *SQLStore) putParams(ctx context.Context, scope tenancy.Scope, c *Consent) (grantsdb.PutGrantParams, error) {
 	scopes, err := encodeScopes(c.GrantedScopes)
 	if err != nil {
-		return grantsdb.CreateGrantParams{}, err
+		return grantsdb.PutGrantParams{}, err
 	}
 
 	access, err := s.seal(ctx, scope, c.Subject, c.Provider, queries.AccessTokenColumn, c.Tokens.AccessToken)
 	if err != nil {
-		return grantsdb.CreateGrantParams{}, err
+		return grantsdb.PutGrantParams{}, err
 	}
 
 	refresh, err := s.seal(ctx, scope, c.Subject, c.Provider, queries.RefreshTokenColumn, c.Tokens.RefreshToken)
 	if err != nil {
-		return grantsdb.CreateGrantParams{}, err
+		return grantsdb.PutGrantParams{}, err
 	}
 
-	return grantsdb.CreateGrantParams{
+	return grantsdb.PutGrantParams{
 		ID:                   identifiers.New(),
 		Scope:                scope,
 		Subject:              c.Subject,
@@ -227,6 +223,7 @@ func (s *SQLStore) createParams(ctx context.Context, scope tenancy.Scope, c *Con
 		AccessToken:          access,
 		AccessTokenExpiresAt: expiryPtr(c.Tokens.Expiry),
 		RefreshToken:         refresh,
+		RevocationReason:     "",
 	}, nil
 }
 

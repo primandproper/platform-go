@@ -19,34 +19,6 @@ WHERE archived_at IS NULL
 	AND id = ?1
 	AND scope = ?2`
 
-const createGrantSQLite = `
-INSERT INTO {{prefix}}oauth2_grants (
-	id,
-	scope,
-	subject,
-	provider,
-	provider_account_id,
-	granted_scopes,
-	access_token,
-	access_token_expires_at,
-	refresh_token
-) VALUES (
-	?1,
-	?2,
-	?3,
-	?4,
-	?5,
-	?6,
-	?7,
-	?8,
-	?9
-)`
-
-const deleteGrantForProviderSQLite = `DELETE FROM {{prefix}}oauth2_grants
-WHERE scope = ?1
-	AND subject = ?2
-	AND provider = ?3`
-
 const deleteGrantsForSubjectSQLite = `DELETE FROM {{prefix}}oauth2_grants
 WHERE scope = ?1
 	AND subject = ?2`
@@ -126,6 +98,41 @@ WHERE {{prefix}}oauth2_grants.scope = ?1
 	AND {{prefix}}oauth2_grants.subject IN (/*SLICE:subjects*/?)
 ORDER BY {{prefix}}oauth2_grants.subject ASC, {{prefix}}oauth2_grants.created_at ASC`
 
+const putGrantSQLite = `
+INSERT INTO {{prefix}}oauth2_grants (
+	id,
+	scope,
+	subject,
+	provider,
+	provider_account_id,
+	granted_scopes,
+	access_token,
+	access_token_expires_at,
+	refresh_token,
+	revocation_reason
+) VALUES (
+	?1,
+	?2,
+	?3,
+	?4,
+	?5,
+	?6,
+	?7,
+	?8,
+	?9,
+	?10
+)
+ON CONFLICT (scope, subject, provider) DO UPDATE SET
+	id = EXCLUDED.id,
+	provider_account_id = EXCLUDED.provider_account_id,
+	granted_scopes = EXCLUDED.granted_scopes,
+	access_token = EXCLUDED.access_token,
+	access_token_expires_at = EXCLUDED.access_token_expires_at,
+	refresh_token = EXCLUDED.refresh_token,
+	revocation_reason = EXCLUDED.revocation_reason,
+	archived_at = NULL,
+	last_updated_at = CURRENT_TIMESTAMP`
+
 const refreshGrantSQLite = `UPDATE {{prefix}}oauth2_grants SET
 	access_token = ?1,
 	access_token_expires_at = ?2,
@@ -148,13 +155,12 @@ WHERE archived_at IS NULL
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
 	archiveGrant           string
-	createGrant            string
-	deleteGrantForProvider string
 	deleteGrantsForSubject string
 	getGrant               string
 	getGrantForProvider    string
 	getRevokedGrant        string
 	listGrantsForSubjects  string
+	putGrant               string
 	refreshGrant           string
 	revokeGrant            string
 }
@@ -164,13 +170,12 @@ type sqliteQueries struct {
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
 		archiveGrant:           strings.ReplaceAll(archiveGrantSQLite, prefixMarker, prefix),
-		createGrant:            strings.ReplaceAll(createGrantSQLite, prefixMarker, prefix),
-		deleteGrantForProvider: strings.ReplaceAll(deleteGrantForProviderSQLite, prefixMarker, prefix),
 		deleteGrantsForSubject: strings.ReplaceAll(deleteGrantsForSubjectSQLite, prefixMarker, prefix),
 		getGrant:               strings.ReplaceAll(getGrantSQLite, prefixMarker, prefix),
 		getGrantForProvider:    strings.ReplaceAll(getGrantForProviderSQLite, prefixMarker, prefix),
 		getRevokedGrant:        strings.ReplaceAll(getRevokedGrantSQLite, prefixMarker, prefix),
 		listGrantsForSubjects:  strings.ReplaceAll(listGrantsForSubjectsSQLite, prefixMarker, prefix),
+		putGrant:               strings.ReplaceAll(putGrantSQLite, prefixMarker, prefix),
 		refreshGrant:           strings.ReplaceAll(refreshGrantSQLite, prefixMarker, prefix),
 		revokeGrant:            strings.ReplaceAll(revokeGrantSQLite, prefixMarker, prefix),
 	}
@@ -211,37 +216,6 @@ func (q *sqliteQueries) ArchiveGrant(ctx context.Context, db DBTX, arg ArchiveGr
 	result, err := db.ExecContext(ctx, q.archiveGrant,
 		arg.ID,
 		arg.Scope,
-	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
-}
-
-// CreateGrant runs the :exec query against sqlite.
-func (q *sqliteQueries) CreateGrant(ctx context.Context, db DBTX, arg CreateGrantParams) error {
-	_, err := db.ExecContext(ctx, q.createGrant,
-		arg.ID,
-		arg.Scope,
-		arg.Subject,
-		arg.Provider,
-		arg.ProviderAccountID,
-		arg.GrantedScopes,
-		arg.AccessToken,
-		timeTextPtr(arg.AccessTokenExpiresAt),
-		arg.RefreshToken,
-	)
-
-	return err
-}
-
-// DeleteGrantForProvider runs the :execrows query against sqlite.
-func (q *sqliteQueries) DeleteGrantForProvider(ctx context.Context, db DBTX, arg DeleteGrantForProviderParams) (int64, error) {
-	result, err := db.ExecContext(ctx, q.deleteGrantForProvider,
-		arg.Scope,
-		arg.Subject,
-		arg.Provider,
 	)
 	if err != nil {
 		return 0, err
@@ -400,6 +374,24 @@ func (q *sqliteQueries) ListGrantsForSubjects(ctx context.Context, db DBTX, arg 
 	return items, nil
 }
 
+// PutGrant runs the :exec query against sqlite.
+func (q *sqliteQueries) PutGrant(ctx context.Context, db DBTX, arg PutGrantParams) error {
+	_, err := db.ExecContext(ctx, q.putGrant,
+		arg.ID,
+		arg.Scope,
+		arg.Subject,
+		arg.Provider,
+		arg.ProviderAccountID,
+		arg.GrantedScopes,
+		arg.AccessToken,
+		timeTextPtr(arg.AccessTokenExpiresAt),
+		arg.RefreshToken,
+		arg.RevocationReason,
+	)
+
+	return err
+}
+
 // RefreshGrant runs the :execrows query against sqlite.
 func (q *sqliteQueries) RefreshGrant(ctx context.Context, db DBTX, arg RefreshGrantParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.refreshGrant,
@@ -444,22 +436,6 @@ var (
 		ID    string
 		Scope tenancy.Scope
 	}(ArchiveGrantParams{})
-	_ = struct {
-		ID                   string
-		Scope                tenancy.Scope
-		Subject              string
-		Provider             string
-		ProviderAccountID    string
-		GrantedScopes        string
-		AccessToken          []byte
-		AccessTokenExpiresAt *time.Time
-		RefreshToken         []byte
-	}(CreateGrantParams{})
-	_ = struct {
-		Scope    tenancy.Scope
-		Subject  string
-		Provider string
-	}(DeleteGrantForProviderParams{})
 	_ = struct {
 		Scope   tenancy.Scope
 		Subject string
@@ -539,6 +515,18 @@ var (
 		LastUpdatedAt        *time.Time
 		ArchivedAt           *time.Time
 	}(ListGrantsForSubjectsRow{})
+	_ = struct {
+		ID                   string
+		Scope                tenancy.Scope
+		Subject              string
+		Provider             string
+		ProviderAccountID    string
+		GrantedScopes        string
+		AccessToken          []byte
+		AccessTokenExpiresAt *time.Time
+		RefreshToken         []byte
+		RevocationReason     string
+	}(PutGrantParams{})
 	_ = struct {
 		AccessToken          []byte
 		AccessTokenExpiresAt *time.Time
