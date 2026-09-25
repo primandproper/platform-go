@@ -111,12 +111,14 @@ var (
 
 // Transports is what a mounted surface needs and a Config cannot carry.
 //
-// Two seams, and they are the whole of the "you keep the policy" bargain. Every
-// surface this module ships is otherwise deterministic from the config: the
-// store it reads, the client it reads on, the observability it reports through.
-// What is not deterministic is who is calling and which rows they may act on,
-// and those are values a caller constructs rather than anything an environment
-// variable can express — so they arrive here, as arguments, and nothing about
+// Two required seams and one optional third, and they are the whole of the "you
+// keep the policy" bargain. Every surface this module ships is otherwise
+// deterministic from the config: the store it reads, the client it reads on,
+// the observability it reports through. What is not deterministic is who is
+// calling, which rows they may act on, and — for a deployment whose directory
+// and whose tenant are not the same thing — which tenant a request is against.
+// Those are values a caller constructs rather than anything an environment
+// variable can express, so they arrive here, as arguments, and nothing about
 // them is decided by this package.
 //
 // It is one struct rather than a variadic because the option slot on these
@@ -133,7 +135,45 @@ type Transports struct {
 	// one notion of a caller, so a surface that reads a narrower seam has that
 	// seam derived from this rather than asking for a second adapter that reads
 	// the same three facts.
+	//
+	// The one fact that derivation cannot always get right is the tenant — see
+	// TenantOf.
 	Extractor callers.PrincipalExtractor
+
+	// TenantOf reads the tenant a caller's rows belong to off the caller, for
+	// the three surfaces that mean the tenant rather than the directory:
+	// audit's ScopeResolver, operations' OwnerResolver and mediaregistry's
+	// caller scope. Nil reads Principal.Scope(), which is what every consumer
+	// had before this field existed.
+	//
+	// It exists because a principal has two scopes and callers.Principal names
+	// one. Principal.Scope() is the directory the caller is in — identity's
+	// gRPC surface reads it exactly that way — and for a deployment with one
+	// directory it is tenancy.Global(). A deployment whose tenant is the
+	// account rather than the directory therefore files its audit entries under
+	// tenancy.Of(accountID) and, without this field, reads them back under
+	// Global(), which sees none of them. Making Principal.Scope() answer with
+	// the account instead would break identity.
+	//
+	// It is handed the principal Extractor already found, and not the request
+	// context, and that is the point of its shape. For these three surfaces
+	// the resolved scope is the authorization — no comparison follows it — so
+	// a resolver that could read the context could read a header, and a
+	// tenant named by the client is a cross-tenant read. Taking the principal
+	// means this package still refuses a request with nobody on it before the
+	// application is asked anything, and the application's only question is
+	// which of an authenticated caller's facts is their tenant. A scope it
+	// answers that names nothing is refused with tenancy.ErrNoScope rather
+	// than carried to the store.
+	//
+	// It is a field rather than a method on callers.Principal only because
+	// that interface is one consumers implement and v14 is frozen. Nil falls
+	// back quietly, which is the failure a method would have made a compile
+	// error; the next major version should make it one.
+	//
+	// It does not touch dataprivacy's subject resolver, which reads a user and
+	// not a scope.
+	TenantOf func(principal callers.Principal) (tenancy.Scope, error)
 
 	// Authorizers are the per-surface rules about which rows a caller who may
 	// make this call may make it against.
@@ -498,21 +538,53 @@ func (m *mount) routesLanded(surface string, router *routing.Router) bool {
 	return true
 }
 
-// deriveScope reads the caller's tenancy off the principal on the context.
+// deriveScope reads the tenant a request is against off the principal on the
+// context.
 //
 // It serves audit's ScopeResolver and operations' OwnerResolver, which are the
 // same function type under two names because they ask the same question of the
 // same value. Neither package may say so — they are siblings, not a hierarchy —
 // so this is where the one answer is written.
-func deriveScope(extract callers.PrincipalExtractor) func(context.Context) (tenancy.Scope, error) {
+//
+// tenantOf is Transports.TenantOf, and nil reads Principal.Scope(). Either way
+// the principal is found here first, so a request with nobody on it is refused
+// before an application's resolver is asked anything. See that field for why
+// the directory and the tenant are different questions.
+func deriveScope(
+	extract callers.PrincipalExtractor,
+	tenantOf func(callers.Principal) (tenancy.Scope, error),
+) func(context.Context) (tenancy.Scope, error) {
 	return func(ctx context.Context) (tenancy.Scope, error) {
 		principal, ok := extract(ctx)
 		if !ok {
 			return tenancy.Global(), ErrNoPrincipal
 		}
 
+		return tenantScope(principal, tenantOf)
+	}
+}
+
+// tenantScope is the tenant of a principal already found: the application's
+// reading when it supplied one, and Principal.Scope() when it did not.
+//
+// Only the application's reading is validated. Principal.Scope() is returned as
+// it always was, so a consumer that leaves Transports.TenantOf nil sees no
+// change at all.
+func tenantScope(principal callers.Principal, tenantOf func(callers.Principal) (tenancy.Scope, error)) (tenancy.Scope, error) {
+	if tenantOf == nil {
 		return principal.Scope(), nil
 	}
+
+	scope, err := tenantOf(principal)
+	if err != nil {
+		return tenancy.Scope{}, err
+	}
+
+	if err = scope.Validate(); err != nil {
+		return tenancy.Scope{}, platformerrors.Wrap(err, "the application's tenant for this principal")
+	}
+
+	return scope, nil
 }
 
 // deriveSubject reads the person a privacy request is about off the principal.
@@ -533,14 +605,27 @@ func deriveSubject(extract callers.PrincipalExtractor) func(context.Context) (da
 }
 
 // deriveMediaCaller reads mediaregistry's two-field caller off the principal.
-func deriveMediaCaller(extract callers.PrincipalExtractor) func(context.Context) (mediaregistryhttp.Caller, error) {
+//
+// The identifier is the principal's and the scope is the tenant's, which is why
+// this takes Transports.TenantOf rather than reading Principal.Scope() itself:
+// mediaregistry documents Caller.Scope as "the tenant the request is being made
+// in", and an object filed under an account is not found under a directory.
+func deriveMediaCaller(
+	extract callers.PrincipalExtractor,
+	tenantOf func(callers.Principal) (tenancy.Scope, error),
+) func(context.Context) (mediaregistryhttp.Caller, error) {
 	return func(ctx context.Context) (mediaregistryhttp.Caller, error) {
 		principal, ok := extract(ctx)
 		if !ok {
 			return mediaregistryhttp.Caller{}, ErrNoPrincipal
 		}
 
-		return mediaregistryhttp.Caller{PrincipalID: principal.UserID(), Scope: principal.Scope()}, nil
+		scope, err := tenantScope(principal, tenantOf)
+		if err != nil {
+			return mediaregistryhttp.Caller{}, err
+		}
+
+		return mediaregistryhttp.Caller{PrincipalID: principal.UserID(), Scope: scope}, nil
 	}
 }
 
@@ -567,7 +652,7 @@ func (m *mount) audit() {
 
 	srv, err := auditgrpc.NewServer(reader, client,
 		auditgrpc.WithPillars(m.pillars),
-		auditgrpc.WithScopeResolver(deriveScope(extract)),
+		auditgrpc.WithScopeResolver(deriveScope(extract, m.t.TenantOf)),
 	)
 	if err != nil {
 		m.fail("audit", err)
@@ -1013,7 +1098,7 @@ func (m *mount) mediaRegistry() {
 	opts := []mediaregistryhttp.Option{
 		mediaregistryhttp.WithLogger(m.pillars.Logger),
 		mediaregistryhttp.WithTracerProvider(m.pillars.TracerProvider),
-		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract)),
+		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract, m.t.TenantOf)),
 	}
 	if m.t.Authorizers.MediaObjects != nil {
 		opts = append(opts, mediaregistryhttp.WithEntitlement(m.t.Authorizers.MediaObjects))
@@ -1059,7 +1144,7 @@ func (m *mount) operations() {
 	opts := []operationshttp.Option{
 		operationshttp.WithLogger(m.pillars.Logger),
 		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
-		operationshttp.WithOwnerResolver(deriveScope(extract)),
+		operationshttp.WithOwnerResolver(deriveScope(extract, m.t.TenantOf)),
 	}
 
 	if watcher, watching := need[*operations.Watcher](m); watching {

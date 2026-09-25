@@ -74,6 +74,12 @@ the refresh mint happens inside the login transaction rather than beside it.
 [SignIn.FamilyID] is set whether or not a refresh token was stored, because it
 names a sign-in rather than a row.
 
+The door a login came through is kept on the row too, so an exchange of an
+administrative session mints another administrative token on the administrative
+lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
+consumer's interceptor refuse administrative work under an ordinary login by the
+same person.
+
 A person's live families are what [Service.ListSignIns] answers and what
 [Service.EndSignIn] ends one of, for a "where you're signed in" screen. Both need
 a store that implements [SignInListingStore] as well — the refreshtokens store

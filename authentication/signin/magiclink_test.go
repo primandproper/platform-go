@@ -244,6 +244,7 @@ func TestRedeemMagicLink_signsSomebodyIn(t *testing.T) {
 	test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
 	test.EqOp(t, e.accountID, signedIn.Principal.ActiveAccountID)
 	test.False(t, signedIn.Administrative)
+	test.EqOp[any](t, false, e.issuer.claims[signin.ClaimAdministrative])
 	must.StrNotEqFold(t, "", signedIn.Token)
 
 	// A refresh token is minted because a store is configured, which is the

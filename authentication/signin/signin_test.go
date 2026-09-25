@@ -106,9 +106,10 @@ func TestService_LoginForToken(T *testing.T) {
 		test.EqOp(t, e.user.ID, e.issuer.subject)
 		test.EqOp(t, signin.DefaultTokenTTL, e.issuer.expiry)
 		test.Eq(t, map[string]any{
-			signin.ClaimAccountID: e.accountID,
-			signin.ClaimScope:     testScope.String(),
-			signin.ClaimFamilyID:  signedIn.FamilyID,
+			signin.ClaimAccountID:      e.accountID,
+			signin.ClaimScope:          testScope.String(),
+			signin.ClaimFamilyID:       signedIn.FamilyID,
+			signin.ClaimAdministrative: false,
 		}, e.issuer.claims)
 
 		// The login the token belongs to, minted here and carried by every
@@ -156,9 +157,10 @@ func TestService_LoginForToken(T *testing.T) {
 		// The token is minted against no account, which the default claims
 		// report as an empty one rather than by omitting the key.
 		test.Eq(t, map[string]any{
-			signin.ClaimAccountID: "",
-			signin.ClaimScope:     testScope.String(),
-			signin.ClaimFamilyID:  signedIn.FamilyID,
+			signin.ClaimAccountID:      "",
+			signin.ClaimScope:          testScope.String(),
+			signin.ClaimFamilyID:       signedIn.FamilyID,
+			signin.ClaimAdministrative: false,
 		}, e.issuer.claims)
 
 		must.SliceLen(t, 1, e.hooks.signIns)
@@ -622,6 +624,10 @@ func TestService_AdminLoginForToken(T *testing.T) {
 
 		test.True(t, signedIn.Administrative)
 		test.EqOp(t, signin.DefaultAdminTokenTTL, e.issuer.expiry)
+
+		// The door reaches the token, which is what lets an interceptor tell
+		// this login from an ordinary one by the same administrator.
+		test.EqOp[any](t, true, e.issuer.claims[signin.ClaimAdministrative])
 
 		must.SliceLen(t, 1, e.hooks.signIns)
 		test.True(t, e.hooks.signIns[0].Administrative)

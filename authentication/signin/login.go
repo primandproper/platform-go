@@ -499,7 +499,8 @@ func (s *Service) verifySecondFactor(ctx context.Context, user *identity.User, c
 // because it is the one fact here that is not about the person: a sign-in mints
 // a fresh one and an exchange passes the spent token's, which is what makes the
 // successor a successor rather than a second login. It reaches the claims
-// builder through ClaimsInput, which is why that seam takes a struct.
+// builder through ClaimsInput, which is why that seam takes a struct, and the
+// door the login came through reaches it the same way.
 func (s *Service) mintToken(
 	ctx context.Context,
 	principal *identity.Principal,
@@ -511,7 +512,11 @@ func (s *Service) mintToken(
 		ttl = s.adminTokenTTL
 	}
 
-	claims, err := s.claims(ctx, &ClaimsInput{Principal: principal, FamilyID: familyID})
+	claims, err := s.claims(ctx, &ClaimsInput{
+		Principal:      principal,
+		FamilyID:       familyID,
+		Administrative: administrative,
+	})
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "building token claims")
 	}
