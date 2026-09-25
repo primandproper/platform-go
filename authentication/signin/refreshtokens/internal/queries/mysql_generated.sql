@@ -9,6 +9,7 @@ INSERT INTO signin_refresh_tokens (
 	active_account_id,
 	administrative,
 	issued_at,
+	signed_in_at,
 	expires_at,
 	purge_after
 ) VALUES (
@@ -19,6 +20,7 @@ INSERT INTO signin_refresh_tokens (
 	sqlc.arg(active_account_id),
 	sqlc.arg(administrative),
 	sqlc.arg(issued_at),
+	sqlc.arg(signed_in_at),
 	sqlc.arg(expires_at),
 	sqlc.arg(purge_after)
 );
@@ -31,6 +33,7 @@ SELECT
 	signin_refresh_tokens.active_account_id,
 	signin_refresh_tokens.administrative,
 	signin_refresh_tokens.issued_at,
+	signin_refresh_tokens.signed_in_at,
 	signin_refresh_tokens.expires_at,
 	signin_refresh_tokens.purge_after,
 	signin_refresh_tokens.redeemed_at,
@@ -93,12 +96,37 @@ WHERE scope = sqlc.arg(scope)
 	AND family_id = sqlc.arg(family_id)
 	AND revoked_at IS NULL;
 
+-- name: RevokeRefreshTokenFamilyForSubject :execrows
+UPDATE signin_refresh_tokens SET
+	revoked_at = sqlc.arg(revoked_at)
+WHERE scope = sqlc.arg(scope)
+	AND subject_id = sqlc.arg(subject_id)
+	AND family_id = sqlc.arg(family_id)
+	AND revoked_at IS NULL;
+
 -- name: RevokeRefreshTokensForSubject :execrows
 UPDATE signin_refresh_tokens SET
 	revoked_at = sqlc.arg(revoked_at)
 WHERE scope = sqlc.arg(scope)
 	AND subject_id = sqlc.arg(subject_id)
 	AND revoked_at IS NULL;
+
+-- name: ListLiveRefreshTokenFamilies :many
+SELECT
+	signin_refresh_tokens.family_id,
+	signin_refresh_tokens.active_account_id,
+	signin_refresh_tokens.administrative,
+	signin_refresh_tokens.issued_at,
+	signin_refresh_tokens.signed_in_at,
+	signin_refresh_tokens.expires_at
+FROM signin_refresh_tokens
+WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
+	AND signin_refresh_tokens.subject_id = sqlc.arg(subject_id)
+	AND signin_refresh_tokens.redeemed_at IS NULL
+	AND signin_refresh_tokens.revoked_at IS NULL
+	AND signin_refresh_tokens.expires_at > sqlc.arg(now)
+ORDER BY signin_refresh_tokens.issued_at DESC, signin_refresh_tokens.family_id ASC
+LIMIT ?;
 
 -- name: SweepRefreshTokens :execrows
 DELETE FROM signin_refresh_tokens

@@ -157,7 +157,9 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		RecordSuccessorQuery,
 		RevokeTokenQuery,
 		RevokeFamilyQuery,
+		RevokeSubjectFamilyQuery,
 		RevokeTokensForSubjectQuery,
+		ListLiveFamiliesQuery,
 		SweepTokensQuery,
 	}
 
@@ -176,14 +178,22 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 
 			test.SliceEqFunc(t, want, names, func(a, b string) bool { return a == b })
 
-			// Nothing archives one of these rows, and nothing lists them: the
-			// only way to name one is to hold the token it was minted from, so
-			// there is no cursor, no filter window and no descending variant.
+			// Nothing archives one of these rows, and nothing pages through
+			// them: the one listing is a bounded read of a person's live
+			// logins, so there is no cursor, no filter window and no
+			// descending variant — and the limit is that listing's alone.
 			test.StrNotContains(t, rendered, querygen.ArchivedAtColumn)
 			test.StrNotContains(t, rendered, "page_cursor")
-			test.StrNotContains(t, rendered, "result_limit")
 			test.StrNotContains(t, rendered, "filtered_count")
 			test.StrNotContains(t, rendered, querygen.DescendingSuffix)
+
+			for _, named := range statements(rendered) {
+				if named.name == ListLiveFamiliesQuery {
+					continue
+				}
+
+				test.StrNotContains(t, named.body, "result_limit", test.Sprintf("%s is bounded", named.name))
+			}
 		})
 	}
 }
@@ -299,16 +309,20 @@ func TestRender_RevocationsDifferOnlyInTheirKey(T *testing.T) {
 
 			rendered := Render(d)
 
-			for name, key := range map[string]string{
-				RevokeFamilyQuery:           FamilyIDColumn,
-				RevokeTokensForSubjectQuery: SubjectIDColumn,
+			for name, keys := range map[string][]string{
+				RevokeFamilyQuery:           {FamilyIDColumn},
+				RevokeSubjectFamilyQuery:    {SubjectIDColumn, FamilyIDColumn},
+				RevokeTokensForSubjectQuery: {SubjectIDColumn},
 			} {
 				revoke := statement(t, rendered, name)
 
 				test.StrContains(t, revoke, "UPDATE "+TokensTable)
 				test.StrContains(t, revoke, RevokedAtColumn+" = sqlc.arg("+RevokedAtColumn+")")
 				test.StrContains(t, revoke, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
-				test.StrContains(t, revoke, key+" = sqlc.arg("+key+")")
+
+				for _, key := range keys {
+					test.StrContains(t, revoke, key+" = sqlc.arg("+key+")", test.Sprintf("%s key %q", name, key))
+				}
 
 				// The guard that makes revoking idempotent: a second call
 				// matches nothing and reports zero rather than moving the stamp,
@@ -319,6 +333,69 @@ func TestRender_RevocationsDifferOnlyInTheirKey(T *testing.T) {
 				// one somebody withdrew both end up revoked, which after a
 				// detected reuse is the more useful of the two true sentences.
 				test.StrNotContains(t, revoke, ExpiresAtColumn)
+			}
+		})
+	}
+}
+
+// TestRender_RevokingAFamilyForItsOwnerIsKeyedOnTheOwner pins the one thing
+// that makes ending a login by its family id safe to offer a signed-in caller.
+//
+// A family id is not a secret, so the statement a self-service door runs has to
+// be unable to reach a family that is not the caller's. The subject predicate
+// is that inability; without it the statement is RevokeRefreshTokenFamily, which
+// ends whichever login the id names.
+func TestRender_RevokingAFamilyForItsOwnerIsKeyedOnTheOwner(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+
+			test.StrContains(t, statement(t, rendered, RevokeSubjectFamilyQuery),
+				SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
+			test.StrNotContains(t, statement(t, rendered, RevokeFamilyQuery), SubjectIDColumn)
+		})
+	}
+}
+
+// TestRender_ListsOnlyWhatAnExchangeWouldAccept pins the listing to the
+// exchange's own reading of "live".
+//
+// A family has one row that is unspent, unrevoked and unexpired, and those are
+// the three guards the exchange carries. A listing that dropped one would show a
+// spent token beside its successor as two logins, or show a login that has
+// already ended as one somebody can still end.
+func TestRender_ListsOnlyWhatAnExchangeWouldAccept(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			list := statement(t, Render(d), ListLiveFamiliesQuery)
+
+			test.StrContains(t, list, "SELECT")
+			test.StrContains(t, list, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
+			test.StrContains(t, list, SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
+			test.StrContains(t, list, RedeemedAtColumn+" IS NULL")
+			test.StrContains(t, list, RevokedAtColumn+" IS NULL")
+			test.StrContains(t, list, ExpiresAtColumn+" > sqlc.arg("+NowArg+")")
+
+			// Most recently refreshed first, with a total order under the limit.
+			test.StrContains(t, list, IssuedAtColumn+" DESC")
+			test.StrContains(t, list, FamilyIDColumn+" ASC")
+
+			projection, _, found := strings.Cut(list, "FROM")
+			must.True(t, found)
+
+			test.StrNotContains(t, projection, HashColumn)
+
+			for _, column := range FamilyColumns {
+				test.StrContains(t, projection, querygen.Qualify(TokensTable, column),
+					test.Sprintf("column %q", column))
 			}
 		})
 	}

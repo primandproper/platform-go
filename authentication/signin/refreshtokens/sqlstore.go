@@ -51,7 +51,10 @@ const (
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 
-var _ signin.RefreshTokenStore = (*SQLStore)(nil)
+var (
+	_ signin.RefreshTokenStore  = (*SQLStore)(nil)
+	_ signin.SignInListingStore = (*SQLStore)(nil)
+)
 
 // SQLStore keeps sign-in refresh tokens in a SQL table, against the schema
 // refreshtokens/migrations renders.
@@ -91,13 +94,14 @@ type SQLStore struct {
 // dialect the generated statements are rendered for and the executor Sweep runs
 // on, which serves the store's own machinery rather than a request.
 //
-// There is no read here that a replica could serve. The one read this store
-// makes is the exchange's read-back, on the transaction that just wrote — see
-// Redeem — so nothing in this package ever touches Client.Reader(), and replica
-// lag cannot turn a freshly minted token into one that is "not found" and then
-// works when retried.
+// The exchange's read-back runs on the transaction that just wrote — see Redeem
+// — so replica lag cannot turn a freshly minted token into one that is "not
+// found" and then works when retried. The one read a replica may serve is
+// ListActiveSignIns, which takes whatever executor its caller hands it, and
+// nothing in this package reaches for Client.Reader() on its own.
 //
-// It does not create the table. Hand migrations.SQL to your own migration run.
+// It does not create the table. Hand migrations.SQL to your own migration run,
+// or migrations.SQLSince if an earlier release already created it.
 func NewSQLStore(cfg *Config, db database.Client, opts ...Option) (*SQLStore, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
@@ -218,6 +222,13 @@ func (s *SQLStore) Issue(
 
 	now := s.clock.Now().UTC()
 
+	// A mint that begins a login has no earlier instant to inherit, so the
+	// login began now; a successor carries its family's forward.
+	signedInAt := request.SignedInAt.UTC()
+	if request.SignedInAt.IsZero() {
+		signedInAt = now
+	}
+
 	token := &signin.RefreshToken{
 		Scope:           scope,
 		FamilyID:        request.FamilyID,
@@ -225,6 +236,7 @@ func (s *SQLStore) Issue(
 		ActiveAccountID: request.ActiveAccountID,
 		Administrative:  request.Administrative,
 		IssuedAt:        now,
+		SignedInAt:      signedInAt,
 		ExpiresAt:       now.Add(request.TTL),
 		PurgeAfter:      now.Add(request.TTL).Add(s.retention),
 	}
@@ -237,6 +249,7 @@ func (s *SQLStore) Issue(
 		ActiveAccountID: token.ActiveAccountID,
 		Administrative:  token.Administrative,
 		IssuedAt:        token.IssuedAt,
+		SignedInAt:      token.SignedInAt,
 		ExpiresAt:       token.ExpiresAt,
 		PurgeAfter:      token.PurgeAfter,
 	}); err != nil {
@@ -459,6 +472,115 @@ func (s *SQLStore) RevokeForSubject(
 	return revoked, nil
 }
 
+// RevokeFamilyForSubject ends one login on behalf of the person it belongs to,
+// and reports how many tokens it withdrew.
+//
+// It is RevokeFamily with the subject in the key, which is the whole of what
+// makes it safe to reach from a self-service door: a family id that is not the
+// subject's matches nothing and is zero, as a family already ended is.
+func (s *SQLStore) RevokeFamilyForSubject(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	subjectID string,
+	familyID string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return 0, err
+	}
+
+	if subjectID == "" {
+		return 0, ErrEmptySubjectID
+	}
+
+	if familyID == "" {
+		return 0, ErrEmptyFamilyID
+	}
+
+	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: subjectID, familyKey: familyID})
+
+	at := s.clock.Now().UTC()
+
+	revoked, err := s.q.RevokeRefreshTokenFamilyForSubject(ctx, tx, signindb.RevokeRefreshTokenFamilyForSubjectParams{
+		RevokedAt: &at,
+		Scope:     scope,
+		SubjectID: subjectID,
+		FamilyID:  familyID,
+	})
+	if err != nil {
+		return 0, op.Error(err, "revoking a subject's refresh token family")
+	}
+
+	op.SpanOnly(revokedKey, revoked)
+
+	return revoked, nil
+}
+
+// ListActiveSignIns answers one entry per live login a subject holds, most
+// recently refreshed first, and no more than limit of them.
+//
+// Each login is its family's one live row — unspent, unrevoked, unexpired —
+// under the same three guards the exchange carries, compared against this
+// store's own clock for the reason the exchange's deadline is. A zero limit is
+// refused rather than read as "none" or as "all": the service resolves its
+// default before it calls, and a store that invented one would be a second
+// place that policy lived.
+func (s *SQLStore) ListActiveSignIns(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	subjectID string,
+	limit uint16,
+) ([]*signin.ActiveSignIn, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+
+	if q == nil {
+		return nil, ErrNilExecutor
+	}
+
+	if subjectID == "" {
+		return nil, ErrEmptySubjectID
+	}
+
+	if limit == 0 {
+		return nil, ErrZeroLimit
+	}
+
+	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: subjectID})
+
+	rows, err := s.q.ListLiveRefreshTokenFamilies(ctx, q, signindb.ListLiveRefreshTokenFamiliesParams{
+		Scope:       scope,
+		SubjectID:   subjectID,
+		Now:         s.clock.Now().UTC(),
+		ResultLimit: int64(limit),
+	})
+	if err != nil {
+		return nil, op.Error(err, "listing a subject's live refresh token families")
+	}
+
+	signIns := make([]*signin.ActiveSignIn, 0, len(rows))
+	for i := range rows {
+		signIns = append(signIns, &signin.ActiveSignIn{
+			FamilyID:        rows[i].FamilyID,
+			ActiveAccountID: rows[i].ActiveAccountID,
+			Administrative:  rows[i].Administrative,
+			SignedInAt:      rows[i].SignedInAt.UTC(),
+			LastRefreshedAt: rows[i].IssuedAt.UTC(),
+			ExpiresAt:       rows[i].ExpiresAt.UTC(),
+		})
+	}
+
+	return signIns, nil
+}
+
 // tokenFromRow renders one stored row as a signin.RefreshToken.
 //
 // Every instant is converted to UTC here rather than left as the driver chose. A
@@ -474,6 +596,7 @@ func tokenFromRow(row *signindb.GetRefreshTokenRow) *signin.RefreshToken {
 		ActiveAccountID: row.ActiveAccountID,
 		Administrative:  row.Administrative,
 		IssuedAt:        row.IssuedAt.UTC(),
+		SignedInAt:      row.SignedInAt.UTC(),
 		ExpiresAt:       row.ExpiresAt.UTC(),
 		PurgeAfter:      row.PurgeAfter.UTC(),
 	}

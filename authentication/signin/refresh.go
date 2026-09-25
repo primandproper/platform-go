@@ -28,6 +28,12 @@ type RefreshToken struct {
 	// IssuedAt is when this token was minted.
 	IssuedAt time.Time `json:"issuedAt"`
 
+	// SignedInAt is when the login this token belongs to began: the issued_at of
+	// the family's first token, carried onto every successor. It is what a
+	// "where you're signed in" screen says a login began, and it survives the
+	// first token being collected, which the earliest surviving row would not.
+	SignedInAt time.Time `json:"signedInAt"`
+
 	// ExpiresAt is when it stops being exchangeable. A family that reaches this
 	// without being exchanged is a sign-in that has ended.
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -106,6 +112,13 @@ func (t *RefreshToken) Live(at time.Time) bool {
 type RefreshTokenRequest struct {
 	_ struct{} `json:"-"`
 
+	// SignedInAt is when the login this token joins began, and zero for a mint
+	// that begins one — the store then records the mint's own instant. An
+	// exchange passes the spent token's, which is what keeps a login that has
+	// refreshed for a month reporting the day it started rather than the hour
+	// it last refreshed.
+	SignedInAt time.Time `json:"signedInAt"`
+
 	// FamilyID is the login this token belongs to. A sign-in mints a fresh one;
 	// an exchange passes the spent token's, which is what makes the successor a
 	// successor rather than a second login.
@@ -119,15 +132,15 @@ type RefreshTokenRequest struct {
 	// — who signs in and gets a token against nothing rather than being refused.
 	ActiveAccountID string `json:"activeAccountID"`
 
-	// Administrative records which door this login came through, so that an
-	// exchange can mint on the same lifetimes the sign-in did.
-	Administrative bool `json:"administrative"`
-
 	// TTL is how long the minted token may be exchanged for. It is the service's
 	// WithRefreshTokenTTL, resolved before the call, rather than something a
 	// store decides: how long a sign-in lasts is policy, and a store that held a
 	// default for it would be a second place that policy lived.
 	TTL time.Duration `json:"ttl"`
+
+	// Administrative records which door this login came through, so that an
+	// exchange can mint on the same lifetimes the sign-in did.
+	Administrative bool `json:"administrative"`
 }
 
 // RefreshTokenIssuance is a minted refresh token: the row it wrote, and the
@@ -538,7 +551,7 @@ func (s *Service) ExchangeRefreshToken(
 			return txErr
 		}
 
-		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID); txErr != nil {
+		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID, spent.SignedInAt); txErr != nil {
 			return txErr
 		}
 
@@ -792,6 +805,9 @@ func (s *Service) spend(
 // mintRefreshToken writes the refresh token a completed sign-in or a completed
 // exchange hands back, onto the SignIn the caller is about to receive.
 //
+// signedInAt is when the login began, and zero for the mint that begins one —
+// see RefreshTokenRequest.SignedInAt.
+//
 // It is a no-op for a service built without a store, which is what makes
 // rotation optional without a branch at every call site. What it is not is a
 // place where a failure is tolerated: a sign-in that was asked for a refresh
@@ -803,6 +819,7 @@ func (s *Service) mintRefreshToken(
 	scope tenancy.Scope,
 	signIn *SignIn,
 	familyID string,
+	signedInAt time.Time,
 ) error {
 	if s.refreshTokens == nil {
 		return nil
@@ -816,6 +833,7 @@ func (s *Service) mintRefreshToken(
 	issuance, err := s.refreshTokens.Issue(ctx, tx, scope, &RefreshTokenRequest{
 		TTL:             ttl,
 		FamilyID:        familyID,
+		SignedInAt:      signedInAt,
 		SubjectID:       signIn.Principal.User.ID,
 		ActiveAccountID: signIn.Principal.ActiveAccountID,
 		Administrative:  signIn.Administrative,
