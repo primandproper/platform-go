@@ -63,6 +63,7 @@ reasons behind the three exceptions.
 | `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table of its own | — (+ grpc)                       |
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/signin/magiclinks` | The sign-in links the passwordless door mails: digest at rest, single use, and a redemption that proves the address it was sent to | postgres, mysql, sqlite          |
+| `authentication/signin/recoverycodes` | The recovery codes a person keeps on paper for a lost authenticator: digest at rest, single use, spent by the door they prove, and `authentication/signin/recoverycodes/privacy` | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
 | `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, and `authentication/passkeys/privacy` | postgres, mysql, sqlite          |
@@ -157,18 +158,21 @@ an application with no users has nobody to sign in, and because the refusals it
 collapses are a product decision rather than a mechanism. A package like it is the
 shape to expect as more domains arrive: the flows over the nouns, after the nouns.
 
-It gained two tables without becoming one, and the split is where the sentence
+It gained three tables without becoming one, and the split is where the sentence
 stays true. Refresh-token rotation needs rows — a digest, a family, a deadline —
-so those live in `authentication/signin/refreshtokens`, and the passwordless
-door needs rows of its own for the same reason, so those live in
-`authentication/signin/magiclinks`. Each is a noun with a table like any other,
-while the flow above them holds the seams rather than the schemas. Neither
-subpackage is a row of its own in the tier sort for the reason `links/database`
+so those live in `authentication/signin/refreshtokens`; the passwordless door
+needs rows of its own for the same reason, so those live in
+`authentication/signin/magiclinks`; and the recovery codes that stand in for a
+lost authenticator are a set of single-use rows too, so those live in
+`authentication/signin/recoverycodes`. Each is a noun with a table like any
+other, while the flow above them holds the seams rather than the schemas. None of
+the three is a row of its own in the tier sort for the reason `links/database`
 and `sessions/database` are not: a nested package inherits its parent's tier by
 longest-prefix match, so it is classified by construction and a row would be a
-second answer with nothing checking it. A service that names neither store still
-signs people in with a password and still owns nothing, which is what keeps this
-row's claim about `signin` itself rather than about everything under its path.
+second answer with nothing checking it. A service that names none of the stores
+still signs people in with a password and still owns nothing, which is what keeps
+this row's claim about `signin` itself rather than about everything under its
+path.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
 owns no table either, and it is not a flow: it is three names — the interface a
@@ -606,6 +610,7 @@ construction, never a partial store or a migration that creates nothing.
 | `authentication/passkeys`             | ✓        | ✓     | ✓      |
 | `authentication/passwordreset`        | ✓        | ✓     | ✓      |
 | `authentication/signin/magiclinks`    | ✓        | ✓     | ✓      |
+| `authentication/signin/recoverycodes` | ✓        | ✓     | ✓      |
 | `authentication/signin/refreshtokens` | ✓        | ✓     | ✓      |
 | `authentication/webauthnsessions`     | ✓        | ✓     | ✓      |
 | `billing`                             | ✓        | ✓     | ✓      |

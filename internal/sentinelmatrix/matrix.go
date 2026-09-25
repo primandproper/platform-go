@@ -576,6 +576,10 @@ var Matrix = map[string]map[string]Decision{
 		// already answer as a bad request.
 		"ErrAmbiguousHandle": {Err: signin.ErrAmbiguousHandle, Is: Platform},
 
+		// A replacement request with nothing on it. It wraps
+		// errors.ErrNilInputParameter, as the nil-argument rows above do.
+		"ErrNilRecoveryCodeReplacement": {Err: signin.ErrNilRecoveryCodeReplacement, Is: Platform},
+
 		// The two refresh requests that arrived naming nothing. Both wrap
 		// errors.ErrEmptyInputParameter, and neither is collapsed into the
 		// refusal: an empty form is a client that did not submit rather than a
@@ -624,6 +628,12 @@ var Matrix = map[string]map[string]Decision{
 		// address nobody holds, which is a misconfiguration that looks exactly
 		// like working.
 		"ErrMagicLinksNotConfigured": {Err: signin.ErrMagicLinksNotConfigured, Is: Unhandled},
+
+		// A recovery code door on a service that was given no store. It is wiring
+		// rather than anything a caller sent, so a 500 is the honest answer and
+		// no mapper claims it. The sign-in doors never produce it: without a
+		// store, a recovery code is a second-factor code that did not verify.
+		"ErrRecoveryCodesNotConfigured": {Err: signin.ErrRecoveryCodesNotConfigured, Is: Unhandled},
 	},
 	notificationsPkg: {
 		// The two reads' one answer. Absent, archived, and belonging to somebody

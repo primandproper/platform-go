@@ -65,7 +65,10 @@ func (s *Service) UpdatePassword(
 		return op.Error(ErrNoPasswordCredential, "updating a password")
 	}
 
-	if err = s.reauthenticate(ctx, user, update.CurrentPassword, update.TOTPCode); err != nil {
+	// No recovery code here: its second factor guards a password rather than the
+	// second factor itself, and somebody who has lost their authenticator
+	// re-enrolls one first. See WithRecoveryCodeStore.
+	if _, err = s.reauthenticate(ctx, scope, user, update.CurrentPassword, update.TOTPCode, false); err != nil {
 		return op.Error(err, "updating a password")
 	}
 
@@ -101,8 +104,18 @@ func (s *Service) UpdatePassword(
 // It replaces whatever secret the user had, which is what makes it the
 // re-enrollment path as well as the enrollment one. A user who holds a proven
 // secret must send a code from it, so losing a phone is not a way to replace
-// the factor that phone held; that recovery is the consumer's, through an
-// operator or a recovery code, and neither is here.
+// the factor that phone held — unless the service was built with
+// [WithRecoveryCodeStore] and they send one of their recovery codes instead,
+// which is what those codes are for. The code is spent in the transaction that
+// stores the new secret, before it does, so a re-enrollment that rolls back
+// leaves it unspent and two presenting one code cannot both go through.
+//
+// That is the lost-phone door, and it is why recovery codes are this package's
+// rather than a consumer's: the alternative is an operator clearing the secret,
+// which is the recovery a social engineer only has to talk a person into. That
+// path still exists for somebody who has lost the codes as well — it is the
+// consumer's, through the directory — but it is the slow one behind this, not
+// the only one.
 //
 // The returned [totp.Enrollment] is the one moment a live second-factor secret
 // is legitimately in flight. It goes to exactly one person, it is not given to a
@@ -145,7 +158,8 @@ func (s *Service) RefreshTOTPSecret(
 		return nil, op.Error(ErrNoPasswordCredential, "refreshing a second-factor secret")
 	}
 
-	if err = s.reauthenticate(ctx, user, refresh.CurrentPassword, refresh.TOTPCode); err != nil {
+	usedRecoveryCode, err := s.reauthenticate(ctx, scope, user, refresh.CurrentPassword, refresh.TOTPCode, true)
+	if err != nil {
 		return nil, op.Error(err, "refreshing a second-factor secret")
 	}
 
@@ -160,6 +174,12 @@ func (s *Service) RefreshTOTPSecret(
 	redacted := user.Redacted()
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if usedRecoveryCode {
+			if txErr := s.spendRecoveryCode(ctx, tx, scope, redacted, refresh.TOTPCode); txErr != nil {
+				return txErr
+			}
+		}
+
 		if txErr := s.directory.UpdateUserTwoFactorSecret(ctx, tx, scope, userID, enrollment.Secret); txErr != nil {
 			return txErr
 		}
@@ -245,31 +265,38 @@ func (s *Service) VerifyTOTPSecret(
 // The refusals are the sign-in path's, unchanged. A caller who is signed in and
 // gets the current password wrong is told the same thing an anonymous one is,
 // which is one less answer to keep consistent.
-func (s *Service) reauthenticate(ctx context.Context, user *identity.User, password, code string) error {
+//
+// acceptRecoveryCode says whether the door takes a recovery code in place of the
+// TOTP code, and the answer reports whether one was what proved it — verified
+// and not yet spent, which is the caller's to do in its own transaction. See
+// Service.checkSecondFactorCode.
+func (s *Service) reauthenticate(
+	ctx context.Context,
+	scope tenancy.Scope,
+	user *identity.User,
+	password, code string,
+	acceptRecoveryCode bool,
+) (bool, error) {
 	if password == "" {
-		return ErrEmptyPassword
+		return false, ErrEmptyPassword
 	}
 
 	matches, err := s.authenticator.PasswordMatches(ctx, user.HashedPassword, password)
 	if err != nil {
-		return platformerrors.Join(ErrInvalidCredentials, err)
+		return false, platformerrors.Join(ErrInvalidCredentials, err)
 	}
 
 	if !matches {
-		return ErrInvalidCredentials
+		return false, ErrInvalidCredentials
 	}
 
 	if !user.TwoFactorEnabled() {
-		return nil
+		return false, nil
 	}
 
 	if code == "" {
-		return ErrSecondFactorRequired
+		return false, ErrSecondFactorRequired
 	}
 
-	if err = s.verifier.Verify(ctx, user.TwoFactorSecret, code); err != nil {
-		return ErrInvalidCredentials
-	}
-
-	return nil
+	return s.checkSecondFactorCode(ctx, s.client.Reader(), scope, user, code, acceptRecoveryCode)
 }

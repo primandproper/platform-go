@@ -61,6 +61,7 @@ COMPONENTS=(
   "authentication/passwordreset postgres mysql sqlite"
   "authentication/signin/refreshtokens postgres mysql sqlite"
   "authentication/signin/magiclinks postgres mysql sqlite"
+  "authentication/signin/recoverycodes postgres mysql sqlite"
   "authentication/webauthnsessions postgres mysql sqlite"
   "rbac postgres mysql sqlite"
   "billing postgres mysql sqlite"

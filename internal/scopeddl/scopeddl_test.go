@@ -54,6 +54,7 @@ var tenancyColumns = map[string][]string{
 	// its passwordless door mails each live in a subpackage of their own, which
 	// is where the columns are.
 	"authentication/signin/magiclinks":    {"signin_magic_links.scope"},
+	"authentication/signin/recoverycodes": {"signin_recovery_codes.scope"},
 	"authentication/signin/refreshtokens": {"signin_refresh_tokens.scope"},
 	"dataprivacy":                         {"dataprivacy_requests.subject_scope"},
 	"identity": {

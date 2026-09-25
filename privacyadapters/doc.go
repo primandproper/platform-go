@@ -129,11 +129,11 @@ under its package's DefaultKey, which is the name its section carries in every
 artifact; a deployment that wants another one registers that adapter by hand,
 and has then said so out loud.
 
-It registers all eleven or none. It builds every adapter before it registers
-any, so a nil store in the last field does not leave a registry holding ten of
-eleven domains; and it checks the keys against what the registry already holds
-before the first one goes in, so a key the caller registered already — which
-[Register] reports by name — does not either. Both are the same requirement,
+It registers every adapter it was given or none. It builds every adapter before
+it registers any, so a nil store in the last field does not leave a registry
+holding all but one domain; and it checks the keys against what the registry
+already holds before the first one goes in, so a key the caller registered
+already — which [Register] reports by name — does not either. Both are the same requirement,
 which is that dataprivacy.Registry has no unregister: a registry this call
 failed partway through would be one nothing can repair, holding whichever
 adapters happened to sort ahead of the collision, and a subject access request

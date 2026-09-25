@@ -236,6 +236,17 @@ var (
 	// wrong password does.
 	ErrInvalidMagicLink = platformerrors.Wrap(ErrInvalidCredentials, "invalid sign-in link token")
 
+	// ErrRecoveryCodesNotConfigured indicates one of the two recovery code doors
+	// — Service.ReplaceRecoveryCodes and Service.RecoveryCodesRemaining — on a
+	// service built without WithRecoveryCodeStore.
+	//
+	// It is a wiring failure and reads as one: no status is mapped for it, so it
+	// is a 500. The sign-in doors never answer with it. A service with no store
+	// accepts no recovery code, and a code presented to one is a second-factor
+	// code that did not verify — ErrInvalidCredentials, exactly as it was before
+	// recovery codes existed.
+	ErrRecoveryCodesNotConfigured = platformerrors.New("no recovery code store is configured")
+
 	// ErrRefreshTokenTTLTooShort indicates a service whose refresh tokens would
 	// die before the access tokens they mint.
 	//
@@ -273,6 +284,9 @@ var (
 
 	// ErrNilSecretRefresh indicates a nil *SecretRefresh.
 	ErrNilSecretRefresh = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil second-factor secret refresh")
+
+	// ErrNilRecoveryCodeReplacement indicates a nil *RecoveryCodeReplacement.
+	ErrNilRecoveryCodeReplacement = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil recovery code replacement")
 
 	// ErrEmptyUserID indicates an operation on nobody.
 	ErrEmptyUserID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID")

@@ -315,7 +315,7 @@ the confinement beside the subject, so a domain that scopes its rows narrows by
 a value it was passed rather than one it dug out. The privacy adapters this
 module ships — authentication/oauth2clients/privacy,
 authentication/passkeys/privacy, authentication/passwordreset/privacy,
-billing/privacy, comments/privacy, identity/privacy, issuereports/privacy,
+authentication/signin/recoverycodes/privacy, billing/privacy, comments/privacy, identity/privacy, issuereports/privacy,
 mediaregistry/privacy, notifications/privacy's two pairs, settings/privacy,
 waitlists/privacy and dataprivacy/auditerasure — each take a resolver that turns that confinement into
 the scopes their own tables use, because what a tenant means is the consumer's

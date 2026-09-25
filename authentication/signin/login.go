@@ -83,6 +83,14 @@ func (s *Service) AdminAuthenticate(
 // both back and no token is returned. Everything before it, the password hash
 // included, runs outside any transaction.
 //
+// Where the second factor was one of the user's recovery codes — see
+// [WithRecoveryCodeStore] — the check before the transaction only verifies it,
+// and the transaction spends it first, ahead of the refresh token and both
+// hooks, with [Hooks.AfterRecoveryCodeUsed] beside the spend. Two sign-ins
+// presenting one code both pass the check; one spends it and the other is
+// refused with [ErrInvalidCredentials] and recorded as a failed sign-in, as a
+// wrong code is.
+//
 // A caller who wants the first of those two events and not the second wants
 // [Service.Authenticate].
 //
@@ -147,19 +155,24 @@ func (s *Service) authenticate(
 	)
 	defer func() { done(err) }()
 
-	if principal, err = s.prove(ctx, op, scope, credentials, administrative); err != nil {
+	proven, err := s.prove(ctx, op, scope, credentials, administrative)
+	if err != nil {
 		return nil, err
 	}
 
-	auth := &Authentication{Principal: principal, Administrative: administrative}
+	auth := &Authentication{Principal: proven.principal, Administrative: administrative}
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if txErr := s.spendProvenRecoveryCode(ctx, tx, scope, proven); txErr != nil {
+			return txErr
+		}
+
 		return s.hooks.AfterAuthenticate(ctx, tx, scope, auth)
 	}); err != nil {
-		return nil, op.Error(err, "recording an authentication")
+		return nil, s.settle(ctx, op, scope, proven, err, "recording an authentication")
 	}
 
-	return principal, nil
+	return proven.principal, nil
 }
 
 // login is both doors that mint. The two differ in four places — the role
@@ -183,10 +196,12 @@ func (s *Service) login(
 	)
 	defer func() { done(err) }()
 
-	principal, err := s.prove(ctx, op, scope, credentials, administrative)
+	proven, err := s.prove(ctx, op, scope, credentials, administrative)
 	if err != nil {
 		return nil, err
 	}
+
+	principal := proven.principal
 
 	// The login this sign-in begins, minted here rather than by the store,
 	// because it names a sign-in rather than a row: a service that stores no
@@ -210,7 +225,17 @@ func (s *Service) login(
 	// token written in a transaction of its own could commit over a sign-in the
 	// hooks then rolled back — a credential outstanding for a sign-in that never
 	// happened.
+	//
+	// A recovery code that proved the second factor is spent first, before the
+	// refresh token or either hook: a sign-in whose code another request spent
+	// in the meantime is refused, and the access token minted above is dropped
+	// unreturned — it is a signature rather than a row, so there is nothing of
+	// it to take back.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if txErr := s.spendProvenRecoveryCode(ctx, tx, scope, proven); txErr != nil {
+			return txErr
+		}
+
 		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID); txErr != nil {
 			return txErr
 		}
@@ -221,10 +246,57 @@ func (s *Service) login(
 
 		return s.hooks.AfterIssueToken(ctx, tx, scope, signIn)
 	}); err != nil {
-		return nil, op.Error(err, "recording a sign-in")
+		return nil, s.settle(ctx, op, scope, proven, err, "recording a sign-in")
 	}
 
 	return signIn, nil
+}
+
+// proof is what [Service.prove] established: who the credentials belong to,
+// the attempt a later refusal is recorded against, and the recovery code that
+// proved the second factor, where one did.
+type proof struct {
+	principal *identity.Principal
+	attempt   *FailedSignIn
+
+	// recoveryCode is the recovery code that satisfied the second factor, or
+	// empty where a TOTP code did or none was asked for. It is verified and not
+	// yet spent: the door that acts on this proof spends it on its own
+	// transaction, before anything else that transaction writes.
+	recoveryCode string
+}
+
+// spendProvenRecoveryCode spends the recovery code a proof rests on, where it
+// rests on one.
+func (s *Service) spendProvenRecoveryCode(ctx context.Context, tx database.Tx, scope tenancy.Scope, proven *proof) error {
+	if proven.recoveryCode == "" {
+		return nil
+	}
+
+	return s.spendRecoveryCode(ctx, tx, scope, proven.principal.User, proven.recoveryCode)
+}
+
+// settle turns the failure of a door's transaction into what its caller is
+// told.
+//
+// A recovery code somebody else spent between this door's check and its spend
+// is a refused attempt at the account, and is recorded as one through
+// Service.refuse — after the transaction has unwound, because the hook writes on
+// a transaction of its own. Anything else is this service's failure or a
+// consumer's hook refusing, and is reported as it always was.
+func (s *Service) settle(
+	ctx context.Context,
+	op observability.Operation,
+	scope tenancy.Scope,
+	proven *proof,
+	err error,
+	description string,
+) error {
+	if platformerrors.Is(err, errRecoveryCodeSpent) {
+		return s.refuse(ctx, op, scope, proven.attempt, errRecoveryCodeSpent, "spending a recovery code")
+	}
+
+	return op.Error(err, "%s", description)
 }
 
 // prove is every door's one flow: it reads the handle, proves the credentials
@@ -245,7 +317,7 @@ func (s *Service) prove(
 	scope tenancy.Scope,
 	credentials *Credentials,
 	administrative bool,
-) (*identity.Principal, error) {
+) (*proof, error) {
 	handle, err := credentials.handle()
 	if err != nil {
 		// Refused before anything was looked up, so it is not an attempt at
@@ -280,8 +352,14 @@ func (s *Service) prove(
 		}
 	}
 
-	if err = s.verifySecondFactor(ctx, user, credentials.TOTPCode, administrative); err != nil {
+	usedRecoveryCode, err := s.verifySecondFactor(ctx, s.client.Reader(), scope, user, credentials.TOTPCode, administrative)
+	if err != nil {
 		return nil, s.refuse(ctx, op, scope, attempt, err, "verifying a second factor")
+	}
+
+	proven := &proof{attempt: attempt}
+	if usedRecoveryCode {
+		proven.recoveryCode = credentials.TOTPCode
 	}
 
 	// Past here the credentials are proven, and a failure is this service's or
@@ -294,7 +372,9 @@ func (s *Service) prove(
 
 	op.Set(accountIDKey, principal.ActiveAccountID)
 
-	return principal, nil
+	proven.principal = principal
+
+	return proven, nil
 }
 
 // handle returns the one handle a set of credentials names, refusing both and
@@ -471,24 +551,35 @@ func (s *Service) verifyAdministrator(user *identity.User) error {
 // is about: a user with a proven secret and no code is told to send one, which
 // says the password was right. A wrong code is ErrInvalidCredentials, which
 // says nothing more than the refusal already did.
-func (s *Service) verifySecondFactor(ctx context.Context, user *identity.User, code string, administrative bool) error {
+//
+// A code that is not the TOTP code is tried as one of the user's recovery codes,
+// where a store is configured, and the answer reports whether that is what
+// proved it. Neither refusal is told apart from the other — see
+// Service.checkSecondFactorCode. The administrative doors take one too: a
+// recovery code is a second factor the person holds, kept on paper rather than
+// on a phone, and an operator who has lost their phone is exactly the case a
+// support path would otherwise be talked into.
+func (s *Service) verifySecondFactor(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	user *identity.User,
+	code string,
+	administrative bool,
+) (bool, error) {
 	if !user.TwoFactorEnabled() {
 		if administrative || s.secondFactor == SecondFactorRequired {
-			return ErrSecondFactorNotEnrolled
+			return false, ErrSecondFactorNotEnrolled
 		}
 
-		return nil
+		return false, nil
 	}
 
 	if code == "" {
-		return ErrSecondFactorRequired
+		return false, ErrSecondFactorRequired
 	}
 
-	if err := s.verifier.Verify(ctx, user.TwoFactorSecret, code); err != nil {
-		return ErrInvalidCredentials
-	}
-
-	return nil
+	return s.checkSecondFactorCode(ctx, q, scope, user, code, true)
 }
 
 // mintToken issues the access token a completed sign-in or a completed exchange
