@@ -29,6 +29,14 @@ const DefaultHeartbeatInterval = 15 * time.Second
 // A deployment that genuinely has no owners passes GlobalOwner, by name.
 var ErrNilOwnerResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations owner resolver")
 
+// ErrNoOwners is an OwnersResolver that answered a request with no owners.
+//
+// Refused rather than read as "then this request reads nothing", for the reason
+// the single resolver cannot answer the zero Scope: an empty set is a resolver
+// that did not decide, and a request it did not decide about is not one to
+// answer with an empty page that looks like a real one.
+var ErrNoOwners = platformerrors.New("the operations owners resolver named no owner for this request")
+
 // ErrInvalidHeartbeatInterval indicates WithHeartbeatInterval was given a
 // non-positive interval.
 //
@@ -50,6 +58,7 @@ type (
 
 	options struct {
 		resolver       OwnerResolver
+		owners         OwnersResolver
 		watcher        *operations.Watcher
 		logger         logging.Logger
 		tracerProvider tracing.Provider
@@ -78,6 +87,17 @@ func newOptions(opts []Option) *options {
 // may read. It is required; see ErrNilOwnerResolver.
 func WithOwnerResolver(resolver OwnerResolver) Option {
 	return func(o *options) { o.resolver = resolver }
+}
+
+// WithOwnersResolver supplies the function that says every owner whose
+// operations a request may read, for a deployment that starts operations under
+// more than one.
+//
+// It satisfies the resolver requirement on its own, and where both are given it
+// is the one used. See OwnersResolver for when a deployment has more than one
+// owner, and what the function must not do.
+func WithOwnersResolver(resolver OwnersResolver) Option {
+	return func(o *options) { o.owners = resolver }
 }
 
 // WithWatcher enables the server-sent-events endpoint.

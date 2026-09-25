@@ -34,6 +34,16 @@ from the schema above because they are separately privileged — the Postgres
 variant creates a function — and because a consumer whose deployment already
 revokes UPDATE from the application role has the same guarantee without them.
 
+What "separately privileged" costs is dialect-specific, and MySQL's is the one
+a consumer meets without warning. Binary logging is on by default there, and
+with it on a role without SUPER may not CREATE TRIGGER at all: the statement
+comes back as error 1419, naming a privilege rather than anything about this
+schema. A deployment applies these either as a role holding SUPER (or
+SET_USER_ID), or with log_bin_trust_function_creators enabled, which is the
+setting that grants it. Neither is something this package can do on a
+consumer's behalf, and the schema above needs no such privilege — which is the
+practical reason these are a separate call rather than a tail of it.
+
 They are not offered through SQL, only as pre-split statements, and that is
 deliberate: the Postgres and SQLite triggers contain semicolons inside their
 bodies, so joining them into one string hands the next tool that splits on

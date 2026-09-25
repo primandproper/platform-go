@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/entitlements"
@@ -106,6 +107,14 @@ func Register() {
 	// audit's own errormappers.go.
 	httperrors.RegisterHTTPErrorMapper(audit.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(audit.GRPCMapper)
+
+	// A request with nobody on it, at a seam derived from the extractor rather
+	// than handed one. The four surfaces behind such a seam fall back to a code
+	// written for a resolver that failed; this makes them say Unauthenticated,
+	// as every surface reading a principal itself does. See callers' own
+	// errormappers.go.
+	httperrors.RegisterHTTPErrorMapper(callers.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(callers.GRPCMapper)
 
 	httperrors.RegisterHTTPErrorMapper(notifications.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(notifications.GRPCMapper)

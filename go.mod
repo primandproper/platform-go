@@ -6,10 +6,11 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pquerna/otp v1.5.0
-	github.com/primandproper/primitives-go/v2 v2.6.0
+	github.com/primandproper/primitives-go/v2 v2.8.0
 	github.com/samber/do/v2 v2.0.0
 	github.com/shoenig/test v1.12.2
 	github.com/swaggest/openapi-go v0.2.61
@@ -132,7 +133,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
-	github.com/go-sql-driver/mysql v1.10.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.2.6 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect

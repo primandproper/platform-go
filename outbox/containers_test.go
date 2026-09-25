@@ -25,10 +25,6 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
-
 // suitePoolSize is how many connections the suite's one client may open.
 //
 // It has to exceed one, and the reason is the whole of what the concurrency
@@ -839,7 +835,6 @@ func runWithMySQL(tb testing.TB, fn func(ctx context.Context, client database.Cl
 
 		fn(ctx, client)
 	},
-		mysqltest.WithImage(defaultMySQLImage),
 		mysqltest.WithCredentials("outboxtest", "outboxtest", "outboxtest"),
 	)
 }

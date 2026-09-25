@@ -29,10 +29,6 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
-
 // pooledClientConfig is testClientConfig with a pool big enough to fulfill a
 // request.
 //
@@ -682,5 +678,5 @@ func runWithMySQL(t *testing.T, fn func(ctx context.Context, client database.Cli
 		t.Cleanup(func() { _ = client.Close() })
 
 		fn(ctx, client)
-	}, mysqltest.WithImage(defaultMySQLImage))
+	})
 }

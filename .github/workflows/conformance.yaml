@@ -1,0 +1,64 @@
+---
+# The conformance suites, run on their own.
+#
+# They are separated from the coverage gate rather than excluded from CI. What
+# they assert is this module's promises against an assembled server, which is a
+# different question from "do the units work" and deserves its own answer on a
+# pull request: a red here means a promise moved, and reading that out of a job
+# named "coverage gate" is how it gets mistaken for a flake.
+#
+# The coverage gate no longer runs them because `go test` credits their coverage
+# to whichever harness executed them — codecov.yml and .scripts/coverage.sh both
+# carry the reasoning. Excluding them from a number is not excluding them from
+# CI, and this file is what makes that true.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - .github/workflows/conformance.yaml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+name: conformance
+jobs:
+  conformance:
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        go-version: ['1.27.x']
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      # Containers on, because the assembled subject is what they are for:
+      # service.New over Postgres and MySQL 8, beside the hand-built subjects'
+      # own real-server runs. The runner's Docker daemon starts them; a job that
+      # already had databases would set CONFORMANCE_POSTGRES_DSN and
+      # CONFORMANCE_MYSQL_DSN instead and start nothing.
+      #
+      # Through conformancesummary, because go test reports every suite package
+      # as "[no test files]" — the suites are library code, and their
+      # assertions run and are counted inside conformance/assembled — so its
+      # own output cannot tell a suite that ran from one that never did. The
+      # summary tallies each suite's assertions per dialect into the job
+      # summary and fails a registered suite that passed none anywhere.
+      # `shell: bash` is what gives the step pipefail, so go test's own failure
+      # still fails it.
+      - name: run conformance suites
+        env:
+          RUN_CONTAINER_TESTS: "true"
+        shell: bash
+        run: CGO_ENABLED=1 go test -shuffle=on -race -vet=all -json ./conformance/... | go run ./internal/cmd/conformancesummary

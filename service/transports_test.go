@@ -49,6 +49,7 @@ import (
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
@@ -61,6 +62,7 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -654,6 +656,38 @@ func TestDerivedSeams(T *testing.T) {
 
 		_, err := deriveSubject(withPrincipal)(nobody)
 		test.ErrorIs(t, err, ErrNoPrincipal)
+	})
+
+	// A privacy request's operation is owned by the person and an
+	// application's by the tenant, so a caller follows both — and only those.
+	T.Run("the owners a caller follows are their tenant and themselves", func(t *testing.T) {
+		t.Parallel()
+
+		owners, err := deriveOwners(withPrincipal, nil)(withCaller)
+		must.NoError(t, err)
+		test.Eq(t, []tenancy.Scope{caller.scope, tenancy.Of(caller.userID)}, owners)
+
+		_, err = deriveOwners(withPrincipal, nil)(context.Background())
+		test.ErrorIs(t, err, callers.ErrNoPrincipal)
+	})
+
+	// The refusal is for want of a caller, and says so on both transports. Each
+	// of the four surfaces behind these seams falls back to a code written for a
+	// resolver that failed — InvalidArgument from audit, a 500 from
+	// mediaregistry — and it is callers' mapper that outranks it.
+	T.Run("a request with nobody on it reaches a client as unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := deriveScope(withPrincipal, nil)(context.Background())
+		must.ErrorIs(t, err, callers.ErrNoPrincipal)
+
+		grpcCode, ok := callers.GRPCMapper.Map(err)
+		test.True(t, ok)
+		test.EqOp(t, codes.Unauthenticated, grpcCode)
+
+		httpCode, _, ok := callers.HTTPMapper.Map(err)
+		test.True(t, ok)
+		test.EqOp(t, httperrors.ErrFetchingSessionContextData, httpCode)
 	})
 }
 

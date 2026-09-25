@@ -19,9 +19,17 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// testClientConfig is the minimum database.ClientConfig a SQLite client needs.
+// testClientConfig is the minimum database.ClientConfig a client needs.
+//
+// maxOpenConns is zero for SQLite, which reads as one: SQLite has one writer,
+// and a wider pool is connections waiting on each other's locks. The real
+// servers set it, because a pool of one serializes every transaction through a
+// single connection — and then a test of concurrent writers is a test of
+// sequential ones, which is how a deadlock only two open transactions can reach
+// went unexercised here.
 type testClientConfig struct {
 	connectionString string
+	maxOpenConns     int
 }
 
 var _ database.ClientConfig = (*testClientConfig)(nil)
@@ -31,7 +39,7 @@ func (c *testClientConfig) GetWriteConnectionString() string  { return c.connect
 func (c *testClientConfig) GetMaxPingAttempts() uint64        { return 1 }
 func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Millisecond }
 func (c *testClientConfig) GetMaxIdleConns() int              { return 2 }
-func (c *testClientConfig) GetMaxOpenConns() int              { return 1 }
+func (c *testClientConfig) GetMaxOpenConns() int              { return max(c.maxOpenConns, 1) }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
 // stubClock is a manually advanced clock. Retention is a function of elapsed

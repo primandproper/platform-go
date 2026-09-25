@@ -19,10 +19,6 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
-
 // TestSQLStore_RealServers runs the same behavioral suite SQLite runs, against
 // real servers.
 //
@@ -133,7 +129,7 @@ func runWithMySQLConns(t *testing.T, conns int, fn func(ctx context.Context, cli
 		t.Cleanup(func() { _ = client.Close() })
 
 		fn(ctx, client)
-	}, mysqltest.WithImage(defaultMySQLImage))
+	})
 }
 
 // lockSettle is how long the narrowing holds its transaction open after the

@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -24,10 +25,6 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
-
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
 
 // prefixCounter names a fresh pair of tables per subtest. Subtests share one
 // container, so they must not share tables — the chain is global to a scope
@@ -484,6 +481,48 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.EqOp(t, writers, countRows(t, env.client, prefix+"_audit_log_entries", "scope = 'brand_new_scope'"))
 	})
 
+	t.Run("creates chains for many new scopes at once without deadlocking", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		prefix := env.newPrefix(t)
+		recorder := env.recorder(t, c, prefix)
+		reader := env.reader(t, prefix)
+
+		// Each writer is a different tenant's first entry, which is what a
+		// deployment sees in its first minutes. On InnoDB a locked read that
+		// finds no row takes a gap lock, and gap locks do not conflict with each
+		// other — so writers that locked before creating each held the gap the
+		// others were inserting into, and InnoDB killed all but one of them.
+		// The recorder creates the row before locking it for this case.
+		const writers = 16
+
+		scopes := make([]tenancy.Scope, writers)
+		for i := range scopes {
+			scopes[i] = tenancy.Of(fmt.Sprintf("new_scope_%02d", i))
+		}
+
+		errs := make(chan error, writers)
+		for _, scope := range scopes {
+			go func() {
+				errs <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+					return recorder.Record(t.Context(), q, scope, entryFor(scope, "first"))
+				})
+			}()
+		}
+
+		for range writers {
+			must.NoError(t, <-errs)
+		}
+
+		for _, scope := range scopes {
+			result, err := reader.Verify(t.Context(), env.client.Reader(), scope, time.Time{}, time.Time{}, ChainStart)
+			must.NoError(t, err)
+			test.True(t, result.Intact(), test.Sprintf("chain for %s", scope))
+			test.EqOp(t, 1, result.Checked, test.Sprintf("chain for %s", scope))
+		}
+	})
+
 	t.Run("refuses an update once the append-only trigger is installed", func(t *testing.T) {
 		t.Parallel()
 
@@ -569,7 +608,7 @@ func TestAudit_Postgres(T *testing.T) {
 	T.Parallel()
 
 	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString, maxOpenConns: realServerConns})
 		must.NoError(T, err)
 		T.Cleanup(func() { _ = client.Close() })
 
@@ -577,21 +616,53 @@ func TestAudit_Postgres(T *testing.T) {
 	}, pgtest.WithMaxOpenConns(32))
 }
 
+// realServerConns is the pool a real server's client opens: wide enough that the
+// concurrent-writer subtests have their transactions open at once.
+const realServerConns = 32
+
 // runWithMySQL boots a MySQL container via mysqltest and hands its closure a
 // database.Client against it.
 func runWithMySQL(tb testing.TB, fn func(ctx context.Context, client database.Client)) {
 	tb.Helper()
 
 	mysqltest.Run(tb, func(ctx context.Context, my *mysqltest.Instance) {
-		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+		permitTriggerCreation(ctx, tb, my)
+
+		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString, maxOpenConns: realServerConns})
 		must.NoError(tb, err)
 		tb.Cleanup(func() { _ = client.Close() })
 
 		fn(ctx, client)
 	},
-		mysqltest.WithImage(defaultMySQLImage),
 		mysqltest.WithCredentials("audittest", "audittest", "audittest"),
 	)
+}
+
+// permitTriggerCreation grants what AppendOnlyStatements needs on MySQL, as the
+// deployment's administrator rather than as its application role.
+//
+// Binary logging is on by default in MySQL 8 — and off by default in MariaDB,
+// which is why this was invisible until this suite stopped running against
+// MariaDB. With it on, a role that does not hold SUPER may not CREATE TRIGGER
+// at all: the statement comes back as error 1419, naming a privilege rather
+// than anything about the schema.
+//
+// So this is not the suite working around a restriction. It is the suite doing
+// the thing migrations' own documentation says a deployment must do before
+// those statements will apply, in the place a deployment does it — as an
+// administrator, once, against the server. The application role the closure
+// below gets is the unprivileged one it always was, and the triggers are
+// installed through it, which is the arrangement being tested.
+func permitTriggerCreation(ctx context.Context, tb testing.TB, my *mysqltest.Instance) {
+	tb.Helper()
+
+	root, err := sql.Open("mysql", my.RootConnectionString(tb))
+	must.NoError(tb, err)
+
+	defer func() { _ = root.Close() }()
+
+	_, err = root.ExecContext(ctx, "SET GLOBAL log_bin_trust_function_creators = 1")
+	must.NoError(tb, err, must.Sprint("granting the application role what CREATE TRIGGER needs under binary logging"))
 }
 
 func TestAudit_MySQL(T *testing.T) {
@@ -657,7 +728,7 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 		t.Parallel()
 
 		pgtest.Run(t, func(_ context.Context, pg *pgtest.Instance) {
-			client, err := postgres.NewDatabaseClient(t.Context(), &testClientConfig{connectionString: pg.ConnectionString})
+			client, err := postgres.NewDatabaseClient(t.Context(), &testClientConfig{connectionString: pg.ConnectionString, maxOpenConns: realServerConns})
 			must.NoError(t, err)
 			t.Cleanup(func() { _ = client.Close() })
 

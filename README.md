@@ -112,6 +112,18 @@ reasons behind the three exceptions.
 | `errormappers` | The one call that tells the two transport registries what these sentinels mean  |
 | `privacyadapters` | The one call that puts every privacy adapter this module ships in a `dataprivacy.Registry` |
 
+### The promises
+| Package        | Purpose                                                                       |
+|----------------|---------------------------------------------------------------------------------|
+| `conformance`  | This module's behavioural promises, written once and assertable against a subject that is either this module's own assembly or a consumer's running service |
+
+A surface's own package asserts what its handler decides, over a server that
+package built. `conformance` asserts what a *client* sees, over a server
+somebody else built — which is the half that was only ever checked in a
+consumer's repository, and therefore the half this module could break and learn
+about from somebody else's CI. See the package documentation for the three
+subjects and what each one proves.
+
 ## Primitives and Domains
 
 There were two kinds of package here and they have separated: the primitives
@@ -145,6 +157,7 @@ checking it.
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
@@ -596,6 +609,26 @@ A ✓ means the package ships DDL for that dialect, and — for every package wh
 statements have been ported onto the generated tier — executes a querier emitted
 against it. Everything unticked returns `dialect.ErrUnsupported` at
 construction, never a partial store or a migration that creates nothing.
+
+**MySQL means MySQL 8**, and that is a narrowing rather than a clarification.
+Every container suite here ran against MariaDB from this repository's first
+commit, with no reason recorded anywhere for why — so the column said `mysql`,
+the tests verified MariaDB, and nobody could tell from either which one was
+promised. They now agree: the suites run `mysqltest`'s own default, which is
+stock MySQL 8.
+
+The gap was not free while it lasted. MariaDB has no `FOR SHARE`, which shaped
+statements elsewhere in this module, and it answers a concurrent `UPDATE` that
+filters on the column it assigns with `ER_CHECKREAD` where MySQL 8 resolves the
+same situation internally — a failure this module carried without knowing which
+engine it was for.
+
+**A MariaDB deployment is therefore untested rather than unsupported.** Nothing
+refuses it, the DDL and the statements are the constrained subset MariaDB
+accepts, and it will very likely work. What is gone is anybody checking — so a
+consumer running MariaDB owns that verification, and the honest expectation is
+that the next difference between the two engines is found by them rather than
+here.
 
 <!-- readmegen:dialects -->
 | Package                               | Postgres | MySQL | SQLite |
