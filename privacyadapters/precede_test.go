@@ -351,6 +351,7 @@ func TestEveryEraserHonorsBeforeErase(T *testing.T) {
 	adapters.OAuth2Clients.BeforeErase = step
 	adapters.Passkeys.BeforeErase = step
 	adapters.PasswordReset.BeforeErase = step
+	adapters.RecoveryCodes.BeforeErase = step
 	adapters.Identity.BeforeErase = step
 	adapters.Notifications.BeforeEraseInbox = step
 	adapters.Notifications.BeforeEraseDevices = step

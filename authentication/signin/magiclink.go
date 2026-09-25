@@ -478,7 +478,9 @@ func (s *Service) RequestMagicLink(
 // # What it keeps from the password door
 //
 // The second factor, unchanged. A user who holds a proven TOTP secret must send
-// a code, and [MagicLinkCredentials.TOTPCode] is where it goes. A door that
+// a code, and [MagicLinkCredentials.TOTPCode] is where it goes — one of their
+// recovery codes included, on a service built with [WithRecoveryCodeStore],
+// spent on the transaction that spends the link. A door that
 // skipped it would be a way around somebody's second factor reachable by
 // whoever controls their inbox — which is precisely the thing a second factor is
 // enrolled against.
@@ -628,8 +630,25 @@ func (s *Service) redeem(
 		return nil, refusal(op, attempt, errMagicLinkAddressChanged)
 	}
 
-	if err = s.verifySecondFactor(ctx, user, credentials.TOTPCode, false); err != nil {
+	// Checked on tx, which this door already holds — see
+	// Service.checkSecondFactorCode for why nothing here reads elsewhere.
+	usedRecoveryCode, err := s.verifySecondFactor(ctx, tx, scope, user, credentials.TOTPCode, false)
+	if err != nil {
 		return nil, refusal(op, attempt, err)
+	}
+
+	// A recovery code is spent here, on the transaction that spent the link and
+	// before anything is promoted or minted, so a redemption that rolls back
+	// leaves both the link and the code standing. A code somebody else spent
+	// since the check above is refused as a wrong code is.
+	if usedRecoveryCode {
+		if err = s.spendRecoveryCode(ctx, tx, scope, user.Redacted(), credentials.TOTPCode); err != nil {
+			if platformerrors.Is(err, errRecoveryCodeSpent) {
+				return nil, refusal(op, attempt, err)
+			}
+
+			return nil, err
+		}
 	}
 
 	// The proof and the promotion, and the order matters: the principal below is

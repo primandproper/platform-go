@@ -128,6 +128,11 @@ const (
 	opRefreshTOTPSecret = "refresh_totp_secret"
 	//nolint:gosec // G101: as above.
 	opVerifyTOTPSecret = "verify_totp_secret"
+
+	// The two recovery code doors. Spending a code is not a series of its own:
+	// it happens inside a sign-in or a re-enrollment, and is counted there.
+	opReplaceRecoveryCodes   = "replace_recovery_codes"
+	opRecoveryCodesRemaining = "recovery_codes_remaining"
 )
 
 // Directory is what a sign-in needs from identity, and nothing else.
@@ -210,6 +215,13 @@ type Credentials struct {
 
 	// TOTPCode is the second-factor code, when the user holds a proven second
 	// factor. It is required from those users and ignored for everybody else.
+	//
+	// On a service built with WithRecoveryCodeStore it may be one of the user's
+	// recovery codes instead, which is tried when it does not verify as a TOTP
+	// code and spent by the sign-in it proves. It is one field rather than two
+	// because a person who has lost their authenticator types a code into the
+	// box that asks for one, and because a field of its own would be a request
+	// shape that says which kind of code somebody is trying.
 	TOTPCode string `json:"-"`
 
 	// ActiveAccountID is the account the token should be issued for. Empty means
@@ -356,6 +368,11 @@ type SecretRefresh struct {
 	// TOTPCode is the code from the secret being replaced, required from a user
 	// who holds a proven one. A user enrolling for the first time has none and
 	// sends none.
+	//
+	// On a service built with WithRecoveryCodeStore it may be one of the user's
+	// recovery codes instead, which is the lost-phone case: the secret being
+	// replaced is on the device that is gone, and the code on paper is what
+	// proves the person asking is the one who enrolled it.
 	TOTPCode string `json:"-"`
 }
 
@@ -405,6 +422,12 @@ type Service struct {
 	// refuse with ErrMagicLinksNotConfigured.
 	magicLinks MagicLinkStore
 
+	// recoveryCodes is nil until WithRecoveryCodeStore names one, and nil is
+	// what "this service accepts no recovery code" means: a second factor is a
+	// TOTP code and nothing else, and the two recovery code doors refuse with
+	// ErrRecoveryCodesNotConfigured.
+	recoveryCodes RecoveryCodeStore
+
 	// magicLinkMailer is nil until WithMagicLinkMailer names one. The request
 	// door needs both it and the store, because a link that is minted and not
 	// sent is a sign-in nobody can complete; the redemption door needs only the
@@ -435,6 +458,10 @@ type Service struct {
 	adminRefreshTokenTTL time.Duration
 
 	magicLinkTTL time.Duration
+
+	// recoveryCodeCount is how many codes ReplaceRecoveryCodes mints — see
+	// DefaultRecoveryCodeCount.
+	recoveryCodeCount int
 
 	// verificationLinkTTL is how long the link minted at registration stays
 	// answerable. It becomes a deadline before it reaches identity's store,
@@ -520,6 +547,8 @@ func NewService(
 		adminRefreshTokenTTL: DefaultAdminRefreshTokenTTL,
 
 		magicLinkTTL: DefaultMagicLinkTTL,
+
+		recoveryCodeCount: DefaultRecoveryCodeCount,
 
 		verificationLinkTTL: DefaultVerificationLinkTTL,
 		magicLinkFloor:      DefaultMagicLinkRequestFloor,

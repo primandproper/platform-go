@@ -672,3 +672,54 @@ func WithMagicLinkRequestFloor(floor time.Duration) ServiceOption {
 		}
 	}
 }
+
+// DefaultRecoveryCodeCount is how many recovery codes a set holds when
+// WithRecoveryCodeCount names nothing.
+//
+// Eight. It is enough that a person who spends one each time they lose a phone
+// is not back at the settings page for years, and few enough that a sheet of
+// them is something a person will actually print and keep rather than paste into
+// the password manager on the device they are about to lose.
+const DefaultRecoveryCodeCount = 8
+
+// WithRecoveryCodeStore attaches where this service's recovery codes live, which
+// is what gives a person who has lost their authenticator a way back in that is
+// not a support ticket. A nil store is ignored, leaving none.
+//
+// Naming none — which is the default — is what "this service accepts no recovery
+// code" means: every second-factor check is a TOTP code and nothing else,
+// exactly as it was before recovery codes existed, and Service.ReplaceRecoveryCodes
+// and Service.RecoveryCodesRemaining refuse with ErrRecoveryCodesNotConfigured.
+//
+// Naming one changes what a second-factor code may be at every door that asks
+// for one but Service.UpdatePassword — the four password sign-ins, the
+// passwordless redemption, Service.RefreshTOTPSecret and
+// Service.ReplaceRecoveryCodes — and nothing else about them: a code that is not the TOTP code is tried as a recovery code, spent
+// by the operation it proves, and refused as ErrInvalidCredentials when it is
+// neither. Service.UpdatePassword does not take one. Its second factor guards a
+// password rather than the second factor itself, and a person who has lost their
+// authenticator re-enrolls one before anything else.
+//
+// github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes
+// is the SQL implementation this module ships, with the DDL it needs.
+func WithRecoveryCodeStore(store RecoveryCodeStore) ServiceOption {
+	return func(s *Service) {
+		if store != nil {
+			s.recoveryCodes = store
+		}
+	}
+}
+
+// WithRecoveryCodeCount sets how many recovery codes Service.ReplaceRecoveryCodes
+// mints. A non-positive count is ignored, leaving DefaultRecoveryCodeCount.
+//
+// It is the service's rather than the store's, for the reason WithMagicLinkTTL
+// is: how many standing substitutes a second factor has is policy, and the store
+// is handed the number on every replacement.
+func WithRecoveryCodeCount(count int) ServiceOption {
+	return func(s *Service) {
+		if count > 0 {
+			s.recoveryCodeCount = count
+		}
+	}
+}

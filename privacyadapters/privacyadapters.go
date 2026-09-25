@@ -9,6 +9,8 @@ import (
 	passkeysprivacy "github.com/primandproper/platform-go/v14/authentication/passkeys/privacy"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetprivacy "github.com/primandproper/platform-go/v14/authentication/passwordreset/privacy"
+	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes"
+	recoverycodesprivacy "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/privacy"
 	"github.com/primandproper/platform-go/v14/billing"
 	billingprivacy "github.com/primandproper/platform-go/v14/billing/privacy"
 	"github.com/primandproper/platform-go/v14/comments"
@@ -75,6 +77,7 @@ type Adapters struct {
 	OAuth2Clients *OAuth2ClientsAdapter
 	Passkeys      *PasskeysAdapter
 	PasswordReset *PasswordResetAdapter
+	RecoveryCodes *RecoveryCodesAdapter
 	Identity      *IdentityAdapter
 	Notifications *NotificationsAdapter
 	Billing       *BillingAdapter
@@ -185,6 +188,19 @@ type PasswordResetAdapter struct {
 	BeforeErase dataprivacy.Eraser
 }
 
+// RecoveryCodesAdapter registers authentication/signin/recoverycodes/privacy's
+// collector and eraser.
+type RecoveryCodesAdapter struct {
+	_ struct{} `json:"-" yaml:"-"`
+
+	Store   recoverycodes.Store
+	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
+}
+
 // IdentityAdapter registers identity/privacy's collector and eraser.
 type IdentityAdapter struct {
 	_ struct{} `json:"-" yaml:"-"`
@@ -271,11 +287,11 @@ type AuditErasureAdapter struct {
 // indistinguishable from a correct one, and startup is the last moment anybody
 // can still notice.
 //
-// It registers all eleven or none of them. Every adapter is built before any is
-// registered, so a nil store in the last field does not leave a registry holding
-// ten of eleven domains — and the keys are checked against what the registry
-// already holds before the first one goes in, so a key the caller registered
-// already does not either. Both matter for the same reason the package exists:
+// It registers every adapter it was given or none of them. Every adapter is
+// built before any is registered, so a nil store in the last field does not
+// leave a registry holding all but one domain — and the keys are checked
+// against what the registry already holds before the first one goes in, so a
+// key the caller registered already does not either. Both matter for the same reason the package exists:
 // dataprivacy.Registry has no unregister, and a half-registered one is exactly
 // the state that produces a well-formed export missing a domain. A caller that
 // logs this error and carries on gets a registry it has not touched rather than
@@ -449,6 +465,14 @@ func (a *Adapters) build() ([]registration, error) {
 		}
 
 		built = append(built, registration{key: passwordresetprivacy.DefaultKey, collector: collector, eraser: precede(a.PasswordReset.BeforeErase, eraser)})
+	}
+	if a.RecoveryCodes != nil {
+		collector, eraser, err := a.RecoveryCodes.build(a.Reader)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", recoverycodesprivacy.DefaultKey)
+		}
+
+		built = append(built, registration{key: recoverycodesprivacy.DefaultKey, collector: collector, eraser: precede(a.RecoveryCodes.BeforeErase, eraser)})
 	}
 	if a.Identity != nil {
 		collector, eraser, err := a.Identity.build(a.Reader)
@@ -626,6 +650,22 @@ func (c *PasswordResetAdapter) build(
 	}
 
 	eraser, err := passwordresetprivacy.NewEraser(c.Store, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return collector, eraser, nil
+}
+
+func (c *RecoveryCodesAdapter) build(
+	reader database.SQLQueryExecutor,
+) (dataprivacy.Collector, dataprivacy.Eraser, error) {
+	collector, err := recoverycodesprivacy.NewCollector(c.Store, reader, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	eraser, err := recoverycodesprivacy.NewEraser(c.Store, c.Resolve)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -231,6 +231,36 @@ type Hooks interface {
 	// It is the row the write answered with, so TwoFactorSecretVerifiedAt holds
 	// the moment being recorded rather than whatever it held before the call.
 	AfterVerifyTOTPSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+
+	// AfterRecoveryCodeUsed is called with a user who spent one of their
+	// recovery codes, redacted, and how many they have left, in the transaction
+	// that spent it.
+	//
+	// That transaction is whichever operation the code proved — a sign-in, a
+	// second-factor re-enrollment, or a replacement of the set — and this runs
+	// in it before anything else that operation writes. So an error here rolls
+	// the operation back and leaves the code unspent, and a code is never spent
+	// without this having run.
+	//
+	// It is the one hook a consumer with recovery codes must implement. A
+	// recovery code being spent means somebody did not have the authenticator
+	// they enrolled — which is the person who lost a phone, or somebody holding
+	// a sheet of paper that is not theirs — and the only party who can tell
+	// those apart is the person the mail goes to. Write that mail to an outbox
+	// here; do not send it from here. Remaining is also what tells a consumer
+	// the person is running out, which is the moment to suggest a new set.
+	//
+	// The code is deliberately not here, spent or otherwise.
+	AfterRecoveryCodeUsed(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User, remaining int) error
+
+	// AfterReplaceRecoveryCodes is called with the user who was issued a fresh
+	// set of recovery codes, redacted, in the transaction that stored them and
+	// withdrew the set they held before.
+	//
+	// The codes are deliberately not here. They are in flight to exactly one
+	// person, and a hook that recorded them would put every one of that person's
+	// standing second factors in whatever the hook writes to.
+	AfterReplaceRecoveryCodes(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
 }
 
 // NoopHooks is the Hooks a service runs when a consumer configures none, and the
@@ -280,5 +310,15 @@ func (NoopHooks) AfterVerify(context.Context, database.Tx, tenancy.Scope, *Verif
 
 // AfterVerifyTOTPSecret does nothing.
 func (NoopHooks) AfterVerifyTOTPSecret(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
+	return nil
+}
+
+// AfterRecoveryCodeUsed does nothing.
+func (NoopHooks) AfterRecoveryCodeUsed(context.Context, database.Tx, tenancy.Scope, *identity.User, int) error {
+	return nil
+}
+
+// AfterReplaceRecoveryCodes does nothing.
+func (NoopHooks) AfterReplaceRecoveryCodes(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
 	return nil
 }

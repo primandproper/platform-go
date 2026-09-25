@@ -480,6 +480,9 @@ func (e *env) credentials() *signin.Credentials {
 // It records what it was asked for, because the two token lifetimes and the
 // claims builder are policy this package's callers configure, and the only way
 // to see what was chosen is what reached the issuer.
+//
+// It is locked because a concurrent sign-in test sends several goroutines
+// through it at once; the fields are read only after they have all returned.
 type fakeIssuer struct {
 	err error
 
@@ -488,6 +491,7 @@ type fakeIssuer struct {
 	subject string
 	expiry  time.Duration
 	calls   int
+	mu      sync.Mutex
 }
 
 func (f *fakeIssuer) IssueToken(
@@ -496,6 +500,9 @@ func (f *fakeIssuer) IssueToken(
 	expiry time.Duration,
 	extraClaims map[string]any,
 ) (token, jti string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.calls++
 	f.subject, f.expiry, f.claims = subject, expiry, extraClaims
 

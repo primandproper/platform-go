@@ -86,6 +86,50 @@ a store that implements [SignInListingStore] as well — the refreshtokens store
 does — and each entry carries the family, so a consumer that records a device
 per login from [Hooks.AfterIssueToken] joins it on that.
 
+# A lost authenticator, and the door that is not a support ticket
+
+A user who holds a proven second factor and loses the device it is on used to
+have one way back: an operator clearing the secret. That is the recovery a
+social engineer targets, because it only takes convincing a person. Recovery
+codes move the proof back to something only the user ever held — a set of
+single-use codes, minted by [Service.ReplaceRecoveryCodes] behind the password
+and a second factor, shown once, and kept on paper.
+
+They live in
+[github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes],
+a third optional store beside the other two, and the seam is
+[RecoveryCodeStore]. A service built without [WithRecoveryCodeStore] behaves
+exactly as it did before they existed. One built with it accepts a recovery code
+wherever a second-factor code is asked for — the four password doors, the
+passwordless redemption, [Service.RefreshTOTPSecret] and
+[Service.ReplaceRecoveryCodes] — in the same field: the code is tried as a TOTP
+code first and as a recovery code second. [Service.RefreshTOTPSecret] is the
+door that matters most, because it is the lost-phone case: a recovery code
+proves the person re-enrolling is the one who enrolled. [Service.UpdatePassword]
+does not take one; its second factor guards the password rather than the second
+factor itself.
+
+The disclosure rule above holds unchanged. A code that is neither the TOTP code
+nor a live recovery code is [ErrInvalidCredentials], the same answer either way,
+and at a sign-in door it is recorded as a failed sign-in so a lockout counter
+counts it as the guess it is. There is no refusal that says "that was a
+recovery code".
+
+The check runs where the TOTP check always ran — before the transaction, for the
+password doors — and it only verifies. The spend is the first write in the door's
+transaction, ahead of the refresh token and every hook, with
+[Hooks.AfterRecoveryCodeUsed] beside it. So two sign-ins presenting one code both
+pass the check, one spends it, and the other is refused and recorded as a failed
+sign-in with nothing minted; and a sign-in that rolls back for any other reason
+leaves the code unspent. Moving the whole check inside the transaction was the
+alternative, and it would have dragged the refusal bookkeeping in with it.
+
+Spending a code never mints a new set. What to do when somebody runs low is the
+consumer's, told by the count [Hooks.AfterRecoveryCodeUsed] is handed — which is
+also the hook to mail the person from, because a recovery code being spent means
+somebody did not have the authenticator that was enrolled, and only its owner
+can say whether that was them.
+
 # The transaction, and what is outside it
 
 Verifying a password is expensive by design — that is what argon2 is for — and

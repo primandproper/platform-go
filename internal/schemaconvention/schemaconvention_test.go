@@ -17,6 +17,7 @@ import (
 	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	magiclinksmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
+	recoverycodesmigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokensmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
@@ -74,6 +75,7 @@ var renderers = map[string]renderer{
 	"authentication/passkeys":             passkeysmigrations.Statements,
 	"authentication/passwordreset":        passwordresetmigrations.Statements,
 	"authentication/signin/magiclinks":    magiclinksmigrations.Statements,
+	"authentication/signin/recoverycodes": recoverycodesmigrations.Statements,
 	"authentication/signin/refreshtokens": refreshtokensmigrations.Statements,
 	"authentication/webauthnsessions":     webauthnmigrations.Statements,
 	"billing":                             billingmigrations.Statements,
@@ -199,6 +201,14 @@ var exempt = map[string]exemption{
 	// two different stories an operator reconstructs an incident from.
 	"signin_magic_links": {magiclinksmigrations.Statements,
 		"mailed, followed once and swept on purge_after; issued_at is the creation time and redeemed_at and revoked_at are the row's only mutations"},
+
+	// signin_recovery_codes is the fifth, and the one with no deadline at all: a
+	// recovery code does not lapse, so there is nothing to sweep and no
+	// purge_after. A replacement deletes the set it replaces, which is also why
+	// there is no archived_at — a replaced code must stop working, and a row an
+	// archive kept could come back.
+	"signin_recovery_codes": {recoverycodesmigrations.Statements,
+		"minted as a set, spent once each and deleted by the set that replaces it; issued_at is the creation time and used_at is the row's only mutation"},
 
 	// audit_log_entries is exempt for three reasons, the first fatal. recorded_at
 	// is folded into every entry's hash before the INSERT, so a database-assigned
