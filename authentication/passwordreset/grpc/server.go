@@ -39,8 +39,11 @@ var (
 // Server is the gRPC surface over a password reset service.
 //
 // It holds no policy. How long a link lives, what the request floor is, which
-// engine hashes the password and how the mail is sent are the service's options,
-// and the service documents each. Whose directory a request is against is a
+// engine hashes the password, whether the password is acceptable and how the
+// mail is sent are the service's options, and the service documents each — so a
+// consumer who refuses weak passwords applies that rule to a reset completed
+// over this surface by building the service with
+// passwordreset.WithPasswordPolicy, and nothing in front of the server. Whose directory a request is against is a
 // [ScopeResolver] the consumer supplies. Neither is here.
 //
 // There is no principal extractor, and its absence is the shape of the service

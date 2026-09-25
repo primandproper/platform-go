@@ -13,23 +13,31 @@ Why the rendered .sql is committed at all, when the generated Go beside it in
 workqueue/internal/workqueuedb carries the same statements in executable form,
 is identity's package comment, under "Where the SQL comes from".
 
-# Postgres, and a roster of one
+# Two statement sets, and two rosters
 
-unison's dialect roster is the keys of unison.yaml's schemas map, so a
-single-dialect package renders a single-dialect corpus and gets exactly the same
-checked guarantee as a three-dialect one. What the roster does not do is soften
-the requirement: every statement below is checked against the schema
-workqueue/migrations renders, with no database running.
+Render returns one of two corpora. Postgres's is the statements in queries.go:
+a claim that selects, locks, leases and hands its rows back in one statement
+through RETURNING, and batches bound as one array per column. MySQL's and
+SQLite's is the statements in split.go: the same claim as a locking read, a
+lease and a read-back by the claim's name, and batches bound as an IN list,
+which carries one column — so an enqueue is a statement per row and an outcome
+write is a statement per claim.
 
-workqueue is Postgres-only because the claim is — the single statement that
-selects due rows, locks them, increments the attempt counter, extends the lease
-and hands them back is the concurrency contract, and the SELECT-then-UPDATE it
-becomes without RETURNING is a different failure model rather than a dialect
-switch. See the workqueue package comment. The consequence here is narrow and
-worth stating plainly: there is no MySQL rendering to reconcile, so the
-RETURNING split that a portable corpus would have owed is not a shape this
-package has, and RETURNING is simply available — the claim reads its rows back
-in the statement that leased them rather than in a second one.
+They are two sets rather than one set spelled three ways because the
+difference is shape. unison converges each query onto one Go signature across
+the dialects it generates for and refuses one whose shape differs, which is
+right: a RETURNING claim on one engine and a three-statement claim on another
+under one name would be a method that means two things. So each set is its own
+roster — unison.yaml generates Postgres's into workqueue/internal/workqueuedb,
+and unison.split.yaml generates the other two into
+workqueue/internal/workqueuesplitdb — and each gets exactly the checked
+guarantee a single roster gets: every statement is checked against the schema
+workqueue/migrations renders for its dialect, with no database running.
+
+What does not differ between them is any decision. The merge rule, the
+claimable predicate, the fence on the claim's name, the forward-only
+extension, the lock ordering and the one clock are the same in both, and
+split.go's statements say where each came from.
 
 # Everything is written out, and the line is not effort
 
@@ -54,7 +62,10 @@ column is a failed `make unison` with no database running.
 
 # A batch is arrays, not tuples
 
-Five of the seven statements act on a batch whose size is decided at the call:
+What follows is the Postgres corpus. The split corpus binds a batch the only way
+its two engines can, as an IN list that sqlc expands per call — see split.go.
+
+Five of the nine statements act on a batch whose size is decided at the call:
 the enqueue and the four keyed writes. A tuple list — or a run of placeholders —
 would make the statement's text a function of the batch size, which is the
 dynamic SQL this tier exists to replace, so a batch crosses the seam as one
@@ -72,7 +83,9 @@ keeps them so.
 
 # One clock, and no exception
 
-The database's now() decides everything about time here, without the single
+The database's clock decides everything about time here, on every engine — at
+microseconds on Postgres and MySQL, and at SQLite's millisecond on SQLite,
+rounded in the direction split.go's after gives — without the single
 exception a timer set has: a work queue names no instants at all. Lease
 horizons, availability, completion, the retention window a reap subtracts and
 the age the health read reports are all written and compared server-side, and

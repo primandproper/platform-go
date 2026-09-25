@@ -10,9 +10,11 @@ querier sqlc-gen-unison generates from that same file — the same text with the
 consumer's table prefix substituted for {{prefix}} and the argument references
 rewritten into bind markers.
 
-One dialect, because workqueue serves one. The loop is still a loop over
-Dialects, so the roster is a list rather than a decision written into the
-control flow — a second dialect would be a schema and a line, not a rewrite.
+Three dialects and two statement sets. Postgres's file is the corpus unison.yaml
+generates workqueue/internal/workqueuedb from; MySQL's and SQLite's are the
+split corpus unison.split.yaml generates workqueue/internal/workqueuesplitdb
+from. The files are one per dialect either way, so this command neither knows
+nor cares which set a file belongs to — that is queries.Render's decision.
 
 Because the check is what the file is for, this command also renders the other
 half of it: `-schema <dialect>` prints the DDL sqlc reads it against, so

@@ -1,7 +1,7 @@
 /*
-Package workqueue is a leased work queue over Postgres: the
+Package workqueue is a leased work queue over a SQL table: the
 SELECT … FOR UPDATE SKIP LOCKED claim/complete/expire pattern, generic over the
-key that names a unit of work.
+key that names a unit of work, on Postgres, MySQL and SQLite.
 
 distributedlock scopes job queues out, and rightly — a lock is not a queue. This
 is the queue. It is the piece every distributed-systems consumer writes next, and
@@ -31,6 +31,19 @@ from now()", an age comes back as a duration measured against now().
 That is why this package has no clock.Clock option, alone among the platform's
 scheduling components. Process clocks never have to agree, which is the whole
 reason a fleet can coordinate through one table.
+
+The server's clock is read at the finest grain it has, which is not the same
+grain everywhere. Postgres and MySQL read microseconds. SQLite reads
+milliseconds — strftime's %f is the only clock it has finer than a second — so
+there every duration is rounded to a millisecond, and the direction is chosen
+per duration rather than left to the arithmetic. A lease is rounded up and
+padded by one millisecond more, because SQLite truncates its own now before
+anything is added to it, and a lease that ended even a millisecond early is a
+lease somebody else takes over while its holder is still working. A delay and a
+retention window are rounded up without the pad: an item due a millisecond
+early, or reaped a millisecond late, is merely early or late. The rounding is
+pinned by a test that measures every lease against a clock read taken before
+the claim, on all three engines.
 
 # Failure recovery is expiry; exclusivity is a name
 
@@ -79,11 +92,14 @@ the twenty lines of SQL underneath it.
 
 *Every writer takes its row locks in primary-key order.* Enqueue binds its rows
 in key order and the statement orders them again, and Complete, Release, Extend
-and Remove reach their rows through a CTE that orders and locks them explicitly. With
-one total order, contention between concurrent batch writers degrades into a
-queue; without it, two batches that overlap in opposite orders deadlock
-(SQLSTATE 40P01) the moment they meet. Claim is exempt and safe: SKIP LOCKED
-never waits, and a writer that never waits cannot be in a lock cycle.
+and Remove reach their rows through a CTE that orders and locks them explicitly
+— on MySQL, through the ORDER BY a single-table UPDATE or DELETE takes, which
+acquires its locks in that order. With one total order, contention between
+concurrent batch writers degrades into a queue; without it, two batches that
+overlap in opposite orders deadlock (SQLSTATE 40P01) the moment they meet.
+Claim is exempt and safe: SKIP LOCKED never waits, and a writer that never
+waits cannot be in a lock cycle. SQLite has one writer, so there is no second
+party to a cycle there at all.
 
 *Enqueue group-commits.* One statement per caller does not survive contact with a
 read path. Every in-flight Enqueue on a process is merged into a single upsert,
@@ -153,12 +169,13 @@ claim holding it together, and passing the value Claim gave you is what applies
 that fence without anybody having to think about it.
 
 A claim's limit counts the items it actually leased, not the rows it looked at:
-Postgres applies the LIMIT above the lock, so rows a concurrent claimer holds are
-skipped and replaced rather than subtracted. A fleet of claimers all get full
+Postgres and MySQL apply the LIMIT above the lock, so rows a concurrent claimer
+holds are skipped and replaced rather than subtracted. A fleet of claimers all get full
 batches while work remains, and a short batch means the queue really is nearly
 drained. That depends on the shape of the claim statement — a LIMIT pushed into a
-subquery below the lock would silently start returning short batches — so there
-is a test pinning it.
+subquery below the lock would silently start returning short batches, and on
+MySQL a read that sorted rather than walking the claim index would lock every
+candidate before the limit applied — so there is a test pinning it on both.
 
 The loop around that is Runner's, or yours. Runner is the one every consumer was
 writing — claim, work, batched complete, batched release with cause, until the
@@ -191,7 +208,10 @@ into a millisecond:
 		workqueue.WithWakeup(listener.Signal()))
 
 with Config.NotifyChannel set to the same channel on whatever enqueues, so
-Enqueue emits a payload-free pg_notify once the rows have landed.
+Enqueue emits a payload-free pg_notify once the rows have landed. That half is
+Postgres's alone — MySQL and SQLite have no NOTIFY, and New refuses a channel on
+either with ErrNotifyUnsupported rather than dropping it — so on those two a
+worker runs on its poll, which is what Wait was always going to fall back to.
 
 None of the queue's guarantees rest on that. The notification carries no
 information, the poll stays exactly as it was, and a wake that is never
@@ -236,17 +256,26 @@ workqueue/internal/queries as a rendered, committed corpus — written out there
 rather than emitted by database/querygen, for the reason that package's comment
 gives — sqlc checks that corpus against the schema workqueue/migrations renders
 with no database running, and what the queue executes is the querier
-sqlc-gen-unison generated from it, in workqueue/internal/workqueuedb. A column
-renamed in a migration is a failed `make unison` rather than a scan error in
-production.
+sqlc-gen-unison generated from it. A column renamed in a migration is a failed
+`make unison` rather than a scan error in production.
 
-A batch reaches those statements as one bound array per column rather than as a
-tuple or a placeholder run, so the text of a statement does not depend on how
-many items are in the call. Enqueue splits its merged batch into three parallel
-arrays — key, priority, delay — Complete, Release and Extend bind two, the key
-and the claim holding it, and Remove and Requeue bind one. All of them are in
-primary-key order, which is where the lock-ordering discipline above is
-applied.
+There are two queriers, because there are two statement sets:
+workqueue/internal/workqueuedb for Postgres and
+workqueue/internal/workqueuesplitdb for MySQL and SQLite. unison converges a
+query onto one shape across the dialects it generates for and refuses one whose
+shape differs, and these differ in shape rather than in spelling — see the
+per-dialect section below.
+
+On Postgres a batch reaches its statement as one bound array per column rather
+than as a tuple or a placeholder run, so the text of a statement does not depend
+on how many items are in the call. Enqueue splits its merged batch into three
+parallel arrays — key, priority, delay — Complete, Release and Extend bind two,
+the key and the claim holding it, and Remove and Requeue bind one. MySQL and
+SQLite have no array type, and bind a set as an IN list that sqlc expands per
+call, which carries one column: so there Remove and Requeue bind their keys,
+Complete, Release and Extend bind the claim's name once and its keys as the
+list, and Enqueue is a statement per row. All of them are in primary-key order,
+which is where the lock-ordering discipline above is applied.
 
 # Creating the table
 
@@ -258,45 +287,53 @@ One table serves any number of logical queues: Config.Name partitions it, and is
 the leading column of the primary key. Two Queue values with different names
 share nothing but storage.
 
-# Postgres only
+# Three dialects, and what each costs
 
-Deliberately. The contract above is "the database's now() is the only clock, and
-SKIP LOCKED is the arbiter", and the SQL that delivers it — a lock-ordering CTE,
-a single-statement claim with RETURNING, interval arithmetic on the server — is
-written against Postgres rather than reduced to a portable subset.
+Postgres, MySQL and SQLite all run the whole contract above — the fence, the
+merge rule, the lease that only moves forward, the full batch, the one clock —
+and one suite of tests runs against all three. What differs is how many round
+trips each operation takes, and that difference is stated here rather than
+discovered.
 
-SKIP LOCKED is not the part that binds. MySQL 8.0 has it, and CTEs too; what it
-has no form of is RETURNING. The claim is one statement that selects due rows,
-locks them, increments attempts, extends the lease, and hands back the keys, and
-without RETURNING those become a SELECT … FOR UPDATE SKIP LOCKED and a separate
-UPDATE inside a transaction held across both round trips. That is a different
-concurrency shape with a different failure model — a second implementation
-rather than a dialect switch. SQLite is a harder no: it is single-writer, with no
-row-level locking to skip.
+On Postgres every operation is one statement. The claim selects due rows, locks
+them, increments their attempts, stamps the lease and the claim's name, and
+hands the rows back through RETURNING, so nothing is ever selected without
+also being leased. A batch of any size is one statement, because it is bound as
+arrays.
 
-So New returns dialect.ErrUnsupported for anything but Postgres, rather than
-degrading to a lease-only claim that would look like it worked. If a second
-backend is ever wanted, the shape to reach for is this package as the interface
-with a workqueue/postgres beneath it, the way cache and cache/redis sit — nothing
-here forecloses that.
+MySQL has SKIP LOCKED and no RETURNING; SQLite has neither, and no row locks at
+all. On both the claim is three statements held in one transaction: a read that
+selects the due rows (and on MySQL locks them, skipping what another claimer
+holds), an update that leases them — repeating every test the read made, so it
+takes nothing the rows stopped being — and a read-back by the name the lease
+stamped. The transaction is what makes that one claim: the read's locks last
+until it commits, so no other claimer can select those rows in between, and on
+SQLite the transaction is the only writer. The price is a transaction held
+across three round trips per claim, and a claimer that dies between them rolls
+the whole claim back rather than leaving half of one.
 
-The corpus reflects that decision rather than working around it. There is no
-MySQL rendering to reconcile, so the RETURNING split a portable corpus would
-have owed is not a shape this package has: sqlc's Postgres engine parses the
-lock-ordering CTE, the SKIP LOCKED claim, the interval arithmetic and the
-multi-column RETURNING exactly as they are written.
+The rest of the costs follow from there being no arrays to bind:
 
-This is not the only place that answer is kept. The module README's
-"SQL Dialect Support" section carries the matrix for every package in this
-module that stores anything through database, so a consumer choosing between
-Postgres and MySQL reads one table rather than discovering this package's answer
-here after having already chosen it. That table is generated rather than typed:
-internal/cmd/readmegen emits it from the DDL and the queriers each package
-actually ships, and reads the narrowing directive below for the reason this one
-is short.
+  - Enqueue is a statement per item in the merged batch, in one transaction,
+    rather than one statement for the batch. The group commit still merges every
+    caller on a process into that one transaction.
+  - Complete, Release and Extend are a statement per distinct claim the call
+    names — which is one statement when the call hands back what one Claim
+    handed out, and it almost always does. Extend adds a count in the same
+    transaction, because MySQL reports rows changed rather than matched and an
+    extension that lands under a longer lease changes nothing.
+  - Reap is two statements in a transaction, a locking read and a delete, for
+    the claim's reason.
+
+SQLite's single writer also means its claimers take turns rather than running
+side by side. That is SQLite's answer to concurrency rather than this package's,
+and the queue is correct under it; it is simply not a fleet.
+
+The module README's "SQL Dialect Support" section carries the matrix for every
+package in this module that stores anything through database, and it is
+generated rather than typed: internal/cmd/readmegen emits it from the DDL each
+package ships.
 */
 package workqueue
-
-//platform:narrowing the claim is the package: `SKIP LOCKED` to take due rows and `RETURNING` to hand the keys back, in one round trip
 
 //go:generate go run ./internal/queriesgen

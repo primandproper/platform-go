@@ -79,6 +79,9 @@ func (s *Server) VerifyPasswordResetToken(
 //
 // It mints no token. Completing a reset does not sign anybody in, and the next
 // call a client makes is a sign-in with the password that was just chosen.
+//
+// A password the service's policy refuses is InvalidArgument carrying
+// REPLACEMENT_PASSWORD_REFUSED, and leaves the link live.
 func (s *Server) CompletePasswordReset(
 	ctx context.Context,
 	request *passwordresetpb.CompletePasswordResetRequest,

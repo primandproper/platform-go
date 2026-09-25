@@ -43,7 +43,7 @@ var (
 	GRPCMapper grpcerrors.GRPCErrorMapper = grpcMapper{}
 )
 
-// ClientSafeSentinels are the three redemption outcomes whose own text a gRPC
+// ClientSafeSentinels are the four redemption outcomes whose own text a gRPC
 // server may return to a caller verbatim, handed to
 // errors/grpc.RegisterClientSafeSentinels by errormappers.Register alongside the
 // mappers.
@@ -59,10 +59,46 @@ var (
 // which of the three happened requires already holding the token. Telling
 // somebody with a day-old link that it expired is worth more than the nothing an
 // attacker learns from it.
+//
+// The fourth, ErrPasswordRefused, is not about the link at all, and that is why
+// it is here: a refused password leaves the link live, so its remedy is the
+// opposite of the other three's — choose another password rather than ask for
+// another link — and a client told only a code cannot tell which one it is
+// holding. It discloses the consumer's policy exists and nothing about what it
+// says; the policy's own words reach the wire only if the consumer registered
+// them. See PasswordPolicy.
 var ClientSafeSentinels = []error{
 	ErrTokenNotFound,
 	ErrTokenExpired,
 	ErrTokenRedeemed,
+	ErrPasswordRefused,
+}
+
+// ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
+// package registers carries: this package, reverse-DNS from where it lives,
+// with no major version, for the reasons authentication/signin's
+// ClientReasonDomain gives.
+const ClientReasonDomain = "passwordreset.platform-go.primandproper.github.com"
+
+// ClientSafeReasons are the stable identifiers a client branches on, handed to
+// errors/grpc.RegisterClientSafeReasons by errormappers.Register.
+//
+// A client finishing a reset has to act on which outcome it met rather than
+// only display it — put the password field back in front of the person, or send
+// them to ask for another link — and the message is prose a consumer may reword
+// or localize. So each of the four gets a name that is chosen once and never
+// moves.
+//
+// It is exactly ClientSafeSentinels, entry for entry, for the reason
+// authentication/signin's ClientSafeReasons states at length: a refusal
+// disclosable as prose is disclosable as an identifier, one that is not must be
+// in neither, and two lists that could differ are two places to make that
+// judgment. A test pins them equal.
+var ClientSafeReasons = []grpcerrors.ClientReason{
+	{Err: ErrTokenNotFound, Reason: "RESET_TOKEN_NOT_FOUND", Domain: ClientReasonDomain},
+	{Err: ErrTokenExpired, Reason: "RESET_TOKEN_EXPIRED", Domain: ClientReasonDomain},
+	{Err: ErrTokenRedeemed, Reason: "RESET_TOKEN_REDEEMED", Domain: ClientReasonDomain},
+	{Err: ErrPasswordRefused, Reason: "REPLACEMENT_PASSWORD_REFUSED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -76,6 +112,12 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	}
 
 	switch {
+	// First, because the policy's own error comes ahead of the sentinel in the
+	// chain and is the consumer's to shape. A request to correct rather than a
+	// link that is dead: the same link, with another password, succeeds.
+	case errors.Is(err, ErrPasswordRefused):
+		return httperrors.ErrValidatingRequestInput, ErrPasswordRefused.Error(), true
+
 	// One code for the three, and a message per outcome, which is the shape
 	// httperrors.ErrActionLinkUnusable was written for — its own documentation
 	// names reset links among the four kinds it covers. The 410 it carries is
@@ -103,6 +145,11 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	}
 
 	switch {
+	// InvalidArgument, and it is the one outcome here that is: the link is
+	// still live, and what the caller changes is the password they sent.
+	case errors.Is(err, ErrPasswordRefused):
+		return codes.InvalidArgument, true
+
 	// FailedPrecondition rather than NotFound for all three, including the one
 	// that is an absence. NotFound invites the client to try the same request
 	// again; a token that was never issued, has expired, or has been spent will

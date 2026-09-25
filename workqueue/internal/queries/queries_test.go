@@ -598,14 +598,13 @@ func TestRender_NoStatementNamesAnUnprefixableTable(T *testing.T) {
 	}
 }
 
-// TestRender_RefusesADialectThisPackageHasNoSchemaFor. Every statement is
-// written in Postgres, so a MySQL rendering would hand them back unchanged — a
-// plausible file for a database that cannot run it, which is the one failure a
-// generator can have that nothing downstream would question.
+// TestRender_RefusesADialectThisPackageHasNoSchemaFor. A dialect this module
+// does not name would otherwise fall through to one of the two sets and hand
+// back a plausible file for a database nobody checked it against.
 func TestRender_RefusesADialectThisPackageHasNoSchemaFor(T *testing.T) {
 	T.Parallel()
 
-	for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
+	for _, d := range []dialect.Dialect{dialect.Dialect("oracle"), ""} {
 		T.Run(string(d), func(t *testing.T) {
 			t.Parallel()
 
@@ -623,11 +622,13 @@ func TestRender_RefusesADialectThisPackageHasNoSchemaFor(T *testing.T) {
 	}
 }
 
-// TestFileName names the committed file the pipeline reads.
+// TestFileName names the committed files the pipeline reads.
 func TestFileName(t *testing.T) {
 	t.Parallel()
 
 	test.EqOp(t, "postgres_generated.sql", FileName(dialect.Postgres))
+	test.EqOp(t, "mysql_generated.sql", FileName(dialect.MySQL))
+	test.EqOp(t, "sqlite_generated.sql", FileName(dialect.SQLite))
 }
 
 // TestRender_ExtendOnlyMovesTheHorizonForward. An extension that arrived while a

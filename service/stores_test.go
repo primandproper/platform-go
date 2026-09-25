@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -66,8 +68,9 @@ func sqliteDatabase(t *testing.T) *databasecfg.Config {
 }
 
 // TestRegisterStores covers the subsystems the composition root reached last:
-// the identity, issue report, comment, settings, notifications, waitlist and
-// media registry stores, the links minter, and the retention sweeper.
+// the identity, issue report, comment, settings, notifications, waitlist,
+// oauth2 client and media registry stores, the links minter, and the retention
+// sweeper.
 //
 // The reflection-driven tests above already assert that a field on Config is
 // validated and registers something. What they cannot say is that what it
@@ -89,6 +92,7 @@ func TestRegisterStores(T *testing.T) {
 			Notifications: &notificationscfg.Config{TablePrefix: storePrefix},
 			Waitlists:     &waitlistscfg.Config{TablePrefix: storePrefix},
 			MediaRegistry: &mediaregistrycfg.Config{TablePrefix: storePrefix},
+			OAuth2Clients: &oauth2clientscfg.Config{TablePrefix: storePrefix},
 			Links: &linkscfg.Config{
 				Database: linksdatabase.Config{TablePrefix: storePrefix},
 				// A minter with an empty registry mints nothing, so the
@@ -135,6 +139,16 @@ func TestRegisterStores(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, mediaStore)
 
+		// The client registry is the one entry registering a service as well as
+		// a store, because its surface mounts over the pair.
+		clientStore, err := do.Invoke[oauth2clients.Store](i)
+		must.NoError(t, err)
+		test.NotNil(t, clientStore)
+
+		clientService, err := do.Invoke[*oauth2clients.Service](i)
+		must.NoError(t, err)
+		test.NotNil(t, clientService)
+
 		// The minter rather than a store, because that is what the bridge
 		// registers: the table is behind it, and so is the sweeper an
 		// unconfigured interval starts.
@@ -171,13 +185,14 @@ func TestRegisterStores(T *testing.T) {
 			"COMMENTS_TABLE_PREFIX":        storePrefix,
 			"SETTINGS_TABLE_PREFIX":        storePrefix,
 			"NOTIFICATIONS_TABLE_PREFIX":   storePrefix,
+			"OAUTH2_CLIENTS_TABLE_PREFIX":  storePrefix,
 			"WAITLISTS_TABLE_PREFIX":       storePrefix,
 			"RETENTION_SWEEPER_BATCH_SIZE": "500",
 		}}))
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
-		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "Retention", "Settings", "Waitlists"}, present(t, cfg))
+		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "OAuth2Clients", "Retention", "Settings", "Waitlists"}, present(t, cfg))
 	})
 
 	T.Run("builds the retention sweeper over the application's policies", func(t *testing.T) {

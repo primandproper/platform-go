@@ -28,6 +28,12 @@ func TestMappers(T *testing.T) {
 		httpCode httperrors.ErrorCode
 		grpcCode codes.Code
 	}{
+		"a password the policy refused": {
+			err:      signin.ErrPasswordRefused,
+			httpCode: httperrors.ErrValidatingRequestInput,
+			httpMsg:  "password does not meet this service's requirements",
+			grpcCode: codes.InvalidArgument,
+		},
 		"invalid credentials": {
 			err:      signin.ErrInvalidCredentials,
 			httpCode: httperrors.ErrAuthenticationFailed,
@@ -159,7 +165,7 @@ func TestClientSafeSentinels(T *testing.T) {
 	// necessary here. The count is pinned because a sentinel added to the package
 	// and left out of this list is one a gRPC client is told the code's name for,
 	// and nothing else reports that.
-	must.SliceLen(T, 11, signin.ClientSafeSentinels)
+	must.SliceLen(T, 12, signin.ClientSafeSentinels)
 
 	for _, err := range signin.ClientSafeSentinels {
 		_, _, ok := signin.HTTPMapper.Map(err)

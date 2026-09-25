@@ -220,11 +220,15 @@ type Registered struct {
 //
 // # What it decides
 //
-// Nothing about policy, as everywhere else here. Whether the password is good
-// enough, whether this person may register at all, whether a captcha was
-// solved, what the account is named: all of it is the consumer's, in front of
-// this call. What this package will not do is accept a registration that did
-// not say how the registrant will prove who they are — see [Credential].
+// Nothing about policy, as everywhere else here. Whether this person may
+// register at all, whether a captcha was solved, what the account is named: all
+// of it is the consumer's, in front of this call. Whether the password is good
+// enough is the consumer's too, and is the one rule this service will apply on
+// their behalf, because a mounted transport leaves nowhere in front of this call
+// to apply it: a service built with [WithPasswordPolicy] refuses a password the
+// policy refuses with [ErrPasswordRefused], before anything is hashed or
+// written. What this package will not do is accept a registration that did not
+// say how the registrant will prove who they are — see [Credential].
 //
 // It mints no second-factor secret, which is a departure from the flow some
 // applications ship. Enrolment stays behind authentication —
@@ -336,6 +340,10 @@ func (s *Service) hashRegistrationCredential(
 	case passwordCredential:
 		if c.plaintext == "" {
 			return "", op.Error(ErrEmptyPassword, "reading a registration's credential")
+		}
+
+		if err := s.checkPassword(ctx, c.plaintext); err != nil {
+			return "", op.Error(err, "reading a registration's credential")
 		}
 
 		hashed, err := s.authenticator.HashPassword(ctx, c.plaintext)

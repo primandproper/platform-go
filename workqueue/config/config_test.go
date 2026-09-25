@@ -66,7 +66,7 @@ func TestNewQueue(T *testing.T) {
 	T.Run("surfaces the dialect the queue refuses", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewQueue[string](t.Context(), validConfig(), clientFor(dialect.SQLite))
+		_, err := NewQueue[string](t.Context(), validConfig(), clientFor(dialect.Dialect("oracle")))
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 
