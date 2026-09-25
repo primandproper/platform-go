@@ -339,9 +339,33 @@ token.
 extra call, it cannot fail in a way worth reporting, and without it the refresh token stays
 exchangeable for the rest of its window by whoever has the device.
 
-An operator ending somebody else's sessions is not here and will not be: those RPCs name
-nobody, so there is no field an administrator could use. That act is a Go-side call behind the
-consumer's own administrative surface.
+Between those two sizes is the "where you're signed in" screen. `ListSignIns` requires a caller
+and answers that person's live logins, most recently refreshed first: when each began, when it
+last refreshed, when it lapses if nothing refreshes it, and a `current` flag on the one the
+request came through. `EndSignIn` ends one of them by its `family_id`, which is how a person ends
+the login on a phone they lost from the laptop in front of them — `SignOut` cannot, because only
+the phone holds that login's refresh token.
+
+**`current` is false everywhere unless the consumer's principal carries the access token's
+`sid`.** The server learns which login a request came through from the principal, and a
+principal that does not implement `signingrpc.FamilyIdentifier` marks nothing rather than
+guessing. A client that needs the flag and never sees it set is talking to a server that was not
+told, which is a wiring fix rather than a client one.
+
+**`EndSignIn` answers the same whether or not it ended anything.** A family that is somebody
+else's, one that never existed and one already ended all get an empty response, because a door
+that told them apart would say which identifiers are live. So a client removes the row and
+re-lists; it never branches on the answer. Ending the `current` login is allowed and is a
+sign-out, with the same one-access-token-lifetime window as the other two.
+
+No device, browser or address is listed, and none will be: whether those are recorded at all is
+the consumer's decision, keyed on `family_id` from the `AfterIssueToken` hook, and a client that
+shows them reads them from the consumer's own surface.
+
+An operator listing or ending somebody else's sessions is not here and will not be: these RPCs
+name nobody, so there is no field an administrator could use. That act is a Go-side call —
+`signin.Service.ListSignIns` and `signin.Service.EndSignIn` take the subject as an argument —
+behind the consumer's own administrative surface.
 
 ## Errors
 

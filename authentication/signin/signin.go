@@ -97,6 +97,13 @@ const (
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
 	opUpdatePassword       = "update_password"
 
+	// Listing a person's logins and ending one of them are two series of their
+	// own. Ending one is not folded into revoke_refresh_token_family for the
+	// reason signing out is not: it is a person's decision, and that series is
+	// where a detected reuse's alarm lands.
+	opListSignIns = "list_sign_ins"
+	opEndSignIn   = "end_sign_in"
+
 	// The registration door and the three that finish one. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
 	// is how many people arrived, which has nothing to do with how often they

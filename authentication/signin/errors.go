@@ -145,6 +145,16 @@ var (
 	// is mapped for it, so it is a 500, which is what it is.
 	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
 
+	// ErrSignInListingNotSupported indicates Service.ListSignIns or
+	// Service.EndSignIn on a service whose refresh token store does not
+	// implement SignInListingStore.
+	//
+	// It is ErrRefreshTokensNotConfigured's sibling rather than a wrap of it:
+	// this service does mint refresh tokens, and its store cannot enumerate
+	// them. Like that one it is a wiring failure, has no status mapped, and is a
+	// 500 — which is what a door the deployment never gave a store for is.
+	ErrSignInListingNotSupported = platformerrors.New("the refresh token store cannot list or end a person's sign-ins")
+
 	// ErrPasswordAlreadySet indicates Service.AttachPassword against somebody who
 	// already holds a password.
 	//

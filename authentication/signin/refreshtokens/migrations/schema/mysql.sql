@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS signin_refresh_tokens (
     active_account_id VARCHAR(255) NOT NULL,
     administrative    BOOLEAN      NOT NULL,
     issued_at         DATETIME(6)  NOT NULL,
+    signed_in_at      DATETIME(6)  NOT NULL,
     expires_at        DATETIME(6)  NOT NULL,
     purge_after       DATETIME(6)  NOT NULL,
     redeemed_at       DATETIME(6),

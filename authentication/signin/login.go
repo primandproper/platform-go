@@ -3,6 +3,7 @@ package signin
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/identity"
 
@@ -211,7 +212,7 @@ func (s *Service) login(
 	// hooks then rolled back — a credential outstanding for a sign-in that never
 	// happened.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID); txErr != nil {
+		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID, time.Time{}); txErr != nil {
 			return txErr
 		}
 
