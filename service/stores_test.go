@@ -13,6 +13,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -33,6 +35,8 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/notifications/mobile"
 	"github.com/primandproper/primitives-go/v2/notifications/mobile/apns"
@@ -69,8 +73,8 @@ func sqliteDatabase(t *testing.T) *databasecfg.Config {
 
 // TestRegisterStores covers the subsystems the composition root reached last:
 // the identity, issue report, comment, settings, notifications, waitlist,
-// oauth2 client and media registry stores, the links minter, and the retention
-// sweeper.
+// password reset, oauth2 client and media registry stores, the links minter,
+// and the retention sweeper.
 //
 // The reflection-driven tests above already assert that a field on Config is
 // validated and registers something. What they cannot say is that what it
@@ -92,6 +96,7 @@ func TestRegisterStores(T *testing.T) {
 			Notifications: &notificationscfg.Config{TablePrefix: storePrefix},
 			Waitlists:     &waitlistscfg.Config{TablePrefix: storePrefix},
 			MediaRegistry: &mediaregistrycfg.Config{TablePrefix: storePrefix},
+			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
 			OAuth2Clients: &oauth2clientscfg.Config{TablePrefix: storePrefix},
 			Links: &linkscfg.Config{
 				Database: linksdatabase.Config{TablePrefix: storePrefix},
@@ -114,6 +119,11 @@ func TestRegisterStores(T *testing.T) {
 		// which kinds of thing accept comments, each type optionally carrying a
 		// function that reads the application's own tables.
 		do.ProvideValue(i, comments.Targets{comments.TargetType("recipe"): {Description: "a recipe"}})
+
+		// The reset flow's two: what delivers a link, and the engine sign-in
+		// hashes with, so a reset writes a password sign-in can verify.
+		do.ProvideValue[passwordreset.Mailer](i, stubResetMailer{})
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
 
 		identityStore, err := do.Invoke[identity.Store](i)
 		must.NoError(t, err)
@@ -139,8 +149,8 @@ func TestRegisterStores(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, mediaStore)
 
-		// The client registry is the one entry registering a service as well as
-		// a store, because its surface mounts over the pair.
+		// The client registry registers a service as well as a store, because
+		// its surface mounts over the pair.
 		clientStore, err := do.Invoke[oauth2clients.Store](i)
 		must.NoError(t, err)
 		test.NotNil(t, clientStore)
@@ -148,6 +158,16 @@ func TestRegisterStores(T *testing.T) {
 		clientService, err := do.Invoke[*oauth2clients.Service](i)
 		must.NoError(t, err)
 		test.NotNil(t, clientService)
+
+		// So does password reset, because the reset surface mounts over the
+		// service.
+		resetStore, err := do.Invoke[passwordreset.Store](i)
+		must.NoError(t, err)
+		test.NotNil(t, resetStore)
+
+		resetService, err := do.Invoke[*passwordreset.Service](i)
+		must.NoError(t, err)
+		test.NotNil(t, resetService)
 
 		// The minter rather than a store, because that is what the bridge
 		// registers: the table is behind it, and so is the sweeper an
@@ -186,13 +206,14 @@ func TestRegisterStores(T *testing.T) {
 			"SETTINGS_TABLE_PREFIX":        storePrefix,
 			"NOTIFICATIONS_TABLE_PREFIX":   storePrefix,
 			"OAUTH2_CLIENTS_TABLE_PREFIX":  storePrefix,
+			"PASSWORD_RESET_TABLE_PREFIX":  storePrefix,
 			"WAITLISTS_TABLE_PREFIX":       storePrefix,
 			"RETENTION_SWEEPER_BATCH_SIZE": "500",
 		}}))
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
-		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "OAuth2Clients", "Retention", "Settings", "Waitlists"}, present(t, cfg))
+		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "OAuth2Clients", "PasswordReset", "Retention", "Settings", "Waitlists"}, present(t, cfg))
 	})
 
 	T.Run("builds the retention sweeper over the application's policies", func(t *testing.T) {

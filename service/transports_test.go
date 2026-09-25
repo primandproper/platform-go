@@ -11,6 +11,7 @@ import (
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
@@ -21,6 +22,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/identity"
+	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
@@ -41,6 +43,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksmock "github.com/primandproper/platform-go/v14/webhooks/mock"
 
+	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
@@ -250,6 +253,33 @@ func TestRegisterTransports(T *testing.T) {
 
 		// No extractor was needed for it, which is the half worth pinning: it is
 		// the only surface here that mounts without one.
+		test.Eq(t, []string{"password reset gRPC"}, mounted.names)
+		test.SliceLen(t, 1, mounted.registrations)
+	})
+
+	T.Run("the reset surface mounts from its config block and the application's two", func(t *testing.T) {
+		t.Parallel()
+
+		// Nothing about the service is hand-built: the block registers the store
+		// and the service, Identity supplies the directory, and the application
+		// registers only what no environment variable can name.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteDatabase(t),
+			Identity:      &identitycfg.Config{TablePrefix: storePrefix},
+			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue[passwordreset.Mailer](i, stubResetMailer{})
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+
+		RegisterTransports(i, &Transports{})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
 		test.Eq(t, []string{"password reset gRPC"}, mounted.names)
 		test.SliceLen(t, 1, mounted.registrations)
 	})
