@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,11 +14,14 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/mysql"
 	"github.com/primandproper/primitives-go/v2/database/postgres"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
@@ -25,15 +29,16 @@ import (
 )
 
 // The unit tests above render SQL and drive fakes. Nothing there can tell
-// whether Postgres accepts the statements, whether the guarded transition
+// whether a database accepts the statements, whether the guarded transition
 // really keeps two workers apart, whether a lease genuinely lapses on the
 // server's clock, or whether an operation started in a handler is the one a
 // worker runs. That is the whole of what this file covers, and it is the only
 // place that can.
 
-// testClientConfig is the minimum database.ClientConfig a Postgres client needs.
-// The pool is deliberately larger than one connection: the properties worth
-// testing here are all concurrent.
+// testClientConfig is the minimum database.ClientConfig a client needs. The pool
+// is deliberately larger than one connection: the properties worth testing here
+// are all concurrent. (SQLite's writer is one connection whatever this says,
+// which is SQLite's own answer to the same question.)
 type testClientConfig struct {
 	connectionString string
 }
@@ -47,6 +52,43 @@ func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Mill
 func (c *testClientConfig) GetMaxIdleConns() int              { return 8 }
 func (c *testClientConfig) GetMaxOpenConns() int              { return 16 }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
+
+// withClient hands fn a client over a live database of the dialect: a
+// container for Postgres and MySQL — mysqltest's default, which is stock MySQL
+// 8, as every other MySQL suite here runs — which skip unless
+// RUN_CONTAINER_TESTS is set, and a file in a directory the test owns for SQLite, which needs no
+// container and always runs.
+func withClient(t *testing.T, d dialect.Dialect, fn func(client database.Client)) {
+	t.Helper()
+
+	switch d {
+	case dialect.Postgres:
+		pgtest.Run(t, func(ctx context.Context, pg *pgtest.Instance) {
+			client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			fn(client)
+		})
+	case dialect.MySQL:
+		mysqltest.Run(t, func(ctx context.Context, my *mysqltest.Instance) {
+			client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			fn(client)
+		})
+	case dialect.SQLite:
+		client, err := sqlite.NewDatabaseClient(t.Context(),
+			&testClientConfig{connectionString: filepath.Join(t.TempDir(), "operations.db")})
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		fn(client)
+	default:
+		t.Fatalf("no test database for dialect %q", d)
+	}
+}
 
 // queueCounter names a fresh logical queue per subtest. Subtests share one
 // operations table and one work queue table, so they must not share a queue
@@ -81,11 +123,11 @@ const runLoopPrefix = "runlooptest"
 func createTables(t *testing.T, client database.Client, prefix string) {
 	t.Helper()
 
-	opsStatements, err := migrations.Statements(dialect.Postgres, prefix)
+	opsStatements, err := migrations.Statements(client.Dialect(), prefix)
 	must.NoError(t, err)
 	must.SliceNotEmpty(t, opsStatements)
 
-	queueStatements, err := workqueuemigrations.Statements(dialect.Postgres, prefix)
+	queueStatements, err := workqueuemigrations.Statements(client.Dialect(), prefix)
 	must.NoError(t, err)
 
 	for _, stmt := range append(opsStatements, queueStatements...) {
@@ -191,16 +233,31 @@ func (h *harness) drain(t *testing.T, scope tenancy.Scope, id string) *Operation
 func TestOperations_Postgres(T *testing.T) {
 	T.Parallel()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
+	runOperationsSuiteOn(T, dialect.Postgres)
+}
 
-		createTables(T, client, DefaultTablePrefix)
-		createTables(T, client, reapPrefix)
-		createTables(T, client, runLoopPrefix)
+func TestOperations_MySQL(T *testing.T) {
+	T.Parallel()
 
-		runOperationsSuite(T, client)
+	runOperationsSuiteOn(T, dialect.MySQL)
+}
+
+func TestOperations_SQLite(T *testing.T) {
+	T.Parallel()
+
+	runOperationsSuiteOn(T, dialect.SQLite)
+}
+
+// runOperationsSuiteOn is the one suite, over a database of the dialect.
+func runOperationsSuiteOn(t *testing.T, d dialect.Dialect) {
+	t.Helper()
+
+	withClient(t, d, func(client database.Client) {
+		createTables(t, client, DefaultTablePrefix)
+		createTables(t, client, reapPrefix)
+		createTables(t, client, runLoopPrefix)
+
+		runOperationsSuite(t, client)
 	})
 }
 
@@ -492,8 +549,13 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 
 		// Rewrite the row's kind behind the service's back, which is what a
 		// deploy that renamed a kind does to every operation already queued.
+		placeholder := "?"
+		if client.Dialect() == dialect.Postgres {
+			placeholder = "$1"
+		}
+
 		_, err = client.Writer().ExecContext(t.Context(),
-			"UPDATE operations SET kind = 'gone' WHERE id = $1", started.ID)
+			"UPDATE operations SET kind = 'gone' WHERE id = "+placeholder, started.ID)
 		must.NoError(t, err)
 
 		finished := h.drain(t, tenancy.Global(), started.ID)
@@ -692,6 +754,94 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		after, err := h.svc.Get(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), after.Progress.Count)
+	})
+
+	// Where a write cannot hand its row back in the statement that wrote it —
+	// MySQL and SQLite — the row is read back after the write, and only when
+	// the write's own count says it matched. A write that matched nothing must
+	// answer with the guard's sentinel, never with the row as somebody else left
+	// it; Postgres answers the same way from an empty RETURNING, and this holds
+	// all three to it.
+	t.Run("a guarded write that matches nothing reads back nothing", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, client, func(r *Registry) {
+			must.NoError(t, Register(r, Definition[exportRequest]{Kind: "readback", Run: noopRun[exportRequest]}))
+		})
+
+		owner := tenancy.Of("readback-" + fmt.Sprint(queueCounter.Add(1)))
+
+		started, err := h.svc.Start(t.Context(), "readback", exportRequest{}, WithOwner(owner))
+		must.NoError(t, err)
+
+		// A collision, from the scope that owns the row and from one that does
+		// not. Neither may be answered with the existing row: the second would
+		// hand one tenant another's operation.
+		for _, scope := range []tenancy.Scope{owner, tenancy.Global()} {
+			err = client.WithTransaction(t.Context(), func(tx database.Tx) error {
+				op, insertErr := h.store.Insert(t.Context(), tx, scope, &Operation{ID: started.ID, Kind: "readback"})
+				test.Nil(t, op, test.Sprintf("scope %s", scope))
+
+				return insertErr
+			})
+			test.ErrorIs(t, err, ErrDuplicateOperation, test.Sprintf("scope %s", scope))
+		}
+
+		first, err := h.store.Begin(t.Context(), started.ID, 1, time.Minute)
+		must.NoError(t, err)
+
+		// A claim the lease refuses reads back nothing, rather than the row the
+		// first worker holds.
+		second, err := h.store.Begin(t.Context(), started.ID, 2, time.Minute)
+		test.ErrorIs(t, err, ErrOperationNotFound)
+		test.Nil(t, second)
+
+		ack, err := h.store.Progress(t.Context(), started.ID, Progress{Count: 7}, time.Minute)
+		must.NoError(t, err)
+		test.True(t, ack.Held)
+		test.EqOp(t, first.Revision+1, ack.Revision)
+
+		must.NoError(t, h.store.Finish(t.Context(), started.ID, StateSucceeded, nil, nil, false))
+
+		// A flush the guard refuses is the zero Ack, not the revision the finish
+		// wrote.
+		ack, err = h.store.Progress(t.Context(), started.ID, Progress{Count: 8}, time.Minute)
+		must.NoError(t, err)
+		test.EqOp(t, Ack{}, ack)
+
+		missing, err := h.store.Begin(t.Context(), "never-"+started.ID, 1, time.Minute)
+		test.ErrorIs(t, err, ErrOperationNotFound)
+		test.Nil(t, missing)
+	})
+
+	// The create's read-back is on the caller's transaction, which is the only
+	// place an uncommitted row can be read from: had it gone out on another
+	// connection it would have found nothing, and the insert would have failed.
+	t.Run("an insert reads its row back on the caller's transaction", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, client, nil)
+
+		id := "uncommitted-" + fmt.Sprint(queueCounter.Add(1))
+		rollback := platformerrors.New("rolling back on purpose")
+
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			op, insertErr := h.store.Insert(t.Context(), tx, tenancy.Global(),
+				&Operation{ID: id, Kind: "uncommitted", State: StatePending})
+			must.NoError(t, insertErr)
+			must.NotNil(t, op)
+
+			test.EqOp(t, id, op.ID)
+			test.EqOp(t, StatePending, op.State)
+			test.EqOp(t, int64(1), op.Revision)
+			test.False(t, op.CreatedAt.IsZero())
+
+			return rollback
+		})
+		test.ErrorIs(t, err, rollback)
+
+		_, err = h.store.Get(t.Context(), client.Reader(), tenancy.Global(), id)
+		test.ErrorIs(t, err, ErrOperationNotFound)
 	})
 
 	// The counter is monotonic in the database, not merely in the reporter: a

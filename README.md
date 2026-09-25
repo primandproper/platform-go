@@ -100,7 +100,7 @@ reasons behind the three exceptions.
 | `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite          |
 | `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres, mysql, sqlite          |
 | `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                         |
-| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                |
+| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres, mysql, sqlite (+ http) |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
 | `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out         | postgres, mysql, sqlite (+ grpc) |
@@ -603,11 +603,10 @@ unreleased `main` is a rule that breaks a session.
 
 ## SQL Dialect Support
 
-`database` speaks Postgres, MySQL and SQLite, and so does almost every package
-that stores anything through it. Three do not. They are Postgres-only by
-decision rather than by omission, and this is where that decision is spoken —
-once, before you choose packages, rather than package by package as each
-constructor refuses at wiring time.
+`database` speaks Postgres, MySQL and SQLite, and so does every package that
+stores anything through it but one. `timers` is Postgres-only until its port
+lands, and this is where that is spoken — once, before you choose packages,
+rather than package by package as each constructor refuses at wiring time.
 
 A ✓ means the package ships DDL for that dialect, and — for every package whose
 statements have been ported onto the generated tier — executes a querier emitted
@@ -655,7 +654,7 @@ here.
 | `mediaregistry`                       | ✓        | ✓     | ✓      |
 | `metering`                            | ✓        | ✓     | ✓      |
 | `notifications`                       | ✓        | ✓     | ✓      |
-| `operations`                          | ✓        | —     | —      |
+| `operations`                          | ✓        | ✓     | ✓      |
 | `outbox`                              | ✓        | ✓     | ✓      |
 | `rbac`                                | ✓        | ✓     | ✓      |
 | `saga`                                | ✓        | ✓     | ✓      |
@@ -668,7 +667,7 @@ here.
 | `workqueue`                           | ✓        | ✓     | ✓      |
 <!-- /readmegen:dialects -->
 
-### Why the two narrow
+### Why `timers` narrows
 
 One reason, and it is a claim rather than a translation. On Postgres the claim
 is a single statement that selects due rows, locks them with `SKIP LOCKED`,
@@ -681,17 +680,18 @@ That is a cost rather than a reason to narrow, and `workqueue` pays it: its
 Postgres claim is still the one statement, and on MySQL and SQLite it is the
 three, fenced by the name the claim mints so that a write can land only under
 the claim that took the row. `webhooks` and `outbox` already claimed that way on
-all three. The two packages below have not been ported yet, and each states
-where it stands in its own `doc.go`; these lines are that statement:
+all three, and `operations` followed `workqueue`: its guarded writes hand their
+row back through `RETURNING` on Postgres and read it back on the same
+transaction on the other two. The package below has not been ported yet, and
+states where it stands in its own `doc.go`; this line is that statement:
 
 <!-- readmegen:narrowings -->
-- `operations` — runs on `workqueue`, so its roster is `workqueue`'s.
 - `timers` — claims a due timer in the one statement, and would owe the same split anywhere else.
 <!-- /readmegen:narrowings -->
 
-Widening either is the port `workqueue` took, not a new design: one package, a
-statement set per shape its dialects need, and a switch on the client's dialect
-at construction — never a provider subpackage per database.
+Widening it is the port `workqueue` and `operations` took, not a new design: one
+package, a statement set per shape its dialects need, and a switch on the
+client's dialect at construction — never a provider subpackage per database.
 
 ### Narrowings that are not rows
 
@@ -707,6 +707,9 @@ and a row would misreport it either way:
 - **`workqueue`** queues on all three. Its `LISTEN`/`NOTIFY` wakeup is
   Postgres-only and reported as `workqueue.ErrNotifyUnsupported` if configured
   elsewhere; without it a worker polls, which is later rather than wrong.
+- **`operations`** runs on all three. Its `LISTEN`/`NOTIFY` push to watchers is
+  Postgres-only and reported as `operations.ErrNotifyUnsupported` if configured
+  elsewhere; without it a watcher polls, which is later rather than wrong.
 - **`retention`** sweeps all three, and ships no DDL: the table, the timestamp
   column and the batch key arrive from a `Policy` written at run time, so there
   is no schema of this module's to render for a dialect.

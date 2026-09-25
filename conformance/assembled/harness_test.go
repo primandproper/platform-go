@@ -149,21 +149,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
 		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
 
-		// And the HTTP surface every dialect can serve.
+		// And the HTTP surfaces, on every dialect. dataprivacy fulfills its
+		// requests as operations, and service.Config refuses the first without
+		// the second.
 		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
-	}
-
-	// operations runs on a work queue that claims with SKIP LOCKED, which is
-	// Postgres's alone (the README's matrix says so), and dataprivacy fulfills
-	// its requests as operations — service.Config refuses the second without
-	// the first. So both HTTP surfaces are mounted on Postgres and absent
-	// elsewhere, and the HTTP flags below say which, so the anonymous suite
-	// asserts the routes a dialect actually serves rather than failing on ones
-	// it cannot.
-	servesOperations := d == dialect.Postgres
-	if servesOperations {
-		cfg.Operations = operationsConfig(prefix)
-		cfg.DataPrivacy = &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix}
+		Operations:    operationsConfig(prefix),
+		DataPrivacy:   &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix},
 	}
 	must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
@@ -280,9 +271,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID,
 					}},
 					BaseURL:       baseURL,
-					DataPrivacy:   servesOperations,
+					DataPrivacy:   true,
 					MediaRegistry: true,
-					Operations:    servesOperations,
+					Operations:    true,
 				},
 				// The scope travels as its owner identifier rather than its
 				// String, which is prose: String renders the global scope as a
@@ -494,26 +485,9 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 		"media registry": mediaregistrymigrations.Statements,
 		"magic links":    magiclinkmigrations.Statements,
 		"refresh tokens": refreshtokenmigrations.Statements,
-	} {
-		stmts, err := render(d, prefix)
-		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))
-
-		for _, stmt := range stmts {
-			_, execErr := db.Writer().ExecContext(t.Context(), stmt)
-			must.NoError(t, execErr, must.Sprintf("migrating %s: %q", name, stmt))
-		}
-	}
-
-	if d != dialect.Postgres {
-		return
-	}
-
-	// The Postgres-only packages: operations, the queue it runs on, and
-	// dataprivacy, whose service needs both.
-	for name, render := range map[string]func(dialect.Dialect, string) ([]string, error){
-		"data privacy": dataprivacymigrations.Statements,
-		"operations":   operationsmigrations.Statements,
-		"work queue":   workqueuemigrations.Statements,
+		"data privacy":   dataprivacymigrations.Statements,
+		"operations":     operationsmigrations.Statements,
+		"work queue":     workqueuemigrations.Statements,
 	} {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))

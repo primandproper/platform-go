@@ -196,9 +196,9 @@ buffered or replayed. A delta stream would have had to guarantee delivery of
 every step, which over a connection that can drop means sequence numbers, a
 replay buffer, and a retention policy for it.
 
-Underneath, a payload-free pg_notify on every write wakes the loop, which
-re-reads every subscribed operation in one statement and compares revisions. One
-query per wake, however many subscribers. The notification carries nothing and
+Underneath, the loop wakes and re-reads every subscribed operation in one
+statement, comparing revisions. One query per wake, however many subscribers.
+On Postgres a payload-free pg_notify on every write is what can wake it. The notification carries nothing and
 nothing depends on it arriving — see database/postgres/pgnotify on why that is
 the only safe way to use LISTEN/NOTIFY — so a watcher with no wakeup wired polls
 at WatcherConfig.Poll and is exactly as correct, just later.
@@ -216,6 +216,11 @@ at WatcherConfig.Poll and is exactly as correct, just later.
 	go watcher.Run(ctx)
 
 with operations.WithStoreNotifyChannel("operations") on the writing side.
+
+That push is Postgres's alone. MySQL and SQLite have no NOTIFY, and NewSQLStore
+refuses a notify channel on either with ErrNotifyUnsupported rather than
+dropping it, so on those two a watcher runs on its poll — which is the
+correctness it always had, arriving up to WatcherConfig.Poll later.
 
 # Cancellation is a request, not a kill
 
@@ -284,50 +289,57 @@ statutory deadlines are the case this was added for — needs to know which atte
 is the last one, and cannot work it out: the ceiling is WorkerConfig.MaxAttempts
 unless its own Definition overrode it, and neither is visible from inside Run.
 
-# Postgres only
+# Three dialects
 
-Deliberately, and the reason is one rather than the three it looks like from the
-statements.
+Postgres, MySQL and SQLite, and one decision spelled for each rather than three.
+The guarded transitions — the create, the claim and the progress flush — hand
+their row back through RETURNING on Postgres, in the statement that wrote it.
+MySQL has no RETURNING, so on MySQL and SQLite each is a guarded write whose row
+count is read first, and a read of the row on the same transaction only once the
+count says the write matched: a write that matched nothing answers with the
+guard's sentinel, never with the row as somebody else's write left it. The
+create's read is on the caller's transaction, the only place its uncommitted
+row can be found; the claim and the flush open one of their own, which holds
+the row they moved until the read has seen it.
 
-The queue underneath is workqueue, which is Postgres-only for its own reasons —
-the single-statement RETURNING claim is its concurrency contract, MySQL's
-split is a different failure model, and SQLite has no row locks to skip. This
-package inherits whatever workqueue supports, so a multi-dialect operations is a
-decision about workqueue rather than about anything here.
+The retention reap is one statement on Postgres and three on the other two: a
+read of the candidates, a lock on them by primary key — SKIP LOCKED on MySQL,
+nothing on SQLite, which has one writer and no row lock to skip — and the
+delete. The lock is by key rather than on the first read because a MySQL locking
+read over a range also locks the first row past it, which the reap was never
+going to delete. The queue underneath is workqueue, which claims
+across the same three.
 
-The other two only look like constraints. The guarded transitions are UPDATE …
-RETURNING, which is legal because this package renders a single-dialect corpus
-and a roster of one cannot diverge — see operations/internal/queries. And the
-watch path's push half is LISTEN/NOTIFY, which is an optimization over a poll
-that is documented above and always available: a watcher with no wakeup wired is
-exactly as correct, just later.
+SQLite's clock is the one place the engines differ in what they can say rather
+than in how they say it. Its instants are millisecond text written by
+strftime('%f'), so every duration that crosses the seam is rounded to the
+millisecond, and always in the direction that cannot hurt: a lease is rounded
+up and padded by one more millisecond, so it never ends before it was asked to,
+and the recovery grace and the retention window are rounded up, so nothing is
+re-offered or reaped early. Postgres and MySQL keep the microseconds.
 
-So the constructors return dialect.ErrUnsupported for anything else, rather than
-degrading to something that looks like it worked.
-
-The module README's "SQL Dialect Support" section is where that narrowing is
-spoken module-wide, beside the roster of every other package that stores
-anything through database — the table to read before choosing a dialect, rather
-than after choosing this package.
+The watch path's push is the one feature that is not on every engine, and it is
+an optimization over a poll that is — see "Watching: snapshots, not deltas"
+above.
 
 # Where the SQL comes from
 
 Nothing in this package composes a statement. The queries live in
-operations/internal/queries as a rendered, committed corpus — some of it emitted
+operations/internal/queries as rendered, committed corpora — some of it emitted
 by database/querygen, the rest written out there for the reason that file gives
-— sqlc checks that corpus against the schema operations/migrations renders with
-no database running, and what the store executes is the querier sqlc-gen-unison
-generated from it, in operations/internal/operationsdb. A column renamed in a
-migration is a failed `make unison` rather than a scan error in production.
+— sqlc checks each corpus against the schema operations/migrations renders for
+its dialect with no database running, and what the store executes is the
+querier sqlc-gen-unison generated from it: operations/internal/operationsdb on
+Postgres, and operations/internal/operationssplitdb on MySQL and SQLite. A
+column renamed in a migration is a failed `make unison` rather than a scan
+error in production.
 
 # Creating the table
 
-operations/migrations renders the DDL for a table prefix. If you already run
+operations/migrations renders the DDL for a dialect and a table prefix. If you already run
 database/migrate, hand migrations.SQL to WithGeneratedMigration and the table is
 created by your normal migration run at a version you choose.
 */
 package operations
-
-//platform:narrowing runs on `workqueue`, so its roster is `workqueue`'s
 
 //go:generate go run ./internal/queriesgen

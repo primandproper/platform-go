@@ -285,13 +285,22 @@ about, which is why the sweep is a named, schedulable thing rather than a flag.
 Schedule operations.Service.Recover beside it for the reason operations gives:
 without it, a request whose enqueue was lost waits for nothing.
 
-One sizing constraint comes with the port, and it is the kind that presents as a
-hang rather than an error. A runner holds a database transaction for the whole
-of its work — every eraser shares one, and an export's completion is one — while
-the operation's progress flush writes to the operations table beside it. Both
-draw from the same connection pool, so a pool without spare capacity deadlocks:
-size it for the operations worker's concurrency plus one connection per running
-operation, not for its concurrency alone.
+An erasure is one database transaction — every eraser shares it — and its
+units are reported to the operation only once that transaction has committed.
+Reported as each eraser finished, a domain whose erasure then rolled back would
+stay counted, because an operation's progress is monotonic in its row; and the
+report is a write on a connection of its own, which a runner holding its
+transaction open would have waited on — forever on SQLite, which has one
+writer, and wherever else the pool had no spare connection.
+
+What still writes beside the open transaction is the reporter's interval flush,
+which is what extends the operation's lease. It waits for a connection rather
+than making the runner wait, so it cannot deadlock anything; what it can do is
+land late. On SQLite it always does — nothing writes while the erasure's
+transaction is open — and so does any pool without a spare connection, so there
+the lease stands still for the length of the erasure: size WorkerConfig.Lease
+past the longest one, or an erasure that outlasts it is handed to a second
+worker while the first is still committing.
 
 # Who a request is about, and whose tenant it is in
 

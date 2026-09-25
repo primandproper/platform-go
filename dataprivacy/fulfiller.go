@@ -837,6 +837,10 @@ func (f *Fulfiller) erase(
 		return nil, err
 	}
 
+	// Each domain's outcome, in key order, reported once the transaction that
+	// produced them has committed. See below.
+	outcomes := make([]ErasureOutcome, 0, len(keys))
+
 	err = f.client.WithTransaction(ctx, func(tx database.Tx) error {
 		var (
 			deleted    int64
@@ -848,33 +852,21 @@ func (f *Fulfiller) erase(
 			retained = maps.Clone(shredNote)
 		)
 
+		outcomes = outcomes[:0]
+
 		// Serially, not concurrently. Every eraser shares one transaction, and
 		// a *sql.Tx is a single connection: concurrent statements on it are a
 		// data race the driver will either serialize or reject.
 		for _, key := range keys {
-			// The progress flush this triggers writes to the operations table
-			// rather than through tx, so it does not join this transaction — and
-			// it is what extends the operation's lease, which is how an erasure
-			// across forty domains stays owned by the worker running it.
-			//
-			// It does need a connection of its own, though, and that is the one
-			// deployment constraint this design imposes: a runner holds a
-			// transaction for the whole of its work while a flush writes beside
-			// it, so a connection pool with no spare capacity deadlocks rather
-			// than merely slowing down. Size the pool for the worker's
-			// concurrency plus its flushes, not for its concurrency.
-			rep.StartUnit(key)
-
 			outcome, eraseErr := f.eraseOne(ctx, tx, key, req.Scope, req.Subject)
 			if eraseErr != nil {
 				return eraseErr
 			}
 
+			outcomes = append(outcomes, outcome)
+
 			deleted += outcome.Deleted
 			anonymized += outcome.Anonymized
-
-			rep.Advance(outcome.Deleted + outcome.Anonymized)
-			rep.FinishUnit()
 
 			for what, basis := range outcome.Retained {
 				// Namespaced by eraser key so two domains retaining "invoices"
@@ -914,6 +906,27 @@ func (f *Fulfiller) erase(
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// The units are reported after the commit rather than as each eraser
+	// finishes, for two reasons, and neither is about speed.
+	//
+	// The erasure is one transaction, so until it commits nothing has been
+	// erased, and the operation's progress is monotonic in its row: a domain
+	// reported inside a transaction that then rolled back would leave the row
+	// saying it was erased, and the retry could never walk that back.
+	//
+	// And a unit boundary flushes, which is a write to the operations table on
+	// a connection of its own. Made while this transaction is open, that is a
+	// second writer waiting on the first, which SQLite — one writer, always —
+	// can never grant, and which the other two grant only from a pool with a
+	// spare connection. The flush the reporter makes on its own interval is what
+	// keeps the lease while the erasers run; it does not wait on this goroutine,
+	// so on SQLite it simply lands once the transaction has.
+	for i, key := range keys {
+		rep.StartUnit(key)
+		rep.Advance(outcomes[i].Deleted + outcomes[i].Anonymized)
+		rep.FinishUnit()
 	}
 
 	op.SetValues(map[string]any{

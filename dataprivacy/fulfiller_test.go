@@ -404,6 +404,14 @@ func TestFulfiller_Erasure(T *testing.T) {
 		// The first eraser did run — its work is undone by the rollback, not by
 		// never having happened.
 		test.EqOp(t, int64(1), ranFirst.Load())
+
+		// And the operation was told nothing about it. Its progress is monotonic
+		// in its row, so a domain reported before the rollback would leave the
+		// row saying that domain was erased, and no retry could take it back.
+		_, _, unitsDone, count := env.reporter.progress()
+		test.EqOp(t, 0, unitsDone)
+		test.EqOp(t, int64(0), count)
+		test.SliceEmpty(t, env.reporter.units)
 	})
 
 	// The confinement the request was recorded under reaches the fan-out as its

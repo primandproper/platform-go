@@ -66,13 +66,10 @@ composition root failed to mount answers Unimplemented, and the anonymous suite
 reads that as a failure rather than skipping, so a regression in what
 RegisterTransports mounts cannot pass as an absence.
 
-The HTTP surfaces follow what each dialect can serve. mediaregistry mounts
-everywhere. operations runs on a work queue that claims with SKIP LOCKED, which
-is Postgres's alone, and dataprivacy fulfills its requests as operations — so
-both mount on Postgres and are absent on the other two, and Subject.HTTP says
-which, so the HTTP half asserts the routes a dialect serves. A consumer reading
-the README's matrix should know the same thing: dataprivacy's store runs on all
-three dialects, and its service and surface only where operations does.
+The HTTP surfaces are mounted on every dialect too: mediaregistry, operations,
+and dataprivacy, which fulfills its requests as operations. Subject.HTTP still
+says which are mounted, because the flags are how a hand-built subject that
+serves fewer reports it; this harness sets all three.
 
 dataprivacy refuses to start with no collector registered, so the harness
 registers identity's privacy adapter through privacyadapters — the call a

@@ -329,14 +329,16 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilStore":          {Err: operations.ErrNilStore, Is: Platform},
 
 		// Registry and worker outcomes: a kind registered twice, a runner that
-		// panicked, a result too large to record, a watcher used after close. They
-		// describe the service rather than the request, and a 500 is the honest
+		// panicked, a result too large to record, a watcher used after close, a
+		// notify channel configured on a dialect with none. They describe the
+		// service rather than the request, and a 500 is the honest
 		// answer. ErrRequestTooLarge is the near miss — it is about something a
 		// caller sent — but it is raised by the service enqueuing work rather than
 		// by a handler decoding a request, and nothing today puts it on a response.
 		"ErrDuplicateKind":       {Err: operations.ErrDuplicateKind, Is: Unhandled},
 		"ErrDuplicateOperation":  {Err: operations.ErrDuplicateOperation, Is: Unhandled},
 		"ErrInvalidDefinition":   {Err: operations.ErrInvalidDefinition, Is: Unhandled},
+		"ErrNotifyUnsupported":   {Err: operations.ErrNotifyUnsupported, Is: Unhandled},
 		"ErrRequestTooLarge":     {Err: operations.ErrRequestTooLarge, Is: Unhandled},
 		"ErrRequestTypeMismatch": {Err: operations.ErrRequestTypeMismatch, Is: Unhandled},
 		"ErrResultTooLarge":      {Err: operations.ErrResultTooLarge, Is: Unhandled},

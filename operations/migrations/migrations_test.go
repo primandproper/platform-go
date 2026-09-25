@@ -4,11 +4,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/primandproper/primitives-go/v2/database/ddl"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// everyDialect is the roster the renderings are asserted over.
+var everyDialect = []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite}
 
 func TestStatements(T *testing.T) {
 	T.Parallel()
@@ -16,44 +20,48 @@ func TestStatements(T *testing.T) {
 	T.Run("renders the table before its indexes", func(t *testing.T) {
 		t.Parallel()
 
-		stmts, err := Statements(dialect.Postgres, "")
+		// MySQL declares its indexes inside the table, having no partial
+		// index to give either of them a statement of its own.
+		want := map[dialect.Dialect]int{dialect.Postgres: 4, dialect.MySQL: 1, dialect.SQLite: 4}
 
-		must.NoError(t, err)
-		must.SliceNotEmpty(t, stmts)
+		for _, d := range everyDialect {
+			stmts, err := Statements(d, "")
 
-		test.StrContains(t, stmts[0], "CREATE TABLE")
-		test.StrContains(t, stmts[0], "operations")
+			must.NoError(t, err)
+			must.SliceLen(t, want[d], stmts, must.Sprintf("dialect %s", d))
 
-		for _, stmt := range stmts[1:] {
-			test.StrContains(t, stmt, "CREATE INDEX")
+			test.StrContains(t, stmts[0], "CREATE TABLE")
+			test.StrContains(t, stmts[0], "operations")
+
+			for _, stmt := range stmts[1:] {
+				test.StrContains(t, stmt, "CREATE INDEX")
+			}
 		}
 	})
 
 	T.Run("the prefix reaches every identifier", func(t *testing.T) {
 		t.Parallel()
 
-		stmts, err := Statements(dialect.Postgres, "ddb")
-		must.NoError(t, err)
+		for _, d := range everyDialect {
+			stmts, err := Statements(d, "ddb")
+			must.NoError(t, err)
 
-		joined := strings.Join(stmts, "\n")
+			joined := strings.Join(stmts, "\n")
 
-		test.StrContains(t, joined, "ddb_operations")
+			test.StrContains(t, joined, "ddb_operations")
+			test.StrNotContains(t, joined, ddl.Placeholder)
 
-		// An index that kept the unprefixed name would collide with another
-		// application's in a shared database, which is the whole reason the
-		// prefix exists.
-		test.StrNotContains(t, joined, " operations_")
+			// An index that kept the unprefixed name would collide with another
+			// application's in a shared database, which is the whole reason the
+			// prefix exists.
+			test.StrNotContains(t, joined, " operations_", test.Sprintf("dialect %s", d))
+		}
 	})
 
-	// The reason this package guards the dialect itself: the shared renderer
-	// reads the member for the dialect it was asked about, and an absent member
-	// is an empty string rather than a missing one. Without the guard, asking
-	// for MySQL would return no statements and no error — a migration run that
-	// creates nothing and reports success.
-	T.Run("refuses a dialect it has no schema for", func(t *testing.T) {
+	T.Run("rejects a dialect this module does not name", func(t *testing.T) {
 		t.Parallel()
 
-		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite, dialect.Dialect("oracle")} {
+		for _, d := range []dialect.Dialect{dialect.Dialect("oracle"), ""} {
 			stmts, err := Statements(d, "")
 
 			test.ErrorIs(t, err, dialect.ErrUnsupported, test.Sprintf("dialect %q", d))
@@ -70,16 +78,17 @@ func TestStatements(T *testing.T) {
 func TestSQL(T *testing.T) {
 	T.Parallel()
 
-	body, err := SQL(dialect.Postgres, "")
+	for _, d := range everyDialect {
+		body, err := SQL(d, "")
 
-	must.NoError(T, err)
-	test.StrContains(T, body, "CREATE TABLE")
-	test.StrContains(T, body, "CREATE INDEX")
+		must.NoError(T, err)
+		test.StrContains(T, body, "CREATE TABLE")
 
-	// Comments are stripped by the shared renderer, which matters because goose
-	// splits a migration on semicolons and a '--' comment containing one would
-	// be torn in half.
-	test.StrNotContains(T, body, "--")
+		// Comments are stripped by the shared renderer, which matters because
+		// goose splits a migration on semicolons and a '--' comment containing
+		// one would be torn in half.
+		test.StrNotContains(T, body, "--", test.Sprintf("dialect %s", d))
+	}
 }
 
 func TestValidatePrefix(T *testing.T) {

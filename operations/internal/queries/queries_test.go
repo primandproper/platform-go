@@ -426,14 +426,15 @@ func contains(columns []string, column string) bool {
 	return slices.Contains(columns, column)
 }
 
-// TestRender_RefusesADialectThisPackageHasNoSchemaFor. The transitions are
-// written in Postgres, so a MySQL rendering would hand them back unchanged —
-// a plausible file for a database that cannot run it, which is the one failure
-// a generator can have that nothing downstream would question.
-func TestRender_RefusesADialectThisPackageHasNoSchemaFor(T *testing.T) {
+// TestRender_RefusesADialectThisModuleDoesNotName. Every statement set here is
+// written for an engine it names, so a dialect outside the three would be handed
+// one of them unchanged — a plausible file for a database that cannot run it,
+// which is the one failure a generator can have that nothing downstream would
+// question.
+func TestRender_RefusesADialectThisModuleDoesNotName(T *testing.T) {
 	T.Parallel()
 
-	for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
+	for _, d := range []dialect.Dialect{dialect.Dialect("oracle"), ""} {
 		T.Run(string(d), func(t *testing.T) {
 			t.Parallel()
 
@@ -456,4 +457,6 @@ func TestFileName(t *testing.T) {
 	t.Parallel()
 
 	test.EqOp(t, "postgres_generated.sql", FileName(dialect.Postgres))
+	test.EqOp(t, "mysql_generated.sql", FileName(dialect.MySQL))
+	test.EqOp(t, "sqlite_generated.sql", FileName(dialect.SQLite))
 }

@@ -4,9 +4,9 @@ service, the worker that runs operations, and the watcher that streams them —
 from environment configuration.
 
 There are two dependencies none of them can be built without: a database.Client
-speaking Postgres, and a Registry naming the kinds of work this build knows how
-to run. The dialect is not configured here at all — it comes off the client, so
-the SQL cannot disagree with the database it runs against. The registry is not
+speaking Postgres, MySQL or SQLite, and a Registry naming the kinds of work this
+build knows how to run. The dialect is not configured here at all — it comes off
+the client, so the SQL cannot disagree with the database it runs against. The registry is not
 configurable either, and cannot be: a Runner is a Go function, so a config file
 has nothing to say about one.
 
