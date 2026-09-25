@@ -1,0 +1,64 @@
+sqlc_version: 1.31.1
+package: workqueuesplitdb
+out: internal/workqueuesplitdb
+
+# The second of workqueue's two rosters, and the reason there are two. unison
+# converges every query onto one shape across its roster and refuses a query
+# whose shape differs, and workqueue's Postgres statements have shapes these two
+# engines cannot take: a claim that hands its rows back through RETURNING, and
+# batches bound as parallel arrays. So MySQL and SQLite render their own
+# statement set — a claim split into three statements, a batch bound as an IN
+# list — and it is generated here, while unison.yaml keeps Postgres's in
+# workqueue/internal/workqueuedb. See workqueue/internal/queries' renderSplit.
+#
+# The schema files live beside their source: rendered from workqueue/migrations
+# by `go run ./internal/queriesgen -schema <dialect>`, at the empty table prefix
+# — never edited by hand.
+schemas:
+  mysql: migrations/schema/mysql.sql
+  sqlite: migrations/schema/sqlite.sql
+
+queries:
+  mysql: internal/queries/mysql_generated.sql
+  sqlite: internal/queries/sqlite_generated.sql
+
+options:
+  # ddl.Qualify prefixes table names from consumer config at construction; the
+  # generated SQL carries {{prefix}} markers substituted once by New.
+  table_prefix_var: true
+
+  # MySQL accepts only a bare placeholder in LIMIT and names it `limit`; SQLite
+  # spells the argument out. The name converges here.
+  rename_params:
+    mysql:
+      limit: result_limit
+
+  type_overrides:
+    # The two key columns are binary strings on MySQL, so that they compare byte
+    # for byte as they do everywhere else, and a binary string is []byte to the
+    # analyzer. What crosses the seam is still the text the queue encoded.
+    - {column: "*.queue_name", go_type: string}
+    - {column: "*.item_key", go_type: string}
+    - {column: "*.item_keys", go_type: string}
+    # The integer columns, whose width the engines do not agree on: MySQL
+    # resolves INT to a 32-bit Go type and SQLite INTEGER to a 64-bit one.
+    - {column: "*.priority", go_type: int64}
+    - {column: "*.attempts", go_type: int64}
+    # Arguments neither engine can type, because each is only ever an operand:
+    # a microsecond count added to the clock, a ceiling compared against, a
+    # bound on a read.
+    - {column: "*.attempt_ceiling", go_type: int64}
+    - {column: "*.result_limit", go_type: int64}
+    - {column: "*.lease_microseconds", go_type: int64}
+    - {column: "*.delay_microseconds", go_type: int64}
+    - {column: "*.retention_microseconds", go_type: int64}
+    # The computed columns: a comparison, and the health read's aggregates, cast
+    # to the width the queue reads them at.
+    - {column: "*.reclaimed", go_type: bool}
+    - {column: "*.held", go_type: int64}
+    - {column: "*.pending", go_type: int64}
+    - {column: "*.ready", go_type: int64}
+    - {column: "*.leased", go_type: int64}
+    - {column: "*.stalled", go_type: int64}
+    - {column: "*.completed", go_type: int64}
+    - {column: "*.oldest_ready_microseconds", go_type: int64}

@@ -84,12 +84,13 @@ absence: a config naming no billing registers no billing store, so no billing
 surface mounts, and that is not a failure. A component that was registered and
 cannot be built is, and it is reported naming the surface that wanted it. It is
 the same distinction the rest of this package draws, and drawing it here is what
-lets identity, oauth2clients and signin behave without a special case — their
-servers are built over a service Register does not register, so they mount for an
+lets identity and signin behave without a special case — their servers are
+built over a service Register does not register, so they mount for an
 application that registered one and stay absent for one that did not.
-passwordreset is a service Register does register, from Config.PasswordReset, so
-its surface mounts from the config plus the mailer and authenticator only the
-application can supply.
+oauth2clients and passwordreset are services Register does register:
+oauth2clients from Config.OAuth2Clients, so its surface mounts from the config
+alone, and passwordreset from Config.PasswordReset, so its surface mounts from
+the config plus the mailer and authenticator only the application can supply.
 
 # The two seams
 
@@ -105,6 +106,17 @@ declare something narrower than a principal — audit and operations want a scop
 dataprivacy wants a subject, mediaregistry wants a caller identifier and a scope
 — and each of those is derived from the one extractor rather than asked for
 again.
+
+The tenant scope is the one derivation an extractor cannot always make. A
+principal carries the directory it is in, and for a deployment with one
+directory that is the global scope; a deployment whose tenant is the account
+files its audit entries, its operations and its media under the account instead.
+Those two readings cannot both be Principal.Scope() — identity reads it as the
+directory — so a deployment where they differ supplies Transports.TenantOf,
+which reads the tenant off a principal this package has already found, and the
+three surfaces that mean the tenant are mounted with it. Left nil it is read
+from Principal.Scope() as before, which is right for every deployment whose
+directory is its tenant.
 
 The authorizers are the rules about which rows a caller who may make a call may
 make it against. Four are required, and a surface configured without one fails

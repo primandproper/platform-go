@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
+	"net"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
@@ -45,6 +49,7 @@ import (
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
 	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
@@ -56,6 +61,8 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 // testPrincipal is the three facts a surface reads off a caller.
@@ -293,6 +300,30 @@ func TestRegisterTransports(T *testing.T) {
 		test.Eq(t, []string{"billing gRPC"}, mounted.names)
 	})
 
+	T.Run("the client registry mounts from its config block alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The pair it mounts over is a service and a store, and a table prefix
+		// is all either needs, so a Config naming OAuth2Clients is enough to put
+		// the registry on the wire with nothing registered by hand.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteDatabase(t),
+			OAuth2Clients: &oauth2clientscfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.Eq(t, []string{"oauth2 clients gRPC"}, mounted.names)
+		test.SliceLen(t, 1, mounted.registrations)
+	})
+
 	T.Run("a surface whose service is unregistered does not mount, though its store is", func(t *testing.T) {
 		t.Parallel()
 
@@ -528,12 +559,27 @@ func TestDerivedSeams(T *testing.T) {
 	caller := testPrincipal{userID: "user_1", scope: tenancy.Of("tenant_1"), account: "account_1"}
 	withCaller := context.WithValue(context.Background(), principalKey{}, callers.Principal(caller))
 
+	accountOf := func(principal callers.Principal) (tenancy.Scope, error) {
+		return tenancy.Of(principal.ActiveAccountID()), nil
+	}
+
 	T.Run("the scope a caller is acting in", func(t *testing.T) {
 		t.Parallel()
 
-		scope, err := deriveScope(withPrincipal)(withCaller)
+		scope, err := deriveScope(withPrincipal, nil)(withCaller)
 		must.NoError(t, err)
 		test.EqOp(t, caller.scope, scope)
+	})
+
+	T.Run("the tenant the application reads off the caller rather than the directory", func(t *testing.T) {
+		t.Parallel()
+
+		// The directory the caller is in and the tenant the request is against
+		// are different answers, which is the whole reason the field exists.
+		scope, err := deriveScope(withPrincipal, accountOf)(withCaller)
+		must.NoError(t, err)
+		test.EqOp(t, tenancy.Of("account_1"), scope)
+		test.NotEqOp(t, caller.scope, scope)
 	})
 
 	T.Run("the subject a privacy request is about", func(t *testing.T) {
@@ -547,23 +593,66 @@ func TestDerivedSeams(T *testing.T) {
 	T.Run("the caller a media request is from", func(t *testing.T) {
 		t.Parallel()
 
-		mediaCaller, err := deriveMediaCaller(withPrincipal)(withCaller)
+		mediaCaller, err := deriveMediaCaller(withPrincipal, nil)(withCaller)
 		must.NoError(t, err)
 		test.EqOp(t, mediaregistryhttp.Caller{PrincipalID: "user_1", Scope: caller.scope}, mediaCaller)
 	})
 
-	T.Run("a request with nobody on it is refused rather than read as the global scope", func(t *testing.T) {
+	T.Run("a media caller carries the application's tenant rather than the directory", func(t *testing.T) {
+		t.Parallel()
+
+		mediaCaller, err := deriveMediaCaller(withPrincipal, accountOf)(withCaller)
+		must.NoError(t, err)
+		test.EqOp(t, mediaregistryhttp.Caller{PrincipalID: "user_1", Scope: tenancy.Of("account_1")}, mediaCaller)
+	})
+
+	T.Run("an application's refusal is carried out of every surface's seam", func(t *testing.T) {
+		t.Parallel()
+
+		sentinel := errors.New("this caller belongs to no tenant")
+		refuse := func(callers.Principal) (tenancy.Scope, error) { return tenancy.Scope{}, sentinel }
+
+		_, err := deriveScope(withPrincipal, refuse)(withCaller)
+		test.ErrorIs(t, err, sentinel)
+
+		_, err = deriveMediaCaller(withPrincipal, refuse)(withCaller)
+		test.ErrorIs(t, err, sentinel)
+	})
+
+	T.Run("an application tenant that names nothing is refused rather than carried to the store", func(t *testing.T) {
+		t.Parallel()
+
+		// A caller with no active account, read through tenancy.Of, is the zero
+		// scope: undecided, not global.
+		noAccount := testPrincipal{userID: "user_1", scope: tenancy.Global()}
+		withNoAccount := context.WithValue(context.Background(), principalKey{}, callers.Principal(noAccount))
+
+		_, err := deriveScope(withPrincipal, accountOf)(withNoAccount)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		_, err = deriveMediaCaller(withPrincipal, accountOf)(withNoAccount)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+	})
+
+	T.Run("a request with nobody on it is refused before the application is asked", func(t *testing.T) {
 		t.Parallel()
 
 		nobody := context.Background()
+		asked := func(callers.Principal) (tenancy.Scope, error) {
+			t.Error("the application's tenant must not be asked for a request with nobody on it")
 
-		_, err := deriveScope(withPrincipal)(nobody)
-		test.ErrorIs(t, err, ErrNoPrincipal)
+			return tenancy.Global(), nil
+		}
 
-		_, err = deriveSubject(withPrincipal)(nobody)
-		test.ErrorIs(t, err, ErrNoPrincipal)
+		for _, tenantOf := range []func(callers.Principal) (tenancy.Scope, error){nil, asked} {
+			_, err := deriveScope(withPrincipal, tenantOf)(nobody)
+			test.ErrorIs(t, err, ErrNoPrincipal)
 
-		_, err = deriveMediaCaller(withPrincipal)(nobody)
+			_, err = deriveMediaCaller(withPrincipal, tenantOf)(nobody)
+			test.ErrorIs(t, err, ErrNoPrincipal)
+		}
+
+		_, err := deriveSubject(withPrincipal)(nobody)
 		test.ErrorIs(t, err, ErrNoPrincipal)
 	})
 }
@@ -635,3 +724,168 @@ func (stubResetDirectory) UpdateUserPassword(
 type stubResetMailer struct{}
 
 func (stubResetMailer) SendPasswordReset(context.Context, *passwordreset.Mail) error { return nil }
+
+// TestRegisterTransports_tenantOfReachesTheMountedSurface is the assertion the
+// unit tests above cannot make: that the three surfaces meaning the tenant are
+// mounted with Transports.TenantOf, and that supplying it does not open them to
+// a request with nobody on it.
+//
+// A context value does not cross a connection, so the principal arrives on the
+// server side the way it does in a deployment: an interceptor puts it there.
+// Without that interceptor there is no principal, and the surface must refuse
+// whether or not the application supplied a tenant.
+func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
+	T.Parallel()
+
+	const tenant = "acct_the_studio"
+
+	caller := testPrincipal{userID: "user_1", scope: tenancy.Global(), account: tenant}
+	accountOf := func(principal callers.Principal) (tenancy.Scope, error) {
+		return tenancy.Of(principal.ActiveAccountID()), nil
+	}
+
+	T.Run("audit reads the tenant the application read off the caller", func(t *testing.T) {
+		t.Parallel()
+
+		var asked *tenancy.Scope
+
+		reader := &auditmock.ReaderMock{
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = query.Scope
+
+				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
+			},
+		}
+
+		client := auditServiceOverBufconn(t, reader, caller, &Transports{
+			Extractor:   withPrincipal,
+			Authorizers: allAuthorizers(),
+			TenantOf:    accountOf,
+		})
+
+		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
+		must.NoError(t, err)
+
+		must.NotNil(t, asked, must.Sprint("the reader was never asked"))
+		test.EqOp(t, tenancy.Of(tenant), *asked)
+	})
+
+	T.Run("a request with nobody on it is refused even when the application reads tenants", func(t *testing.T) {
+		t.Parallel()
+
+		reader := &auditmock.ReaderMock{
+			ListFunc: func(context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				t.Error("the reader must not be consulted for a request with nobody on it")
+
+				return nil, nil
+			},
+		}
+
+		client := auditServiceOverBufconn(t, reader, nil, &Transports{
+			Extractor:   withPrincipal,
+			Authorizers: allAuthorizers(),
+			TenantOf: func(callers.Principal) (tenancy.Scope, error) {
+				t.Error("the application's tenant must not be asked for a request with nobody on it")
+
+				return tenancy.Of(tenant), nil
+			},
+		})
+
+		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
+		must.Error(t, err, must.Sprint("a request with no principal has no tenant to be against"))
+	})
+
+	T.Run("without one, the directory still governs", func(t *testing.T) {
+		t.Parallel()
+
+		var asked *tenancy.Scope
+
+		reader := &auditmock.ReaderMock{
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = query.Scope
+
+				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
+			},
+		}
+
+		client := auditServiceOverBufconn(t, reader, caller, &Transports{
+			Extractor:   withPrincipal,
+			Authorizers: allAuthorizers(),
+		})
+
+		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
+		must.NoError(t, err)
+
+		must.NotNil(t, asked, must.Sprint("the reader was never asked"))
+		test.EqOp(t, tenancy.Global(), *asked)
+	})
+}
+
+// auditServiceOverBufconn mounts the transports and serves them on an
+// in-process connection, returning a client for the audit surface.
+//
+// A non-nil caller is put on every request's server-side context by an
+// interceptor, standing in for the authentication interceptor a deployment
+// installs; nil leaves the requests with nobody on them.
+//
+// The audit config block is deliberately absent: leaving it out is what stops
+// Register providing its own reader, so the test's can be the one the surface
+// mounts over.
+func auditServiceOverBufconn(
+	t *testing.T,
+	reader audit.Reader,
+	caller callers.Principal,
+	transports *Transports,
+) auditpb.AuditServiceClient {
+	t.Helper()
+
+	i := do.New()
+	do.ProvideValue[context.Context](i, t.Context())
+
+	cfg := &Config{Name: "example"}
+	must.NoError(t, cfg.ValidateWithContext(t.Context()))
+	Register(i, cfg)
+
+	do.ProvideValue[database.Client](i, &databasemock.ClientMock{
+		ReaderFunc: func() database.SQLQueryExecutor { return &databasemock.SQLQueryExecutorMock{} },
+	})
+	do.ProvideValue(i, reader)
+
+	RegisterTransports(i, transports)
+
+	mounted, err := do.Invoke[*mountedTransports](i)
+	must.NoError(t, err)
+	must.SliceContains(t, mounted.names, "audit gRPC")
+
+	var opts []grpc.ServerOption
+	if caller != nil {
+		opts = append(opts, grpc.UnaryInterceptor(
+			func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+				return handler(context.WithValue(ctx, principalKey{}, caller), req)
+			},
+		))
+	}
+
+	server := grpc.NewServer(opts...)
+	for _, register := range mounted.registrations {
+		register(server)
+	}
+
+	listener := bufconn.Listen(1024 * 1024)
+
+	go func() { _ = server.Serve(listener) }()
+
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	must.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = conn.Close()
+		server.Stop()
+		_ = listener.Close()
+	})
+
+	return auditpb.NewAuditServiceClient(conn)
+}

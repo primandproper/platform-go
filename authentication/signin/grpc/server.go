@@ -73,8 +73,11 @@ var (
 // # What it is not
 //
 // It holds no policy. Whether a user without a second factor may sign in, how
-// long a token lives, what it carries, and whether the administrative door
-// exists at all are the service's options, and the service documents each. Who
+// long a token lives, what it carries, whether the administrative door exists
+// at all, and whether a password is acceptable are the service's options, and
+// the service documents each. The last is why a consumer who refuses weak
+// passwords may mount Register, UpdatePassword and AttachPassword: the rule
+// they apply in process is applied here too — see signin.PasswordPolicy. Who
 // is calling is a [callers.Principal] the consumer's own authentication
 // interceptor put on the context, and whose directory the request is against is
 // a [ScopeResolver] the consumer supplies. None of the three is here.

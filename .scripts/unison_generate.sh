@@ -50,8 +50,8 @@ GOBIN="${BIN_DIR}" go install "github.com/primandproper/sqlc-gen-unison/cmd/unis
 # a property of the package rather than of this script: operations is
 # Postgres-only for reasons its own doc gives, and rendering it a MySQL schema
 # would be rendering a schema for a database it refuses to run against. Each
-# component's list has to match the keys of its unison.yaml `schemas:` map,
-# which is what unison itself reads the roster from.
+# component's list has to match the keys of its unison*.yaml `schemas:` maps
+# taken together, which is what unison itself reads the roster from.
 COMPONENTS=(
   "identity postgres mysql sqlite"
   "audit postgres mysql sqlite"
@@ -80,7 +80,7 @@ COMPONENTS=(
   "outbox postgres mysql sqlite"
   "operations postgres"
   "timers postgres"
-  "workqueue postgres"
+  "workqueue postgres mysql sqlite"
 )
 
 for component in "${COMPONENTS[@]}"; do
@@ -95,7 +95,13 @@ for component in "${COMPONENTS[@]}"; do
         > "${package}/migrations/schema/${d}.sql")
   done
 
-  (cd "${PROJECT_ROOT}/${package}" && "${UNISON}" generate)
+  # Every unison*.yaml in the component, each its own roster. A component has
+  # more than one when its dialects need statement sets of different shapes,
+  # which unison refuses to converge into one querier: workqueue generates
+  # Postgres from unison.yaml and MySQL and SQLite from unison.split.yaml.
+  for config in "${PROJECT_ROOT}/${package}"/unison*.yaml; do
+    (cd "${PROJECT_ROOT}/${package}" && "${UNISON}" generate --config "$(basename "${config}")")
+  done
 done
 
 echo "unison v${UNISON_VERSION}: every generated package is current"

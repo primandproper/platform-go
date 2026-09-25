@@ -424,6 +424,81 @@ func TestServiceComplete(T *testing.T) {
 		test.EqOp(t, 1, env.liveTokens(t))
 	})
 
+	T.Run("refuses what the password policy refuses, before the link is spent", func(t *testing.T) {
+		t.Parallel()
+
+		errTooShort := platformerrors.New("use at least twelve characters")
+
+		var seen []string
+
+		env := newTestService(t, WithPasswordPolicy(func(_ context.Context, password string) error {
+			seen = append(seen, password)
+			if len(password) < 12 {
+				return errTooShort
+			}
+
+			return nil
+		}))
+		secret := env.request(t)
+
+		spent, err := env.service.Complete(t.Context(), testScope(), secret, "short")
+		test.Nil(t, spent)
+		test.ErrorIs(t, err, ErrPasswordRefused)
+		test.ErrorIs(t, err, errTooShort)
+
+		// The refusal cost the caller nothing: the password did not move and the
+		// link is still live, so the same link with another password succeeds.
+		test.EqOp(t, "hashed:original", env.storedPassword(t))
+		test.EqOp(t, 1, env.liveTokens(t))
+
+		_, err = env.service.Complete(t.Context(), testScope(), secret, "long enough to pass")
+		must.NoError(t, err)
+		test.EqOp(t, "hashed:long enough to pass", env.storedPassword(t))
+		test.Eq(t, []string{"short", "long enough to pass"}, seen)
+	})
+
+	T.Run("hashes nothing for a refused password", func(t *testing.T) {
+		t.Parallel()
+
+		env := newTestService(t, WithPasswordPolicy(func(context.Context, string) error {
+			return platformerrors.New("never")
+		}))
+		secret := env.request(t)
+
+		// A hashing engine that would fail is never reached, so the refusal is
+		// the policy's rather than the engine's.
+		env.auth.err = stderrors.New("the hashing engine was reached")
+
+		_, err := env.service.Complete(t.Context(), testScope(), secret, "anything at all")
+		test.ErrorIs(t, err, ErrPasswordRefused)
+		test.False(t, stderrors.Is(err, env.auth.err))
+	})
+
+	T.Run("an empty password is refused before the policy sees it", func(t *testing.T) {
+		t.Parallel()
+
+		calls := 0
+		env := newTestService(t, WithPasswordPolicy(func(context.Context, string) error {
+			calls++
+			return nil
+		}))
+		secret := env.request(t)
+
+		_, err := env.service.Complete(t.Context(), testScope(), secret, "")
+		test.ErrorIs(t, err, ErrEmptyNewPassword)
+		test.EqOp(t, 0, calls)
+	})
+
+	T.Run("a nil policy is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		env := newTestService(t, WithPasswordPolicy(nil))
+		secret := env.request(t)
+
+		_, err := env.service.Complete(t.Context(), testScope(), secret, "x")
+		must.NoError(t, err)
+	})
+
 	T.Run("leaves the link alone when hashing fails", func(t *testing.T) {
 		t.Parallel()
 

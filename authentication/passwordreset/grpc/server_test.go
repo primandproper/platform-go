@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
@@ -245,4 +246,52 @@ func TestScopeResolver(T *testing.T) {
 		must.NoError(t, err)
 		test.True(t, scope.IsGlobal())
 	})
+}
+
+// A mounted server applies the consumer's password policy, because nothing runs
+// between the wire and the write for anybody else to apply it. The refusal is
+// InvalidArgument with an identifier of its own, which is what lets a client
+// tell "choose another password" from the three ways a link is dead — and the
+// link is still live afterwards.
+func TestCompletePasswordReset_passwordPolicy(T *testing.T) {
+	T.Parallel()
+
+	h := newHarnessWithService(T, []passwordreset.ServiceOption{
+		passwordreset.WithPasswordPolicy(func(_ context.Context, password string) error {
+			if len(password) < 12 {
+				return platformerrors.New("use at least twelve characters")
+			}
+
+			return nil
+		}),
+	})
+
+	_, err := h.client.RequestPasswordReset(h.rootCtx, &passwordresetpb.RequestPasswordResetRequest{
+		EmailAddress: "jane@example.com",
+	})
+	must.NoError(T, err)
+
+	secret := h.mailer.lastSecret(T)
+	before := h.storedPassword(T)
+
+	_, err = h.client.CompletePasswordReset(h.rootCtx, &passwordresetpb.CompletePasswordResetRequest{
+		Token:       secret,
+		NewPassword: "short",
+	})
+	test.ErrorIs(T, err, passwordreset.ErrPasswordRefused)
+	test.EqOp(T, codes.InvalidArgument, status.Code(err))
+
+	info, ok := grpcerrors.ClientReasonFromStatus(err)
+	must.True(T, ok)
+	test.EqOp(T, "REPLACEMENT_PASSWORD_REFUSED", info.GetReason())
+	test.EqOp(T, passwordreset.ClientReasonDomain, info.GetDomain())
+
+	test.EqOp(T, before, h.storedPassword(T))
+
+	_, err = h.client.CompletePasswordReset(h.rootCtx, &passwordresetpb.CompletePasswordResetRequest{
+		Token:       secret,
+		NewPassword: "long enough to pass",
+	})
+	must.NoError(T, err)
+	test.NotEqOp(T, before, h.storedPassword(T))
 }

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	"github.com/primandproper/platform-go/v14/comments"
@@ -71,8 +73,8 @@ func sqliteDatabase(t *testing.T) *databasecfg.Config {
 
 // TestRegisterStores covers the subsystems the composition root reached last:
 // the identity, issue report, comment, settings, notifications, waitlist,
-// password reset and media registry stores, the links minter, and the
-// retention sweeper.
+// password reset, oauth2 client and media registry stores, the links minter,
+// and the retention sweeper.
 //
 // The reflection-driven tests above already assert that a field on Config is
 // validated and registers something. What they cannot say is that what it
@@ -95,6 +97,7 @@ func TestRegisterStores(T *testing.T) {
 			Waitlists:     &waitlistscfg.Config{TablePrefix: storePrefix},
 			MediaRegistry: &mediaregistrycfg.Config{TablePrefix: storePrefix},
 			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
+			OAuth2Clients: &oauth2clientscfg.Config{TablePrefix: storePrefix},
 			Links: &linkscfg.Config{
 				Database: linksdatabase.Config{TablePrefix: storePrefix},
 				// A minter with an empty registry mints nothing, so the
@@ -146,8 +149,18 @@ func TestRegisterStores(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, mediaStore)
 
-		// The one entry registering a service as well as a store, because the
-		// reset surface mounts over the service.
+		// The client registry registers a service as well as a store, because
+		// its surface mounts over the pair.
+		clientStore, err := do.Invoke[oauth2clients.Store](i)
+		must.NoError(t, err)
+		test.NotNil(t, clientStore)
+
+		clientService, err := do.Invoke[*oauth2clients.Service](i)
+		must.NoError(t, err)
+		test.NotNil(t, clientService)
+
+		// So does password reset, because the reset surface mounts over the
+		// service.
 		resetStore, err := do.Invoke[passwordreset.Store](i)
 		must.NoError(t, err)
 		test.NotNil(t, resetStore)
@@ -192,6 +205,7 @@ func TestRegisterStores(T *testing.T) {
 			"COMMENTS_TABLE_PREFIX":        storePrefix,
 			"SETTINGS_TABLE_PREFIX":        storePrefix,
 			"NOTIFICATIONS_TABLE_PREFIX":   storePrefix,
+			"OAUTH2_CLIENTS_TABLE_PREFIX":  storePrefix,
 			"PASSWORD_RESET_TABLE_PREFIX":  storePrefix,
 			"WAITLISTS_TABLE_PREFIX":       storePrefix,
 			"RETENTION_SWEEPER_BATCH_SIZE": "500",
@@ -199,7 +213,7 @@ func TestRegisterStores(T *testing.T) {
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
-		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "PasswordReset", "Retention", "Settings", "Waitlists"}, present(t, cfg))
+		test.Eq(t, []string{"Comments", "Identity", "IssueReports", "Notifications", "OAuth2Clients", "PasswordReset", "Retention", "Settings", "Waitlists"}, present(t, cfg))
 	})
 
 	T.Run("builds the retention sweeper over the application's policies", func(t *testing.T) {

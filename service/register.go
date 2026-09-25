@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
@@ -482,6 +483,25 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	if cfg.MobileNotifications != nil {
 		do.ProvideValue(i, cfg.MobileNotifications)
 		mobilenotifcfg.RegisterPushSender(i)
+	}
+
+	// The store and the service both, because the registry's surface mounts over
+	// the pair and a table prefix is all either of them needs from the
+	// environment. oauth2clients.Hooks is the application's to register if it has
+	// anything to commit beside a registration; RegisterService resolves it
+	// optionally. oauth2clients/privacy's collector and eraser are the service's
+	// to register, for the reason every registry in this file is: they need a
+	// mapping from a person to the tenants they belong to.
+	//
+	// A container that also registers an oauth2clients.Store or an
+	// *oauth2clients.Service by hand — which was the only way to mount the
+	// surface before this block existed — holds two providers under one key, and
+	// samber/do panics on the second registration. Configure the block or keep
+	// the hand registration, not both.
+	if cfg.OAuth2Clients != nil {
+		do.ProvideValue(i, cfg.OAuth2Clients)
+		oauth2clientscfg.RegisterStore(i)
+		oauth2clientscfg.RegisterService(i)
 	}
 
 	// The store from this module's half and the server from primitives-go's, and

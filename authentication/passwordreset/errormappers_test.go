@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"github.com/shoenig/test"
@@ -45,6 +46,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  passwordreset.ErrTokenRedeemed.Error(),
 			grpcCode: codes.FailedPrecondition,
 		},
+		"a replacement password the policy refused": {
+			err:      passwordreset.ErrPasswordRefused,
+			httpCode: httperrors.ErrValidatingRequestInput,
+			httpMsg:  passwordreset.ErrPasswordRefused.Error(),
+			grpcCode: codes.InvalidArgument,
+		},
 	}
 
 	for name, tc := range cases {
@@ -80,7 +87,11 @@ func TestMappers(T *testing.T) {
 func TestTheThreeOutcomesShareAStatus(T *testing.T) {
 	T.Parallel()
 
-	for _, err := range passwordreset.ClientSafeSentinels {
+	for _, err := range []error{
+		passwordreset.ErrTokenNotFound,
+		passwordreset.ErrTokenExpired,
+		passwordreset.ErrTokenRedeemed,
+	} {
 		code, _, ok := passwordreset.HTTPMapper.Map(err)
 		must.True(T, ok)
 		test.EqOp(T, httperrors.ErrActionLinkUnusable, code)
@@ -101,6 +112,7 @@ func TestTheTwoMappersCoverTheSameSentinels(T *testing.T) {
 		passwordreset.ErrTokenNotFound,
 		passwordreset.ErrTokenExpired,
 		passwordreset.ErrTokenRedeemed,
+		passwordreset.ErrPasswordRefused,
 		passwordreset.ErrNonPositiveLifetime,
 		passwordreset.ErrEmptySecret,
 		passwordreset.ErrEmptyUserID,
@@ -170,13 +182,14 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 // caller verbatim.
 //
 // It is the whole of what this package maps, which is the situation the list
-// exists for: one code on each transport for three outcomes with three different
-// remedies, so a client told "FailedPrecondition" learns nothing and a person
-// holding a day-old link is told nothing about why it will not open.
+// exists for: one code on each transport for three link outcomes with three
+// different remedies, so a client told "FailedPrecondition" learns nothing and
+// a person holding a day-old link is told nothing about why it will not open —
+// and a fourth, the refused password, whose remedy is the opposite of theirs.
 func TestClientSafeSentinels(T *testing.T) {
 	T.Parallel()
 
-	must.SliceLen(T, 3, passwordreset.ClientSafeSentinels)
+	must.SliceLen(T, 4, passwordreset.ClientSafeSentinels)
 
 	messages := map[string]struct{}{}
 
@@ -205,4 +218,27 @@ func TestTheWiringFaultIsNotClientSafe(T *testing.T) {
 	T.Parallel()
 
 	test.False(T, slices.Contains(passwordreset.ClientSafeSentinels, passwordreset.ErrNonPositiveLifetime))
+}
+
+// TestClientSafeReasons_matchTheClientSafeList is the rule the reasons list
+// states about itself: every client-safe sentinel carries a reason, and no
+// reason names a sentinel that is not client-safe.
+func TestClientSafeReasons_matchTheClientSafeList(T *testing.T) {
+	T.Parallel()
+
+	must.SliceLen(T, len(passwordreset.ClientSafeSentinels), passwordreset.ClientSafeReasons)
+
+	for _, sentinel := range passwordreset.ClientSafeSentinels {
+		test.True(T, slices.ContainsFunc(passwordreset.ClientSafeReasons, func(r grpcerrors.ClientReason) bool {
+			return platformerrors.Is(r.Err, sentinel)
+		}), test.Sprintf("%q is client-safe and carries no reason", sentinel))
+	}
+
+	for _, reason := range passwordreset.ClientSafeReasons {
+		test.True(T, slices.ContainsFunc(passwordreset.ClientSafeSentinels, func(s error) bool {
+			return platformerrors.Is(reason.Err, s)
+		}), test.Sprintf("%q carries the reason %q and is not client-safe", reason.Err, reason.Reason))
+
+		test.EqOp(T, passwordreset.ClientReasonDomain, reason.Domain)
+	}
 }
