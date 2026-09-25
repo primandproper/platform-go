@@ -2,9 +2,9 @@
 Package workqueuecfg assembles a work queue, and optionally the runner that
 drains it, from environment configuration.
 
-There is one dependency neither can be built without: a database.Client speaking
-Postgres. The dialect is not configured here at all — it comes off the client, so
-the SQL cannot disagree with the database it runs against.
+There is one dependency neither can be built without: a database.Client. The
+dialect is not configured here at all — it comes off the client, so the SQL
+cannot disagree with the database it runs against.
 
 Both constructors are generic over the key type, which the caller names at the
 call site. That is the only part of a queue the environment cannot express: a key
@@ -47,10 +47,9 @@ import (
 
 // NewQueue builds a Queue from configuration.
 //
-// client must speak Postgres: this package's SQL is written against it rather
-// than reduced to a portable subset, and workqueue.New returns
-// dialect.ErrUnsupported for anything else. See the workqueue package doc for
-// which construct is the binding one.
+// client may speak Postgres, MySQL or SQLite; workqueue.New reads the dialect
+// off it and picks the statements that dialect is served by. See the workqueue
+// package doc for what differs between them.
 //
 // K is the key type the queue schedules work for, and is the caller's to name:
 //

@@ -97,7 +97,7 @@ reasons behind the three exceptions.
 | Package         | Purpose                                                                             | Implementations                  |
 |-----------------|-------------------------------------------------------------------------------------|----------------------------------|
 | `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite          |
-| `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres                         |
+| `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres, mysql, sqlite          |
 | `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                         |
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
@@ -660,34 +660,33 @@ here.
 | `timers`                              | ✓        | —     | —      |
 | `waitlists`                           | ✓        | ✓     | ✓      |
 | `webhooks`                            | ✓        | ✓     | ✓      |
-| `workqueue`                           | ✓        | —     | —      |
+| `workqueue`                           | ✓        | ✓     | ✓      |
 <!-- /readmegen:dialects -->
 
-### Why the three narrow
+### Why the two narrow
 
-One reason, arrived at from three directions, and it is a claim rather than a
-translation. The claim is a single statement that selects due rows, locks them
-with `SKIP LOCKED`, increments attempts, extends the lease and hands the keys
-back with `RETURNING`. MySQL 8.0 has `SKIP LOCKED` and CTEs but no `RETURNING`,
-so the same claim there is a `SELECT … FOR UPDATE SKIP LOCKED` plus a separate
-`UPDATE` inside a transaction held across both round trips — a different
-concurrency shape with a different failure model, which is a second
-implementation rather than a dialect switch. SQLite is a harder no:
-single-writer, with no row-level locking to skip.
+One reason, and it is a claim rather than a translation. On Postgres the claim
+is a single statement that selects due rows, locks them with `SKIP LOCKED`,
+increments attempts, extends the lease and hands the keys back with
+`RETURNING`. MySQL has `SKIP LOCKED` but no `RETURNING`, and SQLite has neither
+and no row locks at all, so on those two the same claim is a locking read, an
+update and a read-back held in one transaction across three round trips.
 
-Each narrowed package states where it stands in that, in its own `doc.go`, and
-these lines are that statement:
+That is a cost rather than a reason to narrow, and `workqueue` pays it: its
+Postgres claim is still the one statement, and on MySQL and SQLite it is the
+three, fenced by the name the claim mints so that a write can land only under
+the claim that took the row. `webhooks` and `outbox` already claimed that way on
+all three. The two packages below have not been ported yet, and each states
+where it stands in its own `doc.go`; these lines are that statement:
 
 <!-- readmegen:narrowings -->
 - `operations` — runs on `workqueue`, so its roster is `workqueue`'s.
 - `timers` — claims a due timer in the one statement, and would owe the same split anywhere else.
-- `workqueue` — the claim is the package: `SKIP LOCKED` to take due rows and `RETURNING` to hand the keys back, in one round trip.
 <!-- /readmegen:narrowings -->
 
-Widening any of them is a decision about that claim, not about a missing
-translation — the package docs carry the long form. Nothing forecloses it: the
-shape to reach for is the package as the interface with a provider subpackage
-beneath it, the way primitives-go's `cache` and `cache/redis` sit.
+Widening either is the port `workqueue` took, not a new design: one package, a
+statement set per shape its dialects need, and a switch on the client's dialect
+at construction — never a provider subpackage per database.
 
 ### Narrowings that are not rows
 
@@ -700,6 +699,9 @@ and a row would misreport it either way:
   `SKIP LOCKED` claim mode degrades to a lease on SQLite — which claims just
   as exclusively, by guarding the write on the lease it read, and only contends
   where the lock would have skipped.
+- **`workqueue`** queues on all three. Its `LISTEN`/`NOTIFY` wakeup is
+  Postgres-only and reported as `workqueue.ErrNotifyUnsupported` if configured
+  elsewhere; without it a worker polls, which is later rather than wrong.
 - **`retention`** sweeps all three, and ships no DDL: the table, the timestamp
   column and the batch key arrive from a `Policy` written at run time, so there
   is no schema of this module's to render for a dialect.

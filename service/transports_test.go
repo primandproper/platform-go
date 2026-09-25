@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/billing"
@@ -269,6 +270,30 @@ func TestRegisterTransports(T *testing.T) {
 		must.NoError(t, err)
 
 		test.Eq(t, []string{"billing gRPC"}, mounted.names)
+	})
+
+	T.Run("the client registry mounts from its config block alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The pair it mounts over is a service and a store, and a table prefix
+		// is all either needs, so a Config naming OAuth2Clients is enough to put
+		// the registry on the wire with nothing registered by hand.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteDatabase(t),
+			OAuth2Clients: &oauth2clientscfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.Eq(t, []string{"oauth2 clients gRPC"}, mounted.names)
+		test.SliceLen(t, 1, mounted.registrations)
 	})
 
 	T.Run("a surface whose service is unregistered does not mount, though its store is", func(t *testing.T) {

@@ -83,11 +83,11 @@ func Register() {
 	// remedy. See signin.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
 
-	// And the same eleven again as identifiers, which is what a client that must
-	// branch on the refusal reads instead of the prose. It is the only reasons
-	// list in the module so far; the other client-safe lists are candidates for
-	// one and each is its own decision about names a client compiles against
-	// forever. See signin.ClientSafeReasons.
+	// And the same twelve again as identifiers, which is what a client that must
+	// branch on the refusal reads instead of the prose. It is one of two reasons
+	// lists in the module, with passwordreset's below; the other client-safe
+	// lists are candidates for one and each is its own decision about names a
+	// client compiles against forever. See signin.ClientSafeReasons.
 	//
 	// This call registers the sentinels as client-safe too, so it would do the
 	// work of the line above on its own. The line above stays because the two
@@ -190,6 +190,11 @@ func Register() {
 	// "FailedPrecondition" where the three sentinels exist to tell them which.
 	// See passwordreset.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(passwordreset.ClientSafeSentinels...)
+
+	// And as identifiers, because the fourth — a password the consumer's policy
+	// refused — has the opposite remedy from the three link outcomes, and a
+	// client has to act on which one it met. See passwordreset.ClientSafeReasons.
+	grpcerrors.RegisterClientSafeReasons(passwordreset.ClientSafeReasons...)
 
 	httperrors.RegisterHTTPErrorMapper(metering.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(metering.GRPCMapper)
