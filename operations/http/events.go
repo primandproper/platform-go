@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/eventstream"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/routing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/swaggest/openapi-go/openapi3"
 )
@@ -93,7 +94,7 @@ func (h *Handlers) stream(res nethttp.ResponseWriter, req *nethttp.Request) {
 
 	span.Set(operationIDKey, id)
 
-	scope, err := h.scope(ctx, span)
+	owners, err := h.scopes(ctx, span)
 	if err != nil {
 		status, body := httpx.ToAPIResponse(err)
 		h.writeRefusal(ctx, res, span, status, body)
@@ -106,7 +107,9 @@ func (h *Handlers) stream(res nethttp.ResponseWriter, req *nethttp.Request) {
 	// rather than a stream that opens and immediately closes. Watch makes the
 	// scoped read itself and holds the scope for every re-read after it, so the
 	// polling endpoint's check is not repeated here.
-	snapshots, err := h.watcher.Watch(ctx, scope, id)
+	snapshots, err := firstOwner(owners, func(owner tenancy.Scope) (<-chan *operations.Operation, error) {
+		return h.watcher.Watch(ctx, owner, id)
+	})
 	if err != nil {
 		status, body := httpx.ToAPIResponse(err)
 		h.writeRefusal(ctx, res, span, status, body)
@@ -249,7 +252,6 @@ func (h *Handlers) writeRefusal(
 	// The body is the platform's own error envelope, encoded by the platform's
 	// own codec and served under the content type that codec names. There is no
 	// HTML context for it to escape into.
-	//nolint:gosec // G705: see above.
 	if _, err = res.Write(encoded); err != nil {
 		span.Acknowledge(err, "writing operation stream refusal")
 	}

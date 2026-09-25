@@ -234,6 +234,11 @@ func rolesFor(ownerIDs []string, read func([]string) ([]ownedRole, error)) (map[
 type roleStatements struct {
 	clear  func(ctx context.Context, db identitydb.DBTX, ownerID string) (int64, error)
 	insert func(ctx context.Context, db identitydb.DBTX, ownerID, role string) error
+
+	// held reads the grants this owner already has, and exists so that
+	// replaceRoles can decline to clear a set that is empty. See the deadlock
+	// it avoids, documented there.
+	held func(ctx context.Context, db identitydb.DBTX, ownerID string) (int, error)
 }
 
 // userRoleWrites is the service-role table's pair: the roles a user holds outside
@@ -245,6 +250,14 @@ func (s *SQLStore) userRoleWrites() roleStatements {
 		},
 		insert: func(ctx context.Context, db identitydb.DBTX, ownerID, role string) error {
 			return s.q.InsertUserRole(ctx, db, identitydb.InsertUserRoleParams{UserID: ownerID, Role: role})
+		},
+		held: func(ctx context.Context, db identitydb.DBTX, ownerID string) (int, error) {
+			rows, err := s.q.ListUserRolesByUserIDs(ctx, db, identitydb.ListUserRolesByUserIDsParams{IDs: []string{ownerID}})
+			if err != nil {
+				return 0, err
+			}
+
+			return len(rows), nil
 		},
 	}
 }
@@ -259,6 +272,14 @@ func (s *SQLStore) membershipRoleWrites() roleStatements {
 			return s.q.InsertMembershipRole(ctx, db,
 				identitydb.InsertMembershipRoleParams{MembershipID: ownerID, Role: role})
 		},
+		held: func(ctx context.Context, db identitydb.DBTX, ownerID string) (int, error) {
+			rows, err := s.q.ListMembershipRolesByMembershipIDs(ctx, db, identitydb.ListMembershipRolesByMembershipIDsParams{IDs: []string{ownerID}})
+			if err != nil {
+				return 0, err
+			}
+
+			return len(rows), nil
+		},
 	}
 }
 
@@ -272,6 +293,14 @@ func (s *SQLStore) invitationRoleWrites() roleStatements {
 			return s.q.InsertInvitationRole(ctx, db,
 				identitydb.InsertInvitationRoleParams{InvitationID: ownerID, Role: role})
 		},
+		held: func(ctx context.Context, db identitydb.DBTX, ownerID string) (int, error) {
+			rows, err := s.q.ListInvitationRolesByInvitationIDs(ctx, db, identitydb.ListInvitationRolesByInvitationIDsParams{IDs: []string{ownerID}})
+			if err != nil {
+				return 0, err
+			}
+
+			return len(rows), nil
+		},
 	}
 }
 
@@ -279,10 +308,32 @@ func (s *SQLStore) invitationRoleWrites() roleStatements {
 // three role tables are written — SetMembershipRoles replaces rather than
 // merges, and so do the writes behind a registration and an accepted invitation.
 //
-// The clear's row count is discarded on purpose. An owner with no grants yet is
-// the ordinary case — a registration, a first invitation — so zero means "there
-// was nothing to clear" rather than "the row was not found", and there is no
-// caller for whom the two differ.
+// # Why it asks before it clears
+//
+// The clear is skipped when the owner holds nothing, and that is not an
+// optimization. On InnoDB a DELETE whose predicate matches no row still takes a
+// gap lock over the index range it scanned, and in a table with few rows that
+// gap is most of the index — so two transactions registering two unrelated
+// people both gap-lock it, and then each blocks on the other's insert, because
+// an insert intention lock conflicts with a gap lock somebody else holds. Two
+// concurrent registrations, one deadlock, deterministically. Postgres takes no
+// such lock and SQLite has one writer, so it is a MySQL answer to a question
+// the other two never ask.
+//
+// An owner with no grants yet is the ordinary case — a registration, a first
+// invitation — which is exactly what made the hot path the deadlocking one. The
+// read that replaces it is a consistent non-locking read, so it takes no gap
+// lock of its own, and it sees this transaction's own writes: an owner whose
+// parent row was inserted a statement ago reads as empty and is inserted into
+// rather than cleared first.
+//
+// What it does not do is make two concurrent writers of the *same* owner's
+// roles safe. One that reads empty, and a second that commits a grant before
+// the first inserts, produces a union rather than a replacement. That race was
+// there before this read and is not widened by it — two interleaved clears did
+// the same — and a caller who needs the stronger answer serializes on the
+// parent row, which SetMembershipRoles already does through
+// requireRolesOrOwnership.
 //
 // The insert runs once per role rather than once per call. The multi-row VALUES
 // list it replaced was assembled from the caller's cardinality, which is dynamic
@@ -296,13 +347,23 @@ func (s *SQLStore) replaceRoles(
 	ownerID string,
 	roles []string,
 ) error {
-	if _, err := statements.clear(ctx, q, ownerID); err != nil {
-		return platformerrors.Wrap(err, "clearing identity roles")
+	held, err := statements.held(ctx, q, ownerID)
+	if err != nil {
+		return platformerrors.Wrap(err, "reading identity roles")
+	}
+
+	// The clear's row count is discarded on purpose. Zero means "there was
+	// nothing to clear" rather than "the row was not found", and there is no
+	// caller for whom the two differ.
+	if held > 0 {
+		if _, clearErr := statements.clear(ctx, q, ownerID); clearErr != nil {
+			return platformerrors.Wrap(clearErr, "clearing identity roles")
+		}
 	}
 
 	for _, role := range roles {
-		if err := statements.insert(ctx, q, ownerID, role); err != nil {
-			return platformerrors.Wrap(err, "writing identity roles")
+		if insertErr := statements.insert(ctx, q, ownerID, role); insertErr != nil {
+			return platformerrors.Wrap(insertErr, "writing identity roles")
 		}
 	}
 

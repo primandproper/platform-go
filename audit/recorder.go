@@ -342,7 +342,7 @@ type chainState struct {
 }
 
 // lockChainHead reads a scope's chain head and holds it for the remainder of
-// the caller's transaction, creating the row if this is the scope's first
+// the caller's transaction, creating the row first if this is the scope's first
 // entry.
 //
 // The lock is the point. Concurrent transactions recording into the same scope
@@ -355,32 +355,28 @@ type chainState struct {
 // to avoid a read per write. It should not, and it cannot: the read is not the
 // point of the statement, the lock is, and a cached value would be stale the
 // instant another process wrote to the same scope.
+//
+// The row is made to exist before it is locked, on every write rather than only
+// after a read has missed. A locked read that finds nothing takes a gap lock on
+// InnoDB, and two tenants recording their first entries at once each held the
+// gap the other was about to insert into — a deadlock InnoDB settled by killing
+// one of the two callers' transactions. Creating first means the locked read
+// never misses; audit/internal/queries' createChainQuery carries why MySQL's
+// create takes the row lock itself. The price is one statement per write, paid
+// by the path that was already correct, and it is the price of not having the
+// path that was not.
 func (r *ChainRecorder) lockChainHead(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 ) (*chainState, error) {
-	state, err := r.readChainHead(ctx, q, scope)
-	if err == nil {
-		return state, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	// The row already there wins, unchanged, so two transactions recording into
-	// a scope for the first time do not race: the loser waits for the winner to
-	// commit and then locks the row that now exists, rather than failing on the
-	// primary key.
-	if _, err = r.q.CreateAuditChain(ctx, q, auditdb.CreateAuditChainParams{Scope: scope}); err != nil {
+	if _, err := r.q.CreateAuditChain(ctx, q, auditdb.CreateAuditChainParams{Scope: scope}); err != nil {
 		return nil, platformerrors.Wrapf(err, "creating audit chain for scope %s", scope)
 	}
 
-	// Re-read rather than assume the genesis values: another transaction may
-	// have created this scope's chain and recorded into it between the first
-	// read and the insert that just did nothing.
-	if state, err = r.readChainHead(ctx, q, scope); err != nil {
-		return nil, err
+	state, err := r.readChainHead(ctx, q, scope)
+	if err != nil {
+		return nil, platformerrors.Wrapf(err, "locking audit chain for scope %s", scope)
 	}
 
 	return state, nil

@@ -75,7 +75,14 @@ var (
 	// audit's scope, operations' owner, dataprivacy's subject and
 	// mediaregistry's caller are each a reading of a principal, and there is no
 	// reading of nobody.
-	ErrNoPrincipal = platformerrors.New(
+	//
+	// It wraps callers.ErrNoPrincipal, whose mappers answer it Unauthenticated
+	// and 401. Without that, each of the four answered with the code it falls
+	// back to for a resolver that failed — InvalidArgument from audit, a 500 from
+	// mediaregistry — which is the right answer to a request a consumer's
+	// resolver could not place and the wrong one to a request with nobody on it.
+	ErrNoPrincipal = platformerrors.Wrap(
+		callers.ErrNoPrincipal,
 		"no principal on the request context a derived transport seam was reading",
 	)
 
@@ -586,6 +593,40 @@ func tenantScope(principal callers.Principal, tenantOf func(callers.Principal) (
 	}
 
 	return scope, nil
+}
+
+// deriveOwners reads the owners whose operations a caller may follow: the
+// tenant the request is against, and the person making it.
+//
+// Two because operations are started under both. An application's own work is
+// owned by its tenant — the reading deriveScope gives, and the one this mount
+// used alone until a privacy request's progress link answered its own subject
+// 404 — and dataprivacy starts its operations owned by the person the request
+// is about, the same identifier deriveSubject reads. A caller holds both and
+// nothing else, so a colleague in the same tenant still cannot follow
+// somebody's export.
+func deriveOwners(
+	extract callers.PrincipalExtractor,
+	tenantOf func(callers.Principal) (tenancy.Scope, error),
+) func(context.Context) ([]tenancy.Scope, error) {
+	return func(ctx context.Context) ([]tenancy.Scope, error) {
+		principal, ok := extract(ctx)
+		if !ok {
+			return nil, ErrNoPrincipal
+		}
+
+		tenant, err := tenantScope(principal, tenantOf)
+		if err != nil {
+			return nil, err
+		}
+
+		owners := []tenancy.Scope{tenant}
+		if person := principal.UserID(); person != "" {
+			owners = append(owners, tenancy.Of(person))
+		}
+
+		return owners, nil
+	}
 }
 
 // deriveSubject reads the person a privacy request is about off the principal.
@@ -1145,7 +1186,7 @@ func (m *mount) operations() {
 	opts := []operationshttp.Option{
 		operationshttp.WithLogger(m.pillars.Logger),
 		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
-		operationshttp.WithOwnerResolver(deriveScope(extract, m.t.TenantOf)),
+		operationshttp.WithOwnersResolver(deriveOwners(extract, m.t.TenantOf)),
 	}
 
 	if watcher, watching := need[*operations.Watcher](m); watching {

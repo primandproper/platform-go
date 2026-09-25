@@ -41,6 +41,26 @@
 # package under test. So the suites this module leans on hardest are the ones
 # it reports as wholly untested, and the way to raise their number would be to
 # write a test of a test.
+#
+# `conformance/` is this module's own instance of that, and the first one it
+# has had — the three suites named above are primitives-go's and no directory
+# here matches them, so until now this paragraph described a rule with nothing
+# to apply it to. The numbers say the rest: conformance/anonymous reports 0.9%
+# while running an assertion against all thirty-one of identity's RPCs on every
+# CI run, because the binary that runs it is conformance/identity's and
+# coverage.sh passes no -coverpkg. conformance and conformance/all report 0.0%
+# for the same reason.
+#
+# The two leaf suites that hold their own harness — conformance/audit and
+# conformance/identity — report 98.2% and 100%, which is the same accident
+# pointing the other way rather than evidence that those two are better tested.
+# Excluding the tree keeps one honest number instead of two misleading ones.
+#
+# .scripts/coverage.sh drops the tree from the run as well, so this entry is
+# what keeps Codecov from reporting the files it then finds no data for. The
+# suites still run on every pull request, in .github/workflows/conformance.yaml
+# — excluding them from a number is not excluding them from CI, and a reader who
+# finds only this file should not have to take that on faith.
 ignore:
   - "**/mock/**"
   - "**/*.pb.go"
@@ -49,6 +69,7 @@ ignore:
   - "**/oauth2servertest/**"
   - "**/distributedlocktest/**"
   - "**/webauthntest/**"
+  - "conformance/**"
 
 coverage:
   status:

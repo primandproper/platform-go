@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/entitlements"
@@ -69,6 +70,7 @@ func (d Disposition) String() string {
 // because that is what the roster's own test reads the rows out of.
 const (
 	auditPkg         = "audit"
+	callersPkg       = "callers"
 	dataPrivacyPkg   = "dataprivacy"
 	identityPkg      = "identity"
 	linksPkg         = "links"
@@ -145,6 +147,19 @@ var Matrix = map[string]map[string]Decision{
 		// response. It reaches a transport only through a consumer who chose to
 		// escalate it, at which point what it means is theirs to decide.
 		"ErrChainBroken": {Err: audit.ErrChainBroken, Is: Unhandled},
+	},
+
+	callersPkg: {
+		// A request with nobody on it, at a seam a composition root derived from
+		// the extractor. Mapped so that the four surfaces behind such a seam say
+		// Unauthenticated, as every surface reading a principal itself already
+		// does, rather than the code each falls back to for a resolver that
+		// failed.
+		"ErrNoPrincipal": {Err: callers.ErrNoPrincipal, Is: Mapped},
+
+		// Every surface raising it has chosen a status at the call site, and
+		// several choose an absence on purpose. See its declaration.
+		"ErrTargetNotPermitted": {Err: callers.ErrTargetNotPermitted, Is: Unhandled},
 	},
 
 	billingPkg: {
@@ -1069,7 +1084,7 @@ var Matrix = map[string]map[string]Decision{
 // passages used to name the packages themselves, and between them they named
 // eight, six and four of what were by then fifteen and nine.
 var Packages = []string{
-	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
+	auditPkg, callersPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
 	webhooksPkg, billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
 	passwordResetPkg, meteringPkg, entitlementsPkg, shreddingPkg, mediaRegistryPkg,
@@ -1082,6 +1097,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 	switch pkg {
 	case auditPkg:
 		return audit.HTTPMapper, audit.GRPCMapper
+	case callersPkg:
+		return callers.HTTPMapper, callers.GRPCMapper
 	case dataPrivacyPkg:
 		return dataprivacy.HTTPMapper, dataprivacy.GRPCMapper
 	case identityPkg:

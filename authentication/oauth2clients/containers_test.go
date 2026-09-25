@@ -16,10 +16,6 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
-
 // TestSQLStore_RealServers runs the same behavioral suite SQLite runs, against
 // real servers.
 //
@@ -124,5 +120,5 @@ func runWithMySQL(t *testing.T, fn func(ctx context.Context, client database.Cli
 		t.Cleanup(func() { _ = client.Close() })
 
 		fn(ctx, client)
-	}, mysqltest.WithImage(defaultMySQLImage))
+	})
 }

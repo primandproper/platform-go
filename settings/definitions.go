@@ -659,9 +659,10 @@ func (s *SQLStore) hydrateEnumerations(
 
 // writeEnumeration replaces a definition's option set wholesale.
 //
-// Replaced rather than diffed: diffing means reading the current set first and
-// computing two statements from it, which is three round trips to express "these
-// are the legal values now" and a read-modify-write besides. One statement per
+// Replaced rather than diffed: diffing means computing two statements from the
+// current set, a read-modify-write to express "these are the legal values now".
+// The set is read first all the same, but only to ask whether there is anything
+// to clear — see the comment on the read below. One statement per
 // option rather than one multi-row INSERT, because the multi-row form's shape is
 // the caller's cardinality — no static text for sqlc to check — and the
 // cardinalities are single-digit inside the transaction the definition's own
@@ -672,13 +673,28 @@ func (s *SQLStore) writeEnumeration(
 	definitionID string,
 	enumeration []string,
 ) error {
-	if _, err := s.q.DeleteDefinitionOptions(ctx, q,
-		settingsdb.DeleteDefinitionOptionsParams{DefinitionID: definitionID}); err != nil {
-		return platformerrors.Wrap(err, "clearing setting enumeration")
+	// Asked before it is cleared, for the reason identity's replaceRoles gives
+	// at length: on InnoDB a DELETE matching no row still gap-locks the range
+	// it scanned, and two definitions created at once — each with no options
+	// yet, which is every create — both hold that gap and then each waits on
+	// the other's insert. This read is a consistent non-locking one, takes no
+	// gap lock, and sees this transaction's own writes, so a definition
+	// inserted a statement ago reads as holding nothing and is not cleared.
+	held, err := s.q.ListDefinitionOptionsByDefinitionIDs(ctx, q,
+		settingsdb.ListDefinitionOptionsByDefinitionIDsParams{IDs: []string{definitionID}})
+	if err != nil {
+		return platformerrors.Wrap(err, "reading setting enumeration")
+	}
+
+	if len(held) > 0 {
+		if _, err = s.q.DeleteDefinitionOptions(ctx, q,
+			settingsdb.DeleteDefinitionOptionsParams{DefinitionID: definitionID}); err != nil {
+			return platformerrors.Wrap(err, "clearing setting enumeration")
+		}
 	}
 
 	for _, option := range enumeration {
-		if err := s.q.InsertDefinitionOption(ctx, q, settingsdb.InsertDefinitionOptionParams{
+		if err = s.q.InsertDefinitionOption(ctx, q, settingsdb.InsertDefinitionOptionParams{
 			DefinitionID: definitionID,
 			Value:        option,
 		}); err != nil {

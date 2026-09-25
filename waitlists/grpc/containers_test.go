@@ -21,10 +21,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
-// default is stock MySQL.
-const defaultMySQLImage = "mariadb:11"
-
 // TestSurface_RealServers runs the surface's own decisions against real servers,
 // and it exists for a narrower reason than the store's container suite does.
 //
@@ -65,7 +61,7 @@ func TestSurface_RealServers(T *testing.T) {
 			t.Cleanup(func() { _ = client.Close() })
 
 			runSurfaceSuite(t, client, dialect.MySQL)
-		}, mysqltest.WithImage(defaultMySQLImage))
+		})
 	})
 }
 

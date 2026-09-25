@@ -35,3 +35,20 @@ import (
 // as though the row were absent instead — each says which of the two shapes it
 // takes, and why, beside the handler that takes it.
 var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the named target")
+
+// ErrNoPrincipal indicates a request that arrived with nobody on it, at a seam
+// that needed somebody.
+//
+// It is the refusal behind every seam derived from a PrincipalExtractor rather
+// than handed one — a scope, a subject, an owner, a caller identifier — which is
+// how a composition root gives a surface the one fact it wants about a caller
+// instead of the whole principal. Those surfaces answer a resolver's failure
+// with a code of their own choosing, because a resolver the consumer wrote can
+// fail for reasons that are the request's fault; a resolver that failed because
+// there was no caller at all is a different answer, and it is the same answer
+// everywhere: authenticate and ask again.
+//
+// So unlike ErrTargetNotPermitted it is mapped, Unauthenticated on gRPC and 401
+// on HTTP, and the mapper outranks the code a surface falls back to. A derived
+// seam wraps it; errors.Is from any surface matches.
+var ErrNoPrincipal = platformerrors.New("the request carries no caller")
