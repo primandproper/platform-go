@@ -125,10 +125,10 @@ type reporter struct {
 	closeOnce  sync.Once
 	cancelOnce sync.Once
 
-	// flushMu serializes the writes themselves, which mu cannot: a unit boundary
-	// flushes from the Runner's goroutine while the ticker flushes from this
-	// package's, and two overlapping statements would decide the row's unit name
-	// and message by whichever commit was slower. The counters survive that
+	// flushMu serializes the writes themselves, which mu cannot: the flush loop
+	// writes on a tick or a wake while close writes the final buffer from the
+	// Runner's side, and two overlapping statements would decide the row's unit
+	// name and message by whichever commit was slower. The counters survive that
 	// through GREATEST; the strings would not.
 	flushMu sync.Mutex
 
