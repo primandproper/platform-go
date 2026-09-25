@@ -24,11 +24,14 @@ it would be proving a service nobody could run.
     and a consumer who forgets the encoder has every mapped sentinel reach their
     clients as Internal, which the anonymous suite reads as a failure.
   - The services Register does not build. identity/config's RegisterService is a
-    call the application makes, and oauth2clients, passwordreset and signin have
-    no config block at all — each is built from what the composition root
-    already registered, the way its own documentation says a consumer builds it.
-    A surface over a service nobody built stays absent, which is the absence rule
-    working rather than a gap in it.
+    call the application makes, and signin has no config block at all — it is
+    built from what the composition root already registered, the way its own
+    documentation says a consumer builds it. oauth2clients and passwordreset do
+    have config blocks, and the harness leaves both unset and builds the two
+    services by hand instead, which is the other way a consumer mounts them;
+    configuring a block as well would register each twice. A surface over a
+    service nobody built stays absent, which is the absence rule working rather
+    than a gap in it.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
   - The extractor, through service.Transports, and the four authorizers that

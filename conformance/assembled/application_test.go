@@ -80,9 +80,10 @@ func registerApplication(i do.Injector, prefix string) {
 	// service.Register does not call.
 	identitycfg.RegisterService(i)
 
-	// The three services with no config block at all. Each is built the way its
-	// package's documentation says a consumer builds it, from what the
-	// composition root already registered.
+	// Three services built by hand, the way each package's documentation says a
+	// consumer builds it, from what the composition root already registered.
+	// signin has no config block; oauth2clients and passwordreset have one each,
+	// left unset here so that neither is registered twice.
 	do.Provide(i, func(i do.Injector) (oauth2clients.Store, error) {
 		store, err := oauth2clients.NewSQLStore(do.MustInvoke[database.Client](i), oauth2clients.WithTablePrefix(prefix))
 		if err != nil {
