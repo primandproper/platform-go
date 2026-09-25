@@ -74,6 +74,12 @@ the refresh mint happens inside the login transaction rather than beside it.
 [SignIn.FamilyID] is set whether or not a refresh token was stored, because it
 names a sign-in rather than a row.
 
+The door a login came through is kept on the row too, so an exchange of an
+administrative session mints another administrative token on the administrative
+lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
+consumer's interceptor refuse administrative work under an ordinary login by the
+same person.
+
 # The transaction, and what is outside it
 
 Verifying a password is expensive by design — that is what argon2 is for — and
