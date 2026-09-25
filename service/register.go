@@ -470,6 +470,12 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	// optionally. oauth2clients/privacy's collector and eraser are the service's
 	// to register, for the reason every registry in this file is: they need a
 	// mapping from a person to the tenants they belong to.
+	//
+	// A container that also registers an oauth2clients.Store or an
+	// *oauth2clients.Service by hand — which was the only way to mount the
+	// surface before this block existed — holds two providers under one key, and
+	// samber/do panics on the second registration. Configure the block or keep
+	// the hand registration, not both.
 	if cfg.OAuth2Clients != nil {
 		do.ProvideValue(i, cfg.OAuth2Clients)
 		oauth2clientscfg.RegisterStore(i)
