@@ -177,8 +177,11 @@ as a fault rather than as progress; the per-unit structure is already carried by
 the tier above.
 
 Everything on Reporter is buffered and in-memory, so Advance in a tight loop is
-an integer add. The buffer is flushed on WorkerConfig.ProgressInterval, at every
-unit boundary, and once more when the Runner returns. Nothing on Reporter returns
+an integer add. The buffer is flushed on WorkerConfig.ProgressInterval, promptly
+after every unit boundary, and once more when the Runner returns. The flush loop
+makes every one of those writes, never the Runner's goroutine, so a Runner may
+report from inside a transaction it holds open without waiting on itself, even on
+SQLite's single writer. Nothing on Reporter returns
 an error, because progress is advisory: an update that does not land costs a
 watching client a couple of seconds and costs the work nothing, and a Runner
 forced to handle that error would ignore it.

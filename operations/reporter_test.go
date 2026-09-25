@@ -23,8 +23,8 @@ func newRecordingStore(ack Ack, err error) *fakeStore {
 	return s
 }
 
-// newTestReporter builds a reporter with a long interval, so nothing flushes
-// except the boundaries and the closes the test drives itself.
+// newTestReporter builds a reporter with a long interval and no flush loop
+// running, so nothing flushes except the closes the test drives itself.
 func newTestReporter(store Store, op *Operation) *reporter {
 	if op == nil {
 		op = &Operation{ID: "op1"}
@@ -84,17 +84,78 @@ func TestReporter_units(T *testing.T) {
 
 	// A unit boundary is the one moment a watching client's view is worth being
 	// exactly right about, and there are only as many of them as there are
-	// units.
-	T.Run("boundaries flush", func(t *testing.T) {
+	// units. The interval here is an hour, so only the boundary can have
+	// flushed.
+	T.Run("a boundary flushes without waiting for the tick", func(t *testing.T) {
 		t.Parallel()
 
 		store := newRecordingStore(Ack{Held: true}, nil)
 		rep := newTestReporter(store, nil)
 
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		go rep.run(ctx)
+
 		rep.StartUnit("identity")
 		rep.FinishUnit()
 
-		test.SliceLen(t, 2, store.recordedProgress())
+		deadline := time.After(2 * time.Second)
+
+		for store.lastProgress().UnitsDone < 1 {
+			select {
+			case <-deadline:
+				t.Fatal("a unit boundary was not flushed")
+			case <-time.After(time.Millisecond):
+			}
+		}
+
+		rep.close(t.Context())
+	})
+
+	// The Runner never waits on the write. On SQLite a Runner reporting from
+	// inside its own transaction holds the one writer connection, and a
+	// boundary that flushed on the Runner's goroutine would wait on that
+	// transaction, which waits on the Runner.
+	T.Run("a boundary does not wait on the write", func(t *testing.T) {
+		t.Parallel()
+
+		release := make(chan struct{})
+		store := newFakeStore()
+		store.progressFunc = func(string, Progress) (Ack, error) {
+			<-release
+
+			return Ack{Held: true}, nil
+		}
+
+		rep := newTestReporter(store, nil)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		go rep.run(ctx)
+
+		returned := make(chan struct{})
+
+		go func() {
+			defer close(returned)
+
+			rep.StartUnit("identity")
+			rep.FinishUnit()
+			rep.StartUnit("webhooks")
+			rep.FinishUnit()
+		}()
+
+		select {
+		case <-returned:
+		case <-time.After(2 * time.Second):
+			t.Fatal("a unit boundary waited on a write that had not finished")
+		}
+
+		close(release)
+		rep.close(t.Context())
+
+		test.EqOp(t, 2, store.lastProgress().UnitsDone)
 	})
 
 	// The numerator has to survive overlapping units, because fanning out over
@@ -116,7 +177,7 @@ func TestReporter_units(T *testing.T) {
 		rep.StartUnit("billing")
 
 		// A unit is still open, so the name is not blanked out from under it.
-		test.NotEq(t, "", store.lastProgress().Unit)
+		test.NotEq(t, "", rep.snapshot().Unit)
 
 		rep.FinishUnit()
 		rep.FinishUnit()
@@ -153,6 +214,7 @@ func TestReporter_units(T *testing.T) {
 
 		rep.FinishUnit()
 		rep.FinishUnit()
+		rep.close(t.Context())
 
 		test.EqOp(t, 0, store.lastProgress().UnitsDone)
 	})
@@ -166,6 +228,7 @@ func TestReporter_units(T *testing.T) {
 		rep.StartUnit("identity")
 		rep.FinishUnit()
 		rep.FinishUnit()
+		rep.close(t.Context())
 
 		test.EqOp(t, 1, store.lastProgress().UnitsDone)
 	})

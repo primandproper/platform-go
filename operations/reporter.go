@@ -13,8 +13,16 @@ import (
 //
 // Every method is buffered, in-memory, and cheap enough to call in a tight loop:
 // a Runner calling Advance once per row is doing an integer add, not a database
-// write. The buffer is flushed on WorkerConfig.ProgressInterval, at every unit
-// boundary, and once more when the Runner returns.
+// write. The buffer is flushed on WorkerConfig.ProgressInterval, promptly after
+// every unit boundary, and once more when the Runner returns.
+//
+// No method writes on the Runner's own goroutine, so a Runner may report from
+// inside a transaction it holds open. The write is made by the flush loop, on a
+// connection of its own, and a Runner that waited for it could wait on itself:
+// on SQLite, or on a pool with no spare connection, the flush needs the
+// connection the Runner's transaction is holding. Progress reported inside a
+// transaction is not part of it, though. The row's counters only move forward,
+// so a unit reported before a rollback stays counted.
 //
 // That is why nothing here returns an error. Progress is advisory — an update
 // that does not land costs a watching client a couple of seconds of staleness
@@ -93,6 +101,11 @@ type reporter struct {
 	// cancelled is closed once, by the flush that first observes the flag.
 	cancelled chan struct{}
 
+	// wake asks the flush loop for a flush now rather than at the next tick. It
+	// holds one pending request, so boundaries that arrive faster than the loop
+	// flushes coalesce into one write of the latest buffer.
+	wake chan struct{}
+
 	done chan struct{}
 
 	id string
@@ -164,6 +177,7 @@ func newReporter(
 		lease:     lease,
 		interval:  interval,
 		cancelled: make(chan struct{}),
+		wake:      make(chan struct{}, 1),
 		done:      make(chan struct{}),
 	}
 }
@@ -194,11 +208,14 @@ func (r *reporter) StartUnit(name string) {
 	r.unitsOpen++
 	r.mu.Unlock()
 
-	// Flushed rather than merely marked dirty. A unit boundary is the one moment
-	// a watching client's view is worth being exactly right about — it is the
-	// tier a progress bar is drawn from — and there are as many of them as there
-	// are units, which is a number the work already told us is small.
-	r.flush(context.Background())
+	// Flushed promptly rather than at the next tick. A unit boundary is the one
+	// moment a watching client's view is worth being exactly right about — it
+	// is the tier a progress bar is drawn from — and there are as many of them
+	// as there are units, which is a number the work already told us is small.
+	//
+	// Promptly and not here. The flush loop makes the write, so the Runner never
+	// waits on it. See the Reporter documentation for why that matters.
+	r.nudge()
 }
 
 func (r *reporter) FinishUnit() {
@@ -216,7 +233,17 @@ func (r *reporter) FinishUnit() {
 	}
 	r.mu.Unlock()
 
-	r.flush(context.Background())
+	r.nudge()
+}
+
+// nudge asks the flush loop for a flush without waiting for it. A request
+// already pending covers this one, because the flush writes whatever the
+// buffer holds when it runs.
+func (r *reporter) nudge() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (r *reporter) Advance(n int64) {
@@ -275,6 +302,8 @@ func (r *reporter) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			r.flush(ctx)
+		case <-r.wake:
 			r.flush(ctx)
 		}
 	}

@@ -909,20 +909,16 @@ func (f *Fulfiller) erase(
 	}
 
 	// The units are reported after the commit rather than as each eraser
-	// finishes, for two reasons, and neither is about speed.
+	// finishes. The erasure is one transaction, so until it commits nothing has
+	// been erased, and the operation's progress is monotonic in its row: a
+	// domain reported inside a transaction that then rolled back would leave the
+	// row saying it was erased, and the retry could never walk that back.
 	//
-	// The erasure is one transaction, so until it commits nothing has been
-	// erased, and the operation's progress is monotonic in its row: a domain
-	// reported inside a transaction that then rolled back would leave the row
-	// saying it was erased, and the retry could never walk that back.
-	//
-	// And a unit boundary flushes, which is a write to the operations table on
-	// a connection of its own. Made while this transaction is open, that is a
-	// second writer waiting on the first, which SQLite — one writer, always —
-	// can never grant, and which the other two grant only from a pool with a
-	// spare connection. The flush the reporter makes on its own interval is what
-	// keeps the lease while the erasers run; it does not wait on this goroutine,
-	// so on SQLite it simply lands once the transaction has.
+	// What that costs is stated in the package documentation: the progress row
+	// shows no domain done while the transaction is open, and a process that
+	// dies between the commit and this loop leaves the row's unit count short.
+	// The request row and the operation's result carry the true counts either
+	// way, because they commit with the erasure.
 	for i, key := range keys {
 		rep.StartUnit(key)
 		rep.Advance(outcomes[i].Deleted + outcomes[i].Anonymized)

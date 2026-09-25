@@ -288,15 +288,20 @@ without it, a request whose enqueue was lost waits for nothing.
 An erasure is one database transaction — every eraser shares it — and its
 units are reported to the operation only once that transaction has committed.
 Reported as each eraser finished, a domain whose erasure then rolled back would
-stay counted, because an operation's progress is monotonic in its row; and the
-report is a write on a connection of its own, which a runner holding its
-transaction open would have waited on — forever on SQLite, which has one
-writer, and wherever else the pool had no spare connection.
+stay counted, because an operation's progress is monotonic in its row.
 
-What still writes beside the open transaction is the reporter's interval flush,
-which is what extends the operation's lease. It waits for a connection rather
-than making the runner wait, so it cannot deadlock anything; what it can do is
-land late. On SQLite it always does — nothing writes while the erasure's
+That has two visible costs. A client watching the operation sees no domain
+finish while the transaction is open, and then sees every domain finish at
+once. And a process that dies between the commit and the report leaves the
+progress row's unit count short for good. The retry finds the request
+completed and succeeds with its recorded outcome rather than erasing again, so
+the request row and the operation's result carry the true counts. Only the
+progress bar is wrong.
+
+What still writes beside the open transaction is the reporter's flush, which is
+what extends the operation's lease. The flush loop makes that write, never the
+runner's goroutine, so it waits for a connection rather than making the runner
+wait. It cannot deadlock anything; what it can do is land late. On SQLite it always does — nothing writes while the erasure's
 transaction is open — and so does any pool without a spare connection, so there
 the lease stands still for the length of the erasure: size WorkerConfig.Lease
 past the longest one, or an erasure that outlasts it is handed to a second
