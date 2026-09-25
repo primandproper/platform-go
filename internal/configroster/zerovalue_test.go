@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -107,6 +108,7 @@ func zeroValueCases() []zeroValueCase {
 		{name: "analytics", cfg: &analyticscfg.Config{}, needs: "provider"},
 		{name: "audit", cfg: &auditcfg.Config{}, needs: "dialect"},
 		{name: "authentication/tokens", cfg: &tokenscfg.Config{}, needs: "provider"},
+		{name: "authentication/oauth2clients", cfg: &oauth2clientscfg.Config{}, why: "the table prefix is the only field, and which clients exist is rows an operator or a person creates rather than environment"},
 		// It is decisive for the store, which is what a zero config builds.
 		// What it still cannot do is serve: NewServer refuses an empty issuer,
 		// and that is checked in oauth2server.NewServer rather than here
