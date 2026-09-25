@@ -84,10 +84,11 @@ absence: a config naming no billing registers no billing store, so no billing
 surface mounts, and that is not a failure. A component that was registered and
 cannot be built is, and it is reported naming the surface that wanted it. It is
 the same distinction the rest of this package draws, and drawing it here is what
-lets identity, oauth2clients, passwordreset and signin behave without a special
-case — their servers are built over a service Register does not register, so they
-mount for an application that registered one and stay absent for one that did
-not.
+lets identity, passwordreset and signin behave without a special case — their
+servers are built over a service Register does not register, so they mount for
+an application that registered one and stay absent for one that did not.
+oauth2clients is the service Register does register, from Config.OAuth2Clients,
+so its surface mounts from the config alone.
 
 # The two seams
 
