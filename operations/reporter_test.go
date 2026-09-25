@@ -431,3 +431,51 @@ func TestReporter_runFlushesWithNothingNewToSay(t *testing.T) {
 
 	rep.close(t.Context())
 }
+
+// The final write is the reporter's last. A loop flush that loses the race with
+// close — a wake the last unit boundary left pending, say — would otherwise
+// land after the worker had released the operation, and on a reclaimed row it
+// would pass the write's guard and overwrite the new owner's progress.
+func TestReporter_closeWritesLast(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a loop flush after close writes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := newRecordingStore(Ack{Held: true}, nil)
+		rep := newTestReporter(store, nil)
+
+		rep.StartUnit("users")
+		rep.FinishUnit()
+		rep.close(t.Context())
+		must.SliceLen(t, 1, store.recordedProgress())
+
+		// The loop's own path, as it would run on the wake FinishUnit left.
+		rep.flush(t.Context())
+		test.SliceLen(t, 1, store.recordedProgress())
+	})
+
+	T.Run("with the loop running and a wake pending", func(t *testing.T) {
+		t.Parallel()
+
+		for range 50 {
+			store := newRecordingStore(Ack{Held: true}, nil)
+			rep := newTestReporter(store, nil)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			go rep.run(ctx)
+
+			rep.StartUnit("users")
+			rep.FinishUnit()
+			rep.close(t.Context())
+
+			closedAt := len(store.recordedProgress())
+
+			// Long enough for a loop that chose the wake over done to have written.
+			time.Sleep(time.Millisecond)
+			cancel()
+
+			test.EqOp(t, closedAt, len(store.recordedProgress()))
+		}
+	})
+}

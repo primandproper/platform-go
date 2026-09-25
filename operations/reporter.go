@@ -132,6 +132,10 @@ type reporter struct {
 	// through GREATEST; the strings would not.
 	flushMu sync.Mutex
 
+	// closed is set by close under flushMu, before its final write. A loop flush
+	// that takes the lock afterwards writes nothing. See close.
+	closed bool
+
 	mu sync.Mutex
 
 	// lost records that a flush found the row no longer ours. It is read by the
@@ -318,6 +322,15 @@ func (r *reporter) flush(ctx context.Context) {
 	r.flushMu.Lock()
 	defer r.flushMu.Unlock()
 
+	if r.closed {
+		return
+	}
+
+	r.write(ctx)
+}
+
+// write is flush's statement, for a caller already holding flushMu.
+func (r *reporter) write(ctx context.Context) {
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.interval+r.lease)
 	defer cancel()
 
@@ -357,10 +370,27 @@ func (r *reporter) markCancelled() {
 
 // close stops the flush loop and writes the buffer one final time, so the last
 // thing a Runner said before returning is on the row before the outcome is.
+//
+// The final write is the last one, and not merely the last one close makes.
+// Closing done does not stop a loop that is already choosing between it and a
+// pending wake, and the last unit boundary nearly always leaves one pending. A
+// loop flush landing after the worker has released the operation would pass
+// the write's only guard, state = running, as soon as another worker reclaimed
+// it, writing this attempt's unit and message over the new owner's and
+// extending a lease that is no longer ours. So close marks the reporter closed
+// under the write lock: a loop flush already under way finishes before the
+// final write, and one that arrives after it writes nothing. Waiting for the
+// loop to exit would buy the same thing, at the price of close hanging on a
+// reporter whose loop was never started.
 func (r *reporter) close(ctx context.Context) {
 	r.closeOnce.Do(func() {
 		close(r.done)
-		r.flush(ctx)
+
+		r.flushMu.Lock()
+		defer r.flushMu.Unlock()
+
+		r.closed = true
+		r.write(ctx)
 	})
 }
 
