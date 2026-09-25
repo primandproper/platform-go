@@ -142,6 +142,7 @@ func TestService_LoginForToken_RefreshToken(T *testing.T) {
 
 		test.True(t, second.Administrative)
 		test.EqOp(t, signin.DefaultAdminTokenTTL, e.issuer.expiry)
+		test.EqOp[any](t, true, e.issuer.claims[signin.ClaimAdministrative])
 
 		gap := second.RefreshTokenExpiresAt.Sub(second.ExpiresAt)
 		want := signin.DefaultAdminRefreshTokenTTL - signin.DefaultAdminTokenTTL
@@ -191,6 +192,10 @@ func TestService_ExchangeRefreshToken(T *testing.T) {
 		test.EqOp(t, e.user.ID, e.issuer.subject)
 		test.EqOp(t, signin.DefaultTokenTTL, e.issuer.expiry)
 		test.EqOp[any](t, second.FamilyID, e.issuer.claims[signin.ClaimFamilyID])
+
+		// An ordinary login stays ordinary across an exchange, the mirror of
+		// the administrative session that stays administrative.
+		test.EqOp[any](t, false, e.issuer.claims[signin.ClaimAdministrative])
 	})
 
 	// The account is the row's rather than re-resolved, which is what stops an
@@ -586,23 +591,30 @@ func TestNewService_Lifetimes(T *testing.T) {
 func TestDefaultClaims(T *testing.T) {
 	T.Parallel()
 
-	T.Run("emits the account, the directory and the login", func(t *testing.T) {
+	T.Run("emits the account, the directory, the login and the door", func(t *testing.T) {
 		t.Parallel()
 
-		claims, err := signin.DefaultClaims(t.Context(), &signin.ClaimsInput{
-			Principal: &identity.Principal{
-				User:            &identity.User{ID: "user_1", Scope: testScope},
-				ActiveAccountID: "account_1",
-			},
-			FamilyID: "family_1",
-		})
-		must.NoError(t, err)
+		for _, administrative := range []bool{false, true} {
+			claims, err := signin.DefaultClaims(t.Context(), &signin.ClaimsInput{
+				Principal: &identity.Principal{
+					User:            &identity.User{ID: "user_1", Scope: testScope},
+					ActiveAccountID: "account_1",
+				},
+				FamilyID:       "family_1",
+				Administrative: administrative,
+			})
+			must.NoError(t, err)
 
-		test.Eq(t, map[string]any{
-			signin.ClaimAccountID: "account_1",
-			signin.ClaimScope:     testScope.String(),
-			signin.ClaimFamilyID:  "family_1",
-		}, claims)
+			test.Eq(t, map[string]any{
+				signin.ClaimAccountID:      "account_1",
+				signin.ClaimScope:          testScope.String(),
+				signin.ClaimFamilyID:       "family_1",
+				signin.ClaimAdministrative: administrative,
+			}, claims, test.Sprintf("administrative %t", administrative))
+		}
+
+		// The wire spelling a consumer's interceptor reads back.
+		test.EqOp(t, "administrative", signin.ClaimAdministrative)
 	})
 
 	T.Run("refuses an input with nobody on it", func(t *testing.T) {

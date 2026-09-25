@@ -168,6 +168,15 @@ func (q *Queue[K]) upsert(ctx context.Context, rows []encodedEntry) error {
 
 	q.enqueueBatchHist.Record(ctx, float64(len(rows)), q.attrs)
 
+	// MySQL and SQLite have no array to bind a column of, so the batch is a
+	// statement per row there instead. Nothing is notified: New has refused a
+	// channel on a dialect with no NOTIFY.
+	if q.split != nil {
+		return q.retrier.Do(ctx, "enqueue", func() error {
+			return q.upsertSplit(ctx, rows)
+		})
+	}
+
 	// Three parallel arrays rather than a tuple per row: the statement is one
 	// fixed text however large the batch is, and the nth element of each is one
 	// entry. See workqueue/internal/queries on the ordinality join that puts

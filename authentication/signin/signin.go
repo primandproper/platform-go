@@ -97,6 +97,13 @@ const (
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
 	opUpdatePassword       = "update_password"
 
+	// Listing a person's logins and ending one of them are two series of their
+	// own. Ending one is not folded into revoke_refresh_token_family for the
+	// reason signing out is not: it is a person's decision, and that series is
+	// where a detected reuse's alarm lands.
+	opListSignIns = "list_sign_ins"
+	opEndSignIn   = "end_sign_in"
+
 	// The registration door and the three that finish one. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
 	// is how many people arrived, which has nothing to do with how often they
@@ -337,9 +344,10 @@ type PasswordUpdate struct {
 	CurrentPassword string `json:"-"`
 
 	// NewPassword is what replaces it. Whether it is long enough, unusual
-	// enough, or unlike the last four is the consumer's rule, applied before
-	// this call — this package holds no password policy and validating one here
-	// would be a policy every consumer then had to work around.
+	// enough, or unlike the last four is the consumer's rule — this package
+	// holds no password policy, and validating one here would be a policy every
+	// consumer then had to work around. The consumer's own is applied here if
+	// the service was built with WithPasswordPolicy.
 	NewPassword string `json:"-"`
 
 	// TOTPCode is the second-factor code, required from a user who holds a
@@ -425,6 +433,10 @@ type Service struct {
 	// sent is a sign-in nobody can complete; the redemption door needs only the
 	// store.
 	magicLinkMailer MagicLinkMailer
+
+	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
+	// any password that is not empty.
+	passwordPolicy PasswordPolicy
 
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger

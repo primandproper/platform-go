@@ -233,6 +233,17 @@ func WithRequestFloor(d time.Duration) ServiceOption {
 	return func(s *Service) { s.requestFloor = d }
 }
 
+// WithPasswordPolicy sets the rule a password must pass before Service.Complete
+// writes it. A nil policy is ignored, leaving none, which admits any password
+// that is not empty. See [PasswordPolicy].
+func WithPasswordPolicy(policy PasswordPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.passwordPolicy = policy
+		}
+	}
+}
+
 // WithServiceClock replaces the clock the request floor is measured against.
 //
 // It is the flow's clock and not the store's: a test that drives both hands one

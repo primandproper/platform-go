@@ -81,6 +81,7 @@ var rulings = map[string]ruling{
 	"operations/internal/operationsdb":                            {tier: unison},
 	"timers/internal/timersdb":                                    {tier: unison},
 	"workqueue/internal/workqueuedb":                              {tier: unison},
+	"workqueue/internal/workqueuesplitdb":                         {tier: unison},
 	"outbox/internal/outboxdb":                                    {tier: unison},
 	"metering/internal/meteringdb":                                {tier: unison},
 	"authentication/passkeys/internal/passkeysdb":                 {tier: unison},
@@ -110,7 +111,7 @@ var rulings = map[string]ruling{
 	"outbox/internal/queries":     {tier: exempt, why: "a corpus source rather than a store: the statements here are rendered into the committed .sql that sqlc checks and unison emits from, and the six this package writes out in full are the shapes database/querygen's doc rules out of it"},
 	"retention":                   {tier: exempt, why: "the table a pass deletes from, the column its age is measured from and the key its batches are bounded by all arrive from a Policy an application writes at run time, so this module ships no DDL for them and nothing committed is left for sqlc to check a statement against; what it takes from database/querygen's prune is the rules rather than the rendering, and a three-dialect container suite in place of the corpus"},
 	"timers/internal/queries":     {tier: exempt, why: "a corpus source whose statements are written out in full rather than rendered from database/querygen, for the reason its own doc gives: every one of them assigns an expression, and each is still checked by sqlc and executed through timers/internal/timersdb"},
-	"workqueue/internal/queries":  {tier: exempt, why: "a corpus source whose seven statements are written out in full rather than rendered from database/querygen, for the reason its own doc gives: this table carries no convention triple and every write assigns an expression, and each statement is still checked by sqlc and executed through workqueue/internal/workqueuedb"},
+	"workqueue/internal/queries":  {tier: exempt, why: "a corpus source whose two statement sets are written out in full rather than rendered from database/querygen, for the reason its own doc gives: this table carries no convention triple and every write assigns an expression, and each statement is still checked by sqlc and executed through workqueue/internal/workqueuedb or workqueue/internal/workqueuesplitdb"},
 
 	// Ruled on for holding no SQL. Recorded rather than left absent, so a
 	// statement appearing here later is a failing test rather than a silence.

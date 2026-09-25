@@ -9,7 +9,9 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
@@ -20,6 +22,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/identity"
+	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
@@ -40,6 +43,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksmock "github.com/primandproper/platform-go/v14/webhooks/mock"
 
+	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
@@ -253,6 +257,33 @@ func TestRegisterTransports(T *testing.T) {
 		test.SliceLen(t, 1, mounted.registrations)
 	})
 
+	T.Run("the reset surface mounts from its config block and the application's two", func(t *testing.T) {
+		t.Parallel()
+
+		// Nothing about the service is hand-built: the block registers the store
+		// and the service, Identity supplies the directory, and the application
+		// registers only what no environment variable can name.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteDatabase(t),
+			Identity:      &identitycfg.Config{TablePrefix: storePrefix},
+			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue[passwordreset.Mailer](i, stubResetMailer{})
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+
+		RegisterTransports(i, &Transports{})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.Eq(t, []string{"password reset gRPC"}, mounted.names)
+		test.SliceLen(t, 1, mounted.registrations)
+	})
+
 	T.Run("a surface whose store is unconfigured does not mount, and that is not an error", func(t *testing.T) {
 		t.Parallel()
 
@@ -267,6 +298,30 @@ func TestRegisterTransports(T *testing.T) {
 		must.NoError(t, err)
 
 		test.Eq(t, []string{"billing gRPC"}, mounted.names)
+	})
+
+	T.Run("the client registry mounts from its config block alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The pair it mounts over is a service and a store, and a table prefix
+		// is all either needs, so a Config naming OAuth2Clients is enough to put
+		// the registry on the wire with nothing registered by hand.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteDatabase(t),
+			OAuth2Clients: &oauth2clientscfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.Eq(t, []string{"oauth2 clients gRPC"}, mounted.names)
+		test.SliceLen(t, 1, mounted.registrations)
 	})
 
 	T.Run("a surface whose service is unregistered does not mount, though its store is", func(t *testing.T) {

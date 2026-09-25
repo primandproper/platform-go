@@ -18,6 +18,14 @@ half of it: `-schema <dialect>` prints the DDL sqlc reads them against, so
 with the migrations package. `make unison` calls it that way before running the
 emitter over both.
 
+The DDL it prints is every version of the schema in order — the CREATE TABLE
+version 1 shipped, then the ALTERs and the backfill each later version adds —
+because that is the single source there is. sqlc applies a run's DDL in order,
+so the table it checks the statements against is the table the versions leave
+behind, and a version it cannot parse fails here rather than in a consumer's
+migration. The backfills it reads past: an UPDATE changes no table's shape, and
+the migrations package's upgrade suite is where those run against a database.
+
 	go run ./internal/queriesgen                 # writes internal/queries/<dialect>_generated.sql
 	go run ./internal/queriesgen -schema sqlite  # prints the DDL to stdout
 */

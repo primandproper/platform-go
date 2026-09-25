@@ -64,6 +64,12 @@ const (
 	AdministrativeColumn = "administrative"
 	// IssuedAtColumn is when the token was minted.
 	IssuedAtColumn = "issued_at"
+	// SignedInAtColumn is when the login this token belongs to began: the first
+	// token's issued_at, carried onto every successor by the mint that writes
+	// it. It is a column rather than the earliest issued_at a family still has,
+	// because that row is swept at its purge deadline and a long-lived login
+	// would then report having begun whenever its oldest surviving row did.
+	SignedInAtColumn = "signed_in_at"
 	// ExpiresAtColumn is the deadline the token stops being exchangeable at. It
 	// is guarded on by the exchange — see [stillLive] — and it is deliberately
 	// not what the sweep is keyed on.
@@ -141,6 +147,7 @@ var Columns = []string{
 	ActiveAccountIDColumn,
 	AdministrativeColumn,
 	IssuedAtColumn,
+	SignedInAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,
 	RedeemedAtColumn,
@@ -170,6 +177,7 @@ var RecordColumns = []string{
 	ActiveAccountIDColumn,
 	AdministrativeColumn,
 	IssuedAtColumn,
+	SignedInAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,
 	RedeemedAtColumn,
@@ -191,8 +199,27 @@ var InsertColumns = []string{
 	ActiveAccountIDColumn,
 	AdministrativeColumn,
 	IssuedAtColumn,
+	SignedInAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,
+}
+
+// FamilyColumns is what the listing of a person's live logins projects: one
+// row per login, which is its current token, less everything about that token
+// a screen showing the login has no use for.
+//
+// No stamp is among them because every row the listing returns has neither,
+// and no deadline past expires_at because purge_after is storage's business
+// rather than the login's. The subject and the scope are the statement's own
+// predicates, so projecting them back would be reading out what the caller
+// just bound.
+var FamilyColumns = []string{
+	FamilyIDColumn,
+	ActiveAccountIDColumn,
+	AdministrativeColumn,
+	IssuedAtColumn,
+	SignedInAtColumn,
+	ExpiresAtColumn,
 }
 
 // RedeemColumns is what the exchange assigns, which is the stamp and nothing
@@ -235,11 +262,13 @@ const (
 	RecordSuccessorQuery        = "RecordRefreshTokenSuccessor"
 	RevokeTokenQuery            = "RevokeRefreshToken"
 	RevokeFamilyQuery           = "RevokeRefreshTokenFamily"
+	RevokeSubjectFamilyQuery    = "RevokeRefreshTokenFamilyForSubject"
 	RevokeTokensForSubjectQuery = "RevokeRefreshTokensForSubject"
+	ListLiveFamiliesQuery       = "ListLiveRefreshTokenFamilies"
 	SweepTokensQuery            = "SweepRefreshTokens"
 )
 
-// Render returns the canonical sqlc input for d: the six statements this store
+// Render returns the canonical sqlc input for d: the statements this store
 // executes, in one file's worth of text.
 //
 // It is what authentication/signin/refreshtokens/internal/queriesgen writes to
@@ -251,8 +280,9 @@ const (
 // The order is the order a token goes through: minted, read — twice, since the
 // idempotent path reads what the ordinary one does not — exchanged, with or
 // without a key, and then the two writes a retry of that exchange makes; or
-// revoked, alone, as one of a family's or as one of a subject's; and finally
-// collected once its purge deadline has passed.
+// revoked, alone, as one of a family's — named by the token or by its owner —
+// or as one of a subject's; listed, while it is the live one of its login; and
+// finally collected once its purge deadline has passed.
 //
 // # The five statements the idempotent path adds
 //
@@ -308,8 +338,9 @@ const (
 // [querygen.Generator.StandardCRUD] serves a table with a surrogate id, a paged
 // list keyed on it, and the convention triple of timestamps. This table has none
 // of that, and every absence is deliberate — see the migrations package. Its key
-// is the digest of a credential rather than a surrogate; nothing lists these
-// rows, because the only way to name one is to hold the token it was minted from;
+// is the digest of a credential rather than a surrogate; the one read that lists
+// rows lists a person's live logins, a bounded set with no position a caller
+// holds between round trips — see [listLiveFamilies];
 // and an archived_at would keep rows nothing can read while making the sweep the
 // one write unable to reach the rows it exists for.
 func Render(d dialect.Dialect) string {
@@ -331,7 +362,9 @@ func Render(d dialect.Dialect) string {
 		recordSuccessor(g),
 		revoke(g),
 		revokeFamily(g),
+		revokeSubjectFamily(g),
 		revokeForSubject(g),
+		listLiveFamilies(g),
 		sweep(g),
 	})
 }
@@ -563,6 +596,57 @@ func revokeForSubject(g *querygen.Generator) *querygen.Query {
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: SubjectIDColumn},
 		unrevoked(),
+	)
+}
+
+// revokeSubjectFamily ends one login, named by its family, on behalf of the
+// person it belongs to.
+//
+// It is [revokeFamily] with the subject added to the key, and the extra
+// predicate is the whole of its authorization. A family identifier is not a
+// secret — it is on every issued token, and identifiers.New's values carry a
+// timestamp and a counter — so a door ending a family by id for a signed-in
+// caller must not be able to reach anybody else's. Keyed on the caller's subject
+// as well, a guessed or borrowed family id matches nothing and reports zero,
+// exactly as a family already ended does, and the two are not told apart.
+func revokeSubjectFamily(g *querygen.Generator) *querygen.Query {
+	return g.UpdateQuery(RevokeSubjectFamilyQuery, TokensTable, Columns, RevokeColumns, nil,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectIDColumn},
+		querygen.Match{Column: FamilyIDColumn},
+		unrevoked(),
+	)
+}
+
+// listLiveFamilies is a person's live logins: one row per family, which is the
+// family's current token.
+//
+// A family has exactly one row that is unspent, unrevoked and unexpired — an
+// exchange spends one row and mints its successor in one transaction, and the
+// retry path revokes the successor it supersedes before minting another — so the
+// three guards the exchange carries are, read here, "this login is still going",
+// and they pick that one row without a GROUP BY. They are the same Match values
+// the exchange is rendered from rather than a second spelling of them, so the
+// rows this lists are exactly the rows an exchange would still accept.
+//
+// It is a bounded scan rather than a paged list, deliberately. The paged list
+// keys its cursor on a surrogate id this table does not have, and a person's
+// live logins are a set a screen shows whole rather than one a caller walks;
+// the limit bounds what a subject with an unreasonable number of them costs,
+// and the order puts the most recently refreshed first so that what a limit
+// leaves out is what has been idle longest. family_id breaks ties, so the
+// order is total.
+func listLiveFamilies(g *querygen.Generator) *querygen.Query {
+	return g.SweepQuery(ListLiveFamiliesQuery, TokensTable, Columns,
+		querygen.Sweep{
+			Order:      []querygen.Order{{Column: IssuedAtColumn, Descending: true}, {Column: FamilyIDColumn}},
+			Projection: FamilyColumns,
+		},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectIDColumn},
+		unredeemed(),
+		unrevoked(),
+		stillLive(),
 	)
 }
 

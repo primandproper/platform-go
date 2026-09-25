@@ -44,7 +44,7 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the mappers.
 //
-// They are eleven of the thirteen the mappers claim, and the overlap is nearly
+// They are twelve of the fourteen the mappers claim, and the overlap is nearly
 // total on purpose: the codes collide badly here. Four of them are
 // PermissionDenied, four are FailedPrecondition and two are Unauthenticated,
 // and each has a different remedy — send a code, enroll a factor, verify an
@@ -53,7 +53,7 @@ var (
 // to the encoded details is told the code's name four times for four different
 // remedies.
 //
-// None of the eleven names a user, a handle, a table or a policy. What each says
+// None of the twelve names a user, a handle, a table or a policy. What each says
 // is the whole of what the caller needs and the whole of what this package is
 // willing to tell them — ErrInvalidCredentials in particular says "invalid
 // credentials" and will never say which half was wrong.
@@ -74,6 +74,12 @@ var (
 // it. Absent from this list and wrapping a member of it is the pair, and
 // neither works alone. See the sentinel, and TestClientSafeMessage_refreshTokenReuse.
 //
+// ErrPasswordRefused is the one whose wire message may be the consumer's rather
+// than this package's. It is joined behind the policy's own error, so a policy
+// returning a sentinel the consumer registered as client-safe is quoted ahead
+// of it, and any other is passed over — see PasswordPolicy. Its own words name
+// no rule, because this package holds none.
+//
 // ErrUserBanned is the one whose wire message is less than what the error
 // carries. A banned user's own explanation is wrapped around the sentinel, and
 // a client-safe message is the sentinel's own words rather than the wrapper's,
@@ -93,6 +99,7 @@ var ClientSafeSentinels = []error{
 	ErrNoPasswordCredential,
 	ErrPasswordAlreadySet,
 	ErrNoCredentialNamed,
+	ErrPasswordRefused,
 }
 
 // ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
@@ -181,6 +188,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrNoPasswordCredential, Reason: "NO_PASSWORD_CREDENTIAL", Domain: ClientReasonDomain},
 	{Err: ErrPasswordAlreadySet, Reason: "PASSWORD_ALREADY_SET", Domain: ClientReasonDomain},
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
+	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -194,6 +202,15 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	}
 
 	switch {
+	// First, because the policy's own error comes ahead of the sentinel in the
+	// chain and is the consumer's to shape: one that happened to wrap another
+	// of this package's sentinels would otherwise be answered as that refusal
+	// rather than as the password it refused. Its message names no rule, since
+	// this package holds none; a consumer wanting the rule on an HTTP response
+	// maps their policy's error themselves.
+	case errors.Is(err, ErrPasswordRefused):
+		return httperrors.ErrValidatingRequestInput, "password does not meet this service's requirements", true
+
 	// The two refusals a caller gets before they hold anything. They share a
 	// code and differ in the message, which is the whole distinction a client
 	// needs: one says try again, the other says ask for a code. Splitting them
@@ -257,6 +274,12 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	}
 
 	switch {
+	// A password the consumer's policy refused is a request to correct: the
+	// caller chooses another and sends it again. First, for the reason the HTTP
+	// mapper gives.
+	case errors.Is(err, ErrPasswordRefused):
+		return codes.InvalidArgument, true
+
 	// Unauthenticated rather than PermissionDenied, and the distinction is the
 	// one gRPC actually draws: the caller has not proven who they are, as
 	// opposed to having proven it and not being allowed. Every client library

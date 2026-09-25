@@ -261,10 +261,11 @@ type Authorizers struct {
 // registered one is an absence and contributes nothing, while one that was
 // registered and cannot be built is an error naming the surface. That single
 // rule is what makes a Config naming no billing mount no billing surface, and
-// it is also what makes identity, oauth2clients and signin behave sensibly
-// without a special case — their servers are built over a service Register does
-// not register, so they mount for an application that registered one and stay
-// absent for an application that did not.
+// it is also what makes identity and signin behave sensibly without a special
+// case — their servers are built over a service Register does not register, so
+// they mount for an application that registered one and stay absent for an
+// application that did not. oauth2clients mounts over a service Register does
+// register, from Config.OAuth2Clients.
 //
 // # What it owns
 //
@@ -833,11 +834,9 @@ func (m *mount) notifications() {
 	m.mountedGRPC("notifications", srv.RegisterOn)
 }
 
-// oauth2Clients mounts the client registry surface.
-//
-// Neither its service nor its store is reachable from a Config — the package
-// ships no config subpackage — so this mounts for an application that
-// registered both and stays absent otherwise.
+// oauth2Clients mounts the client registry surface. It needs both the service
+// and the store, which Config.OAuth2Clients registers together, and stays absent
+// for a service that configured neither.
 func (m *mount) oauth2Clients() {
 	svc, ok := need[*oauth2clients.Service](m)
 	if !ok {
@@ -908,11 +907,13 @@ func (m *mount) settings() {
 // default for sign-in's reason, with no exception to make — every RPC on it
 // arrives with nobody on it, not just six of them.
 //
-// A consumer provides the *passwordreset.Service the way they provide
-// *signin.Service, and this mounts the surface over it if they did. What that
-// service needs beyond a store — a Mailer, and the authenticator that hashes the
-// password a reset writes — has no default this module could supply, which is
-// why neither is a config field here.
+// Config.PasswordReset registers the *passwordreset.Service this mounts over,
+// and it stays absent for a service that configured none. What that service
+// needs beyond a store — a Mailer, and the authenticator that hashes the
+// password a reset writes — has no default this module could supply, which is a
+// reason for no field rather than for no block: passwordresetcfg resolves both
+// from the injector, and a block whose application registered neither fails at
+// boot naming the one it wanted.
 func (m *mount) passwordReset() {
 	svc, ok := need[*passwordreset.Service](m)
 	if !ok {

@@ -145,6 +145,16 @@ var (
 	// is mapped for it, so it is a 500, which is what it is.
 	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
 
+	// ErrSignInListingNotSupported indicates Service.ListSignIns or
+	// Service.EndSignIn on a service whose refresh token store does not
+	// implement SignInListingStore.
+	//
+	// It is ErrRefreshTokensNotConfigured's sibling rather than a wrap of it:
+	// this service does mint refresh tokens, and its store cannot enumerate
+	// them. Like that one it is a wiring failure, has no status mapped, and is a
+	// 500 — which is what a door the deployment never gave a store for is.
+	ErrSignInListingNotSupported = platformerrors.New("the refresh token store cannot list or end a person's sign-ins")
+
 	// ErrPasswordAlreadySet indicates Service.AttachPassword against somebody who
 	// already holds a password.
 	//
@@ -186,6 +196,16 @@ var (
 	// blank password, and the first is a product decision while the second mints
 	// an account nobody can ever reach.
 	ErrNoCredentialNamed = platformerrors.New("registration names no credential")
+
+	// ErrPasswordRefused indicates a password the service's PasswordPolicy
+	// would not let it write, at registration, on a change or on an attachment.
+	//
+	// It is returned joined with the policy's own error, which comes first —
+	// see PasswordPolicy for why that order is what lets a consumer's wording
+	// reach a client. It is a request to correct rather than a state to fix:
+	// the caller chooses another password and sends the same request again,
+	// and nothing about the first attempt was written or spent.
+	ErrPasswordRefused = platformerrors.New("password does not meet this service's requirements")
 
 	// ErrRegistrationNotConfigured indicates Service.Register on a service built
 	// without WithRegistrar.

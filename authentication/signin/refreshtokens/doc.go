@@ -74,10 +74,22 @@ signin.RefreshTokenRequest — a store holding a default for it would be a secon
 place that policy lived. What this store does hold is the retention window past
 that deadline, because that is storage's own business: see [WithRetention].
 
-It opens no transaction. Every method here is a write and every one takes the
-caller's database.Tx, so an exchange's spend and its successor's mint are one
-fact — and so are the hooks a consumer commits alongside a sign-in. [Sweep] is
-the exception and the usual one: a worker on a timer is the component servicing
-itself, so it runs on the handle the store was built with.
+It opens no transaction. Every write here takes the caller's database.Tx, so an
+exchange's spend and its successor's mint are one fact — and so are the hooks a
+consumer commits alongside a sign-in. The one read, [SQLStore.ListActiveSignIns],
+takes the wider executor, so it serves a caller on Client.Reader() and a caller
+inside a transaction alike. [Sweep] is the exception and the usual one: a worker
+on a timer is the component servicing itself, so it runs on the handle the store
+was built with.
+
+# Listing a person's logins
+
+[signin.SignInListingStore] is implemented here: a person's live logins, one
+entry per family, and the revocation of one of them keyed on its owner as well
+as its family. A login is listed while its family has a row the exchange would
+still accept, and each entry says when it began — signed_in_at, carried from the
+family's first token onto every successor, because that first row is swept at
+its purge deadline and the earliest surviving one would report whenever it
+happened to have been minted.
 */
 package refreshtokens

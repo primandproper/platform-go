@@ -86,6 +86,22 @@ const (
 	// reading its code. Naming the constant after the mechanism is what keeps
 	// this one place the wire spelling appears.
 	ClaimFamilyID = "sid"
+
+	// ClaimAdministrative is whether the login came through the administrative
+	// door — [Service.AdminLoginForToken], or an exchange of a refresh token that
+	// one minted. It is always present, false on an ordinary login, so an
+	// interceptor reads its absence as a token some other builder produced rather
+	// than as an answer.
+	//
+	// It is not a permission. What the caller may do is still resolved per
+	// request from the principal's roles, as [ClaimsBuilder] requires; this
+	// records which door the login was proven at, which is fixed for the life of
+	// the login and so cannot go stale the way a role can. What it lets an
+	// interceptor enforce is that administrative work is done only under a login
+	// that paid for it — the shorter lifetime and the second factor the
+	// administrative door insists on — by withholding service-level permissions
+	// from any token on which it is false.
+	ClaimAdministrative = "administrative"
 )
 
 // SecondFactorPolicy is what this service does about a user who holds no proven
@@ -161,6 +177,11 @@ type ClaimsInput struct {
 	// It is set whether or not the service stores refresh tokens: a service that
 	// mints one token per sign-in still has a login to name.
 	FamilyID string `json:"familyID"`
+
+	// Administrative is whether the login came through the administrative door.
+	// A sign-in sets it from the door it was called at and an exchange carries
+	// it forward from the spent token's row, so every token in a family agrees.
+	Administrative bool `json:"administrative"`
 }
 
 // ClaimsBuilder produces the application-specific claims a token carries beside
@@ -180,8 +201,8 @@ type ClaimsInput struct {
 type ClaimsBuilder func(ctx context.Context, input *ClaimsInput) (map[string]any, error)
 
 // DefaultClaims is the ClaimsBuilder a service uses when none is named: the
-// account the token is for, the directory it was issued in, and the login it
-// belongs to.
+// account the token is for, the directory it was issued in, the login it
+// belongs to, and whether that login came through the administrative door.
 //
 // The first two are there because both are needed to make sense of the subject.
 // A user ID alone does not say which account's data the request is against, and
@@ -192,15 +213,22 @@ type ClaimsBuilder func(ctx context.Context, input *ClaimsInput) (map[string]any
 // otherwise, so "this login was signed out" is a fact nothing on the wire can be
 // checked against — and a detected refresh token reuse would revoke a family
 // whose access tokens no interceptor could recognize.
+//
+// The fourth is there for the same reason in a different direction: the
+// administrative door's shorter lifetime and mandatory second factor only
+// hold if administrative work is refused under a login that skipped them, and
+// without it an interceptor cannot tell the two logins of one administrator
+// apart.
 func DefaultClaims(_ context.Context, input *ClaimsInput) (map[string]any, error) {
 	if input == nil || input.Principal == nil {
 		return nil, identity.ErrNilUser
 	}
 
 	return map[string]any{
-		ClaimAccountID: input.Principal.ActiveAccountID,
-		ClaimScope:     input.Principal.User.Scope.String(),
-		ClaimFamilyID:  input.FamilyID,
+		ClaimAccountID:      input.Principal.ActiveAccountID,
+		ClaimScope:          input.Principal.User.Scope.String(),
+		ClaimFamilyID:       input.FamilyID,
+		ClaimAdministrative: input.Administrative,
 	}, nil
 }
 
@@ -261,6 +289,18 @@ func WithSecondFactorPolicy(policy SecondFactorPolicy) ServiceOption {
 	return func(s *Service) {
 		if policy.Valid() {
 			s.secondFactor = policy
+		}
+	}
+}
+
+// WithPasswordPolicy sets the rule every password this service writes must pass
+// — at registration, on a change and on an attachment. A nil policy is ignored,
+// leaving none, which admits any password that is not empty. See
+// [PasswordPolicy].
+func WithPasswordPolicy(policy PasswordPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.passwordPolicy = policy
 		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
 	resetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
 
@@ -34,6 +35,14 @@ import (
 // its scope would still pass every assertion made under Global, since the empty
 // identifier is what an unscoped column holds anyway.
 var testScope = tenancy.Of("tenant_a")
+
+// TestMain registers the domain tier's mappers, as a composition root does, so
+// a refusal reaches the client with the code and reason a consumer's client
+// would see rather than codes.Unknown.
+func TestMain(m *testing.M) {
+	errormappers.Register()
+	m.Run()
+}
 
 // prefixCounter keeps parallel tests off each other's tables. Every harness gets
 // its own table prefix in one shared SQLite file per test.
@@ -109,6 +118,18 @@ type harness struct {
 func newHarness(t *testing.T, opts ...passwordresetgrpc.Option) *harness {
 	t.Helper()
 
+	return newHarnessWithService(t, nil, opts...)
+}
+
+// newHarnessWithService is newHarness with options for the service beneath the
+// server as well as for the server.
+func newHarnessWithService(
+	t *testing.T,
+	svcOpts []passwordreset.ServiceOption,
+	opts ...passwordresetgrpc.Option,
+) *harness {
+	t.Helper()
+
 	db, err := sqlite.NewDatabaseClient(t.Context(),
 		&testClientConfig{connectionString: filepath.Join(t.TempDir(), "passwordreset.db")})
 	must.NoError(t, err)
@@ -136,10 +157,12 @@ func newHarness(t *testing.T, opts ...passwordresetgrpc.Option) *harness {
 	authenticator := argon2.NewArgon2Authenticator()
 
 	svc, err := passwordreset.NewService(db, tokens, store, authenticator, mailer,
-		// The floor holds every request for half a second by default, which this
-		// suite cannot afford across a bufconn round trip on every case. What it
-		// protects is asserted in the service's own tests.
-		passwordreset.WithRequestFloor(time.Nanosecond),
+		append([]passwordreset.ServiceOption{
+			// The floor holds every request for half a second by default, which
+			// this suite cannot afford across a bufconn round trip on every case.
+			// What it protects is asserted in the service's own tests.
+			passwordreset.WithRequestFloor(time.Nanosecond),
+		}, svcOpts...)...,
 	)
 	must.NoError(t, err)
 

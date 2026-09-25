@@ -19,10 +19,12 @@ import (
 // with being signed in: a token proves somebody had the password once, and the
 // whole point of asking again is the laptop that was left unlocked in between.
 //
-// Whether the new password is acceptable is the consumer's rule, applied before
-// this call. This package holds no password policy — see [PasswordUpdate] — and
-// the one rule it does apply is that the new password is not empty, which is
-// not a policy but a write that would lock the user out.
+// Whether the new password is acceptable is the consumer's rule, and this
+// package holds none — see [PasswordUpdate]. A service built with
+// [WithPasswordPolicy] applies it here, before the current password is checked,
+// and a refusal is [ErrPasswordRefused]. The one rule it applies of its own is
+// that the new password is not empty, which is not a policy but a write that
+// would lock the user out.
 //
 // Hashing happens outside the transaction; the transaction holds the write and
 // [Hooks.AfterUpdatePassword] and nothing else. The store clears
@@ -63,6 +65,13 @@ func (s *Service) UpdatePassword(
 
 	if !user.HasPassword() {
 		return op.Error(ErrNoPasswordCredential, "updating a password")
+	}
+
+	// Ahead of reauthentication, which is a hash comparison: a password the
+	// policy will refuse is refused before the current one is spent proving
+	// anything.
+	if err = s.checkPassword(ctx, update.NewPassword); err != nil {
+		return op.Error(err, "updating a password")
 	}
 
 	// No recovery code here: its second factor guards a password rather than the

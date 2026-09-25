@@ -97,6 +97,19 @@ func (p *testPrincipal) UserID() string          { return p.userID }
 func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
 func (p *testPrincipal) ActiveAccountID() string { return p.activeAccountID }
 
+// sidPrincipal is a principal whose session type also carries the access
+// token's "sid" claim, which is what a consumer whose interceptor parses one
+// has.
+type sidPrincipal struct {
+	*testPrincipal
+
+	familyID string
+}
+
+var _ signingrpc.FamilyIdentifier = (*sidPrincipal)(nil)
+
+func (p *sidPrincipal) FamilyID() string { return p.familyID }
+
 // principalKey is where the suite's stand-in for an authentication interceptor
 // puts the principal, on the server side.
 type principalKey struct{}
@@ -109,11 +122,21 @@ type principalKey struct{}
 // answer.
 const mdUserID = "test-user-id"
 
+// mdFamilyID is the metadata the suite's "sid" claim travels in, for the tests
+// that need the server to know which login a request came through.
+const mdFamilyID = "test-family-id"
+
 // asUser stamps a caller onto an outgoing request. A context built without it
 // carries nobody, which is what makes the anonymous tests exercise the real
 // path.
 func asUser(ctx context.Context, userID string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, mdUserID, userID)
+}
+
+// asUserIn is asUser from inside a named login, which is what a request whose
+// access token carries a "sid" claim is.
+func asUserIn(ctx context.Context, userID, familyID string) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, mdUserID, userID, mdFamilyID, familyID)
 }
 
 // authenticate is the consumer's authentication interceptor.
@@ -134,6 +157,10 @@ func authenticate(
 	}
 
 	principal := &testPrincipal{userID: userIDs[0], scope: testScope}
+
+	if familyIDs := md.Get(mdFamilyID); len(familyIDs) > 0 {
+		return handler(context.WithValue(ctx, principalKey{}, &sidPrincipal{testPrincipal: principal, familyID: familyIDs[0]}), req)
+	}
 
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }

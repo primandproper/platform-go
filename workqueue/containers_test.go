@@ -3,6 +3,7 @@ package workqueue
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,8 +14,11 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/mysql"
 	"github.com/primandproper/primitives-go/v2/database/postgres"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
@@ -26,9 +30,10 @@ import (
 // claimers apart, or whether a lease really lapses on the server's clock. That
 // is the whole of what this file covers, and it is the only place that can.
 
-// testClientConfig is the minimum database.ClientConfig a Postgres client needs.
-// The pool is deliberately larger than one connection: the properties worth
-// testing here are all concurrent.
+// testClientConfig is the minimum database.ClientConfig a client needs. The pool
+// is deliberately larger than one connection: the properties worth testing here
+// are all concurrent. (SQLite's writer is one connection whatever this says,
+// which is SQLite's own answer to the same question.)
 type testClientConfig struct {
 	connectionString string
 }
@@ -43,6 +48,53 @@ func (c *testClientConfig) GetMaxIdleConns() int              { return 8 }
 func (c *testClientConfig) GetMaxOpenConns() int              { return 16 }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
+// defaultMySQLImage pins the MariaDB flavor the MySQL suite runs against, which
+// is the one this module's other MySQL suites run against; mysqltest's default
+// is stock MySQL.
+const defaultMySQLImage = "mariadb:11"
+
+// everyDialect is the roster the suites below run against.
+var everyDialect = []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite}
+
+// withClient hands fn a client over a live database of the dialect: a
+// container for Postgres and MySQL, which skip unless RUN_CONTAINER_TESTS is
+// set, and a file in a directory the test owns for SQLite, which needs no
+// container and always runs.
+func withClient(t *testing.T, d dialect.Dialect, fn func(client database.Client)) {
+	t.Helper()
+
+	switch d {
+	case dialect.Postgres:
+		pgtest.Run(t, func(ctx context.Context, pg *pgtest.Instance) {
+			client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			fn(client)
+		})
+	case dialect.MySQL:
+		mysqltest.Run(t, func(ctx context.Context, my *mysqltest.Instance) {
+			client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			fn(client)
+		},
+			mysqltest.WithImage(defaultMySQLImage),
+			mysqltest.WithCredentials("workqueuetest", "workqueuetest", "workqueuetest"),
+		)
+	case dialect.SQLite:
+		client, err := sqlite.NewDatabaseClient(t.Context(),
+			&testClientConfig{connectionString: filepath.Join(t.TempDir(), "workqueue.db")})
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		fn(client)
+	default:
+		t.Fatalf("no test database for dialect %q", d)
+	}
+}
+
 // queueCounter names a fresh logical queue per subtest. Subtests share one
 // table, so they must not share a queue — one test's backlog would be another's.
 // That they can share the table at all is itself the property Config.Name
@@ -53,7 +105,7 @@ var queueCounter atomic.Uint64
 func createTable(t *testing.T, client database.Client, prefix string) {
 	t.Helper()
 
-	stmts, err := migrations.Statements(dialect.Postgres, prefix)
+	stmts, err := migrations.Statements(client.Dialect(), prefix)
 	must.NoError(t, err)
 	must.SliceNotEmpty(t, stmts)
 
@@ -91,18 +143,38 @@ func claimedKeys(items []Item[string]) []string {
 	return keys
 }
 
-func TestWorkQueue_Postgres(T *testing.T) {
+// TestWorkQueue_Containers runs every suite in this file against every dialect,
+// one server apiece. The suites are the same suites on all three: nothing a
+// caller can observe is allowed to differ, and a dialect whose statements are
+// shaped differently is exactly the one that needs the same assertions.
+func TestWorkQueue_Containers(T *testing.T) {
 	T.Parallel()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
+	for _, d := range everyDialect {
+		T.Run(string(d), func(T *testing.T) {
+			T.Parallel()
 
-		createTable(T, client, DefaultTablePrefix)
+			withClient(T, d, func(client database.Client) {
+				createTable(T, client, DefaultTablePrefix)
 
-		runQueueSuite(T, client)
-	})
+				for name, suite := range map[string]func(*testing.T, database.Client){
+					"queue":                         runQueueSuite,
+					"extend":                        runExtendSuite,
+					"runner under a slow handler":   runRunnerUnderASlowHandler,
+					"a claim fills its batch":       runClaimFillsItsBatch,
+					"struct keys":                   runStructKeys,
+					"migrations run twice verbatim": runMigrationsTwice,
+					"a lease is never shorter":      runLeaseIsNeverShorterThanAsked,
+				} {
+					T.Run(name, func(t *testing.T) {
+						t.Parallel()
+
+						suite(t, client)
+					})
+				}
+			})
+		})
+	}
 }
 
 //nolint:maintidx // one behavioral contract per subtest; splitting it would only hide the list.
@@ -432,6 +504,37 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		items, err := q.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
 		test.SliceEmpty(t, items)
+	})
+
+	// Complete, Release and Extend take whatever Items the caller hands back,
+	// and nothing stops those coming from two claims. On MySQL and SQLite that
+	// is a statement per claim, each fenced on its own name; on Postgres it is
+	// the pairs. Either way both claims' items land.
+	t.Run("one call can report on several claims", func(t *testing.T) {
+		t.Parallel()
+
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "x", "y", "z"))
+
+		first, err := q.Claim(t.Context(), 1, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, first)
+
+		second, err := q.Claim(t.Context(), 2, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 2, second)
+		must.NotEqOp(t, first[0].LeasedBy, second[0].LeasedBy)
+
+		held, err := q.Extend(t.Context(), time.Hour, append(first, second...)...)
+		must.NoError(t, err)
+		test.EqOp(t, int64(3), held)
+
+		must.NoError(t, q.Complete(t.Context(), append(second, first...)...))
+
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), stats.Pending)
+		test.EqOp(t, int64(3), stats.Completed)
 	})
 
 	t.Run("completing an unknown key is not an error", func(t *testing.T) {
@@ -910,122 +1013,114 @@ func runQueueSuite(t *testing.T, client database.Client) {
 // extended lease is still held after the original would have lapsed, whether an
 // extension from a claim the row no longer names moves anything, and whether a
 // shorter extension can pull a longer lease in.
-func TestWorkQueue_ExtendKeepsAClaimPastItsLease(T *testing.T) {
-	T.Parallel()
+func runExtendSuite(t *testing.T, client database.Client) {
+	t.Helper()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, clientErr := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, clientErr)
-		T.Cleanup(func() { _ = client.Close() })
+	t.Run("an extended lease outlives the one it was claimed under", func(t *testing.T) {
+		t.Parallel()
 
-		createTable(T, client, DefaultTablePrefix)
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "slow"))
 
-		T.Run("an extended lease outlives the one it was claimed under", func(t *testing.T) {
-			t.Parallel()
+		claimed, err := q.Claim(t.Context(), 10, 300*time.Millisecond)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
 
-			q := newQueue(t, client, nil)
-			must.NoError(t, q.EnqueueKeys(t.Context(), "slow"))
+		held, err := q.Extend(t.Context(), time.Hour, claimed...)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), held)
 
-			claimed, err := q.Claim(t.Context(), 10, 300*time.Millisecond)
-			must.NoError(t, err)
-			must.SliceLen(t, 1, claimed)
+		// Well past the lease the claim was taken under. Without the
+		// extension this is exactly the sleep that hands the item to
+		// somebody else.
+		time.Sleep(600 * time.Millisecond)
 
-			held, err := q.Extend(t.Context(), time.Hour, claimed...)
-			must.NoError(t, err)
-			test.EqOp(t, int64(1), held)
+		competitor, err := q.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		test.SliceEmpty(t, competitor)
 
-			// Well past the lease the claim was taken under. Without the
-			// extension this is exactly the sleep that hands the item to
-			// somebody else.
-			time.Sleep(600 * time.Millisecond)
+		// And the claim that extended still owns the item, so its completion
+		// lands.
+		must.NoError(t, q.Complete(t.Context(), claimed...))
 
-			competitor, err := q.Claim(t.Context(), 10, time.Minute)
-			must.NoError(t, err)
-			test.SliceEmpty(t, competitor)
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), stats.Completed)
+	})
 
-			// And the claim that extended still owns the item, so its completion
-			// lands.
-			must.NoError(t, q.Complete(t.Context(), claimed...))
+	// The fence, read a third way: a straggler pushing out a horizon it no
+	// longer holds would pin the item to a claim nobody is working under.
+	t.Run("a straggler extends nothing", func(t *testing.T) {
+		t.Parallel()
 
-			stats, err := q.Stats(t.Context())
-			must.NoError(t, err)
-			test.EqOp(t, int64(1), stats.Completed)
-		})
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "taken"))
 
-		// The fence, read a third way: a straggler pushing out a horizon it no
-		// longer holds would pin the item to a claim nobody is working under.
-		T.Run("a straggler extends nothing", func(t *testing.T) {
-			t.Parallel()
+		straggler, err := q.Claim(t.Context(), 10, 200*time.Millisecond)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, straggler)
 
-			q := newQueue(t, client, nil)
-			must.NoError(t, q.EnqueueKeys(t.Context(), "taken"))
+		time.Sleep(400 * time.Millisecond)
 
-			straggler, err := q.Claim(t.Context(), 10, 200*time.Millisecond)
-			must.NoError(t, err)
-			must.SliceLen(t, 1, straggler)
+		holder, err := q.Claim(t.Context(), 10, 500*time.Millisecond)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, holder)
+		must.True(t, holder[0].Reclaimed)
 
-			time.Sleep(400 * time.Millisecond)
+		held, err := q.Extend(t.Context(), time.Hour, straggler...)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), held)
 
-			holder, err := q.Claim(t.Context(), 10, 500*time.Millisecond)
-			must.NoError(t, err)
-			must.SliceLen(t, 1, holder)
-			must.True(t, holder[0].Reclaimed)
+		// The holder's own lease is untouched by that, so it lapses on its
+		// own schedule and the item comes back — rather than being parked
+		// for the hour the straggler asked for.
+		time.Sleep(700 * time.Millisecond)
 
-			held, err := q.Extend(t.Context(), time.Hour, straggler...)
-			must.NoError(t, err)
-			test.EqOp(t, int64(0), held)
+		back, err := q.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		test.SliceLen(t, 1, back)
+	})
 
-			// The holder's own lease is untouched by that, so it lapses on its
-			// own schedule and the item comes back — rather than being parked
-			// for the hour the straggler asked for.
-			time.Sleep(700 * time.Millisecond)
+	// GREATEST, on the server: an extension shorter than what is left on the
+	// lease changes nothing rather than pulling the horizon in.
+	t.Run("an extension never shortens a lease", func(t *testing.T) {
+		t.Parallel()
 
-			back, err := q.Claim(t.Context(), 10, time.Minute)
-			must.NoError(t, err)
-			test.SliceLen(t, 1, back)
-		})
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "long-lease"))
 
-		// GREATEST, on the server: an extension shorter than what is left on the
-		// lease changes nothing rather than pulling the horizon in.
-		T.Run("an extension never shortens a lease", func(t *testing.T) {
-			t.Parallel()
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
 
-			q := newQueue(t, client, nil)
-			must.NoError(t, q.EnqueueKeys(t.Context(), "long-lease"))
+		held, err := q.Extend(t.Context(), 200*time.Millisecond, claimed...)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), held)
 
-			claimed, err := q.Claim(t.Context(), 10, time.Hour)
-			must.NoError(t, err)
-			must.SliceLen(t, 1, claimed)
+		time.Sleep(400 * time.Millisecond)
 
-			held, err := q.Extend(t.Context(), 200*time.Millisecond, claimed...)
-			must.NoError(t, err)
-			test.EqOp(t, int64(1), held)
+		competitor, err := q.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		test.SliceEmpty(t, competitor)
+	})
 
-			time.Sleep(400 * time.Millisecond)
+	// A completed item is excluded inside the CTE, so an extension that
+	// arrives after the work was retired matches nothing rather than
+	// resurrecting a horizon on a finished row.
+	t.Run("a completed item is not extended", func(t *testing.T) {
+		t.Parallel()
 
-			competitor, err := q.Claim(t.Context(), 10, time.Minute)
-			must.NoError(t, err)
-			test.SliceEmpty(t, competitor)
-		})
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "done"))
 
-		// A completed item is excluded inside the CTE, so an extension that
-		// arrives after the work was retired matches nothing rather than
-		// resurrecting a horizon on a finished row.
-		T.Run("a completed item is not extended", func(t *testing.T) {
-			t.Parallel()
+		claimed, err := q.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+		must.NoError(t, q.Complete(t.Context(), claimed...))
 
-			q := newQueue(t, client, nil)
-			must.NoError(t, q.EnqueueKeys(t.Context(), "done"))
-
-			claimed, err := q.Claim(t.Context(), 10, time.Minute)
-			must.NoError(t, err)
-			must.SliceLen(t, 1, claimed)
-			must.NoError(t, q.Complete(t.Context(), claimed...))
-
-			held, err := q.Extend(t.Context(), time.Hour, claimed...)
-			must.NoError(t, err)
-			test.EqOp(t, int64(0), held)
-		})
+		held, err := q.Extend(t.Context(), time.Hour, claimed...)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), held)
 	})
 }
 
@@ -1036,68 +1131,62 @@ func TestWorkQueue_ExtendKeepsAClaimPastItsLease(T *testing.T) {
 // It needs a real server because the lease is the server's clock: nothing a
 // stubbed querier can say distinguishes an item that is still leased from one
 // that has been handed to somebody else.
-func TestWorkQueue_RunnerKeepsAClaimUnderASlowHandler(T *testing.T) {
-	T.Parallel()
+func runRunnerUnderASlowHandler(t *testing.T, client database.Client) {
+	t.Helper()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
+	ctx := t.Context()
 
-		createTable(T, client, DefaultTablePrefix)
+	q := newQueue(t, client, nil)
+	must.NoError(t, q.EnqueueKeys(ctx, "slow-work"))
 
-		q := newQueue(T, client, nil)
-		must.NoError(T, q.EnqueueKeys(ctx, "slow-work"))
+	var handled atomic.Int64
 
-		var handled atomic.Int64
+	// A lease of a second under a handler that takes two and a half, with the
+	// heartbeat at a third of the lease. Every one of those numbers is a real
+	// one: without the extension this handler is reclaimed twice over while
+	// it works.
+	cfg := &RunnerConfig{
+		Poll:           50 * time.Millisecond,
+		Lease:          time.Second,
+		ExtendInterval: 300 * time.Millisecond,
+		Batch:          10,
+		Concurrency:    1,
+	}
 
-		// A lease of a second under a handler that takes two and a half, with the
-		// heartbeat at a third of the lease. Every one of those numbers is a real
-		// one: without the extension this handler is reclaimed twice over while
-		// it works.
-		cfg := &RunnerConfig{
-			Poll:           50 * time.Millisecond,
-			Lease:          time.Second,
-			ExtendInterval: 300 * time.Millisecond,
-			Batch:          10,
-			Concurrency:    1,
-		}
+	runner, err := NewRunner(ctx, cfg, q, func(context.Context, Item[string]) error {
+		handled.Add(1)
 
-		runner, err := NewRunner(ctx, cfg, q, func(context.Context, Item[string]) error {
-			handled.Add(1)
+		time.Sleep(2500 * time.Millisecond)
 
-			time.Sleep(2500 * time.Millisecond)
-
-			return nil
-		})
-		must.NoError(T, err)
-
-		runCtx, stop := context.WithCancel(ctx)
-
-		done := make(chan error, 1)
-		go func() { done <- runner.Run(runCtx) }()
-
-		// A competitor claiming throughout, which is what a second worker in the
-		// fleet is. None of its claims may find the item, because the runner is
-		// still working on it.
-		competitor := newQueue(T, client, func(c *Config) { c.Name = q.Name() })
-
-		for range 10 {
-			time.Sleep(200 * time.Millisecond)
-
-			stolen, claimErr := competitor.Claim(ctx, 10, time.Minute)
-			must.NoError(T, claimErr)
-			test.SliceEmpty(T, stolen, test.Sprintf("the item was reclaimed mid-handler: %v", claimedKeys(stolen)))
-		}
-
-		// The handler outlived its original lease and still retired its own item.
-		waitForCompletion(T, q)
-
-		stop()
-		must.ErrorIs(T, awaitRunner(T, done), context.Canceled)
-
-		test.EqOp(T, int64(1), handled.Load())
+		return nil
 	})
+	must.NoError(t, err)
+
+	runCtx, stop := context.WithCancel(ctx)
+
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(runCtx) }()
+
+	// A competitor claiming throughout, which is what a second worker in the
+	// fleet is. None of its claims may find the item, because the runner is
+	// still working on it.
+	competitor := newQueue(t, client, func(c *Config) { c.Name = q.Name() })
+
+	for range 10 {
+		time.Sleep(200 * time.Millisecond)
+
+		stolen, claimErr := competitor.Claim(ctx, 10, time.Minute)
+		must.NoError(t, claimErr)
+		test.SliceEmpty(t, stolen, test.Sprintf("the item was reclaimed mid-handler: %v", claimedKeys(stolen)))
+	}
+
+	// The handler outlived its original lease and still retired its own item.
+	waitForCompletion(t, q)
+
+	stop()
+	must.ErrorIs(t, awaitRunner(t, done), context.Canceled)
+
+	test.EqOp(t, int64(1), handled.Load())
 }
 
 // waitForCompletion blocks until the queue reports the item retired, so the
@@ -1144,132 +1233,275 @@ func awaitRunner(t *testing.T, done <-chan error) error {
 // quietly halve throughput under contention.
 //
 // It needs a real server and a second connection holding locks open, which is
-// why it lives here and not beside the other claim tests.
-func TestWorkQueue_ClaimFillsItsBatchAroundLockedRows(T *testing.T) {
-	T.Parallel()
+// why it lives here and not beside the other claim tests. On MySQL it is the
+// claim's first statement that has to skip and replace, which is the reason to
+// run it there rather than assume it: MySQL counts the LIMIT after SKIP LOCKED
+// has skipped, but only if the read walks the index in the claim's order —
+// sorting would lock every candidate before the limit was applied.
+//
+// SQLite has one writer, so there is no claimer frozen mid-claim to skip around:
+// a transaction holding rows there holds the whole database. What stands in for
+// the competitor is the only thing SQLite can have, a claim that already
+// committed, and the property left to pin is the same count read the other way
+// — held rows are replaced rather than subtracted.
+func runClaimFillsItsBatch(t *testing.T, client database.Client) {
+	t.Helper()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
+	ctx := t.Context()
 
-		createTable(T, client, "contention")
+	createTable(t, client, "contention")
 
-		q, err := New[string](ctx, &Config{Name: "contended", TablePrefix: "contention"}, client)
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = q.Close(context.WithoutCancel(ctx)) })
+	q, err := New[string](ctx, &Config{Name: "contended", TablePrefix: "contention"}, client)
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = q.Close(context.WithoutCancel(ctx)) })
 
-		keys := make([]string, 0, 10)
-		for i := range 10 {
-			keys = append(keys, fmt.Sprintf("k%02d", i))
-		}
+	keys := make([]string, 0, 10)
+	for i := range 10 {
+		keys = append(keys, fmt.Sprintf("k%02d", i))
+	}
 
-		must.NoError(T, q.EnqueueKeys(ctx, keys...))
+	must.NoError(t, q.EnqueueKeys(ctx, keys...))
 
-		// A competing claimer, frozen mid-claim: three rows locked and not yet
-		// released.
-		tx, err := client.WriteDB().BeginTx(ctx, nil)
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = tx.Rollback() })
+	held := holdThree(t, client, q)
 
-		rows, err := tx.QueryContext(ctx,
-			"SELECT item_key FROM contention_work_queue_items WHERE queue_name = $1 "+
-				"ORDER BY item_key LIMIT 3 FOR UPDATE SKIP LOCKED", "contended")
-		must.NoError(T, err)
+	// Five asked for, three unavailable, seven left to choose from: a full
+	// five come back.
+	claimed, err := q.Claim(ctx, 5, time.Minute)
+	must.NoError(t, err)
+	test.SliceLen(t, 5, claimed)
 
-		locked := 0
-		for rows.Next() {
-			locked++
-		}
+	// And none of them is a row the other claimer is holding, which is SKIP
+	// LOCKED doing its half of the job.
+	for i := range claimed {
+		test.SliceNotContains(t, held, claimed[i].Key)
+	}
+}
 
-		must.NoError(T, rows.Err())
-		must.NoError(T, rows.Close())
-		must.EqOp(T, 3, locked)
+// holdThree puts three of the contended queue's items out of a claim's reach
+// and names them: locked by a transaction left open where the engine has row
+// locks, and leased by a committed claim where it does not.
+func holdThree(t *testing.T, client database.Client, q *Queue[string]) []string {
+	t.Helper()
 
-		// Five asked for, three unavailable, seven left to choose from: a full
-		// five come back.
-		claimed, err := q.Claim(ctx, 5, time.Minute)
-		must.NoError(T, err)
-		test.SliceLen(T, 5, claimed)
+	ctx := t.Context()
 
-		// And none of them is a row the other transaction is holding, which is
-		// SKIP LOCKED doing its half of the job.
-		for i := range claimed {
-			test.SliceNotContains(T, []string{"k00", "k01", "k02"}, claimed[i].Key)
-		}
-	})
+	if client.Dialect() == dialect.SQLite {
+		leased, err := q.Claim(ctx, 3, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 3, leased)
+
+		return claimedKeys(leased)
+	}
+
+	// A competing claimer, frozen mid-claim: three rows locked and not yet
+	// released.
+	raw, ok := client.(database.RawAccess)
+	must.True(t, ok, must.Sprintf("%T exposes no pool to hold a transaction open on", client))
+
+	tx, err := raw.WriteDB().BeginTx(ctx, nil)
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+
+	rows, err := tx.QueryContext(ctx,
+		"SELECT item_key FROM contention_work_queue_items WHERE queue_name = "+client.Dialect().Placeholder(1)+" "+
+			"ORDER BY item_key LIMIT 3 FOR UPDATE SKIP LOCKED", "contended")
+	must.NoError(t, err)
+
+	var locked []string
+
+	for rows.Next() {
+		var key string
+		must.NoError(t, rows.Scan(&key))
+
+		locked = append(locked, key)
+	}
+
+	must.NoError(t, rows.Err())
+	must.NoError(t, rows.Close())
+	must.Eq(t, []string{"k00", "k01", "k02"}, locked)
+
+	return locked
 }
 
 // Struct keys are the shape the extraction came from — a composite identifier,
 // not a string — so the JSON codec is exercised against a real column rather
 // than only in memory.
-func TestWorkQueue_StructKeys(T *testing.T) {
-	T.Parallel()
+func runStructKeys(t *testing.T, client database.Client) {
+	t.Helper()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
+	ctx := t.Context()
 
-		createTable(T, client, "structkeys")
+	createTable(t, client, "structkeys")
 
-		q, err := New[pairKey](ctx, &Config{Name: "pairs", TablePrefix: "structkeys"}, client)
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = q.Close(context.WithoutCancel(ctx)) })
+	q, err := New[pairKey](ctx, &Config{Name: "pairs", TablePrefix: "structkeys"}, client)
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = q.Close(context.WithoutCancel(ctx)) })
 
-		want := []pairKey{
-			{Profile: "car", Origin: 1, Dest: 2},
-			{Profile: "bike", Origin: 1, Dest: 2},
-			{Profile: "car", Origin: 2, Dest: 1},
-		}
+	want := []pairKey{
+		{Profile: "car", Origin: 1, Dest: 2},
+		{Profile: "bike", Origin: 1, Dest: 2},
+		{Profile: "car", Origin: 2, Dest: 1},
+	}
 
-		entries := make([]Entry[pairKey], 0, len(want))
-		for _, key := range want {
-			entries = append(entries, Entry[pairKey]{Key: key})
-		}
+	entries := make([]Entry[pairKey], 0, len(want))
+	for i := range want {
+		entries = append(entries, Entry[pairKey]{Key: want[i]})
+	}
 
-		must.NoError(T, q.Enqueue(ctx, entries...))
+	must.NoError(t, q.Enqueue(ctx, entries...))
 
-		items, err := q.Claim(ctx, 10, time.Minute)
-		must.NoError(T, err)
-		must.SliceLen(T, len(want), items)
+	items, err := q.Claim(ctx, 10, time.Minute)
+	must.NoError(t, err)
+	must.SliceLen(t, len(want), items)
 
-		got := make([]pairKey, 0, len(items))
-		for i := range items {
-			got = append(got, items[i].Key)
-		}
+	got := make([]pairKey, 0, len(items))
+	for i := range items {
+		got = append(got, items[i].Key)
+	}
 
-		for _, key := range want {
-			test.SliceContains(T, got, key)
-		}
+	for i := range want {
+		test.SliceContains(t, got, want[i])
+	}
 
-		must.NoError(T, q.Complete(ctx, items...))
+	must.NoError(t, q.Complete(ctx, items...))
 
-		stats, err := q.Stats(ctx)
-		must.NoError(T, err)
-		test.EqOp(T, int64(0), stats.Pending)
-	})
+	stats, err := q.Stats(ctx)
+	must.NoError(t, err)
+	test.EqOp(t, int64(0), stats.Pending)
 }
 
-// TestMigrations_RealServer proves the shipped DDL is accepted verbatim, and
-// that re-running it is a no-op — the property every statement's IF NOT EXISTS
-// is there for, and the one a consumer's migration runner depends on.
-func TestMigrations_RealServer(T *testing.T) {
-	T.Parallel()
+// runMigrationsTwice proves the shipped DDL is accepted verbatim, and that
+// re-running it is a no-op — the property every statement's IF NOT EXISTS is
+// there for, and the one a consumer's migration runner depends on.
+func runMigrationsTwice(t *testing.T, client database.Client) {
+	t.Helper()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		stmts, err := migrations.Statements(dialect.Postgres, "ddl_check")
-		must.NoError(T, err)
+	stmts, err := migrations.Statements(client.Dialect(), "ddl_check")
+	must.NoError(t, err)
 
-		for range 2 {
-			for _, stmt := range stmts {
-				_, execErr := pg.DB.ExecContext(ctx, stmt)
-				must.NoError(T, execErr, must.Sprintf("executing %q", stmt))
-			}
-		}
-
+	for range 2 {
 		for _, stmt := range stmts {
-			test.False(T, strings.Contains(stmt, "{{"))
+			_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
 		}
-	})
+	}
+
+	for _, stmt := range stmts {
+		test.False(t, strings.Contains(stmt, "{{"))
+	}
+}
+
+// runLeaseIsNeverShorterThanAsked pins the one direction a clock's precision
+// must never round in: a lease that ends before it was asked to is a lease
+// another worker takes over while this one is still working.
+//
+// SQLite is the engine it is about — its clock is millisecond text, so every
+// duration is rounded, and its now is truncated before anything is added to it
+// — and it runs on all three because the property is the package's rather than
+// SQLite's. Each lease is odd on purpose: a microsecond count that is not a
+// whole millisecond is the one a rounding down would shorten.
+//
+// The measure is the database's own clock, read before the claim. That read is
+// no later than the instant the claim measured from, so a horizon at least the
+// lease past it is a horizon at least the lease past the claim — and the
+// reading is taken in the stored shape, so the subtraction below is between two
+// values the same clock wrote.
+func runLeaseIsNeverShorterThanAsked(t *testing.T, client database.Client) {
+	t.Helper()
+
+	ctx := t.Context()
+	d := client.Dialect()
+
+	for i, lease := range []time.Duration{
+		time.Microsecond,
+		999 * time.Microsecond,
+		1001 * time.Microsecond,
+		1500*time.Millisecond + time.Microsecond,
+		2*time.Second + 999999*time.Microsecond,
+	} {
+		q := newQueue(t, client, nil)
+		key := fmt.Sprintf("lease-%d", i)
+
+		must.NoError(t, q.EnqueueKeys(ctx, key))
+
+		before := serverNow(t, client)
+
+		claimed, err := q.Claim(ctx, 1, lease)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		until := storedInstant(t, client, q.Name(), key, "lease_until")
+		test.True(t, until.Sub(before) >= lease,
+			test.Sprintf("%s: a %s lease ended %s after a clock read taken before the claim", d, lease, until.Sub(before)))
+
+		// An extension is a lease too, measured from its own now.
+		before = serverNow(t, client)
+
+		_, err = q.Extend(ctx, lease+time.Hour, claimed...)
+		must.NoError(t, err)
+
+		until = storedInstant(t, client, q.Name(), key, "lease_until")
+		test.True(t, until.Sub(before) >= lease+time.Hour,
+			test.Sprintf("%s: a %s extension ended %s after a clock read taken before it", d, lease+time.Hour, until.Sub(before)))
+	}
+}
+
+// instantLayouts are the shapes the three engines hand an instant back in when
+// it is read as text: SQLite's is what strftime's %f writes, and the other two
+// are what a driver renders a timestamp column as.
+var instantLayouts = []string{
+	"2006-01-02 15:04:05.000",
+	"2006-01-02 15:04:05.999999",
+	time.RFC3339Nano,
+}
+
+// serverNow reads the database's clock the way the queue's statements read it.
+func serverNow(t *testing.T, client database.Client) time.Time {
+	t.Helper()
+
+	query := map[dialect.Dialect]string{
+		dialect.Postgres: "SELECT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US')",
+		dialect.MySQL:    "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f')",
+		dialect.SQLite:   "SELECT strftime('%Y-%m-%d %H:%M:%f', 'now')",
+	}[client.Dialect()]
+
+	var text string
+	must.NoError(t, client.Writer().QueryRowContext(t.Context(), query).Scan(&text))
+
+	return parseInstant(t, text)
+}
+
+// storedInstant reads one of an item's instants back, rendered as text in the
+// same shape serverNow reads the clock in.
+func storedInstant(t *testing.T, client database.Client, queue, key, column string) time.Time {
+	t.Helper()
+
+	d := client.Dialect()
+
+	projection := map[dialect.Dialect]string{
+		dialect.Postgres: "to_char(" + column + " AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US')",
+		dialect.MySQL:    "DATE_FORMAT(" + column + ", '%Y-%m-%d %H:%i:%s.%f')",
+		dialect.SQLite:   column,
+	}[d]
+
+	var text string
+	must.NoError(t, client.Writer().QueryRowContext(t.Context(),
+		"SELECT "+projection+" FROM work_queue_items WHERE queue_name = "+d.Placeholder(1)+
+			" AND item_key = "+d.Placeholder(2), queue, key).Scan(&text))
+
+	return parseInstant(t, text)
+}
+
+func parseInstant(t *testing.T, text string) time.Time {
+	t.Helper()
+
+	for _, layout := range instantLayouts {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			return parsed
+		}
+	}
+
+	t.Fatalf("unparseable instant %q", text)
+
+	return time.Time{}
 }

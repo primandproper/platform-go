@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -14,6 +16,8 @@ import (
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	distributedlockcfg "github.com/primandproper/primitives-go/v2/distributedlock/config"
@@ -249,6 +253,31 @@ func TestNew(T *testing.T) {
 		// Both ends: the subsystem that could not be built, and what it wanted.
 		test.StrContains(t, err.Error(), do.NameOf[comments.Store]())
 		test.StrContains(t, err.Error(), do.NameOf[comments.Targets]())
+	})
+
+	T.Run("reports a password reset block whose application registered no mailer", func(t *testing.T) {
+		t.Parallel()
+
+		// The mailer is the application's by definition, so a block that names
+		// the flow and a container that supplies no way to deliver a link is a
+		// boot failure naming it rather than a surface that fails every request.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteConfig(t),
+			Identity:      &identitycfg.Config{TablePrefix: storePrefix},
+			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+
+		svc, err := New(i)
+		must.Error(t, err)
+		test.Nil(t, svc)
+
+		test.StrContains(t, err.Error(), do.NameOf[*passwordreset.Service]())
+		test.StrContains(t, err.Error(), do.NameOf[passwordreset.Mailer]())
 	})
 
 	T.Run("reports observability that was registered and cannot be built", func(t *testing.T) {
