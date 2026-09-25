@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/internal/recoverycodedb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/ddl"
@@ -26,6 +27,46 @@ var printedCode = regexp.MustCompile(`^[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$`)
 
 // errGeneratorBroken stands in for a random source that could not be read.
 var errGeneratorBroken = platformerrors.New("the random source is broken")
+
+// countingQuerier counts the lookups and spends a store issues, so a test can
+// say a refusal was reached without asking the database.
+type countingQuerier struct {
+	recoverycodedb.Querier
+
+	lookups, spends int
+}
+
+func (c *countingQuerier) RecoveryCodeUnspent(
+	ctx context.Context,
+	db recoverycodedb.DBTX,
+	arg recoverycodedb.RecoveryCodeUnspentParams,
+) (recoverycodedb.RecoveryCodeUnspentRow, error) {
+	c.lookups++
+
+	return c.Querier.RecoveryCodeUnspent(ctx, db, arg)
+}
+
+func (c *countingQuerier) SpendRecoveryCode(
+	ctx context.Context,
+	db recoverycodedb.DBTX,
+	arg recoverycodedb.SpendRecoveryCodeParams,
+) (int64, error) {
+	c.spends++
+
+	return c.Querier.SpendRecoveryCode(ctx, db, arg)
+}
+
+// count wraps the harness's store in a countingQuerier and returns it.
+func (h *harness) count() *countingQuerier {
+	c := &countingQuerier{Querier: h.store.q}
+	h.store.q = c
+
+	return c
+}
+
+// wrongLengths are a TOTP code, a code one character short and one character
+// long: none of them a code this store could have minted.
+var wrongLengths = []string{"123456", "AAAA-BBBB-CCC", "AAAA-BBBB-CCCC-D"}
 
 // failingGenerator is a random source that cannot be read.
 type failingGenerator struct{ *constantGenerator }
@@ -282,6 +323,28 @@ func TestSQLStore_Verify(T *testing.T) {
 		test.ErrorIs(t, h.store.Verify(t.Context(), h.client.Reader(), testScope(), testUser, " - - "), ErrEmptyCode)
 		test.ErrorIs(t, h.store.Verify(t.Context(), h.client.Reader(), testScope(), "", "AAAA"), ErrEmptyUserID)
 	})
+	// signin tries a recovery code after every refused TOTP code, so a
+	// six-digit code reaching this store is the common case rather than an
+	// attack, and it is answered without a read.
+	T.Run("refuses a code of the wrong length without reading", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.mint(t, testUser)
+		queries := h.count()
+
+		for _, code := range wrongLengths {
+			err := h.store.Verify(t.Context(), h.client.Reader(), testScope(), testUser, code)
+			test.ErrorIs(t, err, signin.ErrInvalidCredentials, test.Sprintf("code %q", code))
+		}
+
+		test.EqOp(t, 0, queries.lookups)
+
+		// The positive control: a code of the right length is looked up.
+		test.ErrorIs(t, h.store.Verify(t.Context(), h.client.Reader(), testScope(), testUser, "AAAA-BBBB-CCCC"),
+			signin.ErrInvalidCredentials)
+		test.EqOp(t, 1, queries.lookups)
+	})
 }
 
 func TestSQLStore_Consume(T *testing.T) {
@@ -367,6 +430,21 @@ func TestSQLStore_Consume(T *testing.T) {
 		h := newHarness(t)
 
 		test.ErrorIs(t, h.consume(t, testScope(), testUser, ""), ErrEmptyCode)
+	})
+	T.Run("refuses a code of the wrong length without writing", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.mint(t, testUser)
+		queries := h.count()
+
+		for _, code := range wrongLengths {
+			test.ErrorIs(t, h.consume(t, testScope(), testUser, code), signin.ErrInvalidCredentials,
+				test.Sprintf("code %q", code))
+		}
+
+		test.EqOp(t, 0, queries.spends)
+		test.EqOp(t, testCount, h.remaining(t, testScope(), testUser))
 	})
 }
 

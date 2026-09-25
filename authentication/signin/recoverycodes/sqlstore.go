@@ -265,6 +265,10 @@ func (s *SQLStore) Verify(
 
 	op.SetValues(map[string]any{scopeKey: scope.String(), userIDKey: userID})
 
+	if !isCodeShaped(code) {
+		return signin.ErrInvalidCredentials
+	}
+
 	row, err := s.q.RecoveryCodeUnspent(ctx, q, recoverycodedb.RecoveryCodeUnspentParams{
 		Scope:  scope,
 		UserID: userID,
@@ -306,6 +310,10 @@ func (s *SQLStore) Consume(
 	}
 
 	op.SetValues(map[string]any{scopeKey: scope.String(), userIDKey: userID})
+
+	if !isCodeShaped(code) {
+		return signin.ErrInvalidCredentials
+	}
 
 	now := s.clock.Now().UTC()
 
@@ -505,6 +513,18 @@ func validateLookup(scope tenancy.Scope, userID, code string) error {
 	}
 
 	return nil
+}
+
+// isCodeShaped reports whether code could be one this store minted, which is a
+// question of its length once normalized and nothing else.
+//
+// Verify and Consume ask it before they read, because signin tries a recovery
+// code only after the TOTP check has refused, so every wrong six-digit code at a
+// door that accepts both reaches this store. Refusing one without a query costs
+// the refusal nothing it could disclose: the answer is the one a code of the
+// right length that matches no row gets.
+func isCodeShaped(code string) bool {
+	return len(normalize(code)) == CodeLength
 }
 
 // utcPtr normalises an optional stamp to UTC, leaving an absent one absent.
