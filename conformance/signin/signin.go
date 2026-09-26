@@ -97,15 +97,15 @@ func reason(err error) string {
 
 // reasons reports whether s's subject carries reasons to its clients, printing
 // what goes unasserted where it does not. Every reason comparison here goes
-// through it, so a subject that declined them still has every code asserted.
+// through it, so a subject that strips them still has every code asserted.
 func reasons(t *testing.T, s *conformance.Session) bool {
 	t.Helper()
 
-	if s.Seams().ErrorReasons {
+	if !s.Seams().ErrorReasonsStripped {
 		return true
 	}
 
-	t.Log("conformance: this subject does not say it carries client-safe reasons (Seams.ErrorReasons), so the reason half of this refusal is not asserted")
+	t.Log("conformance: this subject says its edge strips client-safe reasons (Seams.ErrorReasonsStripped), so the reason half of this refusal is not asserted")
 
 	return false
 }

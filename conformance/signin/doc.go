@@ -29,11 +29,12 @@ something a client in another language can read. The message is checked only
 where the promise is about the message: that two refusals are word for word the
 same.
 
-The reason half is asserted only for a subject whose Seams.ErrorReasons says it
-carries reasons. A deployment's client-facing edge may rebuild a status without
-its details, and one that does still owes every code asserted here, so a
-subject that has not opted in has the codes checked and each skipped reason
-printed rather than a suite that fails on a detail it never promised to send.
+The reason half is asserted unless the subject's Seams.ErrorReasonsStripped
+says its edge drops reasons. The contract promises that a reason survives an
+edge that strips the encoded chain, so asserting it is the default; a
+deployment that rebuilds a status without its details breaks that promise, and
+says so to have the codes checked and each skipped reason printed rather than a
+suite that fails on a detail it does not send.
 
 # Whose directory, and the three actions
 
