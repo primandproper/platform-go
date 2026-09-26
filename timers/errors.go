@@ -1,6 +1,7 @@
 package timers
 
 import (
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
@@ -80,6 +81,16 @@ var (
 	// type other than the set's. Option carries no type parameter, so the
 	// compiler cannot catch this; New reports it instead, at construction.
 	ErrKeyCodecTypeMismatch = platformerrors.New("key codec type does not match timer key type")
+
+	// ErrNotifyUnsupported indicates Config.NotifyChannel was set on a dialect
+	// with no LISTEN/NOTIFY. It wraps dialect.ErrUnsupported, so a caller may
+	// check either.
+	//
+	// Refused rather than ignored: a set that dropped the channel would be a
+	// deployment that believes a schedule wakes its pollers and is in fact
+	// sleeping until the next instant it already knew about, which is the
+	// thirty-seconds-from-now timer firing an hour late.
+	ErrNotifyUnsupported = platformerrors.Wrap(dialect.ErrUnsupported, "timer notifications require postgres")
 
 	// ErrHandlerPanicked indicates a Handler panicked. The panic is contained
 	// and converted rather than allowed to unwind the worker: one bad timer must

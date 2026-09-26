@@ -2,9 +2,9 @@
 Package timerscfg assembles a timer set, and optionally the worker that fires
 it, from environment configuration.
 
-There is one dependency neither can be built without: a database.Client speaking
-Postgres. The dialect is not configured here at all — it comes off the client, so
-the SQL cannot disagree with the database it runs against.
+There is one dependency neither can be built without: a database.Client. The
+dialect is not configured here at all — it comes off the client, so the SQL
+cannot disagree with the database it runs against.
 
 Both constructors are generic over the key type, which the caller names at the
 call site. That is the only part of a timer set the environment cannot express: a
@@ -72,10 +72,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 
 // NewTimers builds a timer set from configuration.
 //
-// client must speak Postgres: this package's SQL is written against it rather
-// than reduced to a portable subset, and timers.New returns
-// dialect.ErrUnsupported for anything else. See the timers package doc for which
-// construct is the binding one.
+// client may speak Postgres, MySQL or SQLite; timers.New reads the dialect off
+// it and picks the statements that dialect is served by. See the timers package
+// doc for what differs between them.
 //
 // K is the key type the set schedules against, and is the caller's to name:
 //

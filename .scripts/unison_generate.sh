@@ -80,7 +80,7 @@ COMPONENTS=(
   "webhooks postgres mysql sqlite"
   "outbox postgres mysql sqlite"
   "operations postgres"
-  "timers postgres"
+  "timers postgres mysql sqlite"
   "workqueue postgres mysql sqlite"
 )
 
