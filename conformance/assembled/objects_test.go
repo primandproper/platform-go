@@ -30,7 +30,7 @@ func register(
 
 		var recorded *mediaregistry.Object
 
-		err := db.WithTransaction(context.WithoutCancel(ctx), func(tx database.Tx) error {
+		err := db.WithTransaction(ctx, func(tx database.Tx) error {
 			object, err := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, mediaregistry.ObjectInput{
 				Key:         "conformance/" + identifiers.New() + ".txt",
 				ContentType: "text/plain",
