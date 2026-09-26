@@ -57,6 +57,7 @@ COMPONENTS=(
   "audit postgres mysql sqlite"
   "authentication/oauth2serverstore postgres mysql sqlite"
   "authentication/oauth2clients postgres mysql sqlite"
+  "authentication/grants postgres mysql sqlite"
   "authentication/passkeys postgres mysql sqlite"
   "authentication/passwordreset postgres mysql sqlite"
   "authentication/signin/refreshtokens postgres mysql sqlite"

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
+	grantsmigrations "github.com/primandproper/platform-go/v14/authentication/grants/migrations"
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	oauth2serverstoremigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
@@ -70,6 +71,7 @@ type renderer func(dialect.Dialect, string) ([]string, error)
 // tables were classified by nobody at all.
 var renderers = map[string]renderer{
 	"audit":                               auditmigrations.Statements,
+	"authentication/grants":               grantsmigrations.Statements,
 	"authentication/oauth2clients":        oauth2clientsmigrations.Statements,
 	"authentication/oauth2serverstore":    oauth2serverstoremigrations.Statements,
 	"authentication/passkeys":             passkeysmigrations.Statements,
@@ -138,6 +140,7 @@ var conventional = map[string]renderer{
 	"waitlist_signups":          waitlistsmigrations.Statements,
 	"oauth2_registered_clients": oauth2clientsmigrations.Statements,
 	"webauthn_credentials":      passkeysmigrations.Statements,
+	"oauth2_grants":             grantsmigrations.Statements,
 }
 
 // exemption is a table that deliberately carries none of the triple, and the

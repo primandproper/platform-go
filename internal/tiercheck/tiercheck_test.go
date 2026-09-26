@@ -84,10 +84,11 @@ var roster = map[string]entry{
 
 	// The straddles: a domain package under a path whose parent is a
 	// primitives-go package. There is one such parent left, and it is the one
-	// that groups rather than indirects — authentication/ holds six related
+	// that groups rather than indirects — authentication/ holds seven related
 	// domain packages, so the name says something a reader wants, which is why
 	// it survived the flattening the other six parents did not. The README's
 	// "Primitives and Domains" section says why each one splits where it does.
+	"authentication/grants":            {tier: domain, why: "the tokens a third party granted this deployment, sealed at rest — the client side of the protocol the two oauth2 packages here serve, under engines that are primitives"},
 	"authentication/oauth2clients":     {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
 	"authentication/passkeys":          {tier: domain, why: "the registered-credential table, under a protocol engine that is a primitive"},
 	"authentication/oauth2serverstore": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
