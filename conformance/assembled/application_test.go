@@ -43,12 +43,10 @@ import (
 // Each surface below mounts only because something here made its dependency
 // resolvable, which is service.RegisterTransports' absence rule doing its job —
 // a surface over half a service is not a surface.
-func registerApplication(i do.Injector, prefix string) {
+func registerApplication(i do.Injector, prefix string, commentable *things) {
 	// The declarations. Which kinds of thing accept comments, and which events
 	// an application publishes, are the application's to say.
-	do.ProvideValue(i, comments.Targets{
-		"conformance_thing": {Description: "a thing the conformance suite comments on"},
-	})
+	do.ProvideValue(i, comments.Targets{thingType: commentable.definition()})
 	// Two event types rather than one, because the webhooks suite's assertions
 	// about a subscription set — reconciling it, retiring one of it — need a
 	// set with more than one member to be observable.

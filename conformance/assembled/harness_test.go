@@ -182,7 +182,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	// What a consumer's main adds beyond the config: the declarations and
 	// services Register does not build, the interceptors the gRPC server
 	// resolves, the extractor, and the rules about rows.
-	registerApplication(i, prefix)
+	commentable := &things{}
+	registerApplication(i, prefix, commentable)
 
 	// The consumer's identity hooks, which is where an invitation's token goes
 	// to be mailed. identity/config resolves them when it builds the service.
@@ -322,6 +323,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			MagicLinkToken:     links.token,
 			Registered: register(client,
 				do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
+			CommentTarget: commentable.bring,
 
 			// The recorder the composition root built, inside a transaction on
 			// the client it built — the end of the path a consumer's handler
@@ -370,8 +372,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			return http.DefaultClient, nil
 		},
 
-		// The one target type registerApplication declares.
-		CommentTargetType: "conformance_thing",
+		// The one target type registerApplication declares, for the reads that
+		// name a target without writing to it. Its writes go through
+		// CommentTarget, since the type checks that a target exists.
+		CommentTargetType: string(thingType),
 
 		Dialect: d,
 

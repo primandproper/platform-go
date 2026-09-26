@@ -94,6 +94,11 @@ type Seams struct {
 	// declares, for the reads that name a comment target. Which kinds of thing
 	// accept comments is the application's vocabulary, so no suite can guess
 	// one; empty skips the reads that need it, with the reason printed.
+	//
+	// It is also what the comments suite writes against when
+	// Actions.CommentTarget is nil, on an identifier it mints — which only a
+	// type declared without an existence check accepts. A deployment whose
+	// types are checked supplies the action as well, and the action wins.
 	CommentTargetType string
 
 	// WebhookURL is an address the deployment's webhooks surface accepts an
@@ -405,6 +410,25 @@ type Actions struct {
 	// object is belongs to the deployment, and what the suite asserts is which
 	// caller gets it back, not what it contains.
 	Registered func(ctx context.Context, scope tenancy.Scope, userID string) (*RegisteredObject, error)
+
+	// CommentTarget brings a thing that accepts comments into being in this
+	// tenant, the way the deployment does, and reports its target type and
+	// identifier — a recipe created, a ticket opened.
+	//
+	// It is needed wherever a target type's comments.TargetDefinition carries
+	// an existence check, which refuses a comment on a thing the application
+	// does not have, and rightly: an identifier the suite minted names nothing,
+	// and no client of this module's surfaces can make one name something,
+	// because the thing lives in a table the application owns. Nil falls back
+	// to Seams.CommentTargetType and a minted identifier, which is right for a
+	// deployment that checks nothing.
+	//
+	// Each call must report a thing no earlier call reported: a listing by
+	// target reads everything said about it, and the suite finds its own rows
+	// there by being the only one who has spoken. Every call must report the
+	// same target type too, since the moderation read is asserted across two
+	// targets of one type.
+	CommentTarget func(ctx context.Context, scope tenancy.Scope) (targetType, targetID string, err error)
 }
 
 // RegisteredObject is what a registration action stored, as the guarded read

@@ -23,7 +23,7 @@ func reading(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		about := target(t, s)
+		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
 
@@ -39,7 +39,7 @@ func reading(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		about := target(t, s)
+		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
 
@@ -56,7 +56,7 @@ func reading(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 
 		_, err := caller.Surfaces.Comments.ListReplies(caller.Context(t.Context()),
-			&commentspb.ListRepliesRequest{Target: target(t, s)})
+			&commentspb.ListRepliesRequest{Target: target(t, s, caller)})
 		refused(t, err, codes.InvalidArgument, "a replies listing with no parent")
 	})
 
@@ -64,7 +64,9 @@ func reading(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		first, second := target(t, s), target(t, s)
+		first, second := target(t, s, caller), target(t, s, caller)
+		must.EqOp(t, first.GetType(), second.GetType(),
+			must.Sprint("the comment target action reported two target types; the moderation read is asserted across one"))
 
 		root := say(t, caller, first, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
@@ -84,7 +86,7 @@ func reading(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		target(t, s) // The skip, where the subject names no target type at all.
+		needsTarget(t, s)
 
 		byTargetType(t, caller, "conformance_withdrawn_"+identifiers.New())
 	})
@@ -97,7 +99,7 @@ func reading(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		other := colleague(t, s, caller)
-		about := target(t, s)
+		about := target(t, s, caller)
 
 		mine := say(t, caller, about, bodyRoot)
 		theirs := say(t, other, about, bodyReply)
@@ -114,7 +116,7 @@ func reading(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		needsUser(t, caller)
 
-		mine := say(t, caller, target(t, s), bodyRoot)
+		mine := say(t, caller, target(t, s, caller), bodyRoot)
 
 		got, err := byAuthor(t, caller, caller.UserID)
 		must.NoError(t, err)
