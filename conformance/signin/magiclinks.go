@@ -87,7 +87,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		who, _ := register(t, s, withPassword(registrationRequest()))
 
 		_, err := login(t.Context(), anon, who.username, password, "")
-		refused(t, err, codes.FailedPrecondition, reasonUserUnverified)
+		refused(t, s, err, codes.FailedPrecondition, reasonUserUnverified)
 
 		requestLink(t, anon, who.email)
 
@@ -126,7 +126,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		who, _ := register(t, s, withNoPassword(registrationRequest()))
 
 		_, never := redeem(t, anon, identifiers.New())
-		refused(t, never, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, never, codes.Unauthenticated, reasonInvalidCredentials)
 		test.EqOp(t, domain.ErrInvalidCredentials.Error(), status.Convert(never).Message())
 
 		requestLink(t, anon, who.email)
@@ -136,6 +136,6 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err, must.Sprint("the control: the link the deployment mailed did not sign in"))
 
 		_, spent := redeem(t, anon, link)
-		indistinguishable(t, never, spent, "a spent sign-in link against one never mailed")
+		indistinguishable(t, s, never, spent, "a spent sign-in link against one never mailed")
 	})
 }

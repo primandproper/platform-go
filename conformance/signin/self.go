@@ -99,7 +99,7 @@ func self(t *testing.T, s *conformance.Session) {
 			CurrentPassword: wrongPassword,
 			NewPassword:     newPassword,
 		})
-		refused(t, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
 		loggedIn(t, anon, user.GetUsername(), password)
 
 		_, err = sub.Surfaces.SignIn.UpdatePassword(sub.Context(t.Context()), &signinpb.UpdatePasswordRequest{
@@ -151,7 +151,7 @@ func self(t *testing.T, s *conformance.Session) {
 
 		_, err := sub.Surfaces.SignIn.VerifyTOTPSecret(sub.Context(t.Context()),
 			&signinpb.VerifyTOTPSecretRequest{TotpCode: "000000"})
-		refused(t, err, codes.FailedPrecondition, reasonSecondFactorNotEnrolled)
+		refused(t, s, err, codes.FailedPrecondition, reasonSecondFactorNotEnrolled)
 
 		// The control: once a secret is issued, the same call with its code is
 		// the proof it was refused for lacking.

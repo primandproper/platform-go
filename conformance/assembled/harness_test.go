@@ -375,6 +375,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 
 		Dialect: d,
 
+		// Nothing between the client and service strips a status's details,
+		// so sign-in's reasons arrive and are asserted.
+		ErrorReasons: true,
+
 		// Every table is this run's own, by prefix.
 		ExclusiveDatabase: true,
 

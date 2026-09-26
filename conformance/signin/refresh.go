@@ -86,10 +86,10 @@ func refresh(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err, must.Sprint("the control: the first exchange was refused"))
 
 		_, replayed := exchange(t.Context(), anon, first.GetRefreshToken())
-		refused(t, replayed, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, replayed, codes.Unauthenticated, reasonInvalidCredentials)
 
 		_, unknown := exchange(t.Context(), anon, neverMinted())
-		indistinguishable(t, unknown, replayed, "a replayed refresh token against one never minted")
+		indistinguishable(t, s, unknown, replayed, "a replayed refresh token against one never minted")
 	})
 
 	// What turns a stolen token from a shared session nobody can see into a
@@ -109,7 +109,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		must.Error(t, err, must.Sprint("a spent refresh token was exchanged a second time"))
 
 		_, err = exchange(t.Context(), anon, second.GetRefreshToken())
-		refused(t, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
 	})
 
 	// R10: a client that lost the answer to an exchange retries under the key
@@ -174,7 +174,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err)
 
 		_, err = exchange(t.Context(), anon, ended.GetRefreshToken())
-		refused(t, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
 
 		// The control, and the scope of the button: a second login of the same
 		// person is another device, and signing out of one ends that one.
@@ -228,7 +228,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		for _, dead := range []string{phoneNext.GetRefreshToken(), laptop.GetRefreshToken()} {
 			_, exchangeErr := exchange(t.Context(), anon, dead)
-			refused(t, exchangeErr, codes.Unauthenticated, reasonInvalidCredentials)
+			refused(t, s, exchangeErr, codes.Unauthenticated, reasonInvalidCredentials)
 		}
 
 		// Ending every login is not ending the account: the password still
