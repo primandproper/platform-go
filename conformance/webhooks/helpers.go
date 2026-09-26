@@ -18,9 +18,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// deliveryURL is where every endpoint here points: an address in the block RFC
-// 5737 reserves for documentation. The package documentation says why.
-const deliveryURL = "https://192.0.2.1/conformance/hook"
+// documentationURL is where every endpoint here points unless the subject
+// names somewhere else: an address in the block RFC 5737 reserves for
+// documentation. The package documentation says why.
+const documentationURL = "https://192.0.2.1/conformance/hook"
 
 // cleanupTimeout bounds the archive each registered endpoint gets when its test
 // ends. The test's own context is already canceled by then.
@@ -57,11 +58,21 @@ func keyring() *webhookspb.WebhookSigningKeys {
 	}
 }
 
+// deliveryURL is where the subject's endpoints point: Seams.WebhookURL, or the
+// documentation address where it named none.
+func deliveryURL(s *conformance.Session) string {
+	if u := s.Seams().WebhookURL; u != "" {
+		return u
+	}
+
+	return documentationURL
+}
+
 // endpointFor is an endpoint subscribing to eventTypes, named for this test.
-func endpointFor(eventTypes ...string) *webhookspb.WebhookEndpointInput {
+func endpointFor(s *conformance.Session, eventTypes ...string) *webhookspb.WebhookEndpointInput {
 	return &webhookspb.WebhookEndpointInput{
 		Name:       "conf_" + identifiers.New(),
-		Url:        deliveryURL,
+		Url:        deliveryURL(s),
 		EventTypes: eventTypes,
 	}
 }
@@ -87,10 +98,12 @@ func save(
 // register saves an endpoint as caller, failing the test if it is refused, and
 // archives it when the test ends so a deployment is not left delivering to it.
 //
-// A refusal as InvalidArgument skips instead. That is what a deployment whose
-// URL check is an allowlist of its own hosts answers for the documentation
-// address, and it is the deployment being right rather than the surface being
-// wrong — every other input here is one the surface accepts.
+// A refusal fails even as InvalidArgument, which is what a deployment whose URL
+// check is an allowlist of its own hosts answers for the documentation address.
+// It used to skip, and a skip here could not tell that deployment from one
+// refusing every registration: the whole suite went quiet either way. The
+// subject knows which it is and the suite does not, so the failure names the
+// seam that says so.
 func register(
 	t *testing.T,
 	caller *conformance.Subject,
@@ -101,8 +114,9 @@ func register(
 
 	saved, err := save(t, caller, input, keys)
 	if status.Code(err) == codes.InvalidArgument {
-		t.Skipf("conformance: this deployment refused an endpoint at %s (%v); "+
-			"the assertion needs an endpoint it accepts", deliveryURL, err)
+		t.Fatalf("conformance: this deployment refused an endpoint at %s (%v); "+
+			"if its URL check refuses that address, name one it accepts in Seams.WebhookURL",
+			input.GetUrl(), err)
 	}
 
 	must.NoError(t, err, must.Sprint("registering an endpoint"))
@@ -125,10 +139,15 @@ func register(
 
 // registered is register with a fresh keyring, for the assertions that are not
 // about the keys.
-func registered(t *testing.T, caller *conformance.Subject, eventTypes ...string) *webhookspb.WebhookEndpoint {
+func registered(
+	t *testing.T,
+	s *conformance.Session,
+	caller *conformance.Subject,
+	eventTypes ...string,
+) *webhookspb.WebhookEndpoint {
 	t.Helper()
 
-	return register(t, caller, endpointFor(eventTypes...), keyring())
+	return register(t, caller, endpointFor(s, eventTypes...), keyring())
 }
 
 // endpoint reads one endpoint as caller, failing the test if it is not there.

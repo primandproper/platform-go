@@ -19,14 +19,20 @@ something a subscription may name. A subject whose catalog is empty skips, and
 the few assertions about a subscription set of more than one skip where the
 catalog has fewer than two, both with the reason printed.
 
-Every endpoint is registered at an address in 192.0.2.0/24, the block RFC 5737
-reserves for documentation. It needs no DNS, passes this module's default
-URL check, and routes nowhere, so a deployment whose worker delivers to it —
+Unless the subject names another, every endpoint is registered at an address
+in 192.0.2.0/24, the block RFC 5737 reserves for documentation. It needs no
+DNS, passes this module's default URL check, and routes nowhere, so a deployment whose worker delivers to it —
 because something else in their run published an event it subscribed to — sends
 its request into nothing. Each endpoint is archived when its test ends, so a
-deployment is not left delivering there. A deployment that has replaced the URL
-check with an allowlist of its own hosts refuses the address, which is right of
-it, and the assertions skip.
+deployment is not left delivering there.
+
+A deployment that has replaced the URL check with an allowlist of its own hosts
+refuses that address, which is right of it, and names one it accepts in
+Seams.WebhookURL instead. A refused registration fails rather than skips, and
+that is deliberate: the refusal a strict allowlist gives the documentation
+address is the same InvalidArgument a regression refusing every endpoint gives
+it, so a skip would turn most of this suite quiet on exactly the deployment it
+exists to catch. The subject knows which of the two it is; the suite does not.
 
 # What is here and what stayed behind
 

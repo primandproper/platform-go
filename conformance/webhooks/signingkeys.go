@@ -29,7 +29,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		keys := keyring()
 
-		saved := register(t, caller, endpointFor(catalog(t, caller, 1)[0]), keys)
+		saved := register(t, caller, endpointFor(s, catalog(t, caller, 1)[0]), keys)
 
 		page, err := caller.Surfaces.Webhooks.ListEndpoints(caller.Context(t.Context()), &webhookspb.ListEndpointsRequest{})
 		must.NoError(t, err)
@@ -56,7 +56,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		keys := keyring()
-		saved := register(t, caller, endpointFor(catalog(t, caller, 1)[0]), keys)
+		saved := register(t, caller, endpointFor(s, catalog(t, caller, 1)[0]), keys)
 
 		rolled := rolledKey()
 
@@ -77,7 +77,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		saved := registered(t, caller, catalog(t, caller, 1)[0])
+		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		// The positive control: the same endpoint rotates when a key is named,
 		// so the refusal below is about the missing key.
