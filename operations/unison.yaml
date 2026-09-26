@@ -3,10 +3,11 @@ package: operationsdb
 out: internal/operationsdb
 
 # The keys of `schemas:` are the dialect roster, and this one has a single key.
-# operations is Postgres-only because the work queue underneath it is — see the
-# operations package comment — and a roster of one is first class here: it
-# renders one corpus and gets the same checked guarantee, with the added freedom
-# that a shape cannot diverge across a roster it is alone in.
+# Postgres is the one dialect whose create, claim and progress flush hand their
+# row back through RETURNING and whose sets bind as arrays, and unison converges
+# a query onto one shape across its roster — so MySQL and SQLite, whose
+# statements have other shapes, are a roster of their own in unison.split.yaml.
+# See the operations package comment.
 #
 # The schema file lives beside its source: rendered from operations/migrations by
 # `go run ./internal/queriesgen -schema postgres`, at the empty table prefix —

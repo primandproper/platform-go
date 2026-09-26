@@ -13,8 +13,16 @@ import (
 //
 // Every method is buffered, in-memory, and cheap enough to call in a tight loop:
 // a Runner calling Advance once per row is doing an integer add, not a database
-// write. The buffer is flushed on WorkerConfig.ProgressInterval, at every unit
-// boundary, and once more when the Runner returns.
+// write. The buffer is flushed on WorkerConfig.ProgressInterval, promptly after
+// every unit boundary, and once more when the Runner returns.
+//
+// No method writes on the Runner's own goroutine, so a Runner may report from
+// inside a transaction it holds open. The write is made by the flush loop, on a
+// connection of its own, and a Runner that waited for it could wait on itself:
+// on SQLite, or on a pool with no spare connection, the flush needs the
+// connection the Runner's transaction is holding. Progress reported inside a
+// transaction is not part of it, though. The row's counters only move forward,
+// so a unit reported before a rollback stays counted.
 //
 // That is why nothing here returns an error. Progress is advisory — an update
 // that does not land costs a watching client a couple of seconds of staleness
@@ -93,6 +101,11 @@ type reporter struct {
 	// cancelled is closed once, by the flush that first observes the flag.
 	cancelled chan struct{}
 
+	// wake asks the flush loop for a flush now rather than at the next tick. It
+	// holds one pending request, so boundaries that arrive faster than the loop
+	// flushes coalesce into one write of the latest buffer.
+	wake chan struct{}
+
 	done chan struct{}
 
 	id string
@@ -112,12 +125,16 @@ type reporter struct {
 	closeOnce  sync.Once
 	cancelOnce sync.Once
 
-	// flushMu serializes the writes themselves, which mu cannot: a unit boundary
-	// flushes from the Runner's goroutine while the ticker flushes from this
-	// package's, and two overlapping statements would decide the row's unit name
-	// and message by whichever commit was slower. The counters survive that
+	// flushMu serializes the writes themselves, which mu cannot: the flush loop
+	// writes on a tick or a wake while close writes the final buffer from the
+	// Runner's side, and two overlapping statements would decide the row's unit
+	// name and message by whichever commit was slower. The counters survive that
 	// through GREATEST; the strings would not.
 	flushMu sync.Mutex
+
+	// closed is set by close under flushMu, before its final write. A loop flush
+	// that takes the lock afterwards writes nothing. See close.
+	closed bool
 
 	mu sync.Mutex
 
@@ -164,6 +181,7 @@ func newReporter(
 		lease:     lease,
 		interval:  interval,
 		cancelled: make(chan struct{}),
+		wake:      make(chan struct{}, 1),
 		done:      make(chan struct{}),
 	}
 }
@@ -194,11 +212,14 @@ func (r *reporter) StartUnit(name string) {
 	r.unitsOpen++
 	r.mu.Unlock()
 
-	// Flushed rather than merely marked dirty. A unit boundary is the one moment
-	// a watching client's view is worth being exactly right about — it is the
-	// tier a progress bar is drawn from — and there are as many of them as there
-	// are units, which is a number the work already told us is small.
-	r.flush(context.Background())
+	// Flushed promptly rather than at the next tick. A unit boundary is the one
+	// moment a watching client's view is worth being exactly right about — it
+	// is the tier a progress bar is drawn from — and there are as many of them
+	// as there are units, which is a number the work already told us is small.
+	//
+	// Promptly and not here. The flush loop makes the write, so the Runner never
+	// waits on it. See the Reporter documentation for why that matters.
+	r.nudge()
 }
 
 func (r *reporter) FinishUnit() {
@@ -216,7 +237,17 @@ func (r *reporter) FinishUnit() {
 	}
 	r.mu.Unlock()
 
-	r.flush(context.Background())
+	r.nudge()
+}
+
+// nudge asks the flush loop for a flush without waiting for it. A request
+// already pending covers this one, because the flush writes whatever the
+// buffer holds when it runs.
+func (r *reporter) nudge() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (r *reporter) Advance(n int64) {
@@ -276,6 +307,8 @@ func (r *reporter) run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.flush(ctx)
+		case <-r.wake:
+			r.flush(ctx)
 		}
 	}
 }
@@ -289,6 +322,15 @@ func (r *reporter) flush(ctx context.Context) {
 	r.flushMu.Lock()
 	defer r.flushMu.Unlock()
 
+	if r.closed {
+		return
+	}
+
+	r.write(ctx)
+}
+
+// write is flush's statement, for a caller already holding flushMu.
+func (r *reporter) write(ctx context.Context) {
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.interval+r.lease)
 	defer cancel()
 
@@ -328,10 +370,27 @@ func (r *reporter) markCancelled() {
 
 // close stops the flush loop and writes the buffer one final time, so the last
 // thing a Runner said before returning is on the row before the outcome is.
+//
+// The final write is the last one, and not merely the last one close makes.
+// Closing done does not stop a loop that is already choosing between it and a
+// pending wake, and the last unit boundary nearly always leaves one pending. A
+// loop flush landing after the worker has released the operation would pass
+// the write's only guard, state = running, as soon as another worker reclaimed
+// it, writing this attempt's unit and message over the new owner's and
+// extending a lease that is no longer ours. So close marks the reporter closed
+// under the write lock: a loop flush already under way finishes before the
+// final write, and one that arrives after it writes nothing. Waiting for the
+// loop to exit would buy the same thing, at the price of close hanging on a
+// reporter whose loop was never started.
 func (r *reporter) close(ctx context.Context) {
 	r.closeOnce.Do(func() {
 		close(r.done)
-		r.flush(ctx)
+
+		r.flushMu.Lock()
+		defer r.flushMu.Unlock()
+
+		r.closed = true
+		r.write(ctx)
 	})
 }
 

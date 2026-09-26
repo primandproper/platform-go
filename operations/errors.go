@@ -3,6 +3,7 @@ package operations
 import (
 	stderrors "errors"
 
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
@@ -127,6 +128,16 @@ var (
 
 	// ErrRequestTooLarge indicates a request encoding past MaxRequestBytes.
 	ErrRequestTooLarge = platformerrors.New("operation request is too large")
+
+	// ErrNotifyUnsupported indicates WithStoreNotifyChannel on a dialect with no
+	// LISTEN/NOTIFY. It wraps dialect.ErrUnsupported, so a caller may check
+	// either.
+	//
+	// Refused rather than ignored: a store that dropped the channel would be a
+	// deployment that believes every write wakes its watchers and is in fact
+	// running on WatcherConfig.Poll, which looks like working until somebody
+	// measures how late the updates arrive.
+	ErrNotifyUnsupported = platformerrors.Wrap(dialect.ErrUnsupported, "operations notifications require postgres")
 
 	// ErrWatcherClosed indicates a Watch against a Watcher that has been closed.
 	ErrWatcherClosed = platformerrors.New("operations watcher is closed")

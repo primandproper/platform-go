@@ -20,12 +20,5 @@ the flow already lived on HTTP before it had a handler. The suite reaches them
 through Subject.HTTP, a client and a base URL, and asserts statuses and the
 bodies' identifiers — never a count, since a deployment's other requests may
 share the table.
-
-# Which dialects
-
-operations runs on a work queue that claims with SKIP LOCKED, and dataprivacy
-fulfills its requests as operations, so a subject serves these on Postgres and
-reports them unmounted elsewhere. The suite skips where HTTPSurfaces says so,
-which is an absence rather than a pass.
 */
 package dataprivacy

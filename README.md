@@ -53,8 +53,7 @@ README catalogues them. [Primitives and Domains](#primitives-and-domains) is the
 rule that sorts a new package into one or the other.
 
 Implementations are listed in parentheses. Where an implementation is a SQL
-dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix and the
-reasons behind the three exceptions.
+dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 
 ### Identity & access
 | Package                            | Purpose                                                                       | Implementations                  |
@@ -100,7 +99,7 @@ reasons behind the three exceptions.
 | `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite          |
 | `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres, mysql, sqlite          |
 | `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres, mysql, sqlite          |
-| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                |
+| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres, mysql, sqlite (+ http) |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
 | `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out         | postgres, mysql, sqlite (+ grpc) |
@@ -603,9 +602,8 @@ unreleased `main` is a rule that breaks a session.
 
 ## SQL Dialect Support
 
-`database` speaks Postgres, MySQL and SQLite, and so does almost every package
-that stores anything through it. Three do not. They are Postgres-only by
-decision rather than by omission, and this is where that decision is spoken —
+`database` speaks Postgres, MySQL and SQLite, and so does every package that
+stores anything through it. A package that narrowed would be spoken for here —
 once, before you choose packages, rather than package by package as each
 constructor refuses at wiring time.
 
@@ -655,7 +653,7 @@ here.
 | `mediaregistry`                       | ✓        | ✓     | ✓      |
 | `metering`                            | ✓        | ✓     | ✓      |
 | `notifications`                       | ✓        | ✓     | ✓      |
-| `operations`                          | ✓        | —     | —      |
+| `operations`                          | ✓        | ✓     | ✓      |
 | `outbox`                              | ✓        | ✓     | ✓      |
 | `rbac`                                | ✓        | ✓     | ✓      |
 | `saga`                                | ✓        | ✓     | ✓      |
@@ -668,7 +666,7 @@ here.
 | `workqueue`                           | ✓        | ✓     | ✓      |
 <!-- /readmegen:dialects -->
 
-### Why one narrows
+### Why nothing narrows
 
 One reason, and it is a claim rather than a translation. On Postgres the claim
 is a single statement that selects due rows, locks them with `SKIP LOCKED`,
@@ -683,17 +681,19 @@ splits it, fenced by the name the claim mints so that a write can land only
 under the claim that took the row. `timers` locks its candidates by primary key
 rather than by the range that found them, because on MySQL a locking range read
 also locks the first row past it — the next set's earliest timer, as often as
-not. `webhooks` and `outbox` already claimed that way on all three. The package
-below has not been ported yet, and states where it stands in its own `doc.go`;
-this line is that statement:
+not. `webhooks` and `outbox` already claimed that way on all three, and
+`operations` followed `workqueue`: its guarded writes hand their row back
+through `RETURNING` on Postgres and read it back on the same transaction on the
+other two. No package narrows today. One that did would state where it stands
+in its own `doc.go`, and this list is that statement:
 
 <!-- readmegen:narrowings -->
-- `operations` — runs on `workqueue`, so its roster is `workqueue`'s.
 <!-- /readmegen:narrowings -->
 
-Widening it is the port `workqueue` and `timers` took, not a new design: one
-package, a statement set per shape its dialects need, and a switch on the
-client's dialect at construction — never a provider subpackage per database.
+Widening one is the port `workqueue`, `timers` and `operations` took, not a new
+design: one package, a statement set per shape its dialects need, and a switch
+on the client's dialect at construction — never a provider subpackage per
+database.
 
 ### Narrowings that are not rows
 
@@ -709,6 +709,9 @@ and a row would misreport it either way:
 - **`workqueue`** queues on all three. Its `LISTEN`/`NOTIFY` wakeup is
   Postgres-only and reported as `workqueue.ErrNotifyUnsupported` if configured
   elsewhere; without it a worker polls, which is later rather than wrong.
+- **`operations`** runs on all three. Its `LISTEN`/`NOTIFY` push to watchers is
+  Postgres-only and reported as `operations.ErrNotifyUnsupported` if configured
+  elsewhere; without it a watcher polls, which is later rather than wrong.
 - **`timers`** schedules on all three. Its `LISTEN`/`NOTIFY` wakeup is
   Postgres-only and reported as `timers.ErrNotifyUnsupported` if configured
   elsewhere; without it a poller sleeps to the next instant it knows about or
