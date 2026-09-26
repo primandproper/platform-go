@@ -10,7 +10,7 @@ require (
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pquerna/otp v1.5.0
-	github.com/primandproper/primitives-go/v2 v2.10.0
+	github.com/primandproper/primitives-go/v2 v2.10.1
 	github.com/samber/do/v2 v2.0.0
 	github.com/shoenig/test v1.12.2
 	github.com/swaggest/openapi-go v0.2.61
@@ -21,7 +21,7 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.54.0
+	modernc.org/sqlite v1.57.0
 )
 
 require (
@@ -191,7 +191,7 @@ require (
 	github.com/mailru/easyjson v0.9.2 // indirect
 	github.com/matryer/moq v0.7.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.23 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/mitchellh/go-server-timing v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.1.2 // indirect
@@ -325,7 +325,7 @@ require (
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
-	modernc.org/libc v1.74.3 // indirect
+	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
