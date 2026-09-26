@@ -166,16 +166,24 @@ type OAuth2ClientsAdapter struct {
 // GrantsAdapter registers authentication/grants/privacy's collector and eraser.
 // That collector exports the fact of each connected account and never a token,
 // and that eraser deletes, revoked grants included — without telling any
-// provider, which is what BeforeErase is for.
+// provider.
+//
+// A deployment that wants each provider told revokes there before it requests
+// the erasure, while the tokens are still readable: Store.Get opens a grant's
+// tokens, and the provider's revocation endpoint is the application's to call.
+// Not in BeforeErase, for the reason grants.Refresh gives for running outside
+// any transaction — a provider round trip inside the erasure's holds its locks
+// for as long as somebody else's server takes to answer, and on SQLite holds
+// the only writer.
 type GrantsAdapter struct {
 	_ struct{} `json:"-" yaml:"-"`
 
 	Store   grants.Store
 	Resolve dataprivacy.ScopeResolver
 	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
-	// own eraser, and is nil in ordinary wiring. A deployment that revokes each
-	// grant at its provider before forgetting it does so here, while the tokens
-	// are still readable. See precede.
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper. It is
+	// no place to call a provider; see GrantsAdapter.
 	BeforeErase dataprivacy.Eraser
 }
 

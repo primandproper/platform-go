@@ -79,11 +79,12 @@ type Store interface {
 	// from the database's clock, the reason recorded, and no tokens.
 	//
 	// It revokes here and nowhere else. A consumer that also wants the
-	// provider to forget the grant calls the provider's revocation endpoint
-	// itself, before or after — reading the grant first, in the same
-	// transaction, if it wants the token to send. A refresh the provider
-	// refused is recorded the same way, with RevokedByProvider, so that a
-	// worker retrying refreshes stops retrying a grant that will never work.
+	// provider to forget the grant reads it with Get for the token to send,
+	// calls the provider's revocation endpoint itself outside any transaction —
+	// for the reason Refresh runs outside one — and then revokes here. A
+	// refresh the provider refused is recorded the same way, with
+	// RevokedByProvider, so that a worker retrying refreshes stops retrying a
+	// grant that will never work.
 	//
 	// A grant already revoked, in another scope or absent is
 	// ErrGrantNotFound. A nil tx is an error wrapping ErrNilExecutor.
