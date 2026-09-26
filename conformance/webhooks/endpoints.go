@@ -24,12 +24,12 @@ func endpoints(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		eventType := catalog(t, caller, 1)[0]
 
-		input := endpointFor(eventType)
+		input := endpointFor(s, eventType)
 		saved := register(t, caller, input, keyring())
 
 		test.NotEq(t, "", saved.GetId(), test.Sprint("the store minted no identifier"))
 		test.EqOp(t, input.GetName(), saved.GetName())
-		test.EqOp(t, deliveryURL, saved.GetUrl())
+		test.EqOp(t, deliveryURL(s), saved.GetUrl())
 
 		// The default a registration settles on its way through the dispatcher,
 		// which is how a client can tell the write went through it at all.
@@ -51,7 +51,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 		got := endpoint(t, caller, saved.GetId())
 		test.EqOp(t, saved.GetId(), got.GetId())
 		test.EqOp(t, input.GetName(), got.GetName())
-		test.EqOp(t, deliveryURL, got.GetUrl())
+		test.EqOp(t, deliveryURL(s), got.GetUrl())
 		test.SliceContains(t, subscriptionIDs(got.GetSubscriptions()), sub.GetId())
 	})
 
@@ -64,7 +64,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		needsUser(t, caller)
 
-		saved := registered(t, caller, catalog(t, caller, 1)[0])
+		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 		test.EqOp(t, caller.UserID, saved.GetCreatedBy())
 		test.EqOp(t, caller.UserID, endpoint(t, caller, saved.GetId()).GetCreatedBy())
 	})
@@ -76,7 +76,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 
-		_, err := save(t, caller, endpointFor(catalog(t, caller, 1)[0]), nil)
+		_, err := save(t, caller, endpointFor(s, catalog(t, caller, 1)[0]), nil)
 		refused(t, err, codes.InvalidArgument, "a registration with no signing key")
 	})
 
@@ -96,7 +96,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 
-		_, err := save(t, caller, endpointFor("conformance.never."+identifiers.New()), keyring())
+		_, err := save(t, caller, endpointFor(s, "conformance.never."+identifiers.New()), keyring())
 		refused(t, err, codes.InvalidArgument, "a subscription to an uncataloged event type")
 	})
 
@@ -105,7 +105,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 
-		_, err := save(t, caller, endpointFor(), keyring())
+		_, err := save(t, caller, endpointFor(s), keyring())
 		refused(t, err, codes.InvalidArgument, "an endpoint with no subscriptions")
 	})
 
@@ -121,11 +121,11 @@ func endpoints(t *testing.T, s *conformance.Session) {
 		eventType := catalog(t, caller, 1)[0]
 
 		// The positive control: the same registration aimed at the
-		// documentation address is accepted, so the refusal below is about the
+		// subject's delivery address is accepted, so the refusal below is about the
 		// address rather than about everything.
-		registered(t, caller, eventType)
+		registered(t, s, caller, eventType)
 
-		input := endpointFor(eventType)
+		input := endpointFor(s, eventType)
 		input.Url = "https://169.254.169.254/latest/meta-data/"
 
 		_, err := save(t, caller, input, keyring())
@@ -142,10 +142,10 @@ func endpoints(t *testing.T, s *conformance.Session) {
 		offered := catalog(t, caller, 2)
 		dropped, kept := offered[0], offered[1]
 
-		saved := registered(t, caller, dropped, kept)
+		saved := registered(t, s, caller, dropped, kept)
 		keptID := subscribedTo(t, saved, kept).GetId()
 
-		input := endpointFor(kept)
+		input := endpointFor(s, kept)
 		input.Id = saved.GetId()
 
 		resaved, err := save(t, caller, input, keyring())
@@ -168,7 +168,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		saved := registered(t, caller, catalog(t, caller, 1)[0])
+		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		// The positive control: listed while live, so its absence afterwards is
 		// the archive's doing.
