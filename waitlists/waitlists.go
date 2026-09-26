@@ -31,8 +31,18 @@ const (
 type Status string
 
 const (
+	// StatusPending is somebody whose address has been given and not yet
+	// confirmed: a signup held until the person at the address comes back and
+	// says it was them.
+	//
+	// It is where a signup starts only when the caller asks for it — see
+	// [SignupStore.Join] — and [SignupStore.Confirm] is the one move out of it
+	// besides a withdrawal. Nothing else moves a pending signup: Invite requires
+	// StatusWaiting, so a signup nobody confirmed is one nobody can reach the
+	// front of the queue with. See the package documentation.
+	StatusPending Status = "pending"
 	// StatusWaiting is somebody who has joined and not yet been invited. It is
-	// where every signup starts.
+	// where every signup starts unless it is held pending confirmation.
 	StatusWaiting Status = "waiting"
 	// StatusInvited is somebody who has been let in and has not yet taken it
 	// up. [SignupStore.Invite] is what puts them here, and
@@ -53,7 +63,7 @@ const (
 	StatusWithdrawn Status = "withdrawn"
 )
 
-// Valid reports whether s is one of the four statuses.
+// Valid reports whether s is one of the five statuses.
 //
 // It is exported for the caller decoding one out of a request or a stored
 // document, which is the only place a status this package does not implement can
@@ -61,7 +71,7 @@ const (
 // ends of its move.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusWaiting, StatusInvited, StatusConverted, StatusWithdrawn:
+	case StatusPending, StatusWaiting, StatusInvited, StatusConverted, StatusWithdrawn:
 		return true
 	default:
 		return false

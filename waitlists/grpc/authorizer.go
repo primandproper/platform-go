@@ -18,9 +18,10 @@ import (
 //
 // # Why it exists
 //
-// Withdraw is one of the three RPCs on this service that a caller reaches
-// without a grant, and it is the only one of the three that names a row. That
-// combination is the whole reason this seam is here.
+// Withdraw is one of the five RPCs on this service that a caller reaches
+// without a grant, and it is the only one of the five that names a row — Confirm
+// and Unsubscribe name a token, which is their own standing. That combination is
+// the whole reason this seam is here.
 //
 // A grant would not have answered it. identity/grpc paid for that finding first
 // — a permission on the method said whether this kind of call was allowed at
@@ -59,14 +60,13 @@ import (
 //
 // # What the usual answer is
 //
-// An action link. github.com/primandproper/platform-go/v14/links mints a
-// single-use, expiring token against a subject, and an unsubscribe URL carries
-// one; the consumer's own interceptor redeems it and puts what it named on the
-// context, and this authorizer compares that against the signup the request
-// names. That is one implementation and this package ships none of it, because
-// how a person is asked to prove they are themselves is the consumer's, and a
-// deployment whose unsubscribe page sits behind a sign-in answers from
-// [callers.Principal] instead.
+// For the link in a mail, nothing: a server built with [WithConfirmation] mints
+// an unsubscribe link into every confirmation mail, and [Server.Unsubscribe]
+// redeems it without asking this seam, because the link is the authorization.
+// What is left here is a caller who names a signup by its identifiers — a
+// signed-in person on a page listing their own signups, which is an answer from
+// [callers.Principal], or a deployment that minted links of its own and redeems
+// them in an interceptor before this is asked.
 //
 // # What implementations owe
 //

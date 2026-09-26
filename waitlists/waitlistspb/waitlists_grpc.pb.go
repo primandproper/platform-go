@@ -3,11 +3,12 @@
 // operator opens, and the signups against them with a lifecycle of their own.
 //
 // It is one service with two audiences, which is what makes it different from
-// the three domain surfaces that came before it. Three RPCs are the signup page
-// — the open lists, the form, and the unsubscribe — and are reachable by
-// somebody who has not signed in and frequently does not have an account to
-// sign in to. The other fourteen are whoever is running the launch, and every
-// one of them is behind a grant. See the service comment at the bottom.
+// the three domain surfaces that came before it. Five RPCs are the signup page
+// — the open lists, the form, the confirmation link, and the two ways off the
+// list — and are reachable by somebody who has not signed in and frequently
+// does not have an account to sign in to. The other fourteen are whoever is
+// running the launch, and every one of them is behind a grant. See the service
+// comment at the bottom.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts
@@ -33,8 +34,8 @@
 // three are under is that a consumer's catalog stays a string, because a
 // generated enum puts the application's vocabulary on this module's release
 // cadence. This is the opposite case and waitlists.Status says so in its own
-// documentation: the four statuses decide which transitions the store will
-// make and what a withdrawal means, so a fifth is not a word an application
+// documentation: the five statuses decide which transitions the store will
+// make and what a withdrawal means, so a sixth is not a word an application
 // adds -- it is a row nothing can move. settings.Kind is the other one of these.
 //
 // SubjectType is the string on this surface, and it is the one that is genuinely
@@ -130,6 +131,7 @@ const (
 	WaitlistsService_UpdateList_FullMethodName                = "/primandproper.platform.waitlists.v1.WaitlistsService/UpdateList"
 	WaitlistsService_ArchiveList_FullMethodName               = "/primandproper.platform.waitlists.v1.WaitlistsService/ArchiveList"
 	WaitlistsService_Join_FullMethodName                      = "/primandproper.platform.waitlists.v1.WaitlistsService/Join"
+	WaitlistsService_Confirm_FullMethodName                   = "/primandproper.platform.waitlists.v1.WaitlistsService/Confirm"
 	WaitlistsService_GetSignup_FullMethodName                 = "/primandproper.platform.waitlists.v1.WaitlistsService/GetSignup"
 	WaitlistsService_GetSignupByContact_FullMethodName        = "/primandproper.platform.waitlists.v1.WaitlistsService/GetSignupByContact"
 	WaitlistsService_ListSignups_FullMethodName               = "/primandproper.platform.waitlists.v1.WaitlistsService/ListSignups"
@@ -138,6 +140,7 @@ const (
 	WaitlistsService_Invite_FullMethodName                    = "/primandproper.platform.waitlists.v1.WaitlistsService/Invite"
 	WaitlistsService_Convert_FullMethodName                   = "/primandproper.platform.waitlists.v1.WaitlistsService/Convert"
 	WaitlistsService_Withdraw_FullMethodName                  = "/primandproper.platform.waitlists.v1.WaitlistsService/Withdraw"
+	WaitlistsService_Unsubscribe_FullMethodName               = "/primandproper.platform.waitlists.v1.WaitlistsService/Unsubscribe"
 	WaitlistsService_WithdrawSignupsForSubject_FullMethodName = "/primandproper.platform.waitlists.v1.WaitlistsService/WithdrawSignupsForSubject"
 	WaitlistsService_ArchiveSignup_FullMethodName             = "/primandproper.platform.waitlists.v1.WaitlistsService/ArchiveSignup"
 )
@@ -146,20 +149,23 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// WaitlistsService is the whole of waitlists on the wire: all seventeen methods
-// of waitlists.Store, split by who calls them.
+// WaitlistsService is the whole of waitlists on the wire: all eighteen methods
+// of waitlists.Store, split by who calls them, and the second door onto
+// Withdraw that an unsubscribe link lands on.
 //
 // There are no absences, which is unusual on this lane and is the reason this
 // was the first of the ten domains to cross. Every other surface in the module
 // carves something out because its realistic caller is a worker on a timer, a
 // processor callback, or the consumer's own code inside its own transaction.
 // Nothing here has that shape: a waitlist has no queue protocol, no fan-out and
-// no provider callback, and every one of the seventeen is either a form
-// somebody submitted or a console somebody is looking at.
+// no provider callback, and every one of the eighteen is either a form
+// somebody submitted, a link somebody followed, or a console somebody is
+// looking at.
 //
-// # The public three
+// # The public five
 //
-// ListOpenLists, Join and Withdraw are reachable without a grant, because the
+// ListOpenLists, Join, Confirm, Withdraw and Unsubscribe are reachable without a
+// grant, because the
 // caller is a person on a signup page who has not signed in and frequently has
 // no account to sign in to. That is the whole of what "public" means here: the
 // consumer's authentication interceptor still runs, and a caller who does arrive
@@ -170,12 +176,14 @@ const (
 // address, and it answers uniformly for every outcome that is about an address
 // -- see JoinResponse, which is empty for that reason. Withdraw names a row, so
 // the standing to move it is asked of a seam the consumer implements -- see
-// WithdrawRequest. And the read a public caller gets is the catalog of open
-// lists, which is what a signup page publishes anyway.
+// WithdrawRequest. Confirm and Unsubscribe name only a token, which is their
+// standing, and they are unimplemented on a deployment that mints none. And the
+// read a public caller gets is the catalog of open lists, which is what a signup
+// page publishes anyway.
 //
 // # The administrative fourteen
 //
-// List CRUD, the signup reads, the two lifecycle transitions, the note, the
+// List CRUD, the signup reads, the two operator transitions, the note, the
 // archive and the erasure. Each is behind a grant, and waitlists/grpc's
 // Permissions is the default map a consumer composes into their policy.
 //
@@ -193,9 +201,10 @@ type WaitlistsServiceClient interface {
 	ListOpenLists(ctx context.Context, in *ListOpenListsRequest, opts ...grpc.CallOption) (*ListOpenListsResponse, error)
 	UpdateList(ctx context.Context, in *UpdateListRequest, opts ...grpc.CallOption) (*UpdateListResponse, error)
 	ArchiveList(ctx context.Context, in *ArchiveListRequest, opts ...grpc.CallOption) (*ArchiveListResponse, error)
-	// The queue. Join and Withdraw are the person's own; the rest are the
-	// operator's.
+	// The queue. Join, Confirm, Withdraw and Unsubscribe are the person's own;
+	// the rest are the operator's.
 	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
+	Confirm(ctx context.Context, in *ConfirmRequest, opts ...grpc.CallOption) (*ConfirmResponse, error)
 	GetSignup(ctx context.Context, in *GetSignupRequest, opts ...grpc.CallOption) (*GetSignupResponse, error)
 	GetSignupByContact(ctx context.Context, in *GetSignupByContactRequest, opts ...grpc.CallOption) (*GetSignupByContactResponse, error)
 	ListSignups(ctx context.Context, in *ListSignupsRequest, opts ...grpc.CallOption) (*ListSignupsResponse, error)
@@ -204,6 +213,7 @@ type WaitlistsServiceClient interface {
 	Invite(ctx context.Context, in *InviteRequest, opts ...grpc.CallOption) (*InviteResponse, error)
 	Convert(ctx context.Context, in *ConvertRequest, opts ...grpc.CallOption) (*ConvertResponse, error)
 	Withdraw(ctx context.Context, in *WithdrawRequest, opts ...grpc.CallOption) (*WithdrawResponse, error)
+	Unsubscribe(ctx context.Context, in *UnsubscribeRequest, opts ...grpc.CallOption) (*UnsubscribeResponse, error)
 	WithdrawSignupsForSubject(ctx context.Context, in *WithdrawSignupsForSubjectRequest, opts ...grpc.CallOption) (*WithdrawSignupsForSubjectResponse, error)
 	ArchiveSignup(ctx context.Context, in *ArchiveSignupRequest, opts ...grpc.CallOption) (*ArchiveSignupResponse, error)
 }
@@ -280,6 +290,16 @@ func (c *waitlistsServiceClient) Join(ctx context.Context, in *JoinRequest, opts
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JoinResponse)
 	err := c.cc.Invoke(ctx, WaitlistsService_Join_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *waitlistsServiceClient) Confirm(ctx context.Context, in *ConfirmRequest, opts ...grpc.CallOption) (*ConfirmResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmResponse)
+	err := c.cc.Invoke(ctx, WaitlistsService_Confirm_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +386,16 @@ func (c *waitlistsServiceClient) Withdraw(ctx context.Context, in *WithdrawReque
 	return out, nil
 }
 
+func (c *waitlistsServiceClient) Unsubscribe(ctx context.Context, in *UnsubscribeRequest, opts ...grpc.CallOption) (*UnsubscribeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UnsubscribeResponse)
+	err := c.cc.Invoke(ctx, WaitlistsService_Unsubscribe_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *waitlistsServiceClient) WithdrawSignupsForSubject(ctx context.Context, in *WithdrawSignupsForSubjectRequest, opts ...grpc.CallOption) (*WithdrawSignupsForSubjectResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WithdrawSignupsForSubjectResponse)
@@ -390,20 +420,23 @@ func (c *waitlistsServiceClient) ArchiveSignup(ctx context.Context, in *ArchiveS
 // All implementations must embed UnimplementedWaitlistsServiceServer
 // for forward compatibility.
 //
-// WaitlistsService is the whole of waitlists on the wire: all seventeen methods
-// of waitlists.Store, split by who calls them.
+// WaitlistsService is the whole of waitlists on the wire: all eighteen methods
+// of waitlists.Store, split by who calls them, and the second door onto
+// Withdraw that an unsubscribe link lands on.
 //
 // There are no absences, which is unusual on this lane and is the reason this
 // was the first of the ten domains to cross. Every other surface in the module
 // carves something out because its realistic caller is a worker on a timer, a
 // processor callback, or the consumer's own code inside its own transaction.
 // Nothing here has that shape: a waitlist has no queue protocol, no fan-out and
-// no provider callback, and every one of the seventeen is either a form
-// somebody submitted or a console somebody is looking at.
+// no provider callback, and every one of the eighteen is either a form
+// somebody submitted, a link somebody followed, or a console somebody is
+// looking at.
 //
-// # The public three
+// # The public five
 //
-// ListOpenLists, Join and Withdraw are reachable without a grant, because the
+// ListOpenLists, Join, Confirm, Withdraw and Unsubscribe are reachable without a
+// grant, because the
 // caller is a person on a signup page who has not signed in and frequently has
 // no account to sign in to. That is the whole of what "public" means here: the
 // consumer's authentication interceptor still runs, and a caller who does arrive
@@ -414,12 +447,14 @@ func (c *waitlistsServiceClient) ArchiveSignup(ctx context.Context, in *ArchiveS
 // address, and it answers uniformly for every outcome that is about an address
 // -- see JoinResponse, which is empty for that reason. Withdraw names a row, so
 // the standing to move it is asked of a seam the consumer implements -- see
-// WithdrawRequest. And the read a public caller gets is the catalog of open
-// lists, which is what a signup page publishes anyway.
+// WithdrawRequest. Confirm and Unsubscribe name only a token, which is their
+// standing, and they are unimplemented on a deployment that mints none. And the
+// read a public caller gets is the catalog of open lists, which is what a signup
+// page publishes anyway.
 //
 // # The administrative fourteen
 //
-// List CRUD, the signup reads, the two lifecycle transitions, the note, the
+// List CRUD, the signup reads, the two operator transitions, the note, the
 // archive and the erasure. Each is behind a grant, and waitlists/grpc's
 // Permissions is the default map a consumer composes into their policy.
 //
@@ -437,9 +472,10 @@ type WaitlistsServiceServer interface {
 	ListOpenLists(context.Context, *ListOpenListsRequest) (*ListOpenListsResponse, error)
 	UpdateList(context.Context, *UpdateListRequest) (*UpdateListResponse, error)
 	ArchiveList(context.Context, *ArchiveListRequest) (*ArchiveListResponse, error)
-	// The queue. Join and Withdraw are the person's own; the rest are the
-	// operator's.
+	// The queue. Join, Confirm, Withdraw and Unsubscribe are the person's own;
+	// the rest are the operator's.
 	Join(context.Context, *JoinRequest) (*JoinResponse, error)
+	Confirm(context.Context, *ConfirmRequest) (*ConfirmResponse, error)
 	GetSignup(context.Context, *GetSignupRequest) (*GetSignupResponse, error)
 	GetSignupByContact(context.Context, *GetSignupByContactRequest) (*GetSignupByContactResponse, error)
 	ListSignups(context.Context, *ListSignupsRequest) (*ListSignupsResponse, error)
@@ -448,6 +484,7 @@ type WaitlistsServiceServer interface {
 	Invite(context.Context, *InviteRequest) (*InviteResponse, error)
 	Convert(context.Context, *ConvertRequest) (*ConvertResponse, error)
 	Withdraw(context.Context, *WithdrawRequest) (*WithdrawResponse, error)
+	Unsubscribe(context.Context, *UnsubscribeRequest) (*UnsubscribeResponse, error)
 	WithdrawSignupsForSubject(context.Context, *WithdrawSignupsForSubjectRequest) (*WithdrawSignupsForSubjectResponse, error)
 	ArchiveSignup(context.Context, *ArchiveSignupRequest) (*ArchiveSignupResponse, error)
 	mustEmbedUnimplementedWaitlistsServiceServer()
@@ -481,6 +518,9 @@ func (UnimplementedWaitlistsServiceServer) ArchiveList(context.Context, *Archive
 func (UnimplementedWaitlistsServiceServer) Join(context.Context, *JoinRequest) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
 }
+func (UnimplementedWaitlistsServiceServer) Confirm(context.Context, *ConfirmRequest) (*ConfirmResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Confirm not implemented")
+}
 func (UnimplementedWaitlistsServiceServer) GetSignup(context.Context, *GetSignupRequest) (*GetSignupResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSignup not implemented")
 }
@@ -504,6 +544,9 @@ func (UnimplementedWaitlistsServiceServer) Convert(context.Context, *ConvertRequ
 }
 func (UnimplementedWaitlistsServiceServer) Withdraw(context.Context, *WithdrawRequest) (*WithdrawResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Withdraw not implemented")
+}
+func (UnimplementedWaitlistsServiceServer) Unsubscribe(context.Context, *UnsubscribeRequest) (*UnsubscribeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Unsubscribe not implemented")
 }
 func (UnimplementedWaitlistsServiceServer) WithdrawSignupsForSubject(context.Context, *WithdrawSignupsForSubjectRequest) (*WithdrawSignupsForSubjectResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WithdrawSignupsForSubject not implemented")
@@ -658,6 +701,24 @@ func _WaitlistsService_Join_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WaitlistsService_Confirm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WaitlistsServiceServer).Confirm(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WaitlistsService_Confirm_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WaitlistsServiceServer).Confirm(ctx, req.(*ConfirmRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _WaitlistsService_GetSignup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSignupRequest)
 	if err := dec(in); err != nil {
@@ -802,6 +863,24 @@ func _WaitlistsService_Withdraw_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WaitlistsService_Unsubscribe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnsubscribeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WaitlistsServiceServer).Unsubscribe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WaitlistsService_Unsubscribe_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WaitlistsServiceServer).Unsubscribe(ctx, req.(*UnsubscribeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _WaitlistsService_WithdrawSignupsForSubject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(WithdrawSignupsForSubjectRequest)
 	if err := dec(in); err != nil {
@@ -874,6 +953,10 @@ var WaitlistsService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _WaitlistsService_Join_Handler,
 		},
 		{
+			MethodName: "Confirm",
+			Handler:    _WaitlistsService_Confirm_Handler,
+		},
+		{
 			MethodName: "GetSignup",
 			Handler:    _WaitlistsService_GetSignup_Handler,
 		},
@@ -904,6 +987,10 @@ var WaitlistsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Withdraw",
 			Handler:    _WaitlistsService_Withdraw_Handler,
+		},
+		{
+			MethodName: "Unsubscribe",
+			Handler:    _WaitlistsService_Unsubscribe_Handler,
 		},
 		{
 			MethodName: "WithdrawSignupsForSubject",

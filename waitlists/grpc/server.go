@@ -47,6 +47,14 @@ const (
 	// archivedClearedKey records that a read asked for archived rows and did not
 	// hold the grant that reaches them. See archived.go.
 	archivedClearedKey = "waitlists.include_archived_cleared"
+
+	// The confirmation loop's own, for the same reason joinOutcomeKey is: the
+	// caller is told one thing, and what happened is recorded here. The two
+	// link keys are the links' ids, which are digests and name nobody; the
+	// refusal key is why a presented link was refused. See confirmation.go.
+	confirmLinkKey     = "waitlists.confirm_link"
+	unsubscribeLinkKey = "waitlists.unsubscribe_link"
+	linkRefusalKey     = "waitlists.link_refusal"
 )
 
 // The wiring failures this surface refuses to be built with, and the one refusal
@@ -86,7 +94,7 @@ var (
 	//
 	// It is a refusal rather than a wiring failure: the extractor worked and
 	// there was nobody there. Unlike every other surface in this module, that is
-	// not by itself an error here — the three public RPCs answer such a request
+	// not by itself an error here — the five public RPCs answer such a request
 	// — so this sentinel names the fourteen that do not.
 	ErrNoPrincipal = platformerrors.New("no principal on the waitlists request context")
 
@@ -120,21 +128,31 @@ var _ waitlistspb.WaitlistsServiceServer = (*Server)(nil)
 type Server struct {
 	waitlistspb.UnimplementedWaitlistsServiceServer
 
-	store      waitlists.Store
-	client     database.Client
-	principals callers.PrincipalExtractor
-	signups    SignupAuthorizer
-	scopes     ScopeResolver
-	contacts   ContactResolver
-	grants     authorization.GrantsExtractor
-	o11y       observability.Observer
+	store    waitlists.Store
+	client   database.Client
+	signups  SignupAuthorizer
+	contacts ContactResolver
 
-	instruments *metrics.OperationSet
+	// The confirmation loop, set together by WithConfirmation and checked
+	// together by NewServer. confirming records that the option was given at
+	// all, so that a nil argument to it is a construction error rather than a
+	// server that quietly does not confirm.
+	links         Links
+	confirmations ConfirmationMailer
+
+	o11y observability.Observer
 
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
+	principals      callers.PrincipalExtractor
+	scopes          ScopeResolver
+	grants          authorization.GrantsExtractor
+
+	instruments *metrics.OperationSet
+
+	confirming bool
 }
 
 // NewServer builds the gRPC surface over a waitlist store.
@@ -193,6 +211,10 @@ func NewServer(
 		}
 	}
 
+	if err := s.validateConfirmation(); err != nil {
+		return nil, err
+	}
+
 	s.o11y = observability.NewObserver(serverName, s.logger, s.tracerProvider)
 
 	instruments, err := metrics.NewOperationSet(s.metricsProvider, serverName)
@@ -218,7 +240,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // request is what every RPC here resolves before it does anything: the operation
 // to record on, whose catalog the request is against, and who is asking.
 //
-// The principal is carried and is nil on the three public RPCs, which is what
+// The principal is carried and is nil on the five public RPCs, which is what
 // makes this service's request struct different from the ones next door. Join
 // reads it for the signup's subject, and [SignupAuthorizer] is handed it so that
 // a consumer whose unsubscribe page is behind a sign-in can answer from the
@@ -295,7 +317,7 @@ func (s *Server) visitor(ctx context.Context, method string) (
 // caller starts an administrative RPC: one that requires somebody to be calling.
 //
 // It is [Server.visitor] plus the refusal, because the fourteen it fronts differ
-// from the three only in that. The permission interceptor in front of them has
+// from the five only in that. The permission interceptor in front of them has
 // already refused an anonymous caller — a grant is a fact about somebody, and
 // authorization/grpc is fail-closed — so this is the second lock rather than the
 // first, and it is here because a consumer who declares this service's methods

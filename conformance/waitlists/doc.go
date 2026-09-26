@@ -2,10 +2,11 @@
 Package waitlists is the signup surface's promises, assertable against any
 subject that mounts it.
 
-Seventeen RPCs, and two audiences for them. Fourteen are an operator's console
-and need a caller; three — ListOpenLists, Join and Withdraw — are a signup page,
-the form on it and the unsubscribe link in the mail that follows, and are
-reached by people who have not signed in. What a consumer needs verified is
+Nineteen RPCs, and two audiences for them. Fourteen are an operator's console
+and need a caller; five — ListOpenLists, Join, Confirm, Withdraw and
+Unsubscribe — are a signup page, the form on it, the confirmation link in the
+mail that follows, and the two ways off the list, and are reached by people who
+have not signed in. What a consumer needs verified is
 different for each half, so the assertions are split the same way.
 
 The console's promise is the one every surface here makes: the catalog and the
@@ -36,10 +37,24 @@ again through a signed-in caller wherever the promise does not depend on
 anonymity, because every public RPC is also reachable by somebody who has
 signed in.
 
+# A deployment that confirms
+
+A deployment built with waitlistsgrpc.WithConfirmation holds every join pending
+until the link it mailed is followed. Whether a subject's does is something the
+suite is told rather than something it probes: Actions.WaitlistLinks is how it
+reads the links a join mailed, and supplying it is the statement that joins are
+confirmed. With it, every join an assertion makes is followed by its
+confirmation link — so the promises about a waiting signup are asserted against
+one — and the loop itself is asserted too: a pending signup that cannot be
+invited, a link that confirms once and then reads as a token nobody minted, and
+the unsubscribe link in the same mail taking the address off the list with
+nobody signed in. Without it, joins are asserted to wait at once and the loop's
+assertions skip.
+
 # What is here and what stayed behind
 
 waitlists/grpc keeps its construction and contract tests: what NewServer refuses
-to be built from, the permission roster and the public three's declaration, the
+to be built from, the permission roster and the public five's declaration, the
 reservations in the proto, the store-method roster, and the options. It keeps
 every test that builds the server some particular way — a SignupAuthorizer that
 permits, refuses, fails or records what it was handed, a ContactResolver, a

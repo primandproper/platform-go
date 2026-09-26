@@ -28,19 +28,21 @@ of a caller, and that package's documentation is where the ruling that keeps the
 method set at three lives.
 
 Unlike every other surface in this module, an extractor here reports "nobody" on
-requests that are working exactly as intended: three of this service's RPCs are a
+requests that are working exactly as intended: five of this service's RPCs are a
 signup page, and the person on it has not signed in. [NewServer] and the two
 sections below are where that lands.
 
-# Seventeen RPCs and no absences
+# Nineteen RPCs and no absences
 
-Every method of waitlists.Store is here. That is unusual on this lane — the
+Every method of waitlists.Store is here, and one more: Unsubscribe, which is
+Withdraw's second door and the one RPC here that orchestrates rather than
+serves — roster_test.go names it as that, out loud. That is unusual on this lane — the
 other nine domains each carve something out — and it is why this one went first.
 The carve-outs elsewhere are all one test applied to different machinery: is the
 realistic caller a worker on a timer, a processor callback, or the consumer's
 own code inside its own transaction? A waitlist has no queue protocol, no
-fan-out and no provider callback. Every one of the seventeen is a form somebody
-submitted or a console somebody is looking at, and roster_test.go is where a
+fan-out and no provider callback. Every one of the eighteen is a form somebody
+submitted, a link somebody followed, or a console somebody is looking at, and roster_test.go is where a
 store method added later has to be classified rather than reflexively published.
 
 The nearest thing to a carve-out is WithdrawSignupsForSubject, which is the
@@ -74,12 +76,12 @@ call.
 
 # Two audiences, and that is the interesting half
 
-ListOpenLists, Join and Withdraw are reachable without a grant. The other
-fourteen are behind one. No surface before this one had both, and three things
-follow from it.
+ListOpenLists, Join, Confirm, Withdraw and Unsubscribe are reachable without a
+grant. The other fourteen are behind one. No surface before this one had both,
+and three things follow from it.
 
 The first is that "public" is a declaration rather than an omission.
-[PublicMethods] names the three and [Require] declares them alongside the
+[PublicMethods] names the five and [Require] declares them alongside the
 fourteen, because authorization/grpc is fail-closed and a method declared
 nowhere is denied — which nothing reports at wiring time. It is
 authentication/signin/grpc's arrangement, applied to a service where only part
@@ -102,9 +104,50 @@ grant on the method could not say whose signup it is — the caller frequently
 holds no grants at all — and the identifier is not a credential, because
 waitlists mints it and Join hands it back. So the standing to move that row is a
 seam with no default, asked inside the handler after the request is found well
-formed and before anything is written. An action link redeemed through
-platform-go/links is the shape the answer usually takes, and this package ships
-none of it, because how a person proves they are themselves is the consumer's.
+formed and before anything is written. The link in a mail no longer needs it:
+Unsubscribe redeems a link this package minted and asks nobody, because the link
+is the authorization — see the section below. What is left to the authorizer is
+a caller who names a signup by its identifiers.
+
+# The confirmation loop
+
+A public Join takes whatever address was typed, so a list built from it is a
+list of addresses nobody has proven — the obligation waitlists' own
+documentation states. [WithConfirmation] is this package discharging it. It
+takes a links minter and the consumer's [ConfirmationMailer], and with it:
+
+  - Join writes the signup [waitlists.StatusPending], and once that commits,
+    mints a confirmation link and an unsubscribe link against it and hands both
+    to the mailer. An address whose signup is still pending is mailed afresh on
+    a second Join, which is how a lost message is recovered; one already
+    confirmed, and one that withdrew, are mailed nothing. The response is the
+    same empty message whichever happened.
+  - Confirm spends a confirmation link and moves its signup to waiting. Until
+    then the signup occupies its address and cannot be invited, because Invite
+    requires waiting.
+  - Unsubscribe spends an unsubscribe link and withdraws its signup, in any
+    status: "this was not me" in the confirmation mail is a withdrawal, and the
+    suppression it leaves is unconditional. [MintUnsubscribeLink] is how every
+    later message the consumer sends carries one too.
+
+Both link RPCs take the token and nothing else. The link was minted against one
+signup on one list, in one tenant, and redeeming it compares that tenant with
+the connection's rather than binding the one it carries — a link presented on a
+connection placed elsewhere is refused unspent, as is a link presented at the
+wrong door. Every refusal is [ErrInvalidLink] as codes.NotFound, for the reason
+a refused withdrawal reads as an absent signup.
+
+Both spend on the call rather than on a page load. Mail security fetches every
+URL in a message before its recipient sees it, so the consumer's GET renders a
+page with a button and the button calls the RPC; a page that confirmed on load
+would be confirmed by a scanner.
+
+What it still does not do is send. The mailer is the consumer's — waitlists
+owns a table, this package owns a transport, and neither owns a mail provider —
+and so is the rate limit in front of a form that now mails on every submission.
+A deployment without the option has a Join that writes waiting signups and link
+RPCs that answer codes.Unimplemented, which is what every deployment had before
+it existed.
 
 # What the public half is not allowed to answer
 
@@ -138,9 +181,9 @@ anybody's address: closed, or not there.
 
 The cost is that the form cannot tell somebody they are already on the list, and
 this package cannot buy it back: a uniform answer with nothing behind it means
-an address can be put on a list by whoever typed it. The consumer's double
-opt-in is what closes that, and waitlists' own documentation states the
-obligation and why the send is not shippable here.
+an address can be put on a list by whoever typed it. The double opt-in is what
+closes that — [WithConfirmation], or the consumer's own loop on a server built
+without it.
 
 What the uniform answer does not cover is how long it takes. A join that
 collides does one read and no insert, and a machine timing thousands of requests
@@ -185,14 +228,18 @@ left in its place carries a value out of a WithTransaction closure. It matters
 most on the two transitions, because status_changed_at is the field a consumer
 schedules a reminder off and it is stamped from the store's clock.
 
-Five answer with nothing, and four of those now drop a row the store offered.
+Seven answer with nothing, and six of those drop a row the store offered.
 The two retirements drop it because the operator who sent the request already
 holds the row and what the store hands back is for a consumer's audit entry
-rather than for this wire. Withdraw drops it for a sharper reason: the row it
-hands back is the one from *before* the blanking — the address, the notes, the
-subject — and the caller who has just asked to be forgotten is the last caller to
-send that to. Join drops it for a sharper one still, and the section above is
-where that argument is. The erasure and its count are unchanged.
+rather than for this wire. Withdraw and Unsubscribe drop it for a sharper
+reason: the row they hand back is the one from *before* the blanking — the
+address, the notes, the subject — and the caller who has just asked to be
+forgotten is the last caller to send that to. Join drops it for a sharper one
+still, and the section above is where that argument is; Confirm drops it with
+Join, since a response that differed between a confirmed signup and a refused
+link would be the oracle Join declines to be, and the person holding the link
+already knows which list they asked to join. The erasure and its count are
+unchanged.
 
 # What a refused withdrawal says
 

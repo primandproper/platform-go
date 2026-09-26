@@ -261,6 +261,25 @@ func (e *storeEnv) invite(
 	return invited, err
 }
 
+func (e *storeEnv) confirm(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) (*Signup, error) {
+	tb.Helper()
+
+	var confirmed *Signup
+
+	err := e.inTx(tb, func(tx database.Tx) (confirmErr error) {
+		confirmed, confirmErr = store.Confirm(tb.Context(), tx, scope, listID, signupID)
+
+		return confirmErr
+	})
+
+	return confirmed, err
+}
+
 func (e *storeEnv) convert(
 	tb testing.TB,
 	store *SQLStore,

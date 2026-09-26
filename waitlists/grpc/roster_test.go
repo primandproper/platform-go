@@ -13,9 +13,9 @@ import (
 )
 
 // This file is the roster of which store methods cross onto the wire, and it is
-// the ruling rather than a description of it. waitlists.Store has seventeen
-// methods and this service serves all seventeen; the absence list is empty, and
-// an eighteenth method is in neither list until somebody says which.
+// the ruling rather than a description of it. waitlists.Store has eighteen
+// methods and this service serves all eighteen; the absence list is empty, and
+// a nineteenth method is in neither list until somebody says which.
 //
 // The mechanism is billing/grpc's, adopted rather than re-derived, and it is
 // internal/sentinelmatrix's applied to methods instead of sentinels — for the
@@ -32,8 +32,9 @@ import (
 // Every carve-out on this lane is one test applied to different machinery — is
 // the realistic caller a worker on a timer, a processor callback, or the
 // consumer's own code inside its own transaction — and a waitlist has no queue
-// protocol, no fan-out and no provider callback. Every one of the seventeen is a
-// form somebody submitted or a console somebody is looking at.
+// protocol, no fan-out and no provider callback. Every one of the eighteen is a
+// form somebody submitted, a link somebody followed, or a console somebody is
+// looking at.
 //
 // The nearest thing to an entry is WithdrawSignupsForSubject, which is the
 // erasure path waitlists/privacy builds a dataprivacy.Eraser on. comments,
@@ -45,6 +46,21 @@ import (
 // package documentation carries the argument, and it is served behind a grant of
 // its own rather than behind the ordinary write.
 var absent = map[string]string{}
+
+// orchestrated is every RPC this service serves that is not a store method of
+// the same name, with the store method it reaches and the reason it is a door
+// of its own.
+//
+// It is the ruling TestNoRPCIsWithoutAStoreMethod asks to be made out loud.
+var orchestrated = map[string]string{
+	// Withdraw's second door. Withdraw's request names a signup, which is a row
+	// identifier and not a credential, so its standing is the consumer's
+	// SignupAuthorizer; this one names only an unsubscribe link minted against
+	// one signup and mailed to its address, and the link is the standing. Two
+	// requests with two different proofs are two RPCs, rather than one request
+	// whose proof is whichever field happens to be set.
+	"Unsubscribe": "Withdraw",
+}
 
 // storeMethods is every method on waitlists.Store, read off the interface rather
 // than listed, so a method added to it fails the tests below.
@@ -77,7 +93,7 @@ func rpcNames() []string {
 // to the store and reflexively given an RPC is how a write that has to commit
 // with its caller's transaction arrives on a wire without anybody arguing for
 // it — and this package's empty absence list makes that the easy mistake here,
-// because "everything crosses" is the habit the seventeen establish.
+// because "everything crosses" is the habit the eighteen establish.
 func TestEveryStoreMethodIsEitherServedOrRuledOut(T *testing.T) {
 	T.Parallel()
 
@@ -134,7 +150,22 @@ func TestNoRPCIsWithoutAStoreMethod(T *testing.T) {
 	methods := storeMethods()
 
 	for _, rpc := range rpcNames() {
+		if reaches, ok := orchestrated[rpc]; ok {
+			test.SliceContains(T, methods, reaches, test.Sprintf(
+				"the roster says %q reaches waitlists.Store.%s, which waitlists.Store does not declare", rpc, reaches))
+			test.SliceNotContains(T, methods, rpc, test.Sprintf(
+				"the roster says %q is orchestrated, and waitlists.Store declares a method of that name", rpc))
+
+			continue
+		}
+
 		test.SliceContains(T, methods, rpc, test.Sprintf(
 			"the service serves %q, which waitlists.Store does not declare", rpc))
+	}
+
+	served := rpcNames()
+	for rpc := range orchestrated {
+		test.SliceContains(T, served, rpc, test.Sprintf(
+			"the roster names %q as orchestrated, which the service does not serve", rpc))
 	}
 }

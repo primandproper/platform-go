@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
@@ -29,6 +30,8 @@ import (
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	issuereportsmock "github.com/primandproper/platform-go/v14/issuereports/mock"
+	"github.com/primandproper/platform-go/v14/links"
+	linksmock "github.com/primandproper/platform-go/v14/links/mock"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
@@ -90,6 +93,14 @@ func withPrincipal(ctx context.Context) (callers.Principal, bool) {
 	principal, ok := ctx.Value(principalKey{}).(callers.Principal)
 
 	return principal, ok
+}
+
+// discardConfirmations is an application's waitlist confirmation mailer, as
+// little of one as mounting needs.
+type discardConfirmations struct{}
+
+func (discardConfirmations) SendConfirmation(context.Context, tenancy.Scope, *waitlistsgrpc.ConfirmationMail) error {
+	return nil
 }
 
 // permissive satisfies every required authorizer, since what is under test here
@@ -456,6 +467,70 @@ func TestRegisterTransports(T *testing.T) {
 				must.ErrorIs(t, err, tc.want)
 			})
 		}
+	})
+
+	T.Run("a registered waitlist confirmation mailer mounts the loop over the configured minter", func(t *testing.T) {
+		t.Parallel()
+
+		minter := func(t *testing.T, actions ...links.Action) *links.Minter {
+			t.Helper()
+
+			policies := map[links.Action]links.ActionPolicy{}
+			for _, action := range actions {
+				policies[action] = links.ActionPolicy{
+					URL: "https://example.com/" + string(action) + "/{token}",
+					TTL: links.Duration(time.Hour),
+				}
+			}
+
+			m, err := links.NewMinter(&linksmock.StoreMock{}, links.WithActions(policies))
+			must.NoError(t, err)
+
+			return m
+		}
+
+		mount := func(t *testing.T, provide func(do.Injector)) (*mountedTransports, error) {
+			t.Helper()
+
+			i := newTransportInjector(t)
+			do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
+			do.ProvideValue[waitlists.Store](i, &waitlistsmock.StoreMock{})
+			do.ProvideValue[waitlistsgrpc.ConfirmationMailer](i, discardConfirmations{})
+			provide(i)
+
+			RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+			return do.Invoke[*mountedTransports](i)
+		}
+
+		t.Run("with no minter it is a startup error rather than a loop that never mails", func(t *testing.T) {
+			t.Parallel()
+
+			_, err := mount(t, func(do.Injector) {})
+			test.ErrorIs(t, err, ErrWaitlistConfirmationNeedsLinks)
+		})
+
+		t.Run("with a minter declaring the two actions it mounts", func(t *testing.T) {
+			t.Parallel()
+
+			mounted, err := mount(t, func(i do.Injector) {
+				do.ProvideValue(i, minter(t, waitlistsgrpc.ConfirmAction, waitlistsgrpc.UnsubscribeAction))
+			})
+			must.NoError(t, err)
+			test.Eq(t, []string{"waitlists gRPC"}, mounted.names)
+		})
+
+		// The surface's own refusal, which is how this proves the minter
+		// actually reached WithConfirmation rather than being resolved and
+		// dropped.
+		t.Run("with a minter missing an action it is the surface's refusal", func(t *testing.T) {
+			t.Parallel()
+
+			_, err := mount(t, func(i do.Injector) {
+				do.ProvideValue(i, minter(t, waitlistsgrpc.ConfirmAction))
+			})
+			test.ErrorIs(t, err, waitlistsgrpc.ErrConfirmationActionMissing)
+		})
 	})
 
 	T.Run("an optional authorizer left nil leaves the surface's own default in place", func(t *testing.T) {

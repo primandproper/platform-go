@@ -11,6 +11,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
@@ -55,12 +56,71 @@ func openList(t *testing.T, operator *conformance.Subject, closesAt time.Time) *
 
 // join signs contact up to a list as caller, which is the signed-in half of the
 // public form: the tenant and the subject both come off the caller's principal.
-func join(t *testing.T, caller *conformance.Subject, listID, contact string) {
+//
+// On a deployment that confirms, it follows the confirmation link the join
+// mailed, so that what every assertion built on it sees is a signup that
+// counts — which on a deployment that does not confirm is what the join
+// alone leaves.
+func join(t *testing.T, s *conformance.Session, caller *conformance.Subject, listID, contact string) {
 	t.Helper()
 
 	_, err := caller.Surfaces.Waitlists.Join(caller.Context(t.Context()),
 		&waitlistspb.JoinRequest{ListId: listID, Contact: contact})
 	must.NoError(t, err, must.Sprintf("joining %q", contact))
+
+	if confirms(s) {
+		confirm(t, s, caller.Surfaces.Waitlists, caller.Context(t.Context()), caller.Scope, listID, contact)
+	}
+}
+
+// confirms reports whether the subject's deployment holds a join pending until
+// its link is followed, which is what supplying Actions.WaitlistLinks says.
+func confirms(s *conformance.Session) bool {
+	return s.Seams().Actions.WaitlistLinks != nil
+}
+
+// needsConfirmation skips unless the subject's deployment confirms.
+func needsConfirmation(t *testing.T, s *conformance.Session) {
+	t.Helper()
+
+	if !confirms(s) {
+		t.Skip("conformance: this subject supplies no Actions.WaitlistLinks, so its joins are not confirmed and there is no link to follow")
+	}
+}
+
+// linksFor reads the links the deployment mailed contact for a list in scope.
+func linksFor(
+	t *testing.T,
+	ctx context.Context,
+	s *conformance.Session,
+	scope tenancy.Scope,
+	listID, contact string,
+) *conformance.WaitlistLinks {
+	t.Helper()
+
+	mailed, err := s.Seams().Actions.WaitlistLinks(ctx, scope, listID, contact)
+	must.NoError(t, err, must.Sprintf("reading the links mailed to %q", contact))
+	must.NotNil(t, mailed, must.Sprintf("no links were mailed to %q", contact))
+
+	return mailed
+}
+
+// confirm follows the confirmation link the deployment mailed contact, through
+// client from ctx — which is public, so any client placed in scope will do.
+func confirm(
+	t *testing.T,
+	s *conformance.Session,
+	client waitlistspb.WaitlistsServiceClient,
+	ctx context.Context,
+	scope tenancy.Scope,
+	listID, contact string,
+) {
+	t.Helper()
+
+	mailed := linksFor(t, ctx, s, scope, listID, contact)
+
+	_, err := client.Confirm(ctx, &waitlistspb.ConfirmRequest{Token: mailed.Confirm})
+	must.NoError(t, err, must.Sprintf("following the confirmation link mailed to %q", contact))
 }
 
 // byContact reads a signup through the console by its address, or reports nil
@@ -85,10 +145,15 @@ func byContact(t *testing.T, operator *conformance.Subject, listID, contact stri
 
 // signedUp joins contact as caller and reads the row back through operator,
 // failing if it is not there.
-func signedUp(t *testing.T, caller, operator *conformance.Subject, listID, contact string) *waitlistspb.Signup {
+func signedUp(
+	t *testing.T,
+	s *conformance.Session,
+	caller, operator *conformance.Subject,
+	listID, contact string,
+) *waitlistspb.Signup {
 	t.Helper()
 
-	join(t, caller, listID, contact)
+	join(t, s, caller, listID, contact)
 
 	signup := byContact(t, operator, listID, contact)
 	must.NotNil(t, signup, must.Sprintf("a join for %q left no row the console can find", contact))

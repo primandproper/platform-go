@@ -22,6 +22,7 @@ import (
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	"github.com/primandproper/platform-go/v14/notifications"
@@ -51,7 +52,7 @@ import (
 // The refusals RegisterTransports raises for itself, as opposed to the ones the
 // surfaces raise for themselves.
 //
-// There are only three, and that is the measure of how little this file
+// There are only a handful, and that is the measure of how little this file
 // decides: a surface that cannot be built refuses in its own words, under its
 // own sentinel, and these are the failures no surface is in a position to see.
 var (
@@ -114,6 +115,20 @@ var (
 	// through instead.
 	ErrGRPCRegistrationsAlreadyProvided = platformerrors.New(
 		"the gRPC registration functions are already registered; RegisterTransports owns them",
+	)
+
+	// ErrWaitlistConfirmationNeedsLinks is an application that registered a
+	// waitlistsgrpc.ConfirmationMailer in a service whose Config names no
+	// Links block, so there is no minter to mint the links the mailer would
+	// send.
+	//
+	// It is this file's rather than the surface's because the surface is never
+	// asked: WithConfirmation is handed a minter, and the absence of one is a
+	// fact about the injector. Mounting without the loop instead would be the
+	// quiet version — a mailer registered and never called, and a form whose
+	// signups go straight to waiting on a deployment that meant to confirm them.
+	ErrWaitlistConfirmationNeedsLinks = platformerrors.New(
+		"a waitlist confirmation mailer is registered and no links minter is configured to mint its links",
 	)
 )
 
@@ -1044,7 +1059,16 @@ func (m *mount) signIn() {
 
 // waitlists mounts the signup surface. Its authorizer is required, and its
 // scope resolver is left defaulted for the reason sign-in's is: the public
-// signup page is three RPCs that arrive with nobody on them by design.
+// signup page is five RPCs that arrive with nobody on them by design.
+//
+// The confirmation loop mounts when the application registered a
+// waitlistsgrpc.ConfirmationMailer, which is presence as the switch for the
+// reason every block here uses it: the mailer is the application's, so its
+// being registered is the decision. It is built over the *links.Minter
+// Config.Links registers, and a mailer with no minter to mint with fails the
+// startup rather than mounting a form whose signups nothing could confirm —
+// as does a minter that declares neither waitlist action, which is the
+// surface's own refusal.
 func (m *mount) waitlists() {
 	store, ok := need[waitlists.Store](m)
 	if !ok {
@@ -1064,6 +1088,21 @@ func (m *mount) waitlists() {
 	opts := []waitlistsgrpc.Option{waitlistsgrpc.WithPillars(m.pillars)}
 	if m.t.Grants != nil {
 		opts = append(opts, waitlistsgrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	if mailer, mailing := need[waitlistsgrpc.ConfirmationMailer](m); mailing {
+		minter, minting := need[*links.Minter](m)
+		if !minting {
+			if m.err == nil {
+				m.fail("waitlists", ErrWaitlistConfirmationNeedsLinks)
+			}
+
+			return
+		}
+
+		opts = append(opts, waitlistsgrpc.WithConfirmation(minter, mailer))
+	} else if m.err != nil {
+		return
 	}
 
 	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups, opts...)

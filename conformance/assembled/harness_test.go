@@ -45,6 +45,7 @@ import (
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
+	linksmigrations "github.com/primandproper/platform-go/v14/links/database/migrations"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	mediaregistrymigrations "github.com/primandproper/platform-go/v14/mediaregistry/migrations"
@@ -58,6 +59,7 @@ import (
 	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
 	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
+	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	waitlistsclient "github.com/primandproper/platform-go/v14/waitlists/grpc/client"
 	waitlistsmigrations "github.com/primandproper/platform-go/v14/waitlists/migrations"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
@@ -112,10 +114,12 @@ var prefixCounter atomic.Uint64
 // assemble boots a service over db the way a consumer's main does, and runs every
 // suite against it.
 //
-// db is the only thing that varies between dialects. Everything else — which
-// surfaces mount, what the server is built from, the order it comes up in — is
-// the composition root's, which is what this subject exists to put under test.
-func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
+// db is the only thing that varies between dialects, besides whether the
+// waitlist confirmation loop runs — see waitlistConfirmation. Everything else —
+// which surfaces mount, what the server is built from, the order it comes up in
+// — is the composition root's, which is what this subject exists to put under
+// test.
+func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists waitlistConfirmation) {
 	t.Helper()
 
 	prefix := fmt.Sprintf("asm_%d", prefixCounter.Add(1))
@@ -172,6 +176,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Operations:    operationsConfig(prefix),
 		DataPrivacy:   &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix},
 	}
+	if waitlists == confirmsWaitlists {
+		cfg.Links = waitlistLinksConfig(prefix)
+	}
+
 	must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
 	i := do.New()
@@ -199,6 +207,14 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	links := &magicLinkMailbox{}
 	do.ProvideValue(i, links)
 	do.ProvideValue[signin.MagicLinkMailer](i, links)
+
+	// And, on a run that confirms, the consumer's waitlist confirmation mailer,
+	// whose presence is what mounts the loop — over the minter the Links block
+	// above registered.
+	waitlistMail := &waitlistMailbox{}
+	if waitlists == confirmsWaitlists {
+		do.ProvideValue[waitlistsgrpc.ConfirmationMailer](i, waitlistMail)
+	}
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
@@ -219,7 +235,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	must.NoError(t, err)
 
 	client := do.MustInvoke[database.Client](i)
-	migrate(t, client, d, prefix)
+	migrate(t, client, d, prefix, waitlists)
 
 	addrs := run(t, svc, do.MustInvoke[*grpcserver.Server](i), do.MustInvoke[*httpserver.APIServer](i))
 	conn := dial(t, addrs.grpc)
@@ -320,6 +336,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			Notified:           notify(client, do.MustInvoke[notifications.Inbox](i)),
 			VerificationToken:  invites.verificationToken,
 			MagicLinkToken:     links.token,
+			WaitlistLinks:      waitlistLinks(waitlists, waitlistMail),
 			Registered: register(client,
 				do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
 
@@ -491,10 +508,10 @@ func dial(t *testing.T, addr net.Addr) *grpc.ClientConn {
 // migrate renders each mounted package's schema under the run's prefix, on the
 // client the service built — which is what a consumer's migration step does,
 // since nothing in service runs one.
-func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string) {
+func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string, waitlists waitlistConfirmation) {
 	t.Helper()
 
-	for name, render := range map[string]func(dialect.Dialect, string) ([]string, error){
+	schemas := map[string]func(dialect.Dialect, string) ([]string, error){
 		"audit":          auditmigrations.Statements,
 		"billing":        billingmigrations.Statements,
 		"comments":       commentsmigrations.Statements,
@@ -513,7 +530,13 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 		"data privacy":   dataprivacymigrations.Statements,
 		"operations":     operationsmigrations.Statements,
 		"work queue":     workqueuemigrations.Statements,
-	} {
+	}
+
+	if waitlists == confirmsWaitlists {
+		schemas["action links"] = linksmigrations.Statements
+	}
+
+	for name, render := range schemas {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))
 

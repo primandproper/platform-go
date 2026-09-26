@@ -30,6 +30,9 @@ var _ waitlists.Store = &StoreMock{}
 //			ArchiveSignupFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the ArchiveSignup method")
 //			},
+//			ConfirmFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
+//				panic("mock out the Confirm method")
+//			},
 //			ConvertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Convert method")
 //			},
@@ -87,6 +90,9 @@ type StoreMock struct {
 
 	// ArchiveSignupFunc mocks the ArchiveSignup method.
 	ArchiveSignupFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
+
+	// ConfirmFunc mocks the Confirm method.
+	ConfirmFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// ConvertFunc mocks the Convert method.
 	ConvertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
@@ -148,6 +154,19 @@ type StoreMock struct {
 		}
 		// ArchiveSignup holds details about calls to the ArchiveSignup method.
 		ArchiveSignup []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// ListID is the listID argument value.
+			ListID string
+			// SignupID is the signupID argument value.
+			SignupID string
+		}
+		// Confirm holds details about calls to the Confirm method.
+		Confirm []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Tx is the tx argument value.
@@ -347,6 +366,7 @@ type StoreMock struct {
 	}
 	lockArchiveList               sync.RWMutex
 	lockArchiveSignup             sync.RWMutex
+	lockConfirm                   sync.RWMutex
 	lockConvert                   sync.RWMutex
 	lockCreateList                sync.RWMutex
 	lockGetList                   sync.RWMutex
@@ -453,6 +473,54 @@ func (mock *StoreMock) ArchiveSignupCalls() []struct {
 	mock.lockArchiveSignup.RLock()
 	calls = mock.calls.ArchiveSignup
 	mock.lockArchiveSignup.RUnlock()
+	return calls
+}
+
+// Confirm calls ConfirmFunc.
+func (mock *StoreMock) Confirm(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
+	if mock.ConfirmFunc == nil {
+		panic("StoreMock.ConfirmFunc: method is nil but Store.Confirm was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		ListID   string
+		SignupID string
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		ListID:   listID,
+		SignupID: signupID,
+	}
+	mock.lockConfirm.Lock()
+	mock.calls.Confirm = append(mock.calls.Confirm, callInfo)
+	mock.lockConfirm.Unlock()
+	return mock.ConfirmFunc(ctx, tx, scope, listID, signupID)
+}
+
+// ConfirmCalls gets all the calls that were made to Confirm.
+// Check the length with:
+//
+//	len(mockedStore.ConfirmCalls())
+func (mock *StoreMock) ConfirmCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	ListID   string
+	SignupID string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		ListID   string
+		SignupID string
+	}
+	mock.lockConfirm.RLock()
+	calls = mock.calls.Confirm
+	mock.lockConfirm.RUnlock()
 	return calls
 }
 
@@ -1563,6 +1631,9 @@ var _ waitlists.SignupStore = &SignupStoreMock{}
 //			ArchiveSignupFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the ArchiveSignup method")
 //			},
+//			ConfirmFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
+//				panic("mock out the Confirm method")
+//			},
 //			ConvertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Convert method")
 //			},
@@ -1603,6 +1674,9 @@ type SignupStoreMock struct {
 	// ArchiveSignupFunc mocks the ArchiveSignup method.
 	ArchiveSignupFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
+	// ConfirmFunc mocks the Confirm method.
+	ConfirmFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
+
 	// ConvertFunc mocks the Convert method.
 	ConvertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
@@ -1637,6 +1711,19 @@ type SignupStoreMock struct {
 	calls struct {
 		// ArchiveSignup holds details about calls to the ArchiveSignup method.
 		ArchiveSignup []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// ListID is the listID argument value.
+			ListID string
+			// SignupID is the signupID argument value.
+			SignupID string
+		}
+		// Confirm holds details about calls to the Confirm method.
+		Confirm []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Tx is the tx argument value.
@@ -1780,6 +1867,7 @@ type SignupStoreMock struct {
 		}
 	}
 	lockArchiveSignup             sync.RWMutex
+	lockConfirm                   sync.RWMutex
 	lockConvert                   sync.RWMutex
 	lockGetSignup                 sync.RWMutex
 	lockGetSignupByContact        sync.RWMutex
@@ -1837,6 +1925,54 @@ func (mock *SignupStoreMock) ArchiveSignupCalls() []struct {
 	mock.lockArchiveSignup.RLock()
 	calls = mock.calls.ArchiveSignup
 	mock.lockArchiveSignup.RUnlock()
+	return calls
+}
+
+// Confirm calls ConfirmFunc.
+func (mock *SignupStoreMock) Confirm(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
+	if mock.ConfirmFunc == nil {
+		panic("SignupStoreMock.ConfirmFunc: method is nil but SignupStore.Confirm was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		ListID   string
+		SignupID string
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		ListID:   listID,
+		SignupID: signupID,
+	}
+	mock.lockConfirm.Lock()
+	mock.calls.Confirm = append(mock.calls.Confirm, callInfo)
+	mock.lockConfirm.Unlock()
+	return mock.ConfirmFunc(ctx, tx, scope, listID, signupID)
+}
+
+// ConfirmCalls gets all the calls that were made to Confirm.
+// Check the length with:
+//
+//	len(mockedSignupStore.ConfirmCalls())
+func (mock *SignupStoreMock) ConfirmCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	ListID   string
+	SignupID string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		ListID   string
+		SignupID string
+	}
+	mock.lockConfirm.RLock()
+	calls = mock.calls.Confirm
+	mock.lockConfirm.RUnlock()
 	return calls
 }
 

@@ -26,5 +26,5 @@ func TestConformance_AssembledSQLite(t *testing.T) {
 		// connections waiting on each other's locks, which is a SQLite
 		// deployment's configuration rather than this harness's workaround.
 		MaxOpenConns: 1,
-	}, dialect.SQLite)
+	}, dialect.SQLite, confirmsWaitlists)
 }

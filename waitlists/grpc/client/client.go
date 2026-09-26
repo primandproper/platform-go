@@ -4,7 +4,7 @@ Package client is a typed client for the waitlists gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be seventeen functions that can
+shutdown. A client that wrapped each RPC would be nineteen functions that can
 drift from the schema, to gain nothing.
 
 It is imported as waitlistsclient.
@@ -22,7 +22,7 @@ Both idioms work on what comes back:
 	if status.Code(err) == codes.FailedPrecondition { ... }   // and so does the code
 
 It matters more here than on the surfaces next door, because the client of the
-public three is frequently rendering a page for the person who caused the
+public five is frequently rendering a page for the person who caused the
 refusal. All three of the refusals this service quotes share
 FailedPrecondition — a closed list, a transition from the wrong status, and a
 second withdrawal — and the code alone does not say which sentence to put on the
@@ -48,8 +48,12 @@ same thing the server already tells it.
 Because that is the other half: Join is idempotent at the source. A second join
 from the same address does not add a second row — the uniqueness is on the
 digest of the address rather than on a request identifier — and it answers
-exactly as the first did. Fifteen of the seventeen RPCs are naturally
-idempotent, and the sixteenth — CreateList — mints a row a retry would
+exactly as the first did. On a confirming deployment a retry for an address
+still pending mails a fresh confirmation, which is the resend working as
+intended rather than a duplicate a recorded reply would have saved. Confirm and
+Unsubscribe spend a link, so a retry after a success is refused as a spent link;
+the signup is where the first call left it, and a replayed reply would only
+have hidden that. CreateList is the one that mints a row a retry would
 duplicate, which is a list somebody archives.
 */
 package client

@@ -48,7 +48,7 @@ func TestConformance_AssembledRealServers(T *testing.T) {
 				Provider:        databasecfg.ProviderPostgres,
 				ReadConnection:  conn,
 				WriteConnection: conn,
-			}, dialect.Postgres)
+			}, dialect.Postgres, waitlistsWaitAtOnce)
 		}, pgtest.WithDSNFromEnv(postgresDSNEnv))
 	})
 
@@ -62,7 +62,7 @@ func TestConformance_AssembledRealServers(T *testing.T) {
 				Provider:        databasecfg.ProviderMySQL,
 				ReadConnection:  conn,
 				WriteConnection: conn,
-			}, dialect.MySQL)
+			}, dialect.MySQL, waitlistsWaitAtOnce)
 		}, mysqltest.WithDSNFromEnv(mysqlDSNEnv))
 	})
 }

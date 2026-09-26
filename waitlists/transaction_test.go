@@ -394,7 +394,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 	t.Run("every method refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
-		// Every one of the seventeen, not a representative one. There is no
+		// Every one of the eighteen, not a representative one. There is no
 		// connection of the store's own to fall back to, so a method that did
 		// anything but refuse would be reaching for something that is not there
 		// — and for a write, would be writing outside the transaction its caller
@@ -418,6 +418,8 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.Join(t.Context(), nil, testScope, "wl_1", &Signup{Contact: "ada@example.com"})
 		must.ErrorIs(t, err, ErrNilExecutor)
 		_, err = store.UpdateSignupNotes(t.Context(), nil, testScope, "wl_1", "sg_1", "note")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		_, err = store.Confirm(t.Context(), nil, testScope, "wl_1", "sg_1")
 		must.ErrorIs(t, err, ErrNilExecutor)
 		_, err = store.Invite(t.Context(), nil, testScope, "wl_1", "sg_1")
 		must.ErrorIs(t, err, ErrNilExecutor)
