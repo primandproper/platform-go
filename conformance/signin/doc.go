@@ -29,6 +29,12 @@ something a client in another language can read. The message is checked only
 where the promise is about the message: that two refusals are word for word the
 same.
 
+The reason half is asserted only for a subject whose Seams.ErrorReasons says it
+carries reasons. A deployment's client-facing edge may rebuild a status without
+its details, and one that does still owes every code asserted here, so a
+subject that has not opted in has the codes checked and each skipped reason
+printed rather than a suite that fails on a detail it never promised to send.
+
 # Whose directory, and the three actions
 
 Every request to the anonymous doors arrives with nobody on it, so whose

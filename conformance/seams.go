@@ -122,6 +122,21 @@ type Seams struct {
 	// closely a timestamp may be compared — see the package documentation.
 	Dialect dialect.Dialect
 
+	// ErrorReasons says the deployment carries a refusal's client-safe reason
+	// to its clients, and the assertions that read one should.
+	//
+	// A refusal is asserted by its status code everywhere, and never by a Go
+	// sentinel decoded off the wire: the encoded error chain is this module's
+	// client talking to this module's server, and a deployment that strips it
+	// before a response leaves — so internal wording never reaches a client —
+	// is doing what docs/client-contract.md tells a client-facing edge to do.
+	// The reason is different. Where the contract lists one (sign-in's
+	// refusals) it is a promise, but it is also a google.rpc.ErrorInfo detail
+	// a deployment's edge may rebuild the status without, so asserting it is
+	// opt-in rather than assumed. False skips the reason half of each
+	// assertion, with that printed; the code half runs regardless.
+	ErrorReasons bool
+
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
 	// ticket everybody assigned to it may open. True skips the assertion that
