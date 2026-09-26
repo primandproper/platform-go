@@ -146,10 +146,7 @@ func eraseSubject(t *testing.T, operator, of *conformance.Subject) int64 {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -159,7 +156,7 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
@@ -189,7 +186,7 @@ func visitor(t *testing.T, s *conformance.Session) (waitlistspb.WaitlistsService
 	conn, err := seams.Anonymous(t.Context())
 	must.NoError(t, err, must.Sprint("opening a connection with nobody on it"))
 
-	operator := s.Subject(t, conformance.InTenant(*seams.VisitorScope))
+	operator := s.Subject(t, conformance.InTenant(surface, *seams.VisitorScope))
 
 	return waitlistspb.NewWaitlistsServiceClient(conn), operator
 }

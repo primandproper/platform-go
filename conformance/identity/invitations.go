@@ -221,8 +221,8 @@ func invitations(t *testing.T, s *conformance.Session) {
 		invitee := colleague(t, s, sender)
 		bystander := colleague(t, s, sender)
 
-		must.NoError(t, verified(t.Context(), invitee.Scope, invitee.UserID))
-		must.NoError(t, verified(t.Context(), bystander.Scope, bystander.UserID))
+		must.NoError(t, verified(t.Context(), invitee.ScopeFor(surface), invitee.UserID))
+		must.NoError(t, verified(t.Context(), bystander.ScopeFor(surface), bystander.UserID))
 
 		address := self(t, invitee).GetEmailAddress()
 		invite(t, sender, address, roleSupport)
@@ -247,7 +247,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 
 		sender := s.Subject(t)
 		victim := colleague(t, s, sender)
-		must.NoError(t, verified(t.Context(), victim.Scope, victim.UserID))
+		must.NoError(t, verified(t.Context(), victim.ScopeFor(surface), victim.UserID))
 
 		invite(t, sender, self(t, victim).GetEmailAddress(), roleSupport)
 

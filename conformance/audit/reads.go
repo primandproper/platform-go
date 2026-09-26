@@ -57,11 +57,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor's entry reads exactly as an identifier nobody wrote", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
-		theirs, _ := subject(t, s)
-
-		must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-			must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+		mine, theirs, act := twoChains(t, s)
 
 		neighbor := findEntry(t, theirs, act(t, theirs))
 		must.NotNil(t, neighbor, must.Sprint("the neighbor's own action recorded nothing to hide"))
@@ -108,8 +104,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a query narrows within the caller's chain and never reaches past it", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
-		theirs, _ := subject(t, s)
+		mine, theirs, act := twoChains(t, s)
 
 		wanted, other, neighbor := act(t, mine), act(t, mine), act(t, theirs)
 

@@ -6,10 +6,14 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "comments"
+
 // Suite is the discussion surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "comments",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.Comments != nil },
 		Run:     run,
 	}
