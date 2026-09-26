@@ -94,6 +94,11 @@ type Seams struct {
 	// declares, for the reads that name a comment target. Which kinds of thing
 	// accept comments is the application's vocabulary, so no suite can guess
 	// one; empty skips the reads that need it, with the reason printed.
+	//
+	// It is also what the comments suite writes against when
+	// Actions.CommentTarget is nil, on an identifier it mints — which only a
+	// type declared without an existence check accepts. A deployment whose
+	// types are checked supplies the action as well, and the action wins.
 	CommentTargetType string
 
 	// WebhookURL is an address the deployment's webhooks surface accepts an
@@ -121,6 +126,39 @@ type Seams struct {
 	// opposite of what the matrix promises. What it legitimately decides is how
 	// closely a timestamp may be compared — see the package documentation.
 	Dialect dialect.Dialect
+
+	// OperatorMethods are the calls the deployment reserves to an operator, as
+	// full method names, and the suites make each one it names as an
+	// administrator and every other as an ordinary caller. Nil reserves
+	// nothing, which is a deployment whose members may make every call.
+	//
+	// A deployment's own list is the one to hand over — the one its
+	// authorization interceptor reads — and it may name methods on services no
+	// suite covers. What it may not name is a covered call outside
+	// ReservableMethods: the suites make those as an ordinary caller because
+	// every signed-in caller is promised them, and Run fails a reservation of
+	// one rather than letting it surface as some other assertion's refused
+	// setup.
+	OperatorMethods []string
+
+	// ErrorReasonsStripped says the deployment's edge drops a refusal's
+	// client-safe reason before it reaches a client. True skips the reason half
+	// of each assertion that reads one, with that printed; the code half runs
+	// regardless.
+	//
+	// A refusal is asserted by its status code everywhere, and never by a Go
+	// sentinel decoded off the wire: the encoded error chain is this module's
+	// client talking to this module's server, and a deployment that strips it
+	// before a response leaves — so internal wording never reaches a client —
+	// is doing what docs/client-contract.md tells a client-facing edge to do.
+	// The reason is different. Where the contract lists one (sign-in's
+	// refusals) it is a promise, and R11 says it survives exactly that edge:
+	// errors/grpc.StripEncodedErrorDetail removes the chain and leaves the
+	// google.rpc.ErrorInfo alone. So it is asserted unless the subject says
+	// otherwise, and false is the zero value. A deployment that sets this has
+	// written down that it breaks R11 for its clients, which is the point of
+	// making it say so rather than making everybody else opt in.
+	ErrorReasonsStripped bool
 
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
@@ -430,6 +468,27 @@ type Actions struct {
 	// object is belongs to the deployment, and what the suite asserts is which
 	// caller gets it back, not what it contains.
 	Registered func(ctx context.Context, scope tenancy.Scope, userID string) (*RegisteredObject, error)
+
+	// CommentTarget brings a thing that accepts comments into being in this
+	// tenant, the way the deployment does, and reports its target type and
+	// identifier — a recipe created, a ticket opened. The tenant is the one
+	// the commenting caller is in on the comments surface, as
+	// Subject.ScopeFor reads it.
+	//
+	// It is needed wherever a target type's comments.TargetDefinition carries
+	// an existence check, which refuses a comment on a thing the application
+	// does not have, and rightly: an identifier the suite minted names nothing,
+	// and no client of this module's surfaces can make one name something,
+	// because the thing lives in a table the application owns. Nil falls back
+	// to Seams.CommentTargetType and a minted identifier, which is right for a
+	// deployment that checks nothing.
+	//
+	// Each call must report a thing no earlier call reported: a listing by
+	// target reads everything said about it, and the suite finds its own rows
+	// there by being the only one who has spoken. Every call must report the
+	// same target type too, since the moderation read is asserted across two
+	// targets of one type.
+	CommentTarget func(ctx context.Context, scope tenancy.Scope) (targetType, targetID string, err error)
 }
 
 // RegisteredObject is what a registration action stored, as the guarded read
@@ -486,6 +545,13 @@ type SubjectRequest struct {
 	// scope named for billing asks for a caller in the same directory with an
 	// account of their own.
 	Surface string
+
+	// Methods, on an administrator Session.Operator asks for, are the
+	// reserved calls it was asked for to make. A factory may ignore them; they
+	// are there for a harness that wants to refuse that administrator every
+	// other reserved call, which is how this module's own keeps each suite
+	// honest about naming every call it routes. Empty on every other request.
+	Methods []string
 
 	// Admin asks for a caller holding whatever service role the deployment
 	// treats as administrative.

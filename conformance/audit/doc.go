@@ -18,6 +18,18 @@ tampered chain is not asserted here, because producing one means editing a row
 behind the recorder's back, which is nothing a client or a deployment's action
 should be able to do.
 
+# Who a call is made as
+
+VerifyChain may be an operator's: whether a record has been tampered with is a
+question about the deployment, asked by whoever answers for it, and a
+deployment may reserve it to a service role. So the chain an ordinary caller
+appended to is verified by a caller minted into that caller's tenant — an
+operator where the subject reserves VerifyChain — as
+conformance.ReservableMethods describes.
+
+GetEntry and ListEntries are made as the ordinary caller whose chain it is, and
+that is a promise: a member reads what was recorded in their own tenant.
+
 # What is here and what stayed behind
 
 The surface's own suite varies how the server was built: seven of its tests

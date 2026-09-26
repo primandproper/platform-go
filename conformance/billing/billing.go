@@ -60,6 +60,16 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 	return mine, theirs
 }
 
+// twoOperators mints an operator in each of two tenants, for the confinement
+// assertions about the catalog, every call on which is an operator's.
+func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
+	t.Helper()
+
+	mine, theirs = twoTenants(t, s)
+
+	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
+}
+
 // colleague mints a second caller in of's tenant, with an account of their own
 // that of holds no membership in. A subject that cannot put two callers in one
 // tenant declines, and the assertion that asked skips.
@@ -115,7 +125,8 @@ func productInput() *billingpb.ProductCreationInput {
 	}
 }
 
-// stock puts a product in sub's catalog through the surface.
+// stock puts a product in sub's catalog through the surface. Stocking is an
+// operator's, so sub is one.
 func stock(t *testing.T, sub *conformance.Subject) *billingpb.Product {
 	t.Helper()
 

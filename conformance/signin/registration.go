@@ -34,7 +34,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		test.NotNil(t, registered.GetMembership(), test.Sprint("a registration answered with no membership"))
 
 		_, err := login(t.Context(), anon, who.username, password, "")
-		refused(t, err, codes.FailedPrecondition, reasonUserUnverified)
+		refused(t, s, err, codes.FailedPrecondition, reasonUserUnverified)
 
 		verify(t, s, anon, who)
 
@@ -86,7 +86,7 @@ func registration(t *testing.T, s *conformance.Session) {
 			Token:       link,
 			NewPassword: chosenBySomebodyElse,
 		})
-		refused(t, err, codes.FailedPrecondition, reasonPasswordAlreadySet)
+		refused(t, s, err, codes.FailedPrecondition, reasonPasswordAlreadySet)
 
 		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
 		must.NoError(t, err)
@@ -106,7 +106,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		anon := anonymous(t, s)
 
 		_, err := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: identifiers.New()})
-		refused(t, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
 		test.EqOp(t, domain.ErrInvalidCredentials.Error(), status.Convert(err).Message())
 
 		// A spent link lands in the same place.
@@ -117,7 +117,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		must.NoError(t, spendErr, must.Sprint("the control: the link the deployment mailed did not verify"))
 
 		_, spent := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
-		indistinguishable(t, err, spent, "a spent verification link against one never mailed")
+		indistinguishable(t, s, err, spent, "a spent verification link against one never mailed")
 	})
 
 	// A registration that did not say how the registrant will prove who they are
@@ -131,7 +131,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		request := registrationRequest()
 
 		_, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), request)
-		refused(t, err, codes.InvalidArgument, reasonNoCredentialNamed)
+		refused(t, s, err, codes.InvalidArgument, reasonNoCredentialNamed)
 
 		register(t, s, withPassword(request))
 	})

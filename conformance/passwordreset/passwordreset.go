@@ -55,12 +55,11 @@ func resettable(t *testing.T, s *conformance.Session) (*conformance.Subject, *id
 		t.Skip("conformance: this subject mounts no identity surface, so a caller's address cannot be read")
 	}
 
-	found, err := sub.Surfaces.Identity.GetUser(sub.Context(t.Context()),
-		&identitypb.GetUserRequest{UserId: sub.UserID})
-	must.NoError(t, err, must.Sprint("a caller could not read its own user"))
-	must.StrNotEqFold(t, "", found.GetUser().GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
+	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
+	must.StrNotEqFold(t, "", found.GetPrincipal().GetUser().GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
 
-	return sub, found.GetUser()
+	return sub, found.GetPrincipal().GetUser()
 }
 
 // request asks for a reset link for an address, as the form nobody has signed

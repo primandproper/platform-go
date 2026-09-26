@@ -46,13 +46,15 @@ func malformed() map[string]*filteringpb.QueryFilter {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
-	subject := s.Subject(t)
+	// An ordinary caller for every read the subject leaves to one, and an
+	// operator for each it reserves; see pagedrpc.RPC.Caller.
+	ordinary := s.Subject(t)
 
-	if subject.Conn == nil {
+	if ordinary.Conn == nil {
 		t.Skip("conformance: this subject supplies no connection to invoke a read by name through")
 	}
 
-	reads := pagedrpc.Mounted(&subject.Surfaces)
+	reads := pagedrpc.Mounted(&ordinary.Surfaces)
 	if len(reads) == 0 {
 		t.Skip("conformance: this subject mounts no surface with a paged read")
 	}
@@ -65,6 +67,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Run(read.Surface+" "+string(read.Method.Name()), func(t *testing.T) {
 			t.Parallel()
 
+			subject := read.Caller(t, s, ordinary)
 			ctx := subject.Context(t.Context())
 
 			control, reason := read.Request(subject, &seams, &filteringpb.QueryFilter{SortBy: new("asc")})

@@ -15,21 +15,56 @@ import (
 )
 
 // target is a thing to comment on that nothing else in the run has commented
-// on: the subject's target type, and an identifier minted for this test.
+// on, and that exists in in's comments tenant.
 //
-// The identifier is minted because a listing by target reads everything anybody
-// has said about that target, and in a deployment the suite does not own a fixed
-// identifier would be a discussion other people are in.
-func target(t *testing.T, s *conformance.Session) *commentspb.CommentTarget {
+// Where the subject can bring one into being, it does, since a deployment whose
+// target type checks existence refuses a comment on anything else. Where it
+// cannot, the target is the subject's declared type and an identifier minted
+// for this test — minted because a listing by target reads everything anybody
+// has said about that target, and in a deployment the suite does not own a
+// fixed identifier would be a discussion other people are in.
+func target(t *testing.T, s *conformance.Session, in *conformance.Subject) *commentspb.CommentTarget {
 	t.Helper()
 
-	targetType := s.Seams().CommentTargetType
-	if targetType == "" {
-		t.Skip("conformance: this subject names no comment target type (Seams.CommentTargetType), " +
-			"and every comment is about a thing of some type")
+	if bring := s.Seams().Actions.CommentTarget; bring != nil {
+		targetType, targetID, err := bring(t.Context(), in.ScopeFor(surface))
+		must.NoError(t, err, must.Sprint("bringing a comment target into being"))
+		must.StrNotEqFold(t, "", targetType, must.Sprint("the comment target action reported no target type"))
+		must.StrNotEqFold(t, "", targetID, must.Sprint("the comment target action reported no identifier"))
+
+		return &commentspb.CommentTarget{Type: targetType, Id: targetID}
 	}
 
-	return &commentspb.CommentTarget{Type: targetType, Id: "conf_" + identifiers.New()}
+	needsTarget(t, s)
+
+	return &commentspb.CommentTarget{Type: s.Seams().CommentTargetType, Id: "conf_" + identifiers.New()}
+}
+
+// needsTarget skips unless the subject can name something to comment on, for
+// the assertions that write no comment on one but would mean nothing on a
+// subject that could never write one either.
+func needsTarget(t *testing.T, s *conformance.Session) {
+	t.Helper()
+
+	if s.Seams().Actions.CommentTarget == nil && s.Seams().CommentTargetType == "" {
+		t.Skip("conformance: this subject names no comment target type (Seams.CommentTargetType) and supplies " +
+			"no comment target action, and every comment is about a thing of some type")
+	}
+}
+
+// eachTarget is a target for each of two tenants: one target both can comment
+// on where the subject's type takes any identifier, and one per tenant where
+// the subject brings targets into being, since a thing made in one tenant need
+// not exist in the other.
+func eachTarget(t *testing.T, s *conformance.Session, mine, theirs *conformance.Subject) (myTarget, theirTarget *commentspb.CommentTarget) {
+	t.Helper()
+
+	myTarget = target(t, s, mine)
+	if s.Seams().Actions.CommentTarget == nil {
+		return myTarget, myTarget
+	}
+
+	return myTarget, target(t, s, theirs)
 }
 
 // say starts a discussion on about as caller, failing the test if it is refused.
@@ -96,10 +131,13 @@ func replies(t *testing.T, caller *conformance.Subject, about *commentspb.Commen
 // byTargetType lists everything said about things of one type, skipping where
 // the caller may not.
 //
-// It is the moderation read and carries a grant of its own, which a deployment
-// enforcing method grants may well withhold from an ordinary caller. That
-// refusal is the deployment being right rather than the surface being wrong,
-// so the assertion that needed the read skips rather than failing.
+// It is the moderation read and carries a grant of its own, so it is one of
+// conformance.ReservableMethods and caller is minted by Session.Operator or
+// Session.OperatorIn. Where the subject does not reserve it those answer an
+// ordinary caller, which a deployment enforcing a grant inside the handler may
+// still refuse; that refusal is the deployment being right rather than the surface
+// being wrong, so the assertion that needed the read skips rather than
+// failing.
 func byTargetType(t *testing.T, caller *conformance.Subject, targetType string) []string {
 	t.Helper()
 

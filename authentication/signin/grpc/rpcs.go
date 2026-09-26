@@ -377,12 +377,20 @@ func (s *Server) VerifyTOTPSecret(
 //
 // A request naming neither credential arm is refused with InvalidArgument. It is
 // not read as no_password — see signin.Credential for why that inference is the
-// one this schema exists to prevent.
+// one this schema exists to prevent. So is an unspecified agreement.
+//
+// What the consumer's own registration adds — roles, standing, the account's
+// name, a second factor minted with it, agreements it insists on — is the
+// service's signin.RegistrationPolicy, which runs here exactly as it does in
+// process. Nothing here holds one of its own; a refusal is InvalidArgument
+// carrying REGISTRATION_REFUSED.
 //
 // What comes back carries no verification token. The secret that promotes this
 // registrant out of the unverified standing travels to them in mail the consumer
 // sends from inside the transaction that wrote their row, and never back to
-// whoever called this.
+// whoever called this. A second factor the policy minted does come back:
+// enrolling it is the point of minting it, and this response is the only place
+// it is handed over.
 func (s *Server) Register(
 	ctx context.Context,
 	request *signinpb.RegisterRequest,
@@ -394,9 +402,9 @@ func (s *Server) Register(
 
 	defer func() { done(err) }()
 
-	registration := registrationFromProto(request)
-	if registration == nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(signin.ErrNilRegistration, req.op.Logger(), req.op.Span(), codes.InvalidArgument, "registering a user")
+	registration, err := registrationFromProto(request)
+	if err != nil {
+		err = grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.InvalidArgument, "registering a user")
 
 		return nil, err
 	}
