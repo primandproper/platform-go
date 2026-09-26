@@ -96,6 +96,21 @@ type Seams struct {
 	// one; empty skips the reads that need it, with the reason printed.
 	CommentTargetType string
 
+	// WebhookURL is an address the deployment's webhooks surface accepts an
+	// endpoint at, for the assertions that register one. Empty is not an
+	// absence: it is https://192.0.2.1/conformance/hook, in the block RFC 5737
+	// reserves for documentation, which this module's default URL check
+	// accepts and which routes nowhere.
+	//
+	// A deployment that has replaced the URL check with an allowlist of its own
+	// hosts names one of them here — ideally one that accepts and discards,
+	// since each endpoint is archived when its test ends but a worker may
+	// deliver to it before then. What it cannot do is leave the field empty and
+	// have its refusals skip: a refused registration fails, because "this
+	// deployment refuses the address" and "this deployment refuses every
+	// endpoint" answer the same code, and only the subject knows which it is.
+	WebhookURL string
+
 	// Dialect is what the subject's database is, for the assertions that must
 	// narrow to it. The zero value means unknown, and an assertion that needs
 	// to know skips.

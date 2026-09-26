@@ -21,8 +21,8 @@ func confinement(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoTenants(t, s)
 		eventType := catalog(t, mine, 1)[0]
 
-		ours := registered(t, mine, eventType)
-		neighbor := registered(t, theirs, eventType)
+		ours := registered(t, s, mine, eventType)
+		neighbor := registered(t, s, theirs, eventType)
 
 		// Presence and absence of two named endpoints, never a count: this
 		// listing may run against a database the suite does not own.
@@ -47,7 +47,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		offered := catalog(t, mine, 2)
 		held, other := offered[0], offered[1]
 
-		ours := registered(t, mine, held)
+		ours := registered(t, s, mine, held)
 		sub := subscribedTo(t, ours, held)
 
 		// The positive control. Every absence below is also what a surface
@@ -97,7 +97,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoTenants(t, s)
 		eventType := catalog(t, mine, 1)[0]
 
-		ours := registered(t, mine, eventType)
+		ours := registered(t, s, mine, eventType)
 		sub := subscribedTo(t, ours, eventType)
 
 		ctx := theirs.Context(t.Context())
@@ -128,17 +128,17 @@ func confinement(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoTenants(t, s)
 		eventType := catalog(t, mine, 1)[0]
 
-		neighbor := registered(t, theirs, eventType)
+		neighbor := registered(t, s, theirs, eventType)
 
 		// The positive control: the caller may save an endpoint by an
 		// identifier it holds, so the refusal below is about whose it is.
-		ours := registered(t, mine, eventType)
-		again := endpointFor(eventType)
+		ours := registered(t, s, mine, eventType)
+		again := endpointFor(s, eventType)
 		again.Id = ours.GetId()
 		_, err := save(t, mine, again, keyring())
 		must.NoError(t, err, must.Sprint("the caller cannot save its own endpoint again; the refusal below proves nothing"))
 
-		taken := endpointFor(eventType)
+		taken := endpointFor(s, eventType)
 		taken.Id = neighbor.GetId()
 
 		_, err = save(t, mine, taken, keyring())
