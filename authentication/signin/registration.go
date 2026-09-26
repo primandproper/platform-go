@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/pointer"
@@ -156,6 +157,31 @@ type Registration struct {
 	// nothing. They are ignored by a registration answering an invitation,
 	// which takes its roles off the invitation.
 	OwnerRoles []string `json:"ownerRoles"`
+
+	// Agreements are the documents the registrant accepted in registering, and
+	// are stamped on the user row the registration writes with one clock read —
+	// the columns RecordAgreement stamps, written on the same transaction as the
+	// user rather than by a second write afterwards. An agreement identity does
+	// not know is refused, and naming none records none.
+	//
+	// Whether any are required is the consumer's: a [RegistrationPolicy] that
+	// insists on the terms reads this list and refuses a registration missing
+	// them.
+	Agreements []identity.Agreement `json:"agreements"`
+
+	// EnrollTOTP mints a second-factor secret with the registration and hands it
+	// back on [Registered.TOTPEnrollment]. It is false unless a caller in
+	// process or a [RegistrationPolicy] sets it; a wire request has no field for
+	// it, because whether registrants start enrolled is the consumer's product
+	// decision rather than the registrant's.
+	//
+	// The secret is unproven, exactly as [Service.RefreshTOTPSecret] leaves one:
+	// the registrant holds no second factor until [Service.VerifyTOTPSecret]
+	// succeeds, which requires them to be signed in. It requires
+	// [WithTOTPIssuer], and a registration asking for one on a service without
+	// one is refused with [ErrTOTPIssuerNotConfigured] before anything is
+	// written.
+	EnrollTOTP bool `json:"enrollTOTP"`
 }
 
 // Registered is what a registration produced.
@@ -185,6 +211,13 @@ type Registered struct {
 	// Invitation is the invitation as it stands after the answer, redacted, and
 	// is nil for a registration that minted an account.
 	Invitation *identity.Invitation `json:"invitation"`
+
+	// TOTPEnrollment is the second-factor secret minted with the registration,
+	// and is nil unless the registration set EnrollTOTP. It carries the secret
+	// itself, which is the whole content of an enrollment — see
+	// [Service.RefreshTOTPSecret], whose result this is the same shape as and
+	// costs the same to hand around.
+	TOTPEnrollment *totp.Enrollment `json:"-"`
 
 	// EmailAddressVerificationToken is the secret the registrant's verification
 	// link carries. It is minted by this service and is the only copy: the
@@ -221,27 +254,33 @@ type Registered struct {
 // # What it decides
 //
 // Nothing about policy, as everywhere else here. Whether this person may
-// register at all, whether a captcha was solved, what the account is named: all
-// of it is the consumer's, in front of this call. Whether the password is good
-// enough is the consumer's too, and is the one rule this service will apply on
-// their behalf, because a mounted transport leaves nowhere in front of this call
-// to apply it: a service built with [WithPasswordPolicy] refuses a password the
-// policy refuses with [ErrPasswordRefused], before anything is hashed or
-// written. What this package will not do is accept a registration that did not
-// say how the registrant will prove who they are — see [Credential].
+// register at all, whether a captcha was solved, what the account is named, which
+// roles they start with: all of it is the consumer's. In process, the consumer
+// can decide it in front of this call; over a mounted transport there is no
+// front of this call, so the service applies two rules on the consumer's behalf.
+// A service built with [WithRegistrationPolicy] asks it first, before anything is
+// read, hashed or written, and it may shape the registration or refuse it with
+// [ErrRegistrationRefused]. A service built with [WithPasswordPolicy] then
+// refuses a password that policy refuses with [ErrPasswordRefused], still before
+// anything is hashed or written. What this package will not do is accept a
+// registration that did not say how the registrant will prove who they are — see
+// [Credential].
 //
-// It mints no second-factor secret, which is a departure from the flow some
-// applications ship. Enrolment stays behind authentication —
-// [Service.RefreshTOTPSecret] and then [Service.VerifyTOTPSecret], both of
-// which require a signed-in caller — because an unauthenticated endpoint that
-// takes a user ID and confirms whether a code matches is an enumeration oracle
-// with a brute-force surface attached. The flow this package does ship is
-// register, verify, sign in, enroll.
+// It mints no second-factor secret unless the registration asks for one with
+// EnrollTOTP. What it never does is prove one: the minted secret is unproven,
+// and [Service.VerifyTOTPSecret] still requires a signed-in caller, because an
+// unauthenticated endpoint that takes a user ID and confirms whether a code
+// matches is an enumeration oracle with a brute-force surface attached. Minting
+// at registration only moves where the secret is handed over; the flow is
+// register, verify, sign in, prove — or, without it, register, verify, sign in,
+// enroll.
 //
-// The registrant lands in identity.StatusUnverified, which admits no sign-in.
-// What promotes them is [Service.VerifyEmailAddress], answered with the token
-// on the [Registered] this returns, or [Service.CompleteVerification] for a
-// consumer who proved what their own registration asked instead.
+// The registrant lands in identity.StatusUnverified, which admits no sign-in,
+// unless a [RegistrationPolicy] set another standing. What promotes them is
+// [Service.VerifyEmailAddress], answered with the token on the [Registered] this
+// returns, or [Service.CompleteVerification] for a consumer who proved what their
+// own registration asked instead. The verification token is minted either way,
+// because it proves the address rather than the standing.
 //
 // It requires [WithRegistrar] and refuses with [ErrRegistrationNotConfigured]
 // until it has one: a consumer using this service as a credential check over a
@@ -266,6 +305,29 @@ func (s *Service) Register(
 
 	if s.registrar == nil {
 		return nil, op.Error(ErrRegistrationNotConfigured, "registering a user")
+	}
+
+	// The consumer's policy goes first, so a refusal costs nothing: nothing has
+	// been hashed, minted or written, and the same request amended goes through.
+	// Everything below reads what it left rather than what the caller sent.
+	registration, err = s.shapeRegistration(ctx, registration)
+	if err != nil {
+		return nil, op.Error(err, "applying the registration policy")
+	}
+
+	if registration.User == nil {
+		return nil, op.Error(identity.ErrNilUser, "registering a user")
+	}
+
+	accepted, err := registrationAgreements(registration.Agreements)
+	if err != nil {
+		return nil, op.Error(err, "reading a registration's agreements")
+	}
+
+	// Refused here rather than where the secret is minted, so a service missing
+	// the label an authenticator app shows has not hashed a password first.
+	if registration.EnrollTOTP && s.totpIssuer == "" {
+		return nil, op.Error(ErrTOTPIssuerNotConfigured, "minting a registering user's second factor")
 	}
 
 	// Hashed before anything is written and outside any transaction, which is
@@ -294,6 +356,10 @@ func (s *Service) Register(
 	user.HashedPassword = hashed
 	user.EmailAddressVerificationToken = token
 
+	// One clock read for the deadline and the agreements, so a registration that
+	// accepted both documents records one moment, as RecordAgreement does.
+	now := s.clk.Now().UTC()
+
 	// The deadline is set here, beside the mint, because this is where the clock
 	// and the token meet. identity's store requires one and refuses a zero one:
 	// a verification link proves an address, promotes the registrant, and is
@@ -301,8 +367,23 @@ func (s *Service) Register(
 	// never expires is one that still claims this account out of a mailbox years
 	// from now. See DefaultVerificationLinkTTL for the window and why it is the
 	// longest this package hands out.
-	user.EmailAddressVerificationTokenExpiresAt = pointer.To(
-		s.clk.Now().UTC().Add(s.verificationLinkTTL))
+	user.EmailAddressVerificationTokenExpiresAt = pointer.To(now.Add(s.verificationLinkTTL))
+
+	if accepted[identity.TermsOfService] {
+		user.LastAcceptedTermsOfService = pointer.To(now)
+	}
+
+	if accepted[identity.PrivacyPolicy] {
+		user.LastAcceptedPrivacyPolicy = pointer.To(now)
+	}
+
+	var enrollment *totp.Enrollment
+
+	if registration.EnrollTOTP {
+		if enrollment, err = s.enrollRegistrant(ctx, &user); err != nil {
+			return nil, op.Error(err, "minting a registering user's second factor")
+		}
+	}
 
 	if registration.InvitationID != "" || registration.InvitationToken != "" {
 		registered, err = s.registerWithInvitation(ctx, scope, registration, &user)
@@ -313,6 +394,8 @@ func (s *Service) Register(
 	if err != nil {
 		return nil, op.Error(err, "registering a user")
 	}
+
+	registered.TOTPEnrollment = enrollment
 
 	op.Set(userIDKey, registered.User.ID)
 
@@ -359,6 +442,42 @@ func (s *Service) hashRegistrationCredential(
 		// outside this package, which the sealing method makes unconstructable.
 		return "", op.Error(ErrNoCredentialNamed, "reading a registration's credential")
 	}
+}
+
+// registrationAgreements reads the agreements a registration named into the set
+// to stamp, refusing the whole registration for one identity does not know —
+// which is RecordAgreement's reading of the same list.
+func registrationAgreements(agreements []identity.Agreement) (map[identity.Agreement]bool, error) {
+	accepted := make(map[identity.Agreement]bool, len(agreements))
+
+	for _, agreement := range agreements {
+		if !agreement.Valid() {
+			return nil, platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue, "agreement %q", agreement)
+		}
+
+		accepted[agreement] = true
+	}
+
+	return accepted, nil
+}
+
+// enrollRegistrant mints the second factor a registration asked for onto the
+// user about to be written.
+//
+// The label is the username, as RefreshTOTPSecret's is — Register has already
+// refused a service with no issuer — and the secret lands
+// unproven: whatever verification time the caller's value carried is cleared,
+// because a secret nobody has proven possession of is not a second factor.
+func (s *Service) enrollRegistrant(ctx context.Context, user *identity.User) (*totp.Enrollment, error) {
+	enrollment, err := s.generator.Generate(ctx, s.totpIssuer, user.Username)
+	if err != nil {
+		return nil, err
+	}
+
+	user.TwoFactorSecret = enrollment.Secret
+	user.TwoFactorSecretVerifiedAt = nil
+
+	return enrollment, nil
 }
 
 // registerWithAccount is the ordinary registration: a user, the account they

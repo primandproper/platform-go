@@ -78,7 +78,9 @@ var (
 // than this package's. It is joined behind the policy's own error, so a policy
 // returning a sentinel the consumer registered as client-safe is quoted ahead
 // of it, and any other is passed over — see PasswordPolicy. Its own words name
-// no rule, because this package holds none.
+// no rule, because this package holds none. ErrRegistrationRefused is its
+// sibling for a RegistrationPolicy, and is joined the same way for the same
+// reason.
 //
 // ErrUserBanned is the one whose wire message is less than what the error
 // carries. A banned user's own explanation is wrapped around the sentinel, and
@@ -100,6 +102,7 @@ var ClientSafeSentinels = []error{
 	ErrPasswordAlreadySet,
 	ErrNoCredentialNamed,
 	ErrPasswordRefused,
+	ErrRegistrationRefused,
 }
 
 // ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
@@ -189,6 +192,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrPasswordAlreadySet, Reason: "PASSWORD_ALREADY_SET", Domain: ClientReasonDomain},
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
+	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -210,6 +214,8 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// maps their policy's error themselves.
 	case errors.Is(err, ErrPasswordRefused):
 		return httperrors.ErrValidatingRequestInput, "password does not meet this service's requirements", true
+	case errors.Is(err, ErrRegistrationRefused):
+		return httperrors.ErrValidatingRequestInput, "registration does not meet this service's requirements", true
 
 	// The two refusals a caller gets before they hold anything. They share a
 	// code and differ in the message, which is the whole distinction a client
@@ -276,8 +282,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	switch {
 	// A password the consumer's policy refused is a request to correct: the
 	// caller chooses another and sends it again. First, for the reason the HTTP
-	// mapper gives.
-	case errors.Is(err, ErrPasswordRefused):
+	// mapper gives, and a registration the consumer's policy refused with it.
+	case errors.Is(err, ErrPasswordRefused), errors.Is(err, ErrRegistrationRefused):
 		return codes.InvalidArgument, true
 
 	// Unauthenticated rather than PermissionDenied, and the distinction is the
