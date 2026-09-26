@@ -54,8 +54,9 @@ func newTimerOptions(opts []Option) *timerOptions {
 // It reads one in exactly two places, and neither of them decides when a timer
 // fires: ScheduleIn turns a delay into the instant the caller meant, and Wait
 // paces this process's own sleeping. Whether a stored instant has arrived is
-// always Postgres's now() to answer, so replacing the clock cannot desynchronize
-// a fleet — it can only change what "in an hour" means at the moment it is said.
+// always the database's clock to answer, so replacing the clock cannot
+// desynchronize a fleet — it can only change what "in an hour" means at the
+// moment it is said.
 //
 // Tests generally do not need it: inside a testing/synctest bubble the default
 // clock already reads bubble time, so a timer scheduled a week out fires

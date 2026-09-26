@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/timers/internal/timersdb"
+	"github.com/primandproper/platform-go/v14/timers/internal/timerssplitdb"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -62,9 +63,13 @@ type Timer[K comparable] struct {
 	// that moment; "2026-08-10T09:00:00Z" means the same thing to every process
 	// that reads it, forever, including the ones that restart in between.
 	//
-	// Whether that instant has arrived is Postgres's to decide, always. The
-	// caller's clock chooses the instant; it never gets a vote on when the
+	// Whether that instant has arrived is the database's to decide, always.
+	// The caller's clock chooses the instant; it never gets a vote on when the
 	// instant is reached.
+	//
+	// It is stored rounded up to the database's precision — the microsecond on
+	// Postgres and MySQL, the millisecond on SQLite — so a timer never fires
+	// before the instant it names, and Due.RunAt is the stored instant.
 	RunAt time.Time
 
 	// Key names the timer. It is the row's identity: scheduling the same key
@@ -101,6 +106,8 @@ type Due[K comparable] struct {
 	// key, so a timer rescheduled while it was being fired is not marked fired
 	// against a schedule it no longer has. Pass the Due value back rather than
 	// its key, and that fence applies without anybody having to think about it.
+	// (On MySQL and SQLite LeasedBy carries this fence as well as its own: every
+	// write that moves a timer's instant takes the claim's name with it.)
 	RunAt time.Time
 
 	// LeasedBy names this claim, and Complete and Release match on it too.
@@ -165,8 +172,8 @@ type Stats struct {
 	Fired int64
 }
 
-// Timers is a durable one-shot scheduler over one Postgres table: run this once
-// at instant T, exactly once across the fleet, surviving restarts.
+// Timers is a durable one-shot scheduler over one table: run this once at
+// instant T, exactly once across the fleet, surviving restarts.
 //
 // It is safe for concurrent use, and is meant to be shared: one Timers per
 // process per logical set, handed to every goroutine that schedules or fires.
@@ -179,9 +186,13 @@ type Timers[K comparable] struct {
 	codec  KeyCodec[K]
 	o11y   observability.Observer
 
-	// q is the querier sqlc-gen-unison generated from timers/internal/queries.
+	// q is the querier sqlc-gen-unison generated from timers/internal/queries'
+	// Postgres corpus, and split the one it generated from the corpus MySQL and
+	// SQLite share. Exactly one is set, by New, from the client's dialect;
+	// split being nil is what "this is Postgres" means everywhere below.
 	// Nothing in this package composes SQL; see the package comment.
-	q timersdb.Querier
+	q     timersdb.Querier
+	split timerssplitdb.Querier
 
 	scheduledCounter metrics.Int64Counter
 	claimedCounter   metrics.Int64Counter
@@ -220,8 +231,10 @@ type Timers[K comparable] struct {
 	cfg Config
 }
 
-// New builds a timer set over client, which must speak Postgres and must be the
-// database holding the timer table.
+// New builds a timer set over client, which must be the database holding the
+// timer table. Postgres, MySQL and SQLite are all served; see the package doc
+// for what differs between them, which is the number of round trips a claim
+// takes, SQLite's millisecond, and nothing a caller can otherwise observe.
 //
 // ctx is used to validate the config and is not retained; every method takes its
 // own.
@@ -238,8 +251,9 @@ func New[K comparable](
 		return nil, ErrNilDatabaseClient
 	}
 
-	if err := dialect.RequirePostgres("timers", client.Dialect()); err != nil {
-		return nil, err
+	d := client.Dialect()
+	if !d.Valid() {
+		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "timers dialect %q", d)
 	}
 
 	cfg.EnsureDefaults()
@@ -256,26 +270,23 @@ func New[K comparable](
 		return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "timer table %q", cfg.resolvedTable())
 	}
 
-	// The channel is bound as text by the statement this package emits, but the
-	// listener on the other end has to render it into a LISTEN, which takes no
-	// parameters. Vetting it here is what keeps that end from having to.
-	if cfg.NotifyChannel != "" && !dialect.ValidIdentifier(cfg.NotifyChannel) {
-		return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "timer notify channel %q", cfg.NotifyChannel)
-	}
+	if cfg.NotifyChannel != "" {
+		if !d.SupportsNotify() {
+			return nil, platformerrors.Wrapf(ErrNotifyUnsupported, "timers dialect %q", d)
+		}
 
-	// The generated querier, instantiated once the prefix is settled. The
-	// dialect is not a choice here the way it is for a three-dialect store:
-	// RequirePostgres has already refused everything else, and the generated
-	// package was generated for a roster of one.
-	q, querierErr := timersdb.New(timersdb.DialectPostgreSQL, ddl.Qualify(cfg.TablePrefix))
-	if querierErr != nil {
-		return nil, platformerrors.Wrap(querierErr, "building the timers querier")
+		// The channel is bound as text by the statement this package emits, but
+		// the listener on the other end has to render it into a LISTEN, which
+		// takes no parameters. Vetting it here is what keeps that end from
+		// having to.
+		if !dialect.ValidIdentifier(cfg.NotifyChannel) {
+			return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "timer notify channel %q", cfg.NotifyChannel)
+		}
 	}
 
 	o := newTimerOptions(opts)
 
 	t := &Timers[K]{
-		q:      q,
 		cfg:    *cfg,
 		client: client,
 		clock:  clock.NewClock(),
@@ -286,6 +297,13 @@ func New[K comparable](
 
 	if o.clock != nil {
 		t.clock = o.clock
+	}
+
+	// The generated querier, instantiated once the prefix is settled: one of
+	// two, because the dialects are served by two statement sets. See
+	// timers/internal/queries.
+	if err := t.buildQuerier(d, ddl.Qualify(cfg.TablePrefix)); err != nil {
+		return nil, err
 	}
 
 	// Asserted rather than assumed: Option cannot name K, so this is where a
@@ -321,6 +339,33 @@ func New[K comparable](
 	}
 
 	return t, nil
+}
+
+// buildQuerier instantiates the generated querier the dialect is served by.
+//
+// The set is closed on both sides — New has already refused anything Valid
+// declines — so the default arm is reachable only when this module learns a
+// dialect neither generated package was generated for, which is a construction
+// failure naming the dialect rather than a panic.
+func (t *Timers[K]) buildQuerier(d dialect.Dialect, prefix string) error {
+	var err error
+
+	switch d {
+	case dialect.Postgres:
+		t.q, err = timersdb.New(timersdb.DialectPostgreSQL, prefix)
+	case dialect.MySQL:
+		t.split, err = timerssplitdb.New(timerssplitdb.DialectMySQL, prefix)
+	case dialect.SQLite:
+		t.split, err = timerssplitdb.New(timerssplitdb.DialectSQLite, prefix)
+	default:
+		err = platformerrors.Wrapf(dialect.ErrUnsupported, "no generated timers queries for dialect %q", d)
+	}
+
+	if err != nil {
+		return platformerrors.Wrap(err, "building the timers querier")
+	}
+
+	return nil
 }
 
 // buildInstruments creates every metric the set records. Split out of New
@@ -422,10 +467,7 @@ func (t *Timers[K]) NextDue(ctx context.Context) (time.Duration, bool, error) {
 	ctx, op := t.o11y.Begin(ctx)
 	defer op.End()
 
-	row, err := t.q.ReadNextDueTimer(ctx, t.client.Writer(), timersdb.ReadNextDueTimerParams{
-		TimerSet:       t.cfg.Name,
-		AttemptCeiling: int64(t.cfg.attemptCeiling()),
-	})
+	row, err := t.readNextDue(ctx)
 	if err != nil {
 		return 0, false, op.Error(err, "reading the next due timer")
 	}
@@ -524,8 +566,9 @@ func (t *Timers[K]) sleep(ctx context.Context, d time.Duration) error {
 }
 
 // Claim leases up to limit of the set's due timers for the given lease duration,
-// in one statement: nothing is selected without also being leased, so two
-// claimants can never see the same firing.
+// atomically: nothing is selected without also being leased, so two claimants
+// can never see the same firing. On Postgres that is one statement; on MySQL
+// and SQLite it is three in one transaction — see the package doc.
 //
 // Due means unfired, unleased, past its instant, and — when Config.MaxAttempts
 // is set, which it is by default — not yet out of attempts. The oldest debt goes
@@ -621,6 +664,10 @@ func (t *Timers[K]) claimOnce(ctx context.Context, limit int, lease time.Duratio
 	// have leased rows, and reusing its name would let the retry report on them.
 	leasedBy := identifiers.New()
 
+	if t.split != nil {
+		return t.claimSplit(ctx, limit, lease, leasedBy)
+	}
+
 	// The writer, not the reader: this is an UPDATE that happens to return rows,
 	// and a read replica would both fail it and lose every lease it handed out.
 	rows, err := t.q.ClaimDueTimers(ctx, t.client.Writer(), timersdb.ClaimDueTimersParams{
@@ -637,31 +684,56 @@ func (t *Timers[K]) claimOnce(ctx context.Context, limit int, lease time.Duratio
 	due := make([]Due[K], 0, len(rows))
 
 	for i := range rows {
-		fired := Due[K]{
-			RunAt:     rows[i].RunAt,
-			LeasedBy:  leasedBy,
-			Payload:   rows[i].Payload,
-			Late:      max(time.Duration(rows[i].LateMicroseconds)*time.Microsecond, 0),
-			Attempts:  int(rows[i].Attempts),
-			Reclaimed: rows[i].Reclaimed,
-		}
-
-		// A key that will not decode is the one failure here a caller cannot act
-		// on and must not be hidden: it means the table holds rows written under
-		// a different key type or codec, and every claim will keep leasing them.
-		// Failing the whole batch is the loud version of that, and the lease
-		// lapses on its own.
-		key, decodeErr := t.codec.DecodeKey(rows[i].TimerKey)
+		fired, decodeErr := t.claimedDue(&claimedRow{
+			key:       rows[i].TimerKey,
+			payload:   rows[i].Payload,
+			runAt:     rows[i].RunAt,
+			late:      rows[i].LateMicroseconds,
+			attempts:  rows[i].Attempts,
+			reclaimed: rows[i].Reclaimed,
+		}, leasedBy)
 		if decodeErr != nil {
-			return nil, platformerrors.Wrapf(decodeErr, "decoding claimed timer key %q", rows[i].TimerKey)
+			return nil, decodeErr
 		}
-
-		fired.Key = key
 
 		due = append(due, fired)
 	}
 
 	return due, nil
+}
+
+// claimedRow is one claimed row as either corpus returns it, reduced to what a
+// Due is assembled from.
+type claimedRow struct {
+	runAt     time.Time
+	key       string
+	payload   []byte
+	late      int64
+	attempts  int64
+	reclaimed bool
+}
+
+// claimedDue assembles one claimed row into the Due a caller is handed.
+//
+// A key that will not decode is the one failure here a caller cannot act on and
+// must not be hidden: it means the table holds rows written under a different
+// key type or codec, and every claim will keep leasing them. Failing the whole
+// batch is the loud version of that, and the lease lapses on its own.
+func (t *Timers[K]) claimedDue(row *claimedRow, leasedBy string) (Due[K], error) {
+	key, err := t.codec.DecodeKey(row.key)
+	if err != nil {
+		return Due[K]{}, platformerrors.Wrapf(err, "decoding claimed timer key %q", row.key)
+	}
+
+	return Due[K]{
+		RunAt:     row.runAt,
+		LeasedBy:  leasedBy,
+		Key:       key,
+		Payload:   row.payload,
+		Late:      max(time.Duration(row.late)*time.Microsecond, 0),
+		Attempts:  int(row.attempts),
+		Reclaimed: row.reclaimed,
+	}, nil
 }
 
 // Complete retires firings that have been handled: the lease is dropped and the
@@ -700,6 +772,13 @@ func (t *Timers[K]) Complete(ctx context.Context, fired ...Due[K]) error {
 				TimerKeys: keys,
 				RunAts:    instants,
 				LeasedBys: holders,
+			})
+		},
+		func(holder string, keys []string) (int64, error) {
+			return t.split.CompleteTimers(ctx, t.client.Writer(), timerssplitdb.CompleteTimersParams{
+				TimerSet:  t.cfg.Name,
+				LeasedBy:  &holder,
+				TimerKeys: keys,
 			})
 		})
 	if err != nil {
@@ -780,6 +859,15 @@ func (t *Timers[K]) Release(ctx context.Context, delay time.Duration, cause erro
 				RunAts:            instants,
 				LeasedBys:         holders,
 			})
+		},
+		func(holder string, keys []string) (int64, error) {
+			return t.split.ReleaseTimers(ctx, t.client.Writer(), timerssplitdb.ReleaseTimersParams{
+				DelayMicroseconds: delay.Microseconds(),
+				LastError:         lastError,
+				TimerSet:          t.cfg.Name,
+				LeasedBy:          &holder,
+				TimerKeys:         keys,
+			})
 		})
 	if err != nil {
 		return op.Error(err, "releasing timers")
@@ -831,6 +919,15 @@ func (t *Timers[K]) Cancel(ctx context.Context, keys ...K) (int64, error) {
 	err := t.retrier.Do(ctx, "cancel", func() error {
 		var execErr error
 
+		if t.split != nil {
+			affected, execErr = t.split.CancelTimers(ctx, t.client.Writer(), timerssplitdb.CancelTimersParams{
+				TimerSet:  t.cfg.Name,
+				TimerKeys: encoded,
+			})
+
+			return execErr
+		}
+
 		affected, execErr = t.q.CancelTimers(ctx, t.client.Writer(), timersdb.CancelTimersParams{
 			TimerSet:  t.cfg.Name,
 			TimerKeys: encoded,
@@ -867,6 +964,12 @@ func (t *Timers[K]) Reap(ctx context.Context) (int64, error) {
 	err := t.retrier.Do(ctx, "reap", func() error {
 		var execErr error
 
+		if t.split != nil {
+			affected, execErr = t.reapSplit(ctx)
+
+			return execErr
+		}
+
 		affected, execErr = t.q.ReapFiredTimers(ctx, t.client.Writer(), timersdb.ReapFiredTimersParams{
 			TimerSet:              t.cfg.Name,
 			RetentionMicroseconds: t.cfg.Retention.Microseconds(),
@@ -902,10 +1005,7 @@ func (t *Timers[K]) Stats(ctx context.Context) (Stats, error) {
 	ctx, op := t.o11y.Begin(ctx)
 	defer op.End()
 
-	row, err := t.q.ReadTimerStats(ctx, t.client.Reader(), timersdb.ReadTimerStatsParams{
-		TimerSet:       t.cfg.Name,
-		AttemptCeiling: int64(t.cfg.attemptCeiling()),
-	})
+	row, err := t.readStats(ctx)
 	if err != nil {
 		return Stats{}, op.Error(err, "reading timer stats")
 	}
@@ -938,6 +1038,54 @@ func (t *Timers[K]) Stats(ctx context.Context) (Stats, error) {
 	return stats, nil
 }
 
+// nextDueRow is the sleep hint's row, which the two generated queriers declare
+// field for field alike.
+type nextDueRow timersdb.ReadNextDueTimerRow
+
+// readNextDue runs the sleep hint against whichever corpus the set was built
+// over. The writer, for the reason NextDue gives.
+func (t *Timers[K]) readNextDue(ctx context.Context) (nextDueRow, error) {
+	if t.split != nil {
+		row, err := t.split.ReadNextDueTimer(ctx, t.client.Writer(), timerssplitdb.ReadNextDueTimerParams{
+			TimerSet:       t.cfg.Name,
+			AttemptCeiling: int64(t.cfg.attemptCeiling()),
+		})
+
+		return nextDueRow(row), err
+	}
+
+	row, err := t.q.ReadNextDueTimer(ctx, t.client.Writer(), timersdb.ReadNextDueTimerParams{
+		TimerSet:       t.cfg.Name,
+		AttemptCeiling: int64(t.cfg.attemptCeiling()),
+	})
+
+	return nextDueRow(row), err
+}
+
+// statsRow is the health read's row, which the two generated queriers declare
+// field for field alike.
+type statsRow timersdb.ReadTimerStatsRow
+
+// readStats runs the health read against whichever corpus the set was built
+// over.
+func (t *Timers[K]) readStats(ctx context.Context) (statsRow, error) {
+	if t.split != nil {
+		row, err := t.split.ReadTimerStats(ctx, t.client.Reader(), timerssplitdb.ReadTimerStatsParams{
+			TimerSet:       t.cfg.Name,
+			AttemptCeiling: int64(t.cfg.attemptCeiling()),
+		})
+
+		return statsRow(row), err
+	}
+
+	row, err := t.q.ReadTimerStats(ctx, t.client.Reader(), timersdb.ReadTimerStatsParams{
+		TimerSet:       t.cfg.Name,
+		AttemptCeiling: int64(t.cfg.attemptCeiling()),
+	})
+
+	return statsRow(row), err
+}
+
 // firingRef is one firing reduced to what the statements bind: the encoded key,
 // the instant that fences it, and the claim that holds it.
 type firingRef struct {
@@ -947,8 +1095,14 @@ type firingRef struct {
 }
 
 // writeFirings is the shape Complete and Release share: encode the firings,
-// split them into the three arrays their statements bind, run the write with the
-// retry wrapper, and report how many rows it touched.
+// split them into the three arrays their Postgres statements bind, run the
+// write with the retry wrapper, and report how many rows it touched.
+//
+// On MySQL and SQLite there are no arrays to keep parallel, and held is called
+// instead, once per claim the batch names with that claim's keys — see
+// byHolder. That is almost always once: a batch is what one Claim handed out.
+// Each call is retried on its own, so a retry never re-runs a claim's write
+// that already landed.
 //
 // The firings are sorted by key before they are split. That is the lock-ordering
 // discipline, applied at the one place both writers pass through, so a third
@@ -960,6 +1114,7 @@ func (t *Timers[K]) writeFirings(
 	label string,
 	fired []Due[K],
 	write func(keys []string, instants []time.Time, holders []string) (int64, error),
+	held func(holder string, keys []string) (int64, error),
 ) (int64, error) {
 	if len(fired) == 0 {
 		return 0, nil
@@ -977,6 +1132,10 @@ func (t *Timers[K]) writeFirings(
 	}
 
 	rows = sortAndDedupeFirings(rows)
+
+	if t.split != nil {
+		return t.writeHeld(ctx, label, rows, held)
+	}
 
 	keys := make([]string, 0, len(rows))
 	instants := make([]time.Time, 0, len(rows))
@@ -999,6 +1158,37 @@ func (t *Timers[K]) writeFirings(
 	})
 
 	return affected, err
+}
+
+// writeHeld runs a claim writer's statement once per claim the batch names, and
+// sums what they matched.
+func (t *Timers[K]) writeHeld(
+	ctx context.Context,
+	label string,
+	refs []firingRef,
+	held func(holder string, keys []string) (int64, error),
+) (int64, error) {
+	holders, keys := byHolder(refs)
+
+	var total int64
+
+	for _, holder := range holders {
+		var affected int64
+
+		if err := t.retrier.Do(ctx, label, func() error {
+			var execErr error
+
+			affected, execErr = held(holder, keys[holder])
+
+			return execErr
+		}); err != nil {
+			return total, err
+		}
+
+		total += affected
+	}
+
+	return total, nil
 }
 
 // truncatedCause renders a release's cause as the nullable text the statement

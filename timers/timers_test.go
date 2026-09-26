@@ -74,16 +74,41 @@ func TestNew(T *testing.T) {
 		test.True(t, stderrors.Is(err, ErrEmptySetName))
 	})
 
-	// The SQL is written against Postgres rather than reduced to a portable
-	// subset, so anything else is an error rather than a degraded mode that
-	// looks like it worked.
-	T.Run("rejects a client that does not speak Postgres", func(t *testing.T) {
+	T.Run("builds a set over every dialect the module names", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			set, err := New[string](t.Context(), validConfig(), &stubClient{dialect: d})
+			must.NoError(t, err, must.Sprintf("dialect %q", d))
+
+			// One querier or the other, never both and never neither: split
+			// being nil is what every method reads as "this is Postgres".
+			test.EqOp(t, d == dialect.Postgres, set.q != nil, test.Sprintf("dialect %q", d))
+			test.EqOp(t, d != dialect.Postgres, set.split != nil, test.Sprintf("dialect %q", d))
+		}
+	})
+
+	T.Run("rejects a dialect the module does not name", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := New[string](t.Context(), validConfig(), &stubClient{dialect: dialect.Dialect("oracle")})
+
+		test.True(t, stderrors.Is(err, dialect.ErrUnsupported))
+	})
+
+	// A channel on a dialect with no NOTIFY would be a deployment that believes
+	// a schedule wakes its pollers and is sleeping through it instead.
+	T.Run("refuses a notify channel on a dialect without NOTIFY", func(t *testing.T) {
 		t.Parallel()
 
 		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
-			_, err := New[string](t.Context(), validConfig(), &stubClient{dialect: d})
+			cfg := validConfig()
+			cfg.NotifyChannel = "timers"
 
-			test.True(t, stderrors.Is(err, dialect.ErrUnsupported), test.Sprintf("dialect %q", d))
+			_, err := New[string](t.Context(), cfg, &stubClient{dialect: d})
+
+			test.ErrorIs(t, err, ErrNotifyUnsupported, test.Sprintf("dialect %q", d))
+			test.ErrorIs(t, err, dialect.ErrUnsupported, test.Sprintf("dialect %q", d))
 		}
 	})
 

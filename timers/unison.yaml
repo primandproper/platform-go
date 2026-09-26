@@ -3,11 +3,11 @@ package: timersdb
 out: internal/timersdb
 
 # The keys of `schemas:` are the dialect roster, and this one has a single key.
-# timers is Postgres-only because the claim is — the single-statement RETURNING
-# handout is the concurrency contract, see the timers package comment — and a
-# roster of one is first class here: it renders one corpus and gets the same
-# checked guarantee, with the added freedom that a shape cannot diverge across a
-# roster it is alone in.
+# Postgres is the one dialect whose claim is a single statement handing its rows
+# back through RETURNING and whose batches bind as arrays, and unison converges a
+# query onto one shape across its roster — so MySQL and SQLite, whose statements
+# have other shapes, are a roster of their own in unison.split.yaml. See the
+# timers package comment.
 #
 # The schema file lives beside its source: rendered from timers/migrations by
 # `go run ./internal/queriesgen -schema postgres`, at the empty table prefix —

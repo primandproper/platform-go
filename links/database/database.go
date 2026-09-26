@@ -36,6 +36,19 @@ const (
 	revokedKey = "links.revoked"
 )
 
+// conflictAttempts is how many times Resolve and RevokeForSubject run their
+// transaction when the engine kills it to break a deadlock, counting the
+// first.
+//
+// The pair deadlock against each other on MySQL: a redeem racing a revocation
+// of every link its subject holds takes the same rows' locks in a different
+// order, and InnoDB answers by killing one of the two with 1213. Neither
+// outcome is wrong to start over from. A redeem run again reads the revocation
+// on a fresh snapshot and refuses with the sentence it should have given, and
+// a revocation run again withdraws whatever is still live. Both transactions
+// act only through their Tx, which is what RetryOnConflict asks of them.
+const conflictAttempts = 3
+
 // DefaultTablePrefix is the namespace the action link table carries when none
 // is configured, which is none — rendering plain "action_links".
 //
@@ -238,7 +251,12 @@ func (s *Store) Resolve(
 	// failing.
 	var found *links.Record
 
-	if err := s.db.WithTransaction(ctx, func(q database.Tx) error {
+	if err := database.WithTransaction(ctx, s.db, func(q database.Tx) error {
+		// Cleared for each attempt. Every path below assigns it before it is
+		// read, except a read that fails, and a retried attempt whose read
+		// fails must not hand back the record an attempt before it found.
+		found = nil
+
 		record, txErr := s.read(ctx, q, id)
 		if txErr != nil {
 			return txErr
@@ -324,7 +342,7 @@ func (s *Store) Resolve(
 		found = &resolved
 
 		return nil
-	}); err != nil {
+	}, database.RetryOnConflict(conflictAttempts)); err != nil {
 		if isStoreAnswer(err) {
 			return found, err
 		}
@@ -377,13 +395,24 @@ func (s *Store) RevokeForSubject(
 
 	resolvedAt := at.UTC()
 
-	revoked, err := s.q.RevokeSubjectLinks(ctx, s.db.Writer(), linksdb.RevokeSubjectLinksParams{
-		State:      int64(links.StateRevoked),
-		ResolvedAt: &resolvedAt,
-		PurgeAfter: purgeAfter.UTC(),
-		Subject:    string(subject),
-	})
-	if err != nil {
+	var revoked int64
+
+	// One statement, run as a transaction only so that it can be retried: a
+	// statement run on the Writer is outside what RetryOnConflict reaches, and
+	// this is the half of the deadlock with Resolve that InnoDB may choose to
+	// kill. See conflictAttempts.
+	if err := database.WithTransaction(ctx, s.db, func(tx database.Tx) error {
+		var txErr error
+
+		revoked, txErr = s.q.RevokeSubjectLinks(ctx, tx, linksdb.RevokeSubjectLinksParams{
+			State:      int64(links.StateRevoked),
+			ResolvedAt: &resolvedAt,
+			PurgeAfter: purgeAfter.UTC(),
+			Subject:    string(subject),
+		})
+
+		return txErr
+	}, database.RetryOnConflict(conflictAttempts)); err != nil {
 		return 0, op.Error(err, "revoking action link rows for subject")
 	}
 

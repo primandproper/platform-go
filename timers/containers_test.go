@@ -1,8 +1,11 @@
 package timers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,8 +16,11 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/mysql"
 	"github.com/primandproper/primitives-go/v2/database/postgres"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
@@ -27,9 +33,10 @@ import (
 // whether the run_at fence really stops a stale Complete. That is the whole of
 // what this file covers, and it is the only place that can.
 
-// testClientConfig is the minimum database.ClientConfig a Postgres client needs.
-// The pool is deliberately larger than one connection: the properties worth
-// testing here are all concurrent.
+// testClientConfig is the minimum database.ClientConfig a client needs. The
+// pool is deliberately larger than one connection: the properties worth testing
+// here are all concurrent. (SQLite's writer is one connection whatever this
+// says, which is SQLite's own answer to the same question.)
 type testClientConfig struct {
 	connectionString string
 }
@@ -44,6 +51,47 @@ func (c *testClientConfig) GetMaxIdleConns() int              { return 8 }
 func (c *testClientConfig) GetMaxOpenConns() int              { return 16 }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
+// everyDialect is the roster the suites below run against.
+var everyDialect = []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite}
+
+// withClient hands fn a client over a live database of the dialect: a
+// container for Postgres and MySQL, which skip unless RUN_CONTAINER_TESTS is
+// set, and a file in a directory the test owns for SQLite, which needs no
+// container and always runs.
+func withClient(t *testing.T, d dialect.Dialect, fn func(client database.Client)) {
+	t.Helper()
+
+	switch d {
+	case dialect.Postgres:
+		pgtest.Run(t, func(ctx context.Context, pg *pgtest.Instance) {
+			client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			fn(client)
+		})
+	case dialect.MySQL:
+		mysqltest.Run(t, func(ctx context.Context, my *mysqltest.Instance) {
+			client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			fn(client)
+		},
+			mysqltest.WithCredentials("timerstest", "timerstest", "timerstest"),
+		)
+	case dialect.SQLite:
+		client, err := sqlite.NewDatabaseClient(t.Context(),
+			&testClientConfig{connectionString: filepath.Join(t.TempDir(), "timers.db")})
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		fn(client)
+	default:
+		t.Fatalf("no test database for dialect %q", d)
+	}
+}
+
 // setCounter names a fresh logical set per subtest. Subtests share one table, so
 // they must not share a set — one test's backlog would be another's. That they
 // can share the table at all is itself the property Config.Name exists for.
@@ -53,7 +101,7 @@ var setCounter atomic.Uint64
 func createTable(t *testing.T, client database.Client, prefix string) {
 	t.Helper()
 
-	stmts, err := migrations.Statements(dialect.Postgres, prefix)
+	stmts, err := migrations.Statements(client.Dialect(), prefix)
 	must.NoError(t, err)
 	must.SliceNotEmpty(t, stmts)
 
@@ -94,18 +142,50 @@ func dueKeys(fired []Due[string]) []string {
 func past() time.Time   { return time.Now().Add(-time.Hour) }
 func future() time.Time { return time.Now().Add(24 * time.Hour) }
 
-func TestTimers_Postgres(T *testing.T) {
+// TestTimers_Containers runs every suite in this file against every dialect,
+// one server apiece. The suites are the same suites on all three: nothing a
+// caller can observe is allowed to differ, and a dialect whose statements are
+// shaped differently is exactly the one that needs the same assertions.
+func TestTimers_Containers(T *testing.T) {
 	T.Parallel()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
+	for _, d := range everyDialect {
+		T.Run(string(d), func(T *testing.T) {
+			T.Parallel()
 
-		createTable(T, client, DefaultTablePrefix)
+			withClient(T, d, func(client database.Client) {
+				createTable(T, client, DefaultTablePrefix)
 
-		runTimerSuite(T, client)
-	})
+				suites := map[string]func(*testing.T, database.Client){
+					"timers":                             runTimerSuite,
+					"worker":                             runWorkerSuite,
+					"a claim fills its batch":            runClaimFillsItsBatch,
+					"a stored instant never rounds down": runStoredInstantNeverRoundsDown,
+					"the largest payload fits":           runLargestPayloadFits,
+					"migrations run twice verbatim":      runMigrationsTwice,
+				}
+
+				// The one engine whose clock is this process's, so the one where
+				// "never before the instant" can be read off time.Now.
+				if d == dialect.SQLite {
+					suites["a sub-second instant is never claimed early"] = runNeverClaimedEarly
+				}
+
+				// The one engine with row locks and the split claim.
+				if d == dialect.MySQL {
+					suites["a claim in flight hides no other set's timer"] = runAClaimHidesNoOtherSet
+				}
+
+				for name, suite := range suites {
+					T.Run(name, func(t *testing.T) {
+						t.Parallel()
+
+						suite(t, client)
+					})
+				}
+			})
+		})
+	}
 }
 
 //nolint:maintidx // one behavioral contract per subtest; splitting it would only hide the list.
@@ -863,10 +943,9 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		}
 	})
 
-	// Postgres applies the LIMIT above the lock, so a row a competitor holds is
-	// skipped and replaced rather than counted against the batch. Pushed into a
-	// subquery beneath the lock this would return short batches under contention
-	// — correct, and quietly half the throughput.
+	// A row a competitor has leased is skipped and replaced rather than counted
+	// against the batch. runClaimFillsItsBatch is the same property against a
+	// competitor that holds its rows locked rather than leased.
 	t.Run("a claim gets a full batch despite a competitor holding rows", func(t *testing.T) {
 		t.Parallel()
 
@@ -947,7 +1026,8 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		var stored string
 
 		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
-			"SELECT timer_key FROM scheduled_timers WHERE timer_set = $1", set.Name()).Scan(&stored))
+			"SELECT timer_key FROM scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1),
+			set.Name()).Scan(&stored))
 		test.EqOp(t, "LOWER", stored)
 	})
 
@@ -991,9 +1071,9 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		// Micro-aligned because the assertion below is a round trip, and
-		// timestamptz keeps microseconds.
-		base := past().Truncate(time.Microsecond)
+		// Millisecond-aligned because the assertion below is a round trip, and
+		// SQLite keeps milliseconds; the other two keep microseconds.
+		base := past().Truncate(time.Millisecond)
 		scheduled := []Timer[string]{
 			{Key: "a", RunAt: base, Payload: []byte("first")},
 			{Key: "b", RunAt: base.Add(time.Minute), Payload: nil},
@@ -1080,22 +1160,9 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		var count int
 
 		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
-			"SELECT COUNT(*) FROM ddb_scheduled_timers WHERE timer_set = $1", set.Name()).Scan(&count))
+			"SELECT COUNT(*) FROM ddb_scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1),
+			set.Name()).Scan(&count))
 		test.EqOp(t, 1, count)
-	})
-}
-
-func TestWorker_Postgres(T *testing.T) {
-	T.Parallel()
-
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
-		must.NoError(T, err)
-		T.Cleanup(func() { _ = client.Close() })
-
-		createTable(T, client, DefaultTablePrefix)
-
-		runWorkerSuite(T, client)
 	})
 }
 
@@ -1246,8 +1313,8 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 		var lastError string
 
 		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
-			"SELECT COALESCE(last_error, '') FROM scheduled_timers WHERE timer_set = $1", set.Name()).
-			Scan(&lastError))
+			"SELECT COALESCE(last_error, '') FROM scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1),
+			set.Name()).Scan(&lastError))
 		test.True(t, strings.Contains(lastError, "downstream is down"))
 
 		stats, err := set.Stats(t.Context())
@@ -1299,4 +1366,356 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		test.EqOp(t, int64(1), stats.Outstanding)
 	})
+}
+
+// runClaimFillsItsBatch is a claimant frozen mid-claim: rows locked by a
+// transaction nobody has committed, which is the state SKIP LOCKED is there
+// for. The LIMIT has to sit above the lock, so the rows the other claimant
+// holds are skipped and replaced rather than subtracted — pushed into a
+// subquery beneath the lock this would return short batches under contention,
+// correct and quietly half the throughput. On MySQL it is also the index that
+// makes it true: a locking read that had to sort would lock every candidate
+// before the limit was applied.
+//
+// SQLite has one writer, so there is no claimant frozen mid-claim to skip
+// around: a transaction holding rows there holds the whole database. What
+// stands in for the competitor is the only thing SQLite can have, a claim that
+// already committed, and the property left to pin is the same count read the
+// other way — held rows are replaced rather than subtracted.
+func runClaimFillsItsBatch(t *testing.T, client database.Client) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	createTable(t, client, "contention")
+
+	set, err := New[string](ctx, &Config{Name: "contended", TablePrefix: "contention"}, client)
+	must.NoError(t, err)
+
+	scheduled := make([]Timer[string], 0, 10)
+	for i := range 10 {
+		scheduled = append(scheduled, Timer[string]{Key: fmt.Sprintf("k%02d", i), RunAt: past()})
+	}
+
+	must.NoError(t, set.Schedule(ctx, scheduled...))
+
+	held := holdThree(t, client, set)
+
+	// Five asked for, three unavailable, seven left to choose from: a full
+	// five come back.
+	claimed, err := set.Claim(ctx, 5, time.Minute)
+	must.NoError(t, err)
+	test.SliceLen(t, 5, claimed)
+
+	// And none of them is a row the other claimant is holding, which is SKIP
+	// LOCKED doing its half of the job.
+	for i := range claimed {
+		test.SliceNotContains(t, held, claimed[i].Key)
+	}
+}
+
+// holdThree puts three of the contended set's timers out of a claim's reach and
+// names them: locked by a transaction left open where the engine has row locks,
+// and leased by a committed claim where it does not.
+func holdThree(t *testing.T, client database.Client, set *Timers[string]) []string {
+	t.Helper()
+
+	ctx := t.Context()
+
+	if client.Dialect() == dialect.SQLite {
+		leased, err := set.Claim(ctx, 3, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 3, leased)
+
+		return dueKeys(leased)
+	}
+
+	raw, ok := client.(database.RawAccess)
+	must.True(t, ok, must.Sprintf("%T exposes no pool to hold a transaction open on", client))
+
+	tx, err := raw.WriteDB().BeginTx(ctx, nil)
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+
+	rows, err := tx.QueryContext(ctx,
+		"SELECT timer_key FROM contention_scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1)+" "+
+			"ORDER BY timer_key LIMIT 3 FOR UPDATE SKIP LOCKED", "contended")
+	must.NoError(t, err)
+
+	defer func() { _ = rows.Close() }()
+
+	var locked []string
+
+	for rows.Next() {
+		var key string
+		must.NoError(t, rows.Scan(&key))
+
+		locked = append(locked, key)
+	}
+
+	must.NoError(t, rows.Err())
+	must.Eq(t, []string{"k00", "k01", "k02"}, locked)
+
+	return locked
+}
+
+// runAClaimHidesNoOtherSet is the reason the split claim locks by key. Under
+// InnoDB's default isolation a locking read over an index range also locks the
+// first record past the range, and past the end of a set whose only due timer
+// is the one being claimed is the next set's earliest due timer. A claim that
+// locked that way would, for as long as its transaction ran, have that timer
+// skipped by its own set's claimants — which is what SKIP LOCKED does with a
+// held row — and a set with one due timer would find nothing due.
+//
+// The claim is held open mid-transaction by running its locking half on a
+// transaction the test owns, which is the state a fleet is in constantly.
+func runAClaimHidesNoOtherSet(t *testing.T, client database.Client) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	createTable(t, client, "neighbors")
+
+	// Adjacent names, so the two sets' rows are neighbors in every index.
+	first, err := New[string](ctx, &Config{Name: "neighbor-a", TablePrefix: "neighbors"}, client)
+	must.NoError(t, err)
+
+	second, err := New[string](ctx, &Config{Name: "neighbor-b", TablePrefix: "neighbors"}, client)
+	must.NoError(t, err)
+
+	must.NoError(t, first.ScheduleAt(ctx, "k", past(), nil))
+	must.NoError(t, second.ScheduleAt(ctx, "k", past(), nil))
+
+	raw, ok := client.(database.RawAccess)
+	must.True(t, ok, must.Sprintf("%T exposes no pool to hold a transaction open on", client))
+
+	tx, err := raw.WriteDB().BeginTx(ctx, nil)
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+
+	held, err := first.lockDue(ctx, tx, 10)
+	must.NoError(t, err)
+	must.MapLen(t, 1, held)
+
+	claimed, err := second.Claim(ctx, 10, time.Minute)
+	must.NoError(t, err)
+	test.SliceLen(t, 1, claimed)
+}
+
+// runStoredInstantNeverRoundsDown pins the one direction an instant's
+// precision must never round in. Each engine stores less than a time.Time
+// carries — microseconds on Postgres and MySQL, milliseconds on SQLite — and an
+// instant rounded to the nearest, or truncated, is one the timer fires before.
+//
+// It reads the stored instant back through Claim, which is the instant every
+// comparison the set makes is against, and asserts both halves: never earlier
+// than what was scheduled, and later by less than the engine's grain, so a
+// rounding that overshot by a second — or to the second — is caught as well.
+func runStoredInstantNeverRoundsDown(t *testing.T, client database.Client) {
+	t.Helper()
+
+	grain := time.Microsecond
+	if client.Dialect() == dialect.SQLite {
+		grain = time.Millisecond
+	}
+
+	base := past().Truncate(time.Second)
+
+	scheduled := map[string]time.Time{
+		"on-the-second":       base,
+		"one-nanosecond-past": base.Add(time.Nanosecond),
+		"sub-microsecond":     base.Add(700*time.Millisecond + 700*time.Nanosecond),
+		"sub-millisecond":     base.Add(700*time.Millisecond + 700*time.Microsecond),
+		"just-short-of-next":  base.Add(time.Second - time.Nanosecond),
+	}
+
+	set := newSet(t, client, nil)
+
+	timers := make([]Timer[string], 0, len(scheduled))
+	for key, at := range scheduled {
+		timers = append(timers, Timer[string]{Key: key, RunAt: at})
+	}
+
+	must.NoError(t, set.Schedule(t.Context(), timers...))
+
+	fired, err := set.Claim(t.Context(), 10, time.Minute)
+	must.NoError(t, err)
+	must.SliceLen(t, len(scheduled), fired)
+
+	for i := range fired {
+		want := scheduled[fired[i].Key]
+		stored := fired[i].RunAt
+
+		test.False(t, stored.Before(want),
+			test.Sprintf("%s: scheduled for %s, stored as %s", fired[i].Key, want.Format(time.RFC3339Nano),
+				stored.Format(time.RFC3339Nano)))
+		test.Less(t, grain, stored.Sub(want),
+			test.Sprintf("%s: stored %s after it was scheduled", fired[i].Key, stored.Sub(want)))
+	}
+}
+
+// runNeverClaimedEarly is the property the rounding exists for, observed rather
+// than read back: a timer whose instant has a sub-second — and a
+// sub-millisecond — tail is not handed out before that instant.
+//
+// SQLite's clock is this process's clock, so a claim that returned before the
+// instant, by time.Now, was evaluated before it; one that returned a timer
+// then fired it early. The claims spin from well inside the whole second the
+// instant falls in, which is where a truncation to seconds — what a bound time
+// becomes on SQLite — would have fired it seven tenths of a second early.
+func runNeverClaimedEarly(t *testing.T, client database.Client) {
+	t.Helper()
+
+	ctx := t.Context()
+	set := newSet(t, client, nil)
+
+	runAt := time.Now().Truncate(time.Second).Add(2*time.Second + 700*time.Millisecond + 700*time.Microsecond)
+	must.NoError(t, set.ScheduleAt(ctx, "precise", runAt, nil))
+
+	time.Sleep(time.Until(runAt.Truncate(time.Second).Add(-50 * time.Millisecond)))
+
+	deadline := runAt.Add(5 * time.Second)
+
+	for {
+		claimed, err := set.Claim(ctx, 1, time.Minute)
+		returned := time.Now()
+		must.NoError(t, err)
+
+		if len(claimed) > 0 {
+			test.False(t, returned.Before(runAt),
+				test.Sprintf("claimed by %s, %s before the instant it was scheduled for",
+					returned.Format(time.RFC3339Nano), runAt.Sub(returned)))
+			test.False(t, claimed[0].RunAt.Before(runAt))
+
+			return
+		}
+
+		must.True(t, returned.Before(deadline), must.Sprintf("never claimed a timer due at %s", runAt))
+
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// runLargestPayloadFits is MaxPayloadSize against the column. The limit is the
+// package's, not the column's, so the column has to be at least that large on
+// every engine — and MySQL's BLOB is 65535 bytes, one short: a strict server
+// would refuse the largest payload the package admits, and a lax one would
+// truncate it and hand back something the caller never wrote.
+func runLargestPayloadFits(t *testing.T, client database.Client) {
+	t.Helper()
+
+	set := newSet(t, client, nil)
+
+	payload := bytes.Repeat([]byte{0xa5}, MaxPayloadSize)
+	payload[len(payload)-1] = 0x5a
+
+	must.NoError(t, set.ScheduleAt(t.Context(), "large", past(), payload))
+
+	fired, err := set.Claim(t.Context(), 10, time.Minute)
+	must.NoError(t, err)
+	must.SliceLen(t, 1, fired)
+	test.True(t, bytes.Equal(payload, fired[0].Payload),
+		test.Sprintf("a %d-byte payload came back as %d bytes", len(payload), len(fired[0].Payload)))
+}
+
+// runMigrationsTwice proves the shipped DDL is accepted verbatim, and that
+// re-running it is a no-op — the property every statement's IF NOT EXISTS is
+// there for, and the one a consumer's migration runner depends on.
+func runMigrationsTwice(t *testing.T, client database.Client) {
+	t.Helper()
+
+	stmts, err := migrations.Statements(client.Dialect(), "ddl_check")
+	must.NoError(t, err)
+
+	for range 2 {
+		for _, stmt := range stmts {
+			_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+		}
+	}
+
+	for _, stmt := range stmts {
+		test.False(t, strings.Contains(stmt, "{{"))
+	}
+}
+
+// TestTimers_MySQLSessionTimeZone runs the clock against a MySQL session whose
+// time zone is not UTC, in both directions. run_at holds the UTC wall clock, so
+// every clock a statement reads beside it has to be the UTC one too: compare it
+// with the session's clock instead and a zone ahead of UTC fires every timer
+// early by the offset, and a zone behind fires every one late by it. The pool
+// is one a consumer would plausibly have — the zone is the connection's, set
+// through the DSN, as it is on any server whose default is not UTC.
+func TestTimers_MySQLSessionTimeZone(T *testing.T) {
+	T.Parallel()
+
+	mysqltest.Run(T, func(ctx context.Context, my *mysqltest.Instance) {
+		createTable(T, openMySQL(T, ctx, my.ConnectionString), DefaultTablePrefix)
+
+		for _, zone := range []string{"+05:00", "-05:00"} {
+			T.Run(zone, func(t *testing.T) {
+				t.Parallel()
+
+				runTheSessionTimeZoneNeverEnters(t,
+					openMySQL(t, ctx, my.ConnectionString+"&time_zone="+url.QueryEscape("'"+zone+"'")))
+			})
+		}
+	},
+		mysqltest.WithCredentials("timerstest", "timerstest", "timerstest"),
+	)
+}
+
+// openMySQL builds a client over one DSN on the suite's server.
+func openMySQL(t *testing.T, ctx context.Context, connectionString string) database.Client {
+	t.Helper()
+
+	client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: connectionString})
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	return client
+}
+
+// runTheSessionTimeZoneNeverEnters is the offset's two directions, each an
+// hour inside a five-hour zone: a timer an hour out is not claimable yet, one
+// an hour past is, and each is measured from its true instant. The columns the
+// database stamps for itself are read back raw, because nothing in the API
+// surfaces them and a created_at five hours off is still a lie on the row.
+func runTheSessionTimeZoneNeverEnters(t *testing.T, client database.Client) {
+	t.Helper()
+
+	ctx := t.Context()
+	set := newSet(t, client, nil)
+
+	must.NoError(t, set.ScheduleAt(ctx, "ahead", time.Now().Add(time.Hour), nil))
+	must.NoError(t, set.ScheduleAt(ctx, "behind", past(), nil))
+
+	claimed, err := set.Claim(ctx, 10, time.Minute)
+	must.NoError(t, err)
+	must.Eq(t, []string{"behind"}, dueKeys(claimed))
+	test.Between(t, 59*time.Minute, claimed[0].Late, 61*time.Minute)
+
+	// Retired, so the sleep hint measures to the timer still ahead rather
+	// than to this one's lease.
+	must.NoError(t, set.Complete(ctx, claimed...))
+
+	next, outstanding, err := set.NextDue(ctx)
+	must.NoError(t, err)
+	must.True(t, outstanding)
+	test.Between(t, 59*time.Minute, next, 61*time.Minute)
+
+	// A reschedule, so last_updated_at has been written as well as created_at.
+	must.NoError(t, set.ScheduleAt(ctx, "ahead", time.Now().Add(2*time.Hour), nil))
+
+	var createdAt, lastUpdatedAt time.Time
+
+	must.NoError(t, client.Reader().QueryRowContext(ctx,
+		"SELECT created_at, last_updated_at FROM scheduled_timers WHERE timer_set = ? AND timer_key = ?",
+		set.Name(), "ahead").Scan(&createdAt, &lastUpdatedAt))
+
+	now := time.Now()
+	for column, stamped := range map[string]time.Time{"created_at": createdAt, "last_updated_at": lastUpdatedAt} {
+		test.Less(t, time.Minute, now.Sub(stamped).Abs(),
+			test.Sprintf("%s was stamped %s, %s from now", column, stamped.Format(time.RFC3339Nano), now.Sub(stamped)))
+	}
 }
