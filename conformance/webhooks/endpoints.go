@@ -192,8 +192,8 @@ func endpoints(t *testing.T, s *conformance.Session) {
 
 		admin := s.Subject(t, conformance.AsAdmin())
 		eventType := catalog(t, admin, 1)[0]
-		live := registered(t, admin, eventType)
-		retired := registered(t, admin, eventType)
+		live := registered(t, s, admin, eventType)
+		retired := registered(t, s, admin, eventType)
 
 		ctx := admin.Context(t.Context())
 

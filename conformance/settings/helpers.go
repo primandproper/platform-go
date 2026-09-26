@@ -67,9 +67,9 @@ func names() catalog {
 // is a deployment's decision in the sense a database column is — so where the
 // subject can mint an administrator into the tenant, that is who defines. Where
 // it cannot, the caller itself is asked, which a subject enforcing no method
-// grants answers by letting its ordinary caller define. A deployment that enforces them and mints no administrator is caught by
-// [define], which skips rather than asserting against a refusal the deployment
-// was right to make.
+// grants answers by letting its ordinary caller define. A deployment that
+// enforces them and mints no administrator is caught by [define], which skips
+// rather than asserting against a refusal the deployment was right to make.
 func operator(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
