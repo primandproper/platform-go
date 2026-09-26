@@ -8,6 +8,7 @@ import (
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
@@ -148,6 +149,7 @@ type Config struct {
 	Saga                 *sagacfg.Config              `env:",init" envPrefix:"SAGA_"                   json:"saga,omitempty"                 yaml:"saga,omitempty"`
 	Secrets              *secretscfg.Config           `env:",init" envPrefix:"SECRETS_"                json:"secrets,omitempty"              yaml:"secrets,omitempty"`
 	Settings             *settingscfg.Config          `env:",init" envPrefix:"SETTINGS_"               json:"settings,omitempty"             yaml:"settings,omitempty"`
+	SignIn               *signincfg.Config            `env:",init" envPrefix:"SIGN_IN_"                json:"signIn,omitempty"               yaml:"signIn,omitempty"`
 	Tokens               *tokenscfg.Config            `env:",init" envPrefix:"TOKENS_"                 json:"tokens,omitempty"               yaml:"tokens,omitempty"`
 	Uploads              *uploadscfg.Config           `env:",init" envPrefix:"UPLOADS_"                json:"uploads,omitempty"              yaml:"uploads,omitempty"`
 	Waitlists            *waitlistscfg.Config         `env:",init" envPrefix:"WAITLISTS_"              json:"waitlists,omitempty"            yaml:"waitlists,omitempty"`
@@ -322,6 +324,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.Secrets),
 		validation.Field(&cfg.Settings),
 		validation.Field(&cfg.Shredding),
+		validation.Field(&cfg.SignIn),
 		validation.Field(&cfg.Tokens),
 		validation.Field(&cfg.Uploads),
 		validation.Field(&cfg.Waitlists),

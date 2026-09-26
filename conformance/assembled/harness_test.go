@@ -20,8 +20,11 @@ import (
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
+	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/billing"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -149,6 +152,16 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
 		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
 
+		// Sign-in with every door the suites knock on. Rotation, recovery codes
+		// and registration are on by default. The passwordless door is the
+		// one a block switches on.
+		SignIn: &signincfg.Config{
+			TOTPIssuer:    "conformance",
+			RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: prefix},
+			RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: prefix},
+			MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: prefix},
+		},
+
 		// And the HTTP surface every dialect can serve.
 		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
 	}
@@ -186,9 +199,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	mailbox := &resetMailbox{}
 	do.ProvideValue(i, mailbox)
 
-	// And the consumer's sign-in link mailer.
+	// And the consumer's sign-in link mailer, under the key the sign-in block
+	// resolves as well as its own, which is where the sign-in suite reads the
+	// link a person would have been sent.
 	links := &magicLinkMailbox{}
 	do.ProvideValue(i, links)
+	do.ProvideValue[signin.MagicLinkMailer](i, links)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
@@ -494,6 +510,7 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 		"media registry": mediaregistrymigrations.Statements,
 		"magic links":    magiclinkmigrations.Statements,
 		"refresh tokens": refreshtokenmigrations.Statements,
+		"recovery codes": recoverycodemigrations.Statements,
 	} {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))
