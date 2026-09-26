@@ -14,17 +14,20 @@ author authorizer?
 # Where the targets come from
 
 Which kinds of thing accept comments is the application's vocabulary, declared
-in its comments.Targets, and no suite can guess one. So every assertion here
-comments on the one target type the subject names in Seams.CommentTargetType,
-and on a target identifier minted per test — which is what makes a listing by
-target read only what that test wrote, in a deployment whose discussions the
-suite does not own. A subject that names no target type skips all of it, with
-the reason printed.
+in its comments.Targets, and no suite can guess one. Where a target type's
+definition carries an existence check, the target also has to be a thing the
+application has — a row in a table this module has never seen — and no client
+of these surfaces can make one.
 
-The type has to accept any identifier. A target type whose registration carries
-an existence check refuses a comment on a thing the application does not have,
-and the suite has no way of making one exist; a subject whose only target types
-are checked has nothing to name here yet.
+So every assertion here asks the subject for a target through
+Actions.CommentTarget, which brings one into being in the commenting caller's
+tenant the way the deployment does. A subject that supplies no action names a
+type in Seams.CommentTargetType instead, and the suite comments on it under an
+identifier minted per test, which only a type without an existence check
+accepts. Either way the target is one nothing else has spoken about, which is
+what makes a listing by target read only what that test wrote, in a deployment
+whose discussions the suite does not own. A subject that supplies neither skips
+all of it, with the reason printed.
 
 # What is here and what stayed behind
 

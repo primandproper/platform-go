@@ -28,7 +28,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		about := target(t, s)
+		about := target(t, s, caller)
 
 		stored := say(t, caller, about, bodyRoot)
 
@@ -55,7 +55,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		needsUser(t, caller)
 
-		stored := say(t, caller, target(t, s), bodyRoot)
+		stored := say(t, caller, target(t, s, caller), bodyRoot)
 		test.EqOp(t, caller.UserID, stored.GetAuthor())
 		test.EqOp(t, caller.UserID, read(t, caller, stored.GetId()).GetAuthor())
 	})
@@ -64,7 +64,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		about := target(t, s)
+		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 
 		answer := reply(t, caller, root.GetId(), bodyReply)
@@ -82,7 +82,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		root := say(t, caller, target(t, s), bodyRoot)
+		root := say(t, caller, target(t, s, caller), bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
 
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{
@@ -96,7 +96,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		target(t, s) // The skip, where the subject names no target type at all.
+		needsTarget(t, s)
 
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
@@ -112,13 +112,13 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		root := say(t, caller, target(t, s), bodyRoot)
+		root := say(t, caller, target(t, s, caller), bodyRoot)
 
 		// Another thing of the same type, which is the mismatch a client can
 		// actually make: a reply form that posted the page it was rendered on
 		// rather than the discussion it was opened from.
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{
-			Comment: &commentspb.CommentInput{ParentId: root.GetId(), Target: target(t, s), Body: bodyReply},
+			Comment: &commentspb.CommentInput{ParentId: root.GetId(), Target: target(t, s, caller), Body: bodyReply},
 		})
 		refused(t, err, codes.InvalidArgument, "a reply filed under another target")
 		saying(t, err, "different target")
@@ -130,7 +130,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{
-			Comment: &commentspb.CommentInput{Target: target(t, s)},
+			Comment: &commentspb.CommentInput{Target: target(t, s, caller)},
 		})
 		refused(t, err, codes.InvalidArgument, "an empty comment")
 		saying(t, err, "empty comment body")
@@ -149,7 +149,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		stored := say(t, caller, target(t, s), "frist")
+		stored := say(t, caller, target(t, s, caller), "frist")
 
 		edited, err := caller.Surfaces.Comments.UpdateComment(caller.Context(t.Context()),
 			&commentspb.UpdateCommentRequest{CommentId: stored.GetId(), Body: "first"})
@@ -171,7 +171,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		stored := say(t, caller, target(t, s), bodyRoot)
+		stored := say(t, caller, target(t, s, caller), bodyRoot)
 
 		_, err := caller.Surfaces.Comments.UpdateComment(caller.Context(t.Context()),
 			&commentspb.UpdateCommentRequest{CommentId: stored.GetId()})
@@ -187,7 +187,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		about := target(t, s)
+		about := target(t, s, caller)
 		stored := say(t, caller, about, bodyRoot)
 
 		// The positive control: the comment is in the discussion before it is
@@ -214,7 +214,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		admin := s.Subject(t, conformance.AsAdmin())
-		about := target(t, s)
+		about := target(t, s, admin)
 		live := say(t, admin, about, bodyRoot)
 		removed := say(t, admin, about, bodyReply)
 
@@ -245,7 +245,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		stored := say(t, caller, target(t, s), bodyRoot)
+		stored := say(t, caller, target(t, s, caller), bodyRoot)
 
 		_, err := caller.Surfaces.Comments.ArchiveComment(caller.Context(t.Context()),
 			&commentspb.ArchiveCommentRequest{CommentId: stored.GetId()})
@@ -262,7 +262,7 @@ func writing(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		about := target(t, s)
+		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
 
