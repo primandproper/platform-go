@@ -107,6 +107,17 @@ type Seams struct {
 	// closely a timestamp may be compared — see the package documentation.
 	Dialect dialect.Dialect
 
+	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
+	// somebody other than an object's owner read it — the attachments on a
+	// ticket everybody assigned to it may open. True skips the assertion that
+	// a colleague is refused, with the reason printed.
+	//
+	// False is mediaregistry/http's default, OwnerOnly, and so it is the zero
+	// value: a deployment that never supplied an Entitlement has nothing to
+	// say here, and one that supplied a wider rule says so rather than having
+	// the suite guess which rule it wrote.
+	MediaObjectsShared bool
+
 	// ExclusiveDatabase says the suite is the only writer against this
 	// subject's database for the length of the run.
 	//
@@ -361,6 +372,37 @@ type Actions struct {
 	// PasswordResetToken's shape for PasswordResetToken's reason, and a subject
 	// whose deployment mails no sign-in links leaves it nil.
 	MagicLinkToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
+
+	// Registered stores an object's bytes and registers them in this tenant
+	// as the user's, the way the deployment's own upload path does, and
+	// reports what it registered.
+	//
+	// There is no route or RPC that creates one, and that is mediaregistry's
+	// design rather than a gap: an object comes to exist through whatever
+	// upload the application offers — a form, a signed URL, a migration from
+	// an existing bucket — and the registry is the row the application writes
+	// once the bytes are somewhere. Only the read is served. A consumer
+	// implements this by uploading through their own path; this module's
+	// harnesses by mediaregistry.StoreAndRecord over the manager and store the
+	// composition root built, which is where that path ends anyway.
+	//
+	// The bytes come back rather than going in for Audited's reason: what an
+	// object is belongs to the deployment, and what the suite asserts is which
+	// caller gets it back, not what it contains.
+	Registered func(ctx context.Context, scope tenancy.Scope, userID string) (*RegisteredObject, error)
+}
+
+// RegisteredObject is what a registration action stored, as the guarded read
+// will serve it.
+type RegisteredObject struct {
+	// ID is the registered object's identifier, which is what its route is
+	// addressed by.
+	ID string
+
+	// Content is the bytes that were stored. The read that serves them must
+	// answer with exactly these, so it must not be empty: an empty object is
+	// indistinguishable from a read that served nothing.
+	Content []byte
 }
 
 // Audited is what an auditable action touched, as the entry recording it will

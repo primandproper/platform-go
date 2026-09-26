@@ -97,7 +97,10 @@ suite to write, which is a backdoor: it puts the suite in the business of
 manufacturing state and asserts against rows no deployment produces. It is also
 the only shape that works — **no gRPC surface in this module records an audit
 entry**, so "call the surface and read the log afterwards" works in a consumer's
-deployment and writes nothing here.
+deployment and writes nothing here. `Actions.Registered` is the same argument
+for mediaregistry: no route creates an object, so the deployment stores and
+registers one through its own upload path and reports the identifier and bytes,
+and the suite asserts which caller gets them back.
 
 **Absence is a skip, and the skip says why.** A nil client in `Surfaces` is a
 surface the subject did not mount; a nil field in `Actions` is a state it cannot
@@ -172,7 +175,7 @@ all three files say so and point at each other.
 
 | suite | assertions | notes |
 | --- | --- | --- |
-| `conformance/anonymous` | 147 | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
+| `conformance/anonymous` | 154 | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
 | `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | 156 | every paged read reports the filter it applied |
 | `conformance/identity` | 49 | accounts, memberships, invitations, users |
@@ -188,8 +191,9 @@ all three files say so and point at each other.
 | `conformance/passwordreset` | 8 | the reset flow end to end |
 | `conformance/oauth2clients` | 7 | the administered registry |
 | `conformance/dataprivacy` | 5 | privacy requests over HTTP, and the operations that fulfill them |
+| `conformance/mediaregistry` | 3 | the guarded object read: its owner, another tenant, a colleague |
 
-668 leaf assertions on each run of the assembled subject, which serves every
+678 leaf assertions on each run of the assembled subject, which serves every
 surface on Postgres, SQLite and MySQL 8 alike. Every one passes on all three,
 with nine skips on each, every skip printing its reason.
 
@@ -330,9 +334,7 @@ tenant still gets a 404, and the suite asserts both.
 1. **Every gRPC surface has a suite.** Each suite's commit names the in-process
    tests whose promises it restates, and the ones it cannot reach and why —
    construction, rosters, converters, schema, options, observability, and
-   anything that varies how a server was built. mediaregistry's HTTP surface
-   has no per-surface suite yet: asserting it needs an object the application
-   registered, which is a seam nobody has written.
+   anything that varies how a server was built.
 
 2. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
    own deployment, runs these suites in its integration job, and deletes the

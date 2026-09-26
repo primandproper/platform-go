@@ -25,6 +25,7 @@ import (
 	conformancefilters "github.com/primandproper/platform-go/v14/conformance/filters"
 	conformanceidentity "github.com/primandproper/platform-go/v14/conformance/identity"
 	conformanceissuereports "github.com/primandproper/platform-go/v14/conformance/issuereports"
+	conformancemediaregistry "github.com/primandproper/platform-go/v14/conformance/mediaregistry"
 	conformancenotifications "github.com/primandproper/platform-go/v14/conformance/notifications"
 	conformanceoauth2clients "github.com/primandproper/platform-go/v14/conformance/oauth2clients"
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
@@ -52,6 +53,7 @@ func Suites() []conformance.Suite {
 		conformanceaudit.Suite(),
 		conformanceidentity.Suite(),
 		conformancedataprivacy.Suite(),
+		conformancemediaregistry.Suite(),
 		conformancesettings.Suite(),
 		conformancebilling.Suite(),
 		conformanceoauth2clients.Suite(),

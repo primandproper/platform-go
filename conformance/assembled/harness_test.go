@@ -45,6 +45,7 @@ import (
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
+	"github.com/primandproper/platform-go/v14/mediaregistry"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	mediaregistrymigrations "github.com/primandproper/platform-go/v14/mediaregistry/migrations"
 	"github.com/primandproper/platform-go/v14/notifications"
@@ -77,6 +78,7 @@ import (
 	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
 	httpserver "github.com/primandproper/primitives-go/v2/server/http"
 	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
 	uploadscfg "github.com/primandproper/primitives-go/v2/uploads/config"
 	"github.com/primandproper/primitives-go/v2/uploads/objectstorage"
 
@@ -314,6 +316,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 			Notified:           notify(client, do.MustInvoke[notifications.Inbox](i)),
 			VerificationToken:  invites.verificationToken,
 			MagicLinkToken:     links.token,
+			Registered: register(client,
+				do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
 
 			// The recorder the composition root built, inside a transaction on
 			// the client it built — the end of the path a consumer's handler
