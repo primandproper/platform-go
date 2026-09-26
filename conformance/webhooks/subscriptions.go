@@ -23,7 +23,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		offered := catalog(t, caller, 2)
 		first, added := offered[0], offered[1]
 
-		saved := registered(t, caller, first)
+		saved := registered(t, s, caller, first)
 
 		sub, err := caller.Surfaces.Webhooks.AddSubscription(caller.Context(t.Context()),
 			&webhookspb.AddSubscriptionRequest{EndpointId: saved.GetId(), EventType: added})
@@ -48,7 +48,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		offered := catalog(t, caller, 2)
 
-		saved := registered(t, caller, offered[0])
+		saved := registered(t, s, caller, offered[0])
 		ctx := caller.Context(t.Context())
 		req := &webhookspb.AddSubscriptionRequest{EndpointId: saved.GetId(), EventType: offered[1]}
 
@@ -65,7 +65,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		saved := registered(t, caller, catalog(t, caller, 1)[0])
+		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		_, err := caller.Surfaces.Webhooks.AddSubscription(caller.Context(t.Context()), &webhookspb.AddSubscriptionRequest{
 			EndpointId: saved.GetId(),
@@ -78,7 +78,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		saved := registered(t, caller, catalog(t, caller, 1)[0])
+		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		_, err := caller.Surfaces.Webhooks.AddSubscription(caller.Context(t.Context()),
 			&webhookspb.AddSubscriptionRequest{EndpointId: saved.GetId()})
@@ -90,7 +90,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		eventType := catalog(t, caller, 1)[0]
-		saved := registered(t, caller, eventType)
+		saved := registered(t, s, caller, eventType)
 		sub := subscribedTo(t, saved, eventType)
 
 		got := subscription(t, caller, sub.GetId())
@@ -104,7 +104,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		offered := catalog(t, caller, 2)
-		saved := registered(t, caller, offered[0], offered[1])
+		saved := registered(t, s, caller, offered[0], offered[1])
 
 		page, err := caller.Surfaces.Webhooks.ListSubscriptions(caller.Context(t.Context()),
 			&webhookspb.ListSubscriptionsRequest{EndpointId: saved.GetId()})
@@ -125,7 +125,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		offered := catalog(t, caller, 2)
-		saved := registered(t, caller, offered[0], offered[1])
+		saved := registered(t, s, caller, offered[0], offered[1])
 
 		retired, kept := subscribedTo(t, saved, offered[0]), subscribedTo(t, saved, offered[1])
 

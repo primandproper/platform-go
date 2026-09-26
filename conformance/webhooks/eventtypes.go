@@ -24,7 +24,7 @@ func eventTypes(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		offered := catalog(t, caller, 1)
 
-		saved := registered(t, caller, offered...)
+		saved := registered(t, s, caller, offered...)
 
 		got := subscribedEventTypes(saved)
 		for _, eventType := range offered {
