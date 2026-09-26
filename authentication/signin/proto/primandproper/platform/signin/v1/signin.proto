@@ -58,8 +58,8 @@
 // in this repository and in a consumer's fork of the file alike, whereas a
 // comment is a request to the next author. It is reserved on every request
 // message, on the inputs they are built from -- [Credentials],
-// [RegistrationInvitation] -- and on [IssuedToken], [AuthStatus] and
-// [Registered], which the responses are built from.
+// [RegistrationInvitation] -- and on [IssuedToken], [AuthStatus],
+// [Registered] and [TOTPEnrollment], which the responses are built from.
 //
 // No hashed password and no stored second-factor secret, in either direction.
 // The two secrets that do cross are the ones that have to: a plaintext password
@@ -613,6 +613,26 @@ message RegisterRequest {
   // invitation names an invitation this registration answers, and is absent for
   // an ordinary one.
   RegistrationInvitation invitation = 6;
+
+  // agreements are the documents the registrant accepted in registering. They
+  // are stamped on the user the registration writes, on the same transaction,
+  // and AGREEMENT_UNSPECIFIED refuses the request. Whether any are required is
+  // the consumer's, through signin.RegistrationPolicy.
+  repeated primandproper.platform.identity.v1.Agreement agreements = 7;
+}
+
+// TOTPEnrollment is a second-factor secret minted with a registration: the
+// same pair RefreshTOTPSecretResponse carries, costing the same to hand around.
+// It is unproven until VerifyTOTPSecret succeeds.
+message TOTPEnrollment {
+  reserved "scope";
+
+  // secret is the base32 shared secret, for somebody typing it in.
+  string secret = 1;
+
+  // provisioning_uri is the otpauth:// URI that same secret encodes to, for a
+  // client rendering a QR code.
+  string provisioning_uri = 2;
 }
 
 // Registered is what a registration produced.
@@ -630,6 +650,12 @@ message Registered {
   primandproper.platform.identity.v1.Membership membership = 3;
 
   primandproper.platform.identity.v1.Invitation invitation = 4;
+
+  // totp_enrollment is the second factor minted with the registration, and is
+  // absent unless the consumer's registration policy asked for one. It makes
+  // this response, where it is set, one that must not be logged, cached or
+  // rendered anywhere it will be read twice -- see RefreshTOTPSecretResponse.
+  TOTPEnrollment totp_enrollment = 5;
 }
 
 message RegisterResponse {

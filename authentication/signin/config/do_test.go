@@ -193,6 +193,26 @@ func TestRegisterService(T *testing.T) {
 		test.ErrorIs(t, err, refused)
 	})
 
+	T.Run("a registered registration policy is attached", func(t *testing.T) {
+		t.Parallel()
+
+		refused := errors.New("accept the terms")
+
+		i := withRegistrar(withAuthenticator(base(t, &Config{Registration: RegistrationConfig{VerificationLinkTTL: time.Hour}})))
+		do.ProvideValue(i, signin.RegistrationPolicy(func(context.Context, *signin.Registration) error { return refused }))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		_, err = svc.Register(t.Context(), tenancy.Of("tenant"), &signin.Registration{
+			User:       &identity.User{},
+			Credential: signin.Password("hunter2"),
+		})
+		test.ErrorIs(t, err, signin.ErrRegistrationRefused)
+		test.ErrorIs(t, err, refused)
+	})
+
 	T.Run("a registered hook that fails to build is returned, not skipped", func(t *testing.T) {
 		t.Parallel()
 
