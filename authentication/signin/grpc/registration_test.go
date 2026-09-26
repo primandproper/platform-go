@@ -1,6 +1,9 @@
 package grpc_test
 
 import (
+	"context"
+	"errors"
+	"slices"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -8,6 +11,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -295,4 +300,111 @@ func TestRegisterWithAnEmptyRequest(T *testing.T) {
 
 	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), &signinpb.RegisterRequest{})
 	test.ErrorIs(T, err, identity.ErrNilUser)
+}
+
+// TestRegisterUnderARegistrationPolicy is the reason the seam exists: a
+// consumer whose registration does more than the request says can mount this
+// RPC, and what their policy adds is what the wire registration writes.
+func TestRegisterUnderARegistrationPolicy(T *testing.T) {
+	T.Parallel()
+
+	errTerms := errors.New("accept the terms of service to register")
+
+	policy := func(_ context.Context, registration *signin.Registration) error {
+		if !slices.Contains(registration.Agreements, identity.TermsOfService) {
+			return errTerms
+		}
+
+		registration.User.AccountStatus = identity.StatusGood
+		registration.User.ServiceRoles = []string{"service_user"}
+		registration.EnrollTOTP = true
+
+		return nil
+	}
+
+	T.Run("what the policy adds is written, and the minted factor comes back", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, []signin.ServiceOption{signin.WithRegistrationPolicy(policy)})
+
+		request := registrationInput("ada")
+		request.Credential = &signinpb.RegisterRequest_Password{Password: "hunter2 hunter2"}
+		request.Agreements = []identitypb.Agreement{
+			identitypb.Agreement_AGREEMENT_TERMS_OF_SERVICE,
+			identitypb.Agreement_AGREEMENT_PRIVACY_POLICY,
+		}
+
+		registered, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+		must.NoError(t, err)
+
+		enrollment := registered.GetRegistration().GetTotpEnrollment()
+		must.NotNil(t, enrollment)
+		test.NotEqOp(t, "", enrollment.GetSecret())
+		test.StrHasPrefix(t, "otpauth://", enrollment.GetProvisioningUri())
+
+		stored, err := h.store.GetUserByUsername(t.Context(), h.db.Reader(), testScope, "ada")
+		must.NoError(t, err)
+		test.EqOp(t, identity.StatusGood, stored.AccountStatus)
+		test.Eq(t, []string{"service_user"}, stored.ServiceRoles)
+		test.EqOp(t, enrollment.GetSecret(), stored.TwoFactorSecret)
+		test.NotNil(t, stored.LastAcceptedTermsOfService)
+		test.NotNil(t, stored.LastAcceptedPrivacyPolicy)
+
+		// Good standing is the policy's, so they sign in straight away.
+		_, err = h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "ada", Password: "hunter2 hunter2"},
+		})
+		must.NoError(t, err)
+	})
+
+	T.Run("a refusal is InvalidArgument and writes nobody", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, []signin.ServiceOption{signin.WithRegistrationPolicy(policy)})
+
+		request := registrationInput("ada")
+		request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
+
+		_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+		test.ErrorIs(t, err, signin.ErrRegistrationRefused)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		_, err = h.store.GetUserByUsername(t.Context(), h.db.Reader(), testScope, "ada")
+		test.ErrorIs(t, err, identity.ErrUserNotFound)
+	})
+}
+
+// TestRegisterWithAnUnspecifiedAgreement is refused rather than dropped: the
+// agreement decides which compliance column is stamped.
+func TestRegisterWithAnUnspecifiedAgreement(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, nil)
+
+	request := registrationInput("ada")
+	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
+	request.Agreements = []identitypb.Agreement{identitypb.Agreement_AGREEMENT_UNSPECIFIED}
+
+	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	test.EqOp(T, codes.InvalidArgument, status.Code(err))
+
+	_, err = h.store.GetUserByUsername(T.Context(), h.db.Reader(), testScope, "ada")
+	test.ErrorIs(T, err, identity.ErrUserNotFound)
+}
+
+// TestRegisteredToProto_enrollment is the one secret RegisteredToProto carries
+// across, and only when there is one.
+func TestRegisteredToProto_enrollment(T *testing.T) {
+	T.Parallel()
+
+	rendered := signingrpc.RegisteredToProto(&signin.Registered{
+		User:           &identity.User{ID: "user_1"},
+		TOTPEnrollment: &totp.Enrollment{Secret: "JBSWY3DPEHPK3PXP", URI: "otpauth://totp/Example:ada"},
+	})
+
+	must.NotNil(T, rendered.GetTotpEnrollment())
+	test.EqOp(T, "JBSWY3DPEHPK3PXP", rendered.GetTotpEnrollment().GetSecret())
+	test.EqOp(T, "otpauth://totp/Example:ada", rendered.GetTotpEnrollment().GetProvisioningUri())
+
+	test.Nil(T, signingrpc.RegisteredToProto(&signin.Registered{User: &identity.User{ID: "user_1"}}).GetTotpEnrollment())
 }

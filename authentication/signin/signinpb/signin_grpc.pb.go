@@ -58,8 +58,8 @@
 // in this repository and in a consumer's fork of the file alike, whereas a
 // comment is a request to the next author. It is reserved on every request
 // message, on the inputs they are built from -- [Credentials],
-// [RegistrationInvitation] -- and on [IssuedToken], [AuthStatus] and
-// [Registered], which the responses are built from.
+// [RegistrationInvitation] -- and on [IssuedToken], [AuthStatus],
+// [Registered] and [TOTPEnrollment], which the responses are built from.
 //
 // No hashed password and no stored second-factor secret, in either direction.
 // The two secrets that do cross are the ones that have to: a plaintext password
