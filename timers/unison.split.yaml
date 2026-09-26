@@ -1,0 +1,69 @@
+sqlc_version: 1.31.1
+package: timerssplitdb
+out: internal/timerssplitdb
+
+# The second of timers' two rosters, and the reason there are two. unison
+# converges every query onto one shape across its roster and refuses a query
+# whose shape differs, and timers' Postgres statements have shapes these two
+# engines cannot take: a claim that hands its rows back through RETURNING, and
+# batches bound as parallel arrays. So MySQL and SQLite render their own
+# statement set — a claim split into four statements, a batch bound as an IN
+# list — and it is generated here, while unison.yaml keeps Postgres's in
+# timers/internal/timersdb. See timers/internal/queries' renderSplit.
+#
+# The schema files live beside their source: rendered from timers/migrations by
+# `go run ./internal/queriesgen -schema <dialect>`, at the empty table prefix
+# — never edited by hand.
+schemas:
+  mysql: migrations/schema/mysql.sql
+  sqlite: migrations/schema/sqlite.sql
+
+queries:
+  mysql: internal/queries/mysql_generated.sql
+  sqlite: internal/queries/sqlite_generated.sql
+
+options:
+  # ddl.Qualify prefixes table names from consumer config at construction; the
+  # generated SQL carries {{prefix}} markers substituted once by New.
+  table_prefix_var: true
+
+  # MySQL accepts only a bare placeholder in LIMIT and OFFSET and names them
+  # `limit` and `offset`; SQLite spells the arguments out. The names converge
+  # here.
+  rename_params:
+    mysql:
+      limit: result_limit
+      offset: result_offset
+
+  type_overrides:
+    # The two key columns are binary strings on MySQL, so that they compare byte
+    # for byte as they do everywhere else, and a binary string is []byte to the
+    # analyzer. What crosses the seam is still the text the set encoded.
+    - {column: "*.timer_set", go_type: string}
+    - {column: "*.timer_key", go_type: string}
+    - {column: "*.timer_keys", go_type: string}
+    # The integer column, whose width the engines do not agree on: MySQL
+    # resolves INT to a 32-bit Go type and SQLite INTEGER to a 64-bit one.
+    - {column: "*.attempts", go_type: int64}
+    # Arguments neither engine can type, because each is only ever an operand:
+    # a microsecond count added to the clock or to the epoch, a ceiling
+    # compared against, a bound on a read.
+    - {column: "*.attempt_ceiling", go_type: int64}
+    - {column: "*.result_limit", go_type: int64}
+    - {column: "*.result_offset", go_type: int64}
+    - {column: "*.run_at_microseconds", go_type: int64}
+    - {column: "*.lease_microseconds", go_type: int64}
+    - {column: "*.delay_microseconds", go_type: int64}
+    - {column: "*.retention_microseconds", go_type: int64}
+    # The computed columns: two comparisons, a lateness, and the two reads'
+    # aggregates, cast to the width the set reads them at.
+    - {column: "*.reclaimed", go_type: bool}
+    - {column: "*.has_payload", go_type: bool}
+    - {column: "*.late_microseconds", go_type: int64}
+    - {column: "*.outstanding", go_type: int64}
+    - {column: "*.next_due_microseconds", go_type: int64}
+    - {column: "*.due", go_type: int64}
+    - {column: "*.leased", go_type: int64}
+    - {column: "*.stalled", go_type: int64}
+    - {column: "*.fired", go_type: int64}
+    - {column: "*.oldest_due_microseconds", go_type: int64}

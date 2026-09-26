@@ -53,8 +53,7 @@ README catalogues them. [Primitives and Domains](#primitives-and-domains) is the
 rule that sorts a new package into one or the other.
 
 Implementations are listed in parentheses. Where an implementation is a SQL
-dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix and the
-reasons behind the three exceptions.
+dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 
 ### Identity & access
 | Package                            | Purpose                                                                       | Implementations                  |
@@ -99,7 +98,7 @@ reasons behind the three exceptions.
 |-----------------|-------------------------------------------------------------------------------------|----------------------------------|
 | `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite          |
 | `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres, mysql, sqlite          |
-| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                         |
+| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres, mysql, sqlite          |
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres, mysql, sqlite (+ http) |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
@@ -604,9 +603,9 @@ unreleased `main` is a rule that breaks a session.
 ## SQL Dialect Support
 
 `database` speaks Postgres, MySQL and SQLite, and so does every package that
-stores anything through it but one. `timers` is Postgres-only until its port
-lands, and this is where that is spoken — once, before you choose packages,
-rather than package by package as each constructor refuses at wiring time.
+stores anything through it. A package that narrowed would be spoken for here —
+once, before you choose packages, rather than package by package as each
+constructor refuses at wiring time.
 
 A ✓ means the package ships DDL for that dialect, and — for every package whose
 statements have been ported onto the generated tier — executes a querier emitted
@@ -661,37 +660,40 @@ here.
 | `sessions/database`                   | ✓        | ✓     | ✓      |
 | `settings`                            | ✓        | ✓     | ✓      |
 | `shredding`                           | ✓        | ✓     | ✓      |
-| `timers`                              | ✓        | —     | —      |
+| `timers`                              | ✓        | ✓     | ✓      |
 | `waitlists`                           | ✓        | ✓     | ✓      |
 | `webhooks`                            | ✓        | ✓     | ✓      |
 | `workqueue`                           | ✓        | ✓     | ✓      |
 <!-- /readmegen:dialects -->
 
-### Why `timers` narrows
+### Why nothing narrows
 
 One reason, and it is a claim rather than a translation. On Postgres the claim
 is a single statement that selects due rows, locks them with `SKIP LOCKED`,
 increments attempts, extends the lease and hands the keys back with
 `RETURNING`. MySQL has `SKIP LOCKED` but no `RETURNING`, and SQLite has neither
-and no row locks at all, so on those two the same claim is a locking read, an
-update and a read-back held in one transaction across three round trips.
+and no row locks at all, so on those two the same claim is several statements
+held in one transaction: a read, an update and a read-back by the claim's name.
 
-That is a cost rather than a reason to narrow, and `workqueue` pays it: its
-Postgres claim is still the one statement, and on MySQL and SQLite it is the
-three, fenced by the name the claim mints so that a write can land only under
-the claim that took the row. `webhooks` and `outbox` already claimed that way on
-all three, and `operations` followed `workqueue`: its guarded writes hand their
-row back through `RETURNING` on Postgres and read it back on the same
-transaction on the other two. The package below has not been ported yet, and
-states where it stands in its own `doc.go`; this line is that statement:
+That is a cost rather than a reason to narrow, and `workqueue` and `timers` pay
+it: each keeps its Postgres claim as the one statement, and on MySQL and SQLite
+splits it, fenced by the name the claim mints so that a write can land only
+under the claim that took the row. `timers` locks its candidates by primary key
+rather than by the range that found them, because on MySQL a locking range read
+also locks the first row past it — the next set's earliest timer, as often as
+not. `webhooks` and `outbox` already claimed that way on all three, and
+`operations` followed `workqueue`: its guarded writes hand their row back
+through `RETURNING` on Postgres and read it back on the same transaction on the
+other two. No package narrows today. One that did would state where it stands
+in its own `doc.go`, and this list is that statement:
 
 <!-- readmegen:narrowings -->
-- `timers` — claims a due timer in the one statement, and would owe the same split anywhere else.
 <!-- /readmegen:narrowings -->
 
-Widening it is the port `workqueue` and `operations` took, not a new design: one
-package, a statement set per shape its dialects need, and a switch on the
-client's dialect at construction — never a provider subpackage per database.
+Widening one is the port `workqueue`, `timers` and `operations` took, not a new
+design: one package, a statement set per shape its dialects need, and a switch
+on the client's dialect at construction — never a provider subpackage per
+database.
 
 ### Narrowings that are not rows
 
@@ -710,6 +712,11 @@ and a row would misreport it either way:
 - **`operations`** runs on all three. Its `LISTEN`/`NOTIFY` push to watchers is
   Postgres-only and reported as `operations.ErrNotifyUnsupported` if configured
   elsewhere; without it a watcher polls, which is later rather than wrong.
+- **`timers`** schedules on all three. Its `LISTEN`/`NOTIFY` wakeup is
+  Postgres-only and reported as `timers.ErrNotifyUnsupported` if configured
+  elsewhere; without it a poller sleeps to the next instant it knows about or
+  its poll, which is later rather than wrong. SQLite keeps instants to the
+  millisecond, and a scheduled instant is rounded up to one, never down.
 - **`retention`** sweeps all three, and ships no DDL: the table, the timestamp
   column and the batch key arrive from a `Policy` written at run time, so there
   is no schema of this module's to render for a dialect.

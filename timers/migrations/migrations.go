@@ -1,5 +1,6 @@
 /*
-Package migrations supplies the timer table's DDL, rendered for a table prefix.
+Package migrations supplies the timer table's DDL, rendered for a dialect and
+table prefix.
 
 The platform deliberately does not ship a numbered migration file. Migration
 files are numbered globally per consumer, so a platform-owned number would
@@ -24,10 +25,14 @@ One table holds every logical timer set: timers.Config.Name is the leading
 column of its primary key, so a second set needs a second Config, not a second
 migration.
 
-Postgres only, like the package it serves. Statements and SQL take a dialect
-anyway, and reject anything else, so a caller wiring this into a
-dialect-parameterized migration run gets an error naming the dialect rather than
-a schema that silently renders empty.
+All three dialects are served, and the three bodies are one table spelled three
+ways rather than three designs. Where they differ it is because the engines do:
+MySQL has no partial index and folds case in its default collation, so its keys
+are binary strings and its due index leads with firing instead of filtering on
+it, and its payload is a MEDIUMBLOB because a BLOB is one byte short of
+MaxPayloadSize; SQLite has no clock finer than a second except strftime's %f,
+so its instants are text in the one shape that clock writes. Each file says why
+beside the column it is about.
 */
 package migrations
 
@@ -41,31 +46,24 @@ import (
 //go:embed postgres.sql
 var postgresDDL string
 
-// schema is this package's DDL. Only the Postgres body is populated; see
-// requirePostgres for why the other two are rejected rather than left to render
-// as nothing.
+//go:embed mysql.sql
+var mysqlDDL string
+
+//go:embed sqlite.sql
+var sqliteDDL string
+
+// schema is this package's DDL in each supported dialect.
 var schema = ddl.Schema{
 	Component: "timers",
 	Postgres:  postgresDDL,
+	MySQL:     mysqlDDL,
+	SQLite:    sqliteDDL,
 }
 
-// requirePostgres rejects the dialects this package has no schema for.
-//
-// ddl.Schema returns an empty body rather than an error for a dialect whose
-// field is unset, which would leave a caller with zero statements and no
-// indication that nothing had been created. This turns that silence into the
-// error it should have been.
-func requirePostgres(d dialect.Dialect) error {
-	return dialect.RequirePostgres("timers migration", d)
-}
-
-// Statements renders the DDL against the given table prefix and splits it into
-// individually executable statements, the table before its indexes.
+// Statements renders the DDL for the dialect against the given table prefix and
+// splits it into individually executable statements, the table before its
+// indexes.
 func Statements(d dialect.Dialect, prefix string) ([]string, error) {
-	if err := requirePostgres(d); err != nil {
-		return nil, err
-	}
-
 	return schema.Statements(d, prefix)
 }
 
@@ -80,9 +78,5 @@ func ValidatePrefix(prefix string) error {
 // table is created by the consumer's own migration run instead of being copied
 // into their repository.
 func SQL(d dialect.Dialect, prefix string) (string, error) {
-	if err := requirePostgres(d); err != nil {
-		return "", err
-	}
-
 	return schema.SQL(d, prefix)
 }

@@ -13,21 +13,33 @@ Why the rendered .sql is committed at all, when the generated Go beside it in
 timers/internal/timersdb carries the same statements in executable form, is
 identity's package comment, under "Where the SQL comes from".
 
-# Postgres, and a roster of one
+# Two statement sets, and two rosters
 
-unison's dialect roster is the keys of unison.yaml's schemas map, so a
-single-dialect package renders a single-dialect corpus and gets exactly the same
-checked guarantee as a three-dialect one. What the roster does not do is soften
-the requirement: every statement below is checked against the schema
-timers/migrations renders, with no database running.
+Render returns one of two corpora. Postgres's is the statements in queries.go:
+a claim that selects, locks, leases and hands its rows back in one statement
+through RETURNING, and batches bound as one array per column. MySQL's and
+SQLite's is the statements in split.go: the same claim as a read of the
+candidates, a locking read of those by key, a lease and a read-back by the
+claim's name, and batches bound as an IN list, which carries one column — so a
+schedule is a statement per timer and an outcome write is a statement per
+claim.
 
-timers is Postgres-only because the claim is — the single statement that selects
-due rows, locks them, extends the lease and hands them back is the concurrency
-contract, and the SELECT-then-UPDATE it becomes without RETURNING is a different
-failure model rather than a dialect switch. See the timers package comment. The
-consequence here is narrow and worth stating plainly: a roster of one cannot
-diverge, so RETURNING is available, and the claim reads its rows back in the
-statement that leased them rather than in a second one.
+They are two sets rather than one set spelled three ways because the
+difference is shape. unison converges each query onto one Go signature across
+the dialects it generates for and refuses one whose shape differs, which is
+right: a RETURNING claim on one engine and a four-statement claim on another
+under one name would be a method that means two things. So each set is its own
+roster — unison.yaml generates Postgres's into timers/internal/timersdb, and
+unison.split.yaml generates the other two into timers/internal/timerssplitdb —
+and each gets exactly the checked guarantee a single roster gets: every
+statement is checked against the schema timers/migrations renders for its
+dialect, with no database running.
+
+What does not differ between them is any decision. The reschedule rule, the due
+predicate, the fences, the lock ordering and the one clock are the same in
+both, and split.go's statements say where each came from. The one place the
+split corpus binds less is the fence: its outcome writes match on the claim's
+name and not on the instant, and heldBy says why the name already carries it.
 
 # Everything is written out, and the line is not effort
 
@@ -49,6 +61,9 @@ package's own schema, and executed through the generated querier. A renamed
 column is a failed `make unison` with no database running.
 
 # A batch is arrays, not tuples
+
+What follows is the Postgres corpus. The split corpus binds a batch the only way
+its two engines can, as an IN list that sqlc expands per call — see split.go.
 
 Four of the eight statements act on a batch whose size is decided at the call:
 the schedule, the two keyed writes, and the cancel. A tuple list would make the
@@ -81,7 +96,10 @@ reports, the retention window a reap subtracts — all of it is written and
 compared server-side, and durations cross the seam as microsecond counts turned
 into intervals. run_at is the single exception and is bound absolutely, because
 it is the thing the caller actually meant; whether it has arrived is still the
-server's answer.
+server's answer. The split corpus binds it as a count of microseconds since the
+epoch rather than as a time, because a bound time reaches SQLite as whole-second
+text, and turns the count into the engine's stored instant server-side, rounded
+up — see split.go's instant.
 
 That is also why the reap does not come from querygen's bounded prune. Its
 horizon would be a ceiling the caller computed, which is the right seam for a

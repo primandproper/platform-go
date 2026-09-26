@@ -178,24 +178,34 @@ func InsertColumns() []string {
 
 // Render returns the canonical sqlc input for one dialect.
 //
-// It takes the dialect and serves one, which is not a contradiction: the roster
-// is a property of unison.yaml and of the schema timers/migrations ships, and
-// this signature is what would make a second dialect a schema question rather
-// than a rewrite. What it will not do is answer for a dialect this package has
-// no schema for — every statement below is written in Postgres and would be
-// handed back unchanged, which is the one failure a generator can have that
-// produces a plausible file.
+// Two statement sets, and the dialect picks one. Postgres gets the statements
+// below: a single-statement claim that hands its rows back through RETURNING,
+// and batches bound as one array per column. MySQL and SQLite have neither
+// RETURNING nor arrays, so they get renderSplit's, where the claim is three
+// statements in a transaction and a batch is a statement per timer or per
+// claim. The two sets are generated into two queriers because unison will not
+// put a query whose shape differs across dialects into one — see renderSplit.
 //
 // It panics rather than returning an error, in the manner of the generator it
 // renders through: the argument is a constant in a generator binary. The panic
 // value is an error wrapping dialect.ErrUnsupported.
 func Render(d dialect.Dialect) string {
-	if err := dialect.RequirePostgres("timers queries", d); err != nil {
-		panic(err)
-	}
-
+	// Every table this package owns, whichever set renders: the registry a
+	// consumer reads back is fed by the table existing, not by the statements.
 	querygen.RegisterTable(TableNames...)
 
+	switch d {
+	case dialect.Postgres:
+		return renderPostgres()
+	case dialect.MySQL, dialect.SQLite:
+		return renderSplit(d)
+	default:
+		panic(fmt.Errorf("timers queries for dialect %q: %w", d, dialect.ErrUnsupported))
+	}
+}
+
+// renderPostgres is the Postgres corpus: eight statements, each one round trip.
+func renderPostgres() string {
 	return querygen.RenderFile([]*querygen.Query{
 		{Annotation: querygen.QueryAnnotation{Name: "ScheduleTimers", Type: querygen.ExecType},
 			Content: scheduleTimers},
