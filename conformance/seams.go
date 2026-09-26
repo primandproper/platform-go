@@ -141,6 +141,25 @@ type Seams struct {
 	// setup.
 	OperatorMethods []string
 
+	// ErrorReasonsStripped says the deployment's edge drops a refusal's
+	// client-safe reason before it reaches a client. True skips the reason half
+	// of each assertion that reads one, with that printed; the code half runs
+	// regardless.
+	//
+	// A refusal is asserted by its status code everywhere, and never by a Go
+	// sentinel decoded off the wire: the encoded error chain is this module's
+	// client talking to this module's server, and a deployment that strips it
+	// before a response leaves — so internal wording never reaches a client —
+	// is doing what docs/client-contract.md tells a client-facing edge to do.
+	// The reason is different. Where the contract lists one (sign-in's
+	// refusals) it is a promise, and R11 says it survives exactly that edge:
+	// errors/grpc.StripEncodedErrorDetail removes the chain and leaves the
+	// google.rpc.ErrorInfo alone. So it is asserted unless the subject says
+	// otherwise, and false is the zero value. A deployment that sets this has
+	// written down that it breaks R11 for its clients, which is the point of
+	// making it say so rather than making everybody else opt in.
+	ErrorReasonsStripped bool
+
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
 	// ticket everybody assigned to it may open. True skips the assertion that

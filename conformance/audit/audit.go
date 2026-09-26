@@ -3,7 +3,6 @@ package audit
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/conformance"
 
@@ -11,6 +10,8 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Suite is the audit surface's behavioral assertions.
@@ -82,9 +83,12 @@ func run(t *testing.T, s *conformance.Session) {
 			&auditpb.GetEntryRequest{EntryId: neighbor.GetId()})
 
 		// Absent rather than refused, which is what it is from here: a refusal
-		// would confirm the identifier names something.
-		test.ErrorIs(t, err, audit.ErrEntryNotFound,
-			test.Sprint("another session's entry was readable by identifier"))
+		// would confirm the identifier names something. The code, not the
+		// sentinel: a deployment may strip the encoded chain a Go client
+		// decodes audit.ErrEntryNotFound from, and NotFound is what every
+		// client reads.
+		must.Error(t, err, must.Sprint("another session's entry was readable by identifier"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("a listing holds this session's entries and not a neighbor's", func(t *testing.T) {
