@@ -321,6 +321,15 @@ up and padded by one more millisecond, so it never ends before it was asked to,
 and the recovery grace and the retention window are rounded up, so nothing is
 re-offered or reaped early. Postgres and MySQL keep the microseconds.
 
+A listing's created and updated bounds are the exception, because they are
+instants the caller supplies rather than durations the store derives, and
+SQLite's generated querier binds an instant to the whole second. A bound
+therefore lands up to a second early on SQLite: a created-before bound leaves
+out the rows written earlier in its own second, and a created-after bound keeps
+them. Nothing the store decides reads a listing, so the cost is a sub-second
+edge on a filter, and a caller that needs the edge exact filters the page it
+gets back.
+
 The watch path's push is the one feature that is not on every engine, and it is
 an optimization over a poll that is — see "Watching: snapshots, not deltas"
 above.

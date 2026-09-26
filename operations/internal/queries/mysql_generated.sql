@@ -240,8 +240,7 @@ INSERT INTO operations (
 	sqlc.arg(count_label),
 	'',
 	''
-)
-ON DUPLICATE KEY UPDATE id = id;
+);
 
 -- name: BeginOperation :execrows
 UPDATE operations SET

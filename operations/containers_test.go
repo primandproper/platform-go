@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -240,6 +241,33 @@ func TestOperations_MySQL(T *testing.T) {
 	T.Parallel()
 
 	runOperationsSuiteOn(T, dialect.MySQL)
+}
+
+// TestOperations_MySQLClientFoundRows is the MySQL suite over a connection that
+// counts rows matched rather than rows changed. The generated queriers offer
+// clientFoundRows=true as a consumer's remedy for MySQL's changed-row count, so
+// a store whose answers hang on that count is wrong for whoever takes the
+// advice. Every guarded write here must answer the same under either count.
+func TestOperations_MySQLClientFoundRows(T *testing.T) {
+	T.Parallel()
+
+	mysqltest.Run(T, func(ctx context.Context, my *mysqltest.Instance) {
+		separator := "?"
+		if strings.Contains(my.ConnectionString, "?") {
+			separator = "&"
+		}
+
+		client, err := mysql.NewDatabaseClient(ctx,
+			&testClientConfig{connectionString: my.ConnectionString + separator + "clientFoundRows=true"})
+		must.NoError(T, err)
+		T.Cleanup(func() { _ = client.Close() })
+
+		createTables(T, client, DefaultTablePrefix)
+		createTables(T, client, reapPrefix)
+		createTables(T, client, runLoopPrefix)
+
+		runOperationsSuite(T, client)
+	})
 }
 
 func TestOperations_SQLite(T *testing.T) {
@@ -786,6 +814,24 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			})
 			test.ErrorIs(t, err, ErrDuplicateOperation, test.Sprintf("scope %s", scope))
 		}
+
+		// The collision leaves the caller's transaction standing: a caller
+		// who derived the id and meets the operation already there keeps every
+		// write it made beside the insert, the reason the create never aborts
+		// a transaction on any engine.
+		beside := &Operation{ID: fmt.Sprintf("beside-%d", queueCounter.Add(1)), Kind: "readback"}
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, insertErr := h.store.Insert(t.Context(), tx, owner, &Operation{ID: started.ID, Kind: "readback"})
+			test.ErrorIs(t, insertErr, ErrDuplicateOperation)
+
+			_, insertErr = h.store.Insert(t.Context(), tx, owner, beside)
+
+			return insertErr
+		}))
+
+		_, err = h.store.Get(t.Context(), client.Reader(), owner, beside.ID)
+		must.NoError(t, err)
 
 		first, err := h.store.Begin(t.Context(), started.ID, 1, time.Minute)
 		must.NoError(t, err)

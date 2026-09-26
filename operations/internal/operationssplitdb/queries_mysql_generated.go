@@ -172,8 +172,7 @@ const insertOperationMySQL = `INSERT INTO {{prefix}}operations (
 	?,
 	'',
 	''
-)
-ON DUPLICATE KEY UPDATE id = id`
+)`
 
 const listOperationsMySQL = `SELECT
 	{{prefix}}operations.id,

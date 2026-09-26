@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"slices"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 )
 
 // This file is the store on MySQL and SQLite: the statements of
@@ -42,12 +45,18 @@ import (
 // caller commits, so a read on any other connection would not find it.
 func (s *SQLStore) insertSplit(ctx context.Context, tx database.Tx, op *Operation) (*operationsdb.GetOperationRow, error) {
 	created, err := s.split.InsertOperation(ctx, tx, operationssplitdb.InsertOperationParams(createParams(op)))
+	if isDuplicateKey(err) {
+		// The id was taken, on MySQL, which has no conflict clause whose count
+		// does not depend on the connection — see the corpus. The failed
+		// statement is rolled back alone and the caller's transaction stands.
+		return nil, sql.ErrNoRows
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	// The id was taken. On MySQL the conflict branch assigns the key to itself,
-	// which changes nothing and so counts nothing — see the corpus.
+	// The id was taken, on SQLite, whose conflict clause wrote nothing.
 	if created == 0 {
 		return nil, sql.ErrNoRows
 	}
@@ -63,6 +72,17 @@ func (s *SQLStore) insertSplit(ctx context.Context, tx database.Tx, op *Operatio
 	shared := operationsdb.GetOperationRow(row)
 
 	return &shared, nil
+}
+
+// mysqlDuplicateKey is ER_DUP_ENTRY, the error MySQL raises for a write that
+// would repeat a unique key.
+const mysqlDuplicateKey = 1062
+
+// isDuplicateKey reports whether err is MySQL refusing a repeated unique key.
+func isDuplicateKey(err error) bool {
+	var myErr *mysqldriver.MySQLError
+
+	return stderrors.As(err, &myErr) && myErr.Number == mysqlDuplicateKey
 }
 
 // beginSplit is Begin's statement pair: the guarded claim, and the read of the

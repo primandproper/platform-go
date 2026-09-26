@@ -204,21 +204,22 @@ func TestRenderSplit_CancelAssignsTheStateLast(T *testing.T) {
 
 // TestRenderSplit_TheCreateDoesNotIgnoreEverything. MySQL's INSERT IGNORE is
 // wider than a duplicate key — it truncates an over-long value and reports
-// success — so the create's "do nothing" is a conflict clause on both engines.
+// success — and its no-op conflict clause is counted differently under
+// clientFoundRows, so MySQL's create carries no conflict handling at all and
+// the store reads the duplicate-key error. SQLite's count does not depend on
+// the connection, so it keeps the Postgres create's "do nothing".
 func TestRenderSplit_TheCreateDoesNotIgnoreEverything(T *testing.T) {
 	T.Parallel()
-
-	want := map[dialect.Dialect]string{
-		dialect.MySQL:  "ON DUPLICATE KEY UPDATE id = id",
-		dialect.SQLite: "ON CONFLICT (id) DO NOTHING",
-	}
 
 	for _, d := range splitDialects {
 		insert := splitStatement(T, d, "InsertOperation")
 
 		test.StrNotContains(T, insert, "IGNORE", test.Sprintf("dialect %s", d))
-		test.StrContains(T, insert, want[d], test.Sprintf("dialect %s", d))
+		test.StrNotContains(T, insert, "DUPLICATE KEY", test.Sprintf("dialect %s", d))
 	}
+
+	test.StrContains(T, splitStatement(T, dialect.SQLite, "InsertOperation"), "ON CONFLICT (id) DO NOTHING")
+	test.StrNotContains(T, splitStatement(T, dialect.MySQL, "InsertOperation"), "ON CONFLICT")
 }
 
 // TestRenderSplit_TheListingBindsTheWholeStateDomain holds the arity to the

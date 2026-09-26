@@ -180,21 +180,25 @@ func stateFilter() string {
 	return fmt.Sprintf("%s IN (%s)", querygen.Qualify(OperationsTable, StateColumn), strings.Join(bound, ", "))
 }
 
-// insertOperation records a new operation, and changes nothing when the id is
-// already taken — the Postgres create's decision, and its reason: a raised
-// unique violation would abort the caller's transaction, so a caller writing
-// under an id they derived would lose every write they had made beside it.
+// insertOperation records a new operation. It reports a row count rather than
+// the row, and the row itself is read back on the same transaction, which is
+// the only place it can be read from while that transaction is open.
 //
-// It reports a row count rather than the row. One row is a new operation, and
-// none is the collision the store reports as ErrDuplicateOperation; the row
-// itself is read back on the same transaction, which is the only place it can be
-// read from while that transaction is open.
+// On SQLite it changes nothing when the id is already taken — the Postgres
+// create's decision, and its reason: a raised unique violation would abort the
+// caller's transaction, so a caller writing under an id they derived would lose
+// every write they had made beside it. One row is a new operation, and none is
+// the collision the store reports as ErrDuplicateOperation.
 //
-// MySQL spells "do nothing" as an assignment of the key to itself rather than as
-// INSERT IGNORE, because IGNORE is wider than a duplicate key: it turns a value
-// too long for its column into a truncated one and reports success. The
-// assignment changes nothing, so MySQL — which counts rows changed — reports
-// none, as the other two engines do.
+// On MySQL the collision is the duplicate-key error, which the store reads as
+// that same sentinel, and the reason above does not hold there: InnoDB rolls
+// back the failed statement and leaves the transaction standing. MySQL has no
+// "do nothing" whose count does not depend on the connection. INSERT IGNORE is
+// wider than a duplicate key — it turns a value too long for its column into a
+// truncated one and reports success — and an assignment of the key to itself
+// changes nothing, which MySQL counts as zero rows by default and as one under
+// clientFoundRows=true, the matched-row count the generated queriers offer a
+// consumer. An error is the same under either.
 //
 // The three text columns the insert does not otherwise supply are bound as
 // empty literals, because MySQL cannot give a TEXT column a DEFAULT. Written on
@@ -203,17 +207,16 @@ func (s split) insertOperation() string {
 	columns := append(InsertColumns(), "result_uri", "error_code")
 	bindings := append(insertBindings(), "''", "''")
 
-	conflict := fmt.Sprintf("ON CONFLICT (%s) DO NOTHING", querygen.IDColumn)
+	conflict := fmt.Sprintf("\nON CONFLICT (%s) DO NOTHING", querygen.IDColumn)
 	if s.d == dialect.MySQL {
-		conflict = fmt.Sprintf("ON DUPLICATE KEY UPDATE %[1]s = %[1]s", querygen.IDColumn)
+		conflict = ""
 	}
 
 	return fmt.Sprintf(`INSERT INTO %s (
 	%s
 ) VALUES (
 	%s
-)
-%s`,
+)%s`,
 		OperationsTable,
 		strings.Join(columns, ",\n\t"),
 		strings.Join(bindings, ",\n\t"),
