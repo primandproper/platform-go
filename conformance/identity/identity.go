@@ -12,10 +12,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "identity"
+
 // Suite is the identity surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "identity",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.Identity != nil },
 		Run:     run,
 	}
@@ -108,7 +112,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 		mine := s.Subject(t)
 
-		marker, err := credentialed(mine.Context(t.Context()), mine.Scope, mine.UserID)
+		marker, err := credentialed(mine.Context(t.Context()), mine.ScopeFor(surface), mine.UserID)
 		must.NoError(t, err, must.Sprint("giving this caller a stored secret"))
 		must.StrNotEqFold(t, "", marker,
 			must.Sprint("the credentialed action reported no fragment to search for, so this assertion would pass against any response"))
@@ -134,10 +138,8 @@ func run(t *testing.T, s *conformance.Session) {
 func twoDirectories(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
+	mine, theirs = s.TwoTenants(t, surface)
 
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
 	must.StrNotEqFold(t, mine.UserID, theirs.UserID,
 		must.Sprint("the subject minted two callers as one user"))
 

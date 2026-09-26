@@ -9,10 +9,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "oauth2clients"
+
 // Suite is the OAuth2 client registry surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "oauth2clients",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.OAuth2Clients != nil },
 		Run:     run,
 	}
@@ -41,10 +45,7 @@ const redirect = "https://example.test/callback"
 func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -54,7 +55,7 @@ func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conforma
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))

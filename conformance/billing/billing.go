@@ -12,14 +12,18 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// Suite is the billing surface's behavioral assertions.
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "billing"
+
 // currencyUSD is the currency every product here is priced in. Which one is
 // immaterial; that it is one the surface accepts is what matters.
 const currencyUSD = "USD"
 
+// Suite is the billing surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "billing",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.Billing != nil },
 		Run:     run,
 	}
@@ -51,10 +55,7 @@ func run(t *testing.T, s *conformance.Session) {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -65,7 +66,7 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsAccount(t, other)
 
 	must.StrNotEqFold(t, of.AccountID, other.AccountID,
@@ -93,7 +94,7 @@ func subscribed(t *testing.T, s *conformance.Session, sub *conformance.Subject) 
 	s.NeedsAction(t, subscribe != nil, "subscribed")
 	needsAccount(t, sub)
 
-	subscription, err := subscribe(t.Context(), sub.Scope, sub.AccountID)
+	subscription, err := subscribe(t.Context(), sub.ScopeFor(surface), sub.AccountID)
 	must.NoError(t, err, must.Sprint("making a paid subscription exist"))
 	must.NotNil(t, subscription, must.Sprint("the subscribed action reported no subscription"))
 	must.StrNotEqFold(t, "", subscription.ID, must.Sprint("the subscribed action reported a subscription with no identifier"))

@@ -164,10 +164,7 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -179,7 +176,7 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 
 	needsUser(t, of)
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,

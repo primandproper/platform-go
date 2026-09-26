@@ -22,10 +22,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "signin"
+
 // Suite is the sign-in surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "signin",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.SignIn != nil },
 		Run:     run,
 	}
@@ -142,7 +146,7 @@ func anonymous(t *testing.T, s *conformance.Session) signinpb.SignInServiceClien
 func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
 	t.Helper()
 
-	return s.Subject(t, conformance.InTenant(tenancy.Global()))
+	return s.Subject(t, conformance.InTenant(surface, tenancy.Global()))
 }
 
 // registrant is somebody registered over the wire: what they would type to sign
@@ -302,7 +306,7 @@ func passworded(t *testing.T, s *conformance.Session) (*conformance.Subject, *id
 		&passwordresetpb.RequestPasswordResetRequest{EmailAddress: user.GetEmailAddress()})
 	must.NoError(t, err, must.Sprint("requesting a reset link"))
 
-	secret, err := read(t.Context(), sub.Scope, user.GetEmailAddress())
+	secret, err := read(t.Context(), sub.ScopeFor(surface), user.GetEmailAddress())
 	must.NoError(t, err, must.Sprint("reading the reset link the deployment mailed"))
 
 	_, err = sub.Surfaces.PasswordReset.CompletePasswordReset(t.Context(),

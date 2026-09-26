@@ -16,10 +16,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "dataprivacy"
+
 // Suite is the privacy-request surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name: "dataprivacy",
+		Name: surface,
 
 		// The HTTP surfaces are not in Surfaces; whether this one is served is
 		// read off the probe caller's HTTP inside, and skipped with the reason.
@@ -127,7 +131,7 @@ func run(t *testing.T, s *conformance.Session) {
 		// A colleague shares the tenant but not the person, and the operation
 		// is the person's: following somebody's export is not something being
 		// in their tenant grants.
-		colleague := s.Subject(t, conformance.InTenant(mine.Scope))
+		colleague := s.Subject(t, conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		status, _ = call(t, colleague, http.MethodGet, path, nil)
 		test.EqOp(t, http.StatusNotFound, status,
@@ -150,10 +154,9 @@ func run(t *testing.T, s *conformance.Session) {
 func twoPeople(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
+	mine, theirs = s.TwoTenants(t, surface)
 
 	must.StrNotEqFold(t, mine.UserID, theirs.UserID, must.Sprint("the subject minted two callers as one user"))
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(), must.Sprint("the subject minted two callers in one tenant"))
 
 	return mine, theirs
 }

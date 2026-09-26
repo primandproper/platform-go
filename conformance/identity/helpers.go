@@ -21,7 +21,7 @@ const roleSupport = "support"
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
@@ -82,7 +82,7 @@ func tokenFor(t *testing.T, s *conformance.Session, sender *conformance.Subject,
 	delivered := s.Seams().Actions.InvitationToken
 	s.NeedsAction(t, delivered != nil, "invitation token")
 
-	token, err := delivered(t.Context(), sender.Scope, invitationID)
+	token, err := delivered(t.Context(), sender.ScopeFor(surface), invitationID)
 	must.NoError(t, err, must.Sprint("reading the token the deployment delivered"))
 	must.StrNotEqFold(t, "", token, must.Sprint("the deployment delivered an empty token"))
 

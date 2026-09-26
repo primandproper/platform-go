@@ -11,6 +11,10 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "issuereports"
+
 // The words every report here is filed with. What a report says is immaterial
 // to every promise below except the revision's, which changes them.
 const (
@@ -22,7 +26,7 @@ const (
 // Suite is the report queue's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "issuereports",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.IssueReports != nil },
 		Run:     run,
 	}
@@ -58,11 +62,8 @@ func run(t *testing.T, s *conformance.Session) {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
+	mine, theirs = s.TwoTenants(t, surface)
 	needsUser(t, mine)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
 
 	return mine, theirs
 }
@@ -74,7 +75,7 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 
 	needsUser(t, of)
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
