@@ -19,9 +19,9 @@ a seam for it would be a backdoor with a nicer name. What a client cannot
 assume is that it is allowed to: defining a setting is an administrator's
 decision, and a deployment enforcing method grants refuses an ordinary caller.
 So the catalog is written by an administrator minted into the caller's tenant
-where the subject has one, by the caller itself where it does not, and an
-assertion whose definition is refused skips with the reason printed rather than
-failing a deployment for being right. Every name is minted per test, because a
+where the subject has one, by an ordinary caller in that tenant where it does
+not, and an assertion whose definition is refused skips with the reason printed
+rather than failing a deployment for being right. Every name is minted per test, because a
 deployment declares its own catalog at boot and a suite asserting against a
 fixed name would be asserting against theirs.
 
@@ -45,5 +45,14 @@ settings through the same client before proving it cannot reach a neighbor's,
 and each refusal of a colleague's settings is preceded by the same call against
 the caller's own. A surface that refused everybody, or a scope that resolved to
 nothing, would otherwise pass every one of them.
+
+# Who a call is made as
+
+CreateDefinition, UpdateDefinition, ArchiveDefinition and
+ListValuesForDefinition are an operator's, the last because it answers every
+subject's value for one setting across the tenant. They are made by operators,
+as conformance.OperatorMethods describes. Reading the catalog and reading,
+writing and resolving a subject's own values are made as an ordinary caller,
+and each is a promise: the settings screen is a person acting on themselves.
 */
 package settings

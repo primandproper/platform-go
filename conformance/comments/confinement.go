@@ -93,9 +93,10 @@ func confinement(t *testing.T, s *conformance.Session) {
 		test.SliceContains(t, own, myRoot.GetId())
 		test.SliceNotContains(t, own, theirRoot.GetId())
 
-		// Last, because it is the one read a deployment may withhold from an
-		// ordinary caller, and its skip would skip everything after it.
-		got = byTargetType(t, mine, about.GetType())
+		// Last, because it is the one read a deployment reserves to an
+		// operator, and a subject that mints none may skip it, which would
+		// skip everything after it.
+		got = byTargetType(t, s.OperatorIn(t, mine.Scope), about.GetType())
 		test.SliceContains(t, got, myReply.GetId(), test.Sprint("this tenant's own reply was missing from the moderation read"))
 		test.SliceNotContains(t, got, theirRoot.GetId(), test.Sprint("a neighboring tenant's root reached the moderation read"))
 		test.SliceNotContains(t, got, theirReply.GetId(), test.Sprint("a neighboring tenant's reply reached the moderation read"))

@@ -45,7 +45,10 @@ func accounts(t *testing.T, s *conformance.Session) {
 		other := colleague(t, s, mine)
 		needsAccount(t, other)
 
-		page, err := mine.Surfaces.Identity.ListAccounts(mine.Context(t.Context()), &identitypb.ListAccountsRequest{})
+		// Every account in the directory is an operator's read.
+		operator := s.OperatorIn(t, mine.Scope)
+
+		page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()), &identitypb.ListAccountsRequest{})
 		must.NoError(t, err)
 
 		ids := accountIDs(page.GetResults())

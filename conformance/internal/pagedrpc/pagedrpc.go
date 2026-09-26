@@ -25,6 +25,8 @@
 package pagedrpc
 
 import (
+	"slices"
+
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
@@ -114,6 +116,20 @@ func All() []RPC {
 	}
 
 	return out
+}
+
+// Caller is who makes this read: operator where it is one of
+// conformance.OperatorMethods, and ordinary otherwise.
+//
+// Both suites reading this package assert what the handler answers, and a
+// read made by a caller the deployment's interceptor refuses is answered by
+// the interceptor instead.
+func (r RPC) Caller(ordinary, operator *conformance.Subject) *conformance.Subject {
+	if slices.Contains(conformance.OperatorMethods(), r.FullName) {
+		return operator
+	}
+
+	return ordinary
 }
 
 func (r RPC) mounted(surfaces *conformance.Surfaces) bool {

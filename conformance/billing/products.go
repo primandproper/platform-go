@@ -22,7 +22,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a product is stocked in the caller's catalog and nobody else's", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoOperators(t, s)
 
 		created := stock(t, mine)
 		test.NotEqOp(t, "", created.GetId())
@@ -56,9 +56,13 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a catalog listing pages the caller's tenant only", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
-		needsAccount(t, mine)
-		other := colleague(t, s, mine)
+		mine, theirs := twoOperators(t, s)
+
+		// A second operator in the tenant, stocking under a user of its own.
+		other := s.OperatorIn(t, mine.Scope)
+		if other.UserID == mine.UserID {
+			t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a catalog being the tenant's rather than the stocker's cannot be observed")
+		}
 
 		own, shared, foreign := stock(t, mine), stock(t, other), stock(t, theirs)
 
@@ -76,7 +80,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a product with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 
 		_, err := mine.Surfaces.Billing.CreateProduct(mine.Context(t.Context()), &billingpb.CreateProductRequest{})
 		must.Error(t, err)
@@ -86,7 +90,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a product that names no kind is refused rather than given one", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 
 		// A converter that picked a default kind would have decided what this
 		// deployment sells.
@@ -102,7 +106,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a currency that is not three characters is refused in words the caller can act on", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 
 		input := productInput()
 		input.Currency = "dollars"
@@ -120,7 +124,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a provider identifier already claimed is a conflict", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 		ctx := mine.Context(t.Context())
 		input := productInput()
 
@@ -170,7 +174,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("an absent product is reported as absent", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 
 		_, err := mine.Surfaces.Billing.GetProduct(mine.Context(t.Context()),
 			&billingpb.GetProductRequest{ProductId: identifiers.New()})
@@ -181,7 +185,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a revision answers with the row as stored rather than the request echoed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 		ctx := mine.Context(t.Context())
 		product := stock(t, mine)
 
@@ -216,7 +220,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a revision with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 		product := stock(t, mine)
 
 		_, err := mine.Surfaces.Billing.UpdateProduct(mine.Context(t.Context()),
@@ -228,7 +232,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a revision of a neighboring tenant's product is absent and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoOperators(t, s)
 		product := stock(t, mine)
 
 		_, err := theirs.Surfaces.Billing.UpdateProduct(theirs.Context(t.Context()), &billingpb.UpdateProductRequest{
@@ -255,7 +259,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a product takes it off the shelf", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Operator(t)
 		ctx := mine.Context(t.Context())
 		product := stock(t, mine)
 
@@ -275,7 +279,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a neighboring tenant's product is absent and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoOperators(t, s)
 		product := stock(t, mine)
 
 		_, err := theirs.Surfaces.Billing.ArchiveProduct(theirs.Context(t.Context()),

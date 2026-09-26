@@ -23,7 +23,7 @@ func reach(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's registration is readable and can be withdrawn", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Operator(t)
 		other := colleague(t, s, caller)
 		theirs := register(t, other).GetClient().GetId()
 		ctx := caller.Context(t.Context())

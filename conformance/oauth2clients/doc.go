@@ -31,5 +31,15 @@ self-service half that mints the other kind has no RPC here.
 Each confinement assertion proves the caller reaches its own registration
 through the same client before proving it cannot reach a neighbor's. "Absent" is
 also what a deployment that resolves every caller to the wrong registry answers.
+
+# Who a call is made as
+
+All four RPCs are an operator's — CreateOAuth2Client, GetOAuth2Client,
+ListOAuth2Clients and ArchiveOAuth2Client — because the registry is the
+deployment's list of who may ask it for tokens. They are made by operators, as
+conformance.OperatorMethods describes; a registry's confinement is asserted
+between an operator in each of two tenants, and its being the tenant's rather
+than the registrar's between two operators in one, which a subject minting a
+single administrator per tenant cannot show and skips.
 */
 package oauth2clients

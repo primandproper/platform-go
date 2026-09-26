@@ -18,7 +18,7 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("a registration minted here belongs to nobody, not to the caller", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Operator(t)
 		issued := register(t, caller)
 
 		test.EqOp(t, "", issued.GetClient().GetBelongsToUser(),
@@ -35,7 +35,7 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("the secret is on the wire once, at creation, and never on a read", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Operator(t)
 		issued := register(t, caller)
 		secret := issued.GetClientSecret()
 
@@ -64,7 +64,7 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("a create with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Operator(t)
 
 		_, err := caller.Surfaces.OAuth2Clients.CreateOAuth2Client(caller.Context(t.Context()),
 			&oauth2clientspb.CreateOAuth2ClientRequest{})

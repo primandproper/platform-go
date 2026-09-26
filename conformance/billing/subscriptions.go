@@ -127,7 +127,11 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		other := colleague(t, s, mine)
 		own, shared, foreign := subscribed(t, s, mine), subscribed(t, s, other), subscribed(t, s, theirs)
 
-		page, err := mine.Surfaces.Billing.ListSubscriptions(mine.Context(t.Context()),
+		// The scope-wide listing is an operator's; this one holds none of the
+		// three subscriptions it is asked about.
+		operator := s.OperatorIn(t, mine.Scope)
+
+		page, err := operator.Surfaces.Billing.ListSubscriptions(operator.Context(t.Context()),
 			&billingpb.ListSubscriptionsRequest{})
 		must.NoError(t, err)
 
@@ -146,8 +150,8 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a subscription asks about no account, and withdraws it", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
-		holder := colleague(t, s, operator)
+		holder := s.Subject(t)
+		operator := s.OperatorIn(t, holder.Scope)
 		theirs := subscribed(t, s, holder)
 		holderCtx := holder.Context(t.Context())
 
@@ -169,7 +173,11 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoTenants(t, s)
 		own := subscribed(t, s, mine)
 
-		_, err := theirs.Surfaces.Billing.ArchiveSubscription(theirs.Context(t.Context()),
+		// Archiving is an operator's, so it is the neighboring tenant's
+		// operator who is refused.
+		neighbor := s.OperatorIn(t, theirs.Scope)
+
+		_, err := neighbor.Surfaces.Billing.ArchiveSubscription(neighbor.Context(t.Context()),
 			&billingpb.ArchiveSubscriptionRequest{SubscriptionId: own})
 		must.Error(t, err, must.Sprint("a neighboring tenant archived this caller's subscription"))
 		test.EqOp(t, codes.NotFound, status.Code(err))

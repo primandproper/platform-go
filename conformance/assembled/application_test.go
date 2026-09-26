@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
+	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -34,6 +35,9 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // registerApplication is what a consumer's main registers beyond its config:
@@ -215,13 +219,14 @@ func (standing) AuthorizeWithdrawal(context.Context, callers.Principal, tenancy.
 // handler: every archive grant, which decides whether include_archived is
 // honored, and settings' reserved-write grant.
 //
-// The harness installs no method enforcement — service mounts no
-// authorization interceptor and a consumer's main adds its own — so these are
-// the only grants a request here is ever asked about. That is why they are the
-// line drawn: a member holds every other permission the surfaces' Permissions
-// maps name, the way a consumer's self-service role would, and none of the ones
-// that would make the refused half of each rule and the granted half
-// indistinguishable. A consumer whose members dismiss their own notifications
+// The harness installs one piece of method enforcement, reserveOperatorCalls,
+// and it reads conformance's roster rather than these grants — service mounts
+// no authorization interceptor and a consumer's main adds its own — so these
+// are the only grants a request here is ever asked about inside a handler.
+// That is why they are the line drawn: a member holds every other permission
+// the surfaces' Permissions maps name, the way a consumer's self-service role
+// would, and none of the ones that would make the refused half of each rule
+// and the granted half indistinguishable. A consumer whose members dismiss their own notifications
 // and so hold notifications' archive grant is right to, and sees their own
 // dismissed rows; the suites assert only what an administrator receives.
 var administrative = []authorization.Permission{
@@ -290,4 +295,41 @@ func grantsOf(ctx context.Context) (authorization.Grants, bool) {
 	}
 
 	return authorization.NewGrants(memberRole), true
+}
+
+// operatorMethods is conformance.OperatorMethods as a set, read once.
+var operatorMethods = func() map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, method := range conformance.OperatorMethods() {
+		out[method] = struct{}{}
+	}
+
+	return out
+}()
+
+// reserveOperatorCalls refuses an operator-grade call to a caller who is not an
+// administrator, the way a consumer's authorization interceptor refuses a call
+// its caller's role does not cover.
+//
+// It is what keeps the suites honest about who they make those calls as. With
+// no enforcement at all, a suite that set up a waitlist or a product as an
+// ordinary caller passed here and failed in every deployment that reserves the
+// catalog to a service role; with this, it fails here first. A request with
+// nobody on it is left to the handler, which refuses it on its own terms and
+// is what the anonymous suite asserts.
+func reserveOperatorCalls(
+	ctx context.Context,
+	req any,
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (any, error) {
+	if _, reserved := operatorMethods[info.FullMethod]; !reserved {
+		return handler(ctx, req)
+	}
+
+	if principal, ok := ctx.Value(principalKey{}).(*testPrincipal); ok && !principal.admin {
+		return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
+	}
+
+	return handler(ctx, req)
 }

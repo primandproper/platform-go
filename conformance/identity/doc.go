@@ -38,5 +38,22 @@ assertion on the strength of reaching nothing at all.
 That is not hypothetical. It is what the first draft of the audit suite did,
 and a deliberately broken resolver passed two of its five assertions before the
 controls went in.
+
+# Who a call is made as
+
+The directory is administered, and a deployment reserves administering it to a
+service role. Register, GetUser, ListUsers, SearchUsersByUsername, ListAccounts,
+ArchiveUser, UpdateUserAccountStatus, SetUserServiceRoles and
+SetUserRequiresPasswordChange are therefore made by operators, as
+conformance.OperatorMethods describes, and the directory's confinement is
+asserted between an operator in each of two tenants. Register here is the
+administered door; the one a person registers themselves through is signin's.
+
+The rest is made as an ordinary caller, and each is a promise: a signed-in
+caller reads their own principal through GetPrincipal — which is how every
+suite here learns a caller's address, rather than through GetUser — saves their
+own profile and agreements, reads the accounts they belong to and their
+rosters, and administers an account they own: its members, its invitations and
+its ownership.
 */
 package identity

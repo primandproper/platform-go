@@ -35,9 +35,12 @@ func run(t *testing.T, s *conformance.Session) {
 // the registry is not also an assertion about URI validation.
 const redirect = "https://example.test/callback"
 
-// twoRegistries mints two callers and refuses to proceed if the subject put
-// them in one tenant, which would make every confinement assertion here
-// compare a registry with itself.
+// twoRegistries mints an operator in each of two tenants, and refuses to
+// proceed if the subject put them in one, which would make every confinement
+// assertion here compare a registry with itself.
+//
+// Operators, because every call on this surface is one: the registry is the
+// deployment's list of who may ask it for tokens.
 func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
@@ -46,18 +49,22 @@ func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conforma
 	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
 		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
 
-	return mine, theirs
+	return s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
 }
 
-// colleague mints a second caller in of's registry. A subject that cannot put
-// two callers in one tenant declines, and the assertion that asked skips.
+// colleague mints a second operator in of's registry. A subject that cannot
+// put two callers in one tenant declines, and one that answers the same
+// administrator for every request in a tenant cannot show a registry being the
+// tenant's rather than the registrar's; the assertion that asked skips either
+// way.
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.OperatorIn(t, of.Scope)
 
-	must.StrNotEqFold(t, of.UserID, other.UserID,
-		must.Sprint("the subject minted a colleague as the same user"))
+	if of.UserID == other.UserID {
+		t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a colleague's registration cannot be told from the caller's own")
+	}
 
 	return other
 }

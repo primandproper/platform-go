@@ -6,7 +6,6 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
-	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test/must"
@@ -61,34 +60,16 @@ func names() catalog {
 	}
 }
 
-// operator is whoever writes the catalog in of's tenant.
-//
-// The catalog half of this surface is an administrator's — defining a setting
-// is a deployment's decision in the sense a database column is — so where the
-// subject can mint an administrator into the tenant, that is who defines. Where
-// it cannot, the caller itself is asked, which a subject enforcing no method
-// grants answers by letting its ordinary caller define. A deployment that
-// enforces them and mints no administrator is caught by [define], which skips
-// rather than asserting against a refusal the deployment was right to make.
-func operator(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
-	t.Helper()
-
-	admin, err := s.Seams().NewSubject(t.Context(), conformance.AsAdmin(), conformance.InTenant(of.Scope))
-
-	switch {
-	case platformerrors.Is(err, conformance.ErrSubjectUnsupported):
-		return of
-	case err != nil:
-		t.Fatalf("conformance: minting an administrator into a caller's tenant: %v", err)
-	case admin == nil:
-		t.Fatal("conformance: the subject factory returned no administrator and no error")
-	}
-
-	return admin
-}
-
 // define adds a setting to op's catalog through the surface, skipping where the
 // deployment does not let op do that.
+//
+// The catalog half of this surface is an operator's — defining a setting is a
+// deployment's decision in the sense a database column is — so op is minted by
+// Session.Operator or Session.OperatorIn. Where the subject mints no
+// administrator, those answer an ordinary caller, which a subject enforcing no
+// method grants lets define; a deployment that enforces them and mints no
+// administrator is caught here, and skips rather than asserting against a
+// refusal the deployment was right to make.
 func define(t *testing.T, op *conformance.Subject, input *settingspb.SettingDefinitionInput) *settingspb.SettingDefinition {
 	t.Helper()
 
@@ -144,7 +125,7 @@ func seeded(t *testing.T, s *conformance.Session) (*conformance.Subject, catalog
 	needsUser(t, caller)
 
 	c := names()
-	defineCatalog(t, operator(t, s, caller), &c)
+	defineCatalog(t, s.OperatorIn(t, caller.Scope), &c)
 
 	return caller, c
 }

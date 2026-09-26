@@ -30,7 +30,7 @@ func reserved(t *testing.T, s *conformance.Session) {
 		caller := s.Subject(t)
 		needsUser(t, caller)
 
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope)
 		reservedName, openName := "conformance.reserved."+identifiers.New(), "conformance.open."+identifiers.New()
 
 		define(t, op, &settingspb.SettingDefinitionInput{

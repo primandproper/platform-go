@@ -63,6 +63,32 @@ Seeds is a row this subject cannot make, and the assertions that need one skip
 with the reason named. Nothing here degrades quietly: a skip prints what was
 missing, because a suite that silently asserted nothing is worse than no suite.
 
+# Who a call is made as
+
+Most calls are made as an ordinary caller: somebody signed in, acting in their
+own tenant. Some are not. Stocking a catalog, reading the directory, verifying
+a chain and deciding whose turn it is on a waitlist act on the deployment rather
+than on the caller's own rows, and a deployment reserves them to a service role,
+refusing everybody else in its authorization interceptor before a handler runs.
+OperatorMethods names those calls, and the suites make them through
+Session.Operator and Session.OperatorIn: an administrator where the subject
+mints one, and an ordinary caller where it declines — which a subject enforcing
+no method grants answers exactly as it would an administrator. The same goes for
+an assertion that a malformed request is refused: it is made by a caller the
+method admits, so the code asserted is the handler's and not the interceptor's.
+
+The assembled subject refuses every one of OperatorMethods to a caller who is
+not an administrator, which is what keeps that honest. A suite that makes one
+as an ordinary caller fails in this module rather than in a consumer's
+deployment.
+
+The converse is a promise. What a suite makes as an ordinary caller it relies on
+every signed-in caller being allowed — reading their own principal, joining a
+waitlist, reading their own account's subscriptions — and each suite's
+documentation names the ones it relies on, so a deployment that refuses one is
+told which promise it broke rather than meeting the refusal in some other
+assertion's setup.
+
 # Isolation, and why no assertion may count
 
 direct gets a database of its own. deployed gets whatever the consumer is

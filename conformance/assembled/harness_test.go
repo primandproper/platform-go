@@ -202,6 +202,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
+		reserveOperatorCalls,
 	})
 	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
 	// The HTTP half of the stand-in credential, on the router before anything

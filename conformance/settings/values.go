@@ -282,7 +282,7 @@ func values(t *testing.T, s *conformance.Session) {
 			answered[value.GetDefinitionId()] = value.GetRaw()
 		}
 
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope)
 		test.EqOp(t, optionDaily, answered[byName(t, op, c.digest).GetId()])
 		test.EqOp(t, "30", answered[byName(t, op, c.retention).GetId()])
 		test.MapNotContainsKey(t, answered, byName(t, op, c.compact).GetId(),
