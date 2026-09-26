@@ -179,23 +179,23 @@ all three files say so and point at each other.
 | `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | 156 | every paged read reports the filter it applied |
 | `conformance/identity` | 49 | accounts, memberships, invitations, users |
-| `conformance/settings` | 28 | definitions, values, reserved settings, confinement |
-| `conformance/waitlists` | 39 | both audiences: the console, and the public signup page |
-| `conformance/billing` | 31 | products, subscriptions, the account rule |
-| `conformance/issuereports` | 43 | filing, lifecycle, the triage queue |
+| `conformance/settings` | 29 | definitions, values, reserved settings, confinement |
+| `conformance/waitlists` | 40 | both audiences: the console, and the public signup page |
+| `conformance/billing` | 32 | products, subscriptions, the account rule |
+| `conformance/issuereports` | 48 | filing, lifecycle, the triage queue |
 | `conformance/signin` | 31 | registration, the password and magic-link doors, refresh, sign-out |
-| `conformance/webhooks` | 28 | event types, endpoints, signing keys, subscriptions |
-| `conformance/comments` | 26 | writing, reading, authorship |
-| `conformance/notifications` | 19 | the inbox and devices |
+| `conformance/webhooks` | 29 | event types, endpoints, signing keys, subscriptions |
+| `conformance/comments` | 27 | writing, reading, authorship |
+| `conformance/notifications` | 20 | the inbox and devices |
 | `conformance/audit` | 12 | reads, confinement, paging, verification |
 | `conformance/passwordreset` | 8 | the reset flow end to end |
 | `conformance/oauth2clients` | 7 | the administered registry |
 | `conformance/dataprivacy` | 5 | privacy requests over HTTP, and the operations that fulfill them |
 | `conformance/mediaregistry` | 3 | the guarded object read: its owner, another tenant, a colleague |
 
-678 leaf assertions on each run of the assembled subject, which serves every
+689 leaf assertions on each run of the assembled subject, which serves every
 surface on Postgres, SQLite and MySQL 8 alike. Every one passes on all three,
-with nine skips on each, every skip printing its reason.
+with eight skips on each, every skip printing its reason.
 
 | subject | where | mounts |
 | --- | --- | --- |
