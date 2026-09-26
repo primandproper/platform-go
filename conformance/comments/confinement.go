@@ -22,7 +22,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		stored := say(t, mine, target(t, s), bodyRoot)
+		stored := say(t, mine, target(t, s, mine), bodyRoot)
 
 		// The positive control. Every absence below is also what a surface
 		// reaching nothing at all would answer.
@@ -55,36 +55,41 @@ func confinement(t *testing.T, s *conformance.Session) {
 			test.Sprint("a neighbor's refused archive took the comment out of its discussion"))
 	})
 
-	// Both tenants talk about the same target — the same type and the same
-	// identifier — because a target is the application's thing rather than
-	// either tenant's, and "recipe 42" can exist in both. The discussion is
-	// still two discussions.
+	// Both tenants talk about the same target where the subject's target type
+	// takes any identifier — the same type and the same identifier — because a
+	// target is the application's thing rather than either tenant's, and
+	// "recipe 42" can exist in both. The discussion is still two discussions.
+	//
+	// Where the subject brings targets into being, each tenant's is made in
+	// that tenant, since a thing made in one need not exist in the other. The
+	// listings are then asked after the neighbor's target by name, which is
+	// the same question from the side a caller can reach.
 	t.Run("a discussion's listings reach the caller's tenant only", func(t *testing.T) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		about := target(t, s)
+		myTarget, theirTarget := eachTarget(t, s, mine, theirs)
 
-		myRoot := say(t, mine, about, bodyRoot)
+		myRoot := say(t, mine, myTarget, bodyRoot)
 		myReply := reply(t, mine, myRoot.GetId(), bodyReply)
-		theirRoot := say(t, theirs, about, bodyRoot)
+		theirRoot := say(t, theirs, theirTarget, bodyRoot)
 		theirReply := reply(t, theirs, theirRoot.GetId(), bodyReply)
 
 		// Presence and absence of named comments, never a count: these
 		// listings may run against a database the suite does not own.
-		got := commentIDs(roots(t, mine, about).GetResults())
-		test.SliceContains(t, got, myRoot.GetId(), test.Sprint("this tenant's own root was missing from its discussion"))
-		test.SliceNotContains(t, got, theirRoot.GetId(), test.Sprint("a neighboring tenant's root reached this discussion"))
+		test.SliceContains(t, commentIDs(roots(t, mine, myTarget).GetResults()), myRoot.GetId(),
+			test.Sprint("this tenant's own root was missing from its discussion"))
+		test.SliceNotContains(t, commentIDs(roots(t, mine, theirTarget).GetResults()), theirRoot.GetId(),
+			test.Sprint("a neighboring tenant's root reached this discussion"))
 
 		// The mirror image, which rules out a rule favoring whichever caller
 		// was made first.
-		got = commentIDs(roots(t, theirs, about).GetResults())
-		test.SliceContains(t, got, theirRoot.GetId())
-		test.SliceNotContains(t, got, myRoot.GetId())
+		test.SliceContains(t, commentIDs(roots(t, theirs, theirTarget).GetResults()), theirRoot.GetId())
+		test.SliceNotContains(t, commentIDs(roots(t, theirs, myTarget).GetResults()), myRoot.GetId())
 
 		// The replies, asked for by naming the neighbor's root outright.
-		test.SliceContains(t, replies(t, mine, about, myRoot.GetId()), myReply.GetId())
-		test.SliceNotContains(t, replies(t, mine, about, theirRoot.GetId()), theirReply.GetId(),
+		test.SliceContains(t, replies(t, mine, myTarget, myRoot.GetId()), myReply.GetId())
+		test.SliceNotContains(t, replies(t, mine, theirTarget, theirRoot.GetId()), theirReply.GetId(),
 			test.Sprint("a neighboring tenant's reply was listed by naming its root"))
 
 		// "Your comments" is the caller's in the caller's tenant.
@@ -95,7 +100,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 
 		// Last, because it is the one read a deployment may withhold from an
 		// ordinary caller, and its skip would skip everything after it.
-		got = byTargetType(t, mine, about.GetType())
+		got := byTargetType(t, mine, myTarget.GetType())
 		test.SliceContains(t, got, myReply.GetId(), test.Sprint("this tenant's own reply was missing from the moderation read"))
 		test.SliceNotContains(t, got, theirRoot.GetId(), test.Sprint("a neighboring tenant's root reached the moderation read"))
 		test.SliceNotContains(t, got, theirReply.GetId(), test.Sprint("a neighboring tenant's reply reached the moderation read"))

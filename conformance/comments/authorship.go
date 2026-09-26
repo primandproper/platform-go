@@ -29,7 +29,7 @@ func authorship(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		other := colleague(t, s, caller)
-		about := target(t, s)
+		about := target(t, s, caller)
 
 		mine := say(t, caller, about, bodyRoot)
 		theirs := say(t, other, about, "as written")
@@ -57,7 +57,7 @@ func authorship(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		other := colleague(t, s, caller)
-		about := target(t, s)
+		about := target(t, s, caller)
 
 		mine := say(t, caller, about, bodyRoot)
 		theirs := say(t, other, about, bodyReply)
@@ -84,7 +84,7 @@ func authorship(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		other := colleague(t, s, caller)
-		say(t, other, target(t, s), bodyRoot)
+		say(t, other, target(t, s, other), bodyRoot)
 
 		// The positive control: naming themselves is answered.
 		_, err := byAuthor(t, caller, caller.UserID)
