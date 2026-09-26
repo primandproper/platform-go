@@ -17,7 +17,7 @@ import (
 )
 
 // Every example here is compiled but not run, and carries a nolint saying so.
-// A timer set is Postgres-only, so an example with an Output comment would need
+// A timer set needs a database, so an example with an Output comment would need
 // a live server to produce it — which is what the container-backed suite is for.
 // These exist to show the shape of the calls, not to verify them.
 
@@ -33,7 +33,7 @@ type trialID string
 
 // Schedule now, fire later — with the loop this package supplies.
 //
-//nolint:testableexamples // Postgres-only: producing output would need a live server.
+//nolint:testableexamples // producing output would need a live database.
 func Example() {
 	ctx := context.Background()
 
@@ -74,7 +74,7 @@ func Example() {
 // Schedule does not join the caller's transaction, so the subject commits first
 // and its timer is written afterwards.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live database, as above.
 func ExampleTimers_Schedule_afterCommit() {
 	ctx := context.Background()
 
@@ -105,7 +105,7 @@ func ExampleTimers_Schedule_afterCommit() {
 // transaction that created the subject, and the timer is written from whatever
 // consumes it.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live database, as above.
 func ExampleTimers_Schedule_outbox() {
 	ctx := context.Background()
 
@@ -142,7 +142,7 @@ func ExampleTimers_Schedule_outbox() {
 // A caller who wants its own loop uses Claim, Complete, Release, and Wait, which
 // is what the Worker is built from.
 //
-//nolint:testableexamples // Postgres-only: producing output would need a live server.
+//nolint:testableexamples // producing output would need a live database.
 func Example_ownLoop() {
 	ctx := context.Background()
 
@@ -190,7 +190,7 @@ func Example_ownLoop() {
 // Rescheduling moves a timer, in either direction, and cancelling reports
 // whether it beat the firing.
 //
-//nolint:testableexamples // Postgres-only: producing output would need a live server.
+//nolint:testableexamples // producing output would need a live database.
 func Example_rescheduling() {
 	ctx := context.Background()
 
@@ -222,7 +222,7 @@ func Example_rescheduling() {
 // so a timer scheduled thirty seconds out, landing a moment later, fires an hour
 // late. A notification is only ever the news that a row exists.
 //
-//nolint:testableexamples // Postgres-only: producing output would need a live server.
+//nolint:testableexamples // producing output would need a live database.
 func Example_wakeup() {
 	ctx := context.Background()
 

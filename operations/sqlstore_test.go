@@ -28,9 +28,23 @@ func TestNewSQLStore(T *testing.T) {
 		must.NotNil(t, store)
 
 		// The querier is built from the prefix once it is settled, so a store
-		// that reached this line has one.
+		// that reached this line has one — and exactly one.
 		must.NotNil(t, store.q)
+		test.Nil(t, store.split)
 		test.EqOp(t, DefaultTablePrefix, store.tablePrefix)
+	})
+
+	T.Run("builds the split querier against MySQL and SQLite", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
+			store, err := NewSQLStore(storeClient(d))
+			must.NoError(t, err, must.Sprintf("%s", d))
+			must.NotNil(t, store, must.Sprintf("%s", d))
+
+			test.NotNil(t, store.split, test.Sprintf("%s", d))
+			test.Nil(t, store.q, test.Sprintf("%s", d))
+		}
 	})
 
 	T.Run("refuses a nil client", func(t *testing.T) {
@@ -44,12 +58,11 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a dialect it cannot emit", func(t *testing.T) {
 		t.Parallel()
 
-		// The dialect comes off the client, so the two cannot disagree — and
-		// this package speaks one of them.
-		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite, dialect.Dialect("oracle")} {
+		// The dialect comes off the client, so the two cannot disagree.
+		for _, d := range []dialect.Dialect{dialect.Dialect("oracle"), ""} {
 			store, err := NewSQLStore(storeClient(d))
-			must.Error(t, err, must.Sprintf("%s", d))
-			test.Nil(t, store, test.Sprintf("%s", d))
+			must.ErrorIs(t, err, dialect.ErrUnsupported, must.Sprintf("%q", d))
+			test.Nil(t, store, test.Sprintf("%q", d))
 		}
 	})
 
@@ -69,6 +82,20 @@ func TestNewSQLStore(T *testing.T) {
 		store, err := NewSQLStore(storeClient(dialect.Postgres), WithStoreNotifyChannel("ops; drop"))
 		must.ErrorIs(t, err, dialect.ErrInvalidIdentifier)
 		test.Nil(t, store)
+	})
+
+	T.Run("refuses a notify channel where there is no NOTIFY", func(t *testing.T) {
+		t.Parallel()
+
+		// Refused rather than dropped: a store that ignored the channel would
+		// have its watchers polling while the deployment believed they were
+		// being woken.
+		for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
+			store, err := NewSQLStore(storeClient(d), WithStoreNotifyChannel("operations_changed"))
+			must.ErrorIs(t, err, ErrNotifyUnsupported, must.Sprintf("%s", d))
+			test.ErrorIs(t, err, dialect.ErrUnsupported, test.Sprintf("%s", d))
+			test.Nil(t, store, test.Sprintf("%s", d))
+		}
 	})
 
 	T.Run("takes no observability at all", func(t *testing.T) {

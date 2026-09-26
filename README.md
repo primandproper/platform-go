@@ -53,8 +53,7 @@ README catalogues them. [Primitives and Domains](#primitives-and-domains) is the
 rule that sorts a new package into one or the other.
 
 Implementations are listed in parentheses. Where an implementation is a SQL
-dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix and the
-reasons behind the three exceptions.
+dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 
 ### Identity & access
 | Package                            | Purpose                                                                       | Implementations                  |
@@ -68,6 +67,7 @@ reasons behind the three exceptions.
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
 | `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, and `authentication/passkeys/privacy` | postgres, mysql, sqlite          |
 | `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
+| `authentication/grants`            | The tokens a third party granted this deployment, per subject per provider: sealed at rest, refreshed by compare-and-set, revocable from either side, and `authentication/grants/privacy` | postgres, mysql, sqlite          |
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
 | `rbac`                             | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |
 | `sessions`                         | Server-side sessions over cookies                                             | cache, database (+ http)         |
@@ -99,8 +99,8 @@ reasons behind the three exceptions.
 |-----------------|-------------------------------------------------------------------------------------|----------------------------------|
 | `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite          |
 | `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres, mysql, sqlite          |
-| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                         |
-| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                |
+| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres, mysql, sqlite          |
+| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres, mysql, sqlite (+ http) |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
 | `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out         | postgres, mysql, sqlite (+ grpc) |
@@ -156,7 +156,7 @@ checking it.
 
 | What it is                                     | Packages                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
+| a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -202,20 +202,24 @@ than this paragraph: `callers` imports nothing else in this module, and the only
 gRPC surface here that still reaches `identity` is `authentication/signin/grpc`,
 which renders a signed-in user and says so where the test can read it.
 
-Six of the paths above sit under a directory this module does not own the root
-of, and every one of them is under `authentication/`. Five are a primitive with a
+Seven of the paths above sit under a directory this module does not own the root
+of, and every one of them is under `authentication/`. Six are a primitive with a
 store nested inside it — `authentication` hashes passwords and issues tokens in
 primitives-go, and `authentication/passwordreset` owns a table of them;
 `authentication/oauth2clients`, `authentication/oauth2serverstore`,
 `authentication/webauthnsessions` and `authentication/passkeys` split the same
 way, the last two against one engine: the ceremony a login runs and the
 credential that ceremony produced are two tables, and the protocol between them
-is a primitive. The sixth is `authentication/signin`, which is neither: it is a
+is a primitive. `authentication/grants` is the same split facing the other way:
+the two OAuth2 packages are this deployment as the authorization server, and it is
+this deployment as the client, holding the tokens somebody else's server issued —
+the protocol is `golang.org/x/oauth2`'s and the table is here. The seventh is
+`authentication/signin`, which is neither: it is a
 domain flow under a primitive's path, there because sign-in is what those engines
 are for and a `signin` at the root would hide that.
 
 `authentication/` is the one straddle parent that groups rather than indirects —
-six related domain packages under a name a reader wants — which is why it is the
+seven related domain packages under a name a reader wants — which is why it is the
 one that stayed. Go is content with a parent directory holding no `.go` files,
 and six of them were exactly that: `uploads/`, `authorization/`, `cryptography/`
 and `search/` each held one child and no source, as did
@@ -603,9 +607,8 @@ unreleased `main` is a rule that breaks a session.
 
 ## SQL Dialect Support
 
-`database` speaks Postgres, MySQL and SQLite, and so does almost every package
-that stores anything through it. Three do not. They are Postgres-only by
-decision rather than by omission, and this is where that decision is spoken —
+`database` speaks Postgres, MySQL and SQLite, and so does every package that
+stores anything through it. A package that narrowed would be spoken for here —
 once, before you choose packages, rather than package by package as each
 constructor refuses at wiring time.
 
@@ -638,6 +641,7 @@ here.
 | Package                               | Postgres | MySQL | SQLite |
 |---------------------------------------|----------|-------|--------|
 | `audit`                               | ✓        | ✓     | ✓      |
+| `authentication/grants`               | ✓        | ✓     | ✓      |
 | `authentication/oauth2clients`        | ✓        | ✓     | ✓      |
 | `authentication/oauth2serverstore`    | ✓        | ✓     | ✓      |
 | `authentication/passkeys`             | ✓        | ✓     | ✓      |
@@ -655,43 +659,47 @@ here.
 | `mediaregistry`                       | ✓        | ✓     | ✓      |
 | `metering`                            | ✓        | ✓     | ✓      |
 | `notifications`                       | ✓        | ✓     | ✓      |
-| `operations`                          | ✓        | —     | —      |
+| `operations`                          | ✓        | ✓     | ✓      |
 | `outbox`                              | ✓        | ✓     | ✓      |
 | `rbac`                                | ✓        | ✓     | ✓      |
 | `saga`                                | ✓        | ✓     | ✓      |
 | `sessions/database`                   | ✓        | ✓     | ✓      |
 | `settings`                            | ✓        | ✓     | ✓      |
 | `shredding`                           | ✓        | ✓     | ✓      |
-| `timers`                              | ✓        | —     | —      |
+| `timers`                              | ✓        | ✓     | ✓      |
 | `waitlists`                           | ✓        | ✓     | ✓      |
 | `webhooks`                            | ✓        | ✓     | ✓      |
 | `workqueue`                           | ✓        | ✓     | ✓      |
 <!-- /readmegen:dialects -->
 
-### Why the two narrow
+### Why nothing narrows
 
 One reason, and it is a claim rather than a translation. On Postgres the claim
 is a single statement that selects due rows, locks them with `SKIP LOCKED`,
 increments attempts, extends the lease and hands the keys back with
 `RETURNING`. MySQL has `SKIP LOCKED` but no `RETURNING`, and SQLite has neither
-and no row locks at all, so on those two the same claim is a locking read, an
-update and a read-back held in one transaction across three round trips.
+and no row locks at all, so on those two the same claim is several statements
+held in one transaction: a read, an update and a read-back by the claim's name.
 
-That is a cost rather than a reason to narrow, and `workqueue` pays it: its
-Postgres claim is still the one statement, and on MySQL and SQLite it is the
-three, fenced by the name the claim mints so that a write can land only under
-the claim that took the row. `webhooks` and `outbox` already claimed that way on
-all three. The two packages below have not been ported yet, and each states
-where it stands in its own `doc.go`; these lines are that statement:
+That is a cost rather than a reason to narrow, and `workqueue` and `timers` pay
+it: each keeps its Postgres claim as the one statement, and on MySQL and SQLite
+splits it, fenced by the name the claim mints so that a write can land only
+under the claim that took the row. `timers` locks its candidates by primary key
+rather than by the range that found them, because on MySQL a locking range read
+also locks the first row past it — the next set's earliest timer, as often as
+not. `webhooks` and `outbox` already claimed that way on all three, and
+`operations` followed `workqueue`: its guarded writes hand their row back
+through `RETURNING` on Postgres and read it back on the same transaction on the
+other two. No package narrows today. One that did would state where it stands
+in its own `doc.go`, and this list is that statement:
 
 <!-- readmegen:narrowings -->
-- `operations` — runs on `workqueue`, so its roster is `workqueue`'s.
-- `timers` — claims a due timer in the one statement, and would owe the same split anywhere else.
 <!-- /readmegen:narrowings -->
 
-Widening either is the port `workqueue` took, not a new design: one package, a
-statement set per shape its dialects need, and a switch on the client's dialect
-at construction — never a provider subpackage per database.
+Widening one is the port `workqueue`, `timers` and `operations` took, not a new
+design: one package, a statement set per shape its dialects need, and a switch
+on the client's dialect at construction — never a provider subpackage per
+database.
 
 ### Narrowings that are not rows
 
@@ -707,6 +715,14 @@ and a row would misreport it either way:
 - **`workqueue`** queues on all three. Its `LISTEN`/`NOTIFY` wakeup is
   Postgres-only and reported as `workqueue.ErrNotifyUnsupported` if configured
   elsewhere; without it a worker polls, which is later rather than wrong.
+- **`operations`** runs on all three. Its `LISTEN`/`NOTIFY` push to watchers is
+  Postgres-only and reported as `operations.ErrNotifyUnsupported` if configured
+  elsewhere; without it a watcher polls, which is later rather than wrong.
+- **`timers`** schedules on all three. Its `LISTEN`/`NOTIFY` wakeup is
+  Postgres-only and reported as `timers.ErrNotifyUnsupported` if configured
+  elsewhere; without it a poller sleeps to the next instant it knows about or
+  its poll, which is later rather than wrong. SQLite keeps instants to the
+  millisecond, and a scheduled instant is rounded up to one, never down.
 - **`retention`** sweeps all three, and ships no DDL: the table, the timestamp
   column and the batch key arrive from a `Policy` written at run time, so there
   is no schema of this module's to render for a dialect.

@@ -20,8 +20,11 @@ import (
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
+	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/billing"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -150,21 +153,22 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
 		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
 
-		// And the HTTP surface every dialect can serve.
-		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
-	}
+		// Sign-in with every door the suites knock on. Rotation, recovery codes
+		// and registration are on by default. The passwordless door is the
+		// one a block switches on.
+		SignIn: &signincfg.Config{
+			TOTPIssuer:    "conformance",
+			RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: prefix},
+			RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: prefix},
+			MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: prefix},
+		},
 
-	// operations runs on a work queue that claims with SKIP LOCKED, which is
-	// Postgres's alone (the README's matrix says so), and dataprivacy fulfills
-	// its requests as operations — service.Config refuses the second without
-	// the first. So both HTTP surfaces are mounted on Postgres and absent
-	// elsewhere, and the HTTP flags below say which, so the anonymous suite
-	// asserts the routes a dialect actually serves rather than failing on ones
-	// it cannot.
-	servesOperations := d == dialect.Postgres
-	if servesOperations {
-		cfg.Operations = operationsConfig(prefix)
-		cfg.DataPrivacy = &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix}
+		// And the HTTP surfaces, on every dialect. dataprivacy fulfills its
+		// requests as operations, and service.Config refuses the first without
+		// the second.
+		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
+		Operations:    operationsConfig(prefix),
+		DataPrivacy:   &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix},
 	}
 	must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
@@ -187,9 +191,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	mailbox := &resetMailbox{}
 	do.ProvideValue(i, mailbox)
 
-	// And the consumer's sign-in link mailer.
+	// And the consumer's sign-in link mailer, under the key the sign-in block
+	// resolves as well as its own, which is where the sign-in suite reads the
+	// link a person would have been sent.
 	links := &magicLinkMailbox{}
 	do.ProvideValue(i, links)
+	do.ProvideValue[signin.MagicLinkMailer](i, links)
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
@@ -283,9 +290,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID, admin: req.Admin,
 					}},
 					BaseURL:       baseURL,
-					DataPrivacy:   servesOperations,
+					DataPrivacy:   true,
 					MediaRegistry: true,
-					Operations:    servesOperations,
+					Operations:    true,
 				},
 				// The scope travels as its owner identifier rather than its
 				// String, which is prose: String renders the global scope as a
@@ -498,26 +505,10 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string)
 		"media registry": mediaregistrymigrations.Statements,
 		"magic links":    magiclinkmigrations.Statements,
 		"refresh tokens": refreshtokenmigrations.Statements,
-	} {
-		stmts, err := render(d, prefix)
-		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))
-
-		for _, stmt := range stmts {
-			_, execErr := db.Writer().ExecContext(t.Context(), stmt)
-			must.NoError(t, execErr, must.Sprintf("migrating %s: %q", name, stmt))
-		}
-	}
-
-	if d != dialect.Postgres {
-		return
-	}
-
-	// The Postgres-only packages: operations, the queue it runs on, and
-	// dataprivacy, whose service needs both.
-	for name, render := range map[string]func(dialect.Dialect, string) ([]string, error){
-		"data privacy": dataprivacymigrations.Statements,
-		"operations":   operationsmigrations.Statements,
-		"work queue":   workqueuemigrations.Statements,
+		"recovery codes": recoverycodemigrations.Statements,
+		"data privacy":   dataprivacymigrations.Statements,
+		"operations":     operationsmigrations.Statements,
+		"work queue":     workqueuemigrations.Statements,
 	} {
 		stmts, err := render(d, prefix)
 		must.NoError(t, err, must.Sprintf("rendering %s's migrations", name))

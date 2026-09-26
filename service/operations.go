@@ -36,8 +36,8 @@ type operationsRunner struct {
 
 	// run is the loop, held as a function because that is the whole of what
 	// this adapter uses. Hosting a blocking, context-cancelled loop is not a
-	// fact about operations, and holding the Worker would mean a Postgres
-	// container to test twenty lines of goroutine plumbing.
+	// fact about operations, and holding the Worker would mean a real database
+	// to test twenty lines of goroutine plumbing.
 	run func(context.Context) error
 
 	// release is what this loop's owner has to be told besides the

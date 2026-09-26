@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
+	grantscfg "github.com/primandproper/platform-go/v14/authentication/grants/config"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
@@ -109,6 +111,10 @@ func zeroValueCases() []zeroValueCase {
 		{name: "analytics", cfg: &analyticscfg.Config{}, needs: "provider"},
 		{name: "audit", cfg: &auditcfg.Config{}, needs: "dialect"},
 		{name: "authentication/tokens", cfg: &tokenscfg.Config{}, needs: "provider"},
+		// The encryptor is a dependency rather than a field: which keys seal a
+		// refresh token is the keyring's configuration, and NewStore refuses a
+		// nil one when it is called rather than here.
+		{name: "authentication/grants", cfg: &grantscfg.Config{}, why: "the table prefix is the only field and it defaults"},
 		{name: "authentication/oauth2clients", cfg: &oauth2clientscfg.Config{}, why: "the table prefix is the only field, and which clients exist is rows an operator or a person creates rather than environment"},
 		// It is decisive for the store, which is what a zero config builds.
 		// What it still cannot do is serve: NewServer refuses an empty issuer,
@@ -120,6 +126,10 @@ func zeroValueCases() []zeroValueCase {
 		// authenticator are the application's, and RegisterService reports a
 		// missing one when it is invoked rather than here.
 		{name: "authentication/passwordreset", cfg: &passwordresetcfg.Config{}, why: "the prefix, the token lifetime, the request floor and the sweep interval all default"},
+		// The zero config is decisive for the same reason passwordreset's is:
+		// the authenticator and the token issuer are resolved from the injector
+		// when the service is invoked, not checked here.
+		{name: "authentication/signin", cfg: &signincfg.Config{}, why: "rotation, recovery codes and registration are on at their defaults, the magic link door is off until its block is present, and the lifetimes default"},
 		{name: "authentication/webauthnsessions", cfg: &webauthnsessionscfg.Config{}, needs: "rpID"},
 		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
 		{name: "billing", cfg: &billingcfg.Config{}, why: "the table prefix is the only field, and what a deployment sells is rows rather than environment"},

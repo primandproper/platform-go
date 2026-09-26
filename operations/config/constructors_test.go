@@ -26,7 +26,8 @@ import (
 
 // clientFor builds a database.Client that reports d and nothing else. Neither
 // the store nor the queue opens a connection at construction — both read the
-// dialect and refuse anything but Postgres — so this is the whole dependency.
+// dialect and refuse one this module does not name — so this is the whole
+// dependency.
 func clientFor(d dialect.Dialect) database.Client {
 	return &databasemock.ClientMock{
 		DialectFunc: func() dialect.Dialect { return d },
@@ -71,16 +72,36 @@ func TestNewStore(T *testing.T) {
 	})
 
 	for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
-		T.Run("refuses "+string(d)+" rather than building a store that cannot run its SQL", func(t *testing.T) {
+		T.Run("builds a store over a "+string(d)+" client", func(t *testing.T) {
 			t.Parallel()
 
-			// This package's SQL is written against Postgres rather than reduced
-			// to a portable subset, so the refusal belongs at construction.
 			store, err := NewStore(t.Context(), &Config{}, clientFor(d))
-			test.ErrorIs(t, err, dialect.ErrUnsupported)
+			must.NoError(t, err)
+			test.NotNil(t, store)
+		})
+
+		T.Run("refuses a notify channel on "+string(d), func(t *testing.T) {
+			t.Parallel()
+
+			// NOTIFY is Postgres's, and a channel configured anyway is refused
+			// rather than dropped: a deployment that dropped it would believe
+			// its watchers were being woken while they polled.
+			cfg := &Config{}
+			cfg.Operations.NotifyChannel = "operations_changed"
+
+			store, err := NewStore(t.Context(), cfg, clientFor(d))
+			test.ErrorIs(t, err, operations.ErrNotifyUnsupported)
 			test.Nil(t, store)
 		})
 	}
+
+	T.Run("refuses a dialect this module does not name", func(t *testing.T) {
+		t.Parallel()
+
+		store, err := NewStore(t.Context(), &Config{}, clientFor(dialect.Dialect("oracle")))
+		test.ErrorIs(t, err, dialect.ErrUnsupported)
+		test.Nil(t, store)
+	})
 
 	T.Run("the pillars reach the store", func(t *testing.T) {
 		t.Parallel()
@@ -150,10 +171,22 @@ func TestNewQueue(T *testing.T) {
 		test.Nil(t, queue)
 	})
 
-	T.Run("a non-Postgres client is refused", func(t *testing.T) {
+	for _, d := range []dialect.Dialect{dialect.MySQL, dialect.SQLite} {
+		T.Run("builds a queue over a "+string(d)+" client", func(t *testing.T) {
+			t.Parallel()
+
+			queue, err := NewQueue(t.Context(), &Config{}, clientFor(d))
+			must.NoError(t, err)
+			must.NotNil(t, queue)
+
+			t.Cleanup(func() { _ = queue.Close(context.WithoutCancel(t.Context())) })
+		})
+	}
+
+	T.Run("a dialect this module does not name is refused", func(t *testing.T) {
 		t.Parallel()
 
-		queue, err := NewQueue(t.Context(), &Config{}, clientFor(dialect.MySQL))
+		queue, err := NewQueue(t.Context(), &Config{}, clientFor(dialect.Dialect("oracle")))
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 		test.Nil(t, queue)
 	})
@@ -214,7 +247,7 @@ func TestNewService(T *testing.T) {
 	T.Run("a store that cannot be built stops the service", func(t *testing.T) {
 		t.Parallel()
 
-		svc, queue, err := NewService(t.Context(), &Config{}, clientFor(dialect.SQLite), operations.NewRegistry())
+		svc, queue, err := NewService(t.Context(), &Config{}, clientFor(dialect.Dialect("oracle")), operations.NewRegistry())
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 		test.Nil(t, svc)
 		test.Nil(t, queue)
@@ -426,7 +459,7 @@ func TestRegisterStore(T *testing.T) {
 	T.Run("reports a store it cannot build", func(t *testing.T) {
 		t.Parallel()
 
-		i := container(t, clientFor(dialect.MySQL))
+		i := container(t, clientFor(dialect.Dialect("oracle")))
 		RegisterStore(i)
 
 		_, err := do.Invoke[operations.Store](i)
@@ -452,7 +485,7 @@ func TestRegisterQueue(T *testing.T) {
 	T.Run("reports a queue it cannot build", func(t *testing.T) {
 		t.Parallel()
 
-		i := container(t, clientFor(dialect.SQLite))
+		i := container(t, clientFor(dialect.Dialect("oracle")))
 		RegisterQueue(i)
 
 		_, err := InvokeQueue(i)
@@ -550,7 +583,7 @@ func TestQueueRegistered(T *testing.T) {
 	T.Run("sees a registered queue that cannot be built", func(t *testing.T) {
 		t.Parallel()
 
-		i := container(t, clientFor(dialect.SQLite))
+		i := container(t, clientFor(dialect.Dialect("oracle")))
 		RegisterQueue(i)
 
 		must.True(t, QueueRegistered(i))

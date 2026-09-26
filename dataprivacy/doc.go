@@ -285,13 +285,27 @@ about, which is why the sweep is a named, schedulable thing rather than a flag.
 Schedule operations.Service.Recover beside it for the reason operations gives:
 without it, a request whose enqueue was lost waits for nothing.
 
-One sizing constraint comes with the port, and it is the kind that presents as a
-hang rather than an error. A runner holds a database transaction for the whole
-of its work — every eraser shares one, and an export's completion is one — while
-the operation's progress flush writes to the operations table beside it. Both
-draw from the same connection pool, so a pool without spare capacity deadlocks:
-size it for the operations worker's concurrency plus one connection per running
-operation, not for its concurrency alone.
+An erasure is one database transaction — every eraser shares it — and its
+units are reported to the operation only once that transaction has committed.
+Reported as each eraser finished, a domain whose erasure then rolled back would
+stay counted, because an operation's progress is monotonic in its row.
+
+That has two visible costs. A client watching the operation sees no domain
+finish while the transaction is open, and then sees every domain finish at
+once. And a process that dies between the commit and the report leaves the
+progress row's unit count short for good. The retry finds the request
+completed and succeeds with its recorded outcome rather than erasing again, so
+the request row and the operation's result carry the true counts. Only the
+progress bar is wrong.
+
+What still writes beside the open transaction is the reporter's flush, which is
+what extends the operation's lease. The flush loop makes that write, never the
+runner's goroutine, so it waits for a connection rather than making the runner
+wait. It cannot deadlock anything; what it can do is land late. On SQLite it always does — nothing writes while the erasure's
+transaction is open — and so does any pool without a spare connection, so there
+the lease stands still for the length of the erasure: size WorkerConfig.Lease
+past the longest one, or an erasure that outlasts it is handed to a second
+worker while the first is still committing.
 
 # Who a request is about, and whose tenant it is in
 
@@ -313,7 +327,7 @@ the three readings a read's scope has and why they need a pointer to hold them.
 The fan-out follows the same rule: Collector.Collect and Eraser.Erase are handed
 the confinement beside the subject, so a domain that scopes its rows narrows by
 a value it was passed rather than one it dug out. The privacy adapters this
-module ships — authentication/oauth2clients/privacy,
+module ships — authentication/grants/privacy, authentication/oauth2clients/privacy,
 authentication/passkeys/privacy, authentication/passwordreset/privacy,
 authentication/signin/recoverycodes/privacy, billing/privacy, comments/privacy, identity/privacy, issuereports/privacy,
 mediaregistry/privacy, notifications/privacy's two pairs, settings/privacy,

@@ -81,6 +81,12 @@ const (
 	opGetAuthStatus     = "get_auth_status"
 	opGetSelf           = "get_self"
 
+	// The doors that mint for a principal another credential proved. They are a
+	// series of their own rather than a kind of login, because a dashboard asking
+	// how often somebody proves a password must not count a passkey as one.
+	opIssueForPrincipal      = "issue_for_principal"
+	opAdminIssueForPrincipal = "admin_issue_for_principal"
+
 	// The four refresh doors. Exchanging is a series of its own rather than a
 	// second kind of login, because the two answer different questions of a
 	// dashboard: how often somebody proves a password, and how long their

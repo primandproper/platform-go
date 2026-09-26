@@ -10,9 +10,12 @@ store executes is the querier sqlc-gen-unison generates from that same file —
 the same text with the consumer's table prefix substituted for {{prefix}} and
 the argument references rewritten into bind markers.
 
-One dialect, because operations serves one. The loop is still a loop over
-Dialects, so the roster is a list rather than a decision written into the
-control flow — a second dialect would be a schema and a line, not a rewrite.
+Three dialects, in two rosters: unison.yaml generates Postgres's corpus into
+operations/internal/operationsdb, and unison.split.yaml generates MySQL's and
+SQLite's into operations/internal/operationssplitdb, because the two sets have
+statements of different shapes — see operations/internal/queries. This command
+writes all three files either way; which roster reads which is unison's
+configuration, not this command's.
 
 Because the check is what the file is for, this command also renders the other
 half of it: `-schema <dialect>` prints the DDL sqlc reads it against, so

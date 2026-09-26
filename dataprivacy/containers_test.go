@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/mysql"
 	"github.com/primandproper/primitives-go/v2/database/postgres"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
@@ -140,8 +142,8 @@ func TestMigrations_RealServers(T *testing.T) {
 	})
 }
 
-// TestFulfillment_Postgres runs one export and one erasure the whole way
-// through, against a real operations worker.
+// TestFulfillment runs one export and one erasure the whole way through, against
+// a real operations worker, on each of the three dialects.
 //
 // It is the only test that can say the port worked. Everything above drives a
 // runner directly with a reporter the test owns, which proves the runner does
@@ -150,298 +152,332 @@ func TestMigrations_RealServers(T *testing.T) {
 // the row names, whether the progress a client would read is the progress the
 // runner reported, or whether the artifact is fetchable at the end of it.
 //
-// Postgres only, because operations is: the guarded claim is one
-// UPDATE … RETURNING, and the queue underneath is Postgres-only for its own
-// reasons.
-func TestFulfillment_Postgres(T *testing.T) {
+// Postgres and MySQL are containers, and skip unless RUN_CONTAINER_TESTS is set;
+// SQLite is a file and always runs.
+func TestFulfillment(T *testing.T) {
 	T.Parallel()
 
-	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, clientErr := postgres.NewDatabaseClient(ctx,
-			&pooledClientConfig{testClientConfig{connectionString: pg.ConnectionString}})
-		must.NoError(T, clientErr)
-		T.Cleanup(func() { _ = client.Close() })
+	T.Run("postgres", func(t *testing.T) {
+		t.Parallel()
 
-		T.Run("an export runs from submit to a fetchable artifact", func(t *testing.T) {
-			t.Parallel()
-
-			env := newFulfillmentEnv(t, client, func(r *Registry) {
-				must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"email":"a@example.com"}`)))
-				must.NoError(t, r.RegisterCollector("billing", staticCollector(`{"invoices":2}`)))
-				must.NoError(t, r.RegisterCollector("webhooks", staticCollector(`{"hooks":[]}`)))
-			})
-
-			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		pgtest.Run(t, func(ctx context.Context, pg *pgtest.Instance) {
+			client, err := postgres.NewDatabaseClient(ctx,
+				&pooledClientConfig{testClientConfig{connectionString: pg.ConnectionString}})
 			must.NoError(t, err)
-			must.StrNotEqFold(t, "", req.OperationID)
+			t.Cleanup(func() { _ = client.Close() })
 
-			op := env.drain(t, req.OperationID)
-
-			test.EqOp(t, operations.StateSucceeded, op.State)
-			test.True(t, op.Done)
-
-			// The operation's owner is the subject, which is what lets
-			// operations/http scope a status read to the person it is about.
-			test.EqOp(t, tenancy.Of(testSubject.ID), op.Owner)
-			test.EqOp(t, KindExport, op.Kind)
-
-			// The domains are the unit denominator, for free: the registry
-			// already enumerates them, so "3 of 3" needs no counting pass.
-			must.NotNil(t, op.Progress.UnitsTotal)
-			test.EqOp(t, 3, *op.Progress.UnitsTotal)
-			test.EqOp(t, 3, op.Progress.UnitsDone)
-			test.EqOp(t, "bytes", op.Progress.CountLabel)
-			test.Greater(t, int64(0), op.Progress.Count)
-
-			fraction, ok := op.Progress.Fraction()
-			must.True(t, ok)
-			test.EqOp(t, float64(1), fraction)
-
-			// The artifact is the result pointer, and the summary beside it is
-			// the manifest minus the subject.
-			must.NotNil(t, op.Result)
-			must.StrNotEqFold(t, "", op.Result.URI)
-
-			var summary ExportSummary
-			must.NoError(t, json.Unmarshal(op.Result.Detail, &summary))
-			test.MapEmpty(t, summary.Failures)
-			test.Greater(t, int64(0), summary.Bytes)
-
-			// And the request row is the statutory record, pointing at both.
-			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			test.EqOp(t, StatusCompleted, read.Status)
-			test.EqOp(t, op.ID, read.OperationID)
-			test.EqOp(t, op.Result.URI, read.ArtifactRef)
-			test.False(t, read.ExpiresAt.IsZero())
-
-			// Delivered, and readable: Open reverses whatever packaging the
-			// fulfiller applied, which is the path that works everywhere.
-			artifact, err := env.svc.Open(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-
-			t.Cleanup(func() { _ = artifact.Close() })
-
-			body, err := io.ReadAll(artifact)
-			must.NoError(t, err)
-
-			var doc Document
-			must.NoError(t, json.Unmarshal(body, &doc))
-
-			test.EqOp(t, DocumentFormat, doc.Manifest.Format)
-			test.EqOp(t, req.ID, doc.Manifest.RequestID)
-			test.Eq(t, []string{"billing", "identity", "webhooks"}, doc.Manifest.Sections)
+			runFulfillmentSuite(t, client)
 		})
+	})
 
-		T.Run("a partial export is delivered and says what is missing", func(t *testing.T) {
-			t.Parallel()
+	T.Run("mysql", func(t *testing.T) {
+		t.Parallel()
 
-			env := newFulfillmentEnv(t, client, func(r *Registry) {
-				must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"ok":true}`)))
-				must.NoError(t, r.RegisterCollector("billing", failingCollector(platformerrors.New("billing is down"))))
-			})
-
-			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		mysqltest.Run(t, func(ctx context.Context, my *mysqltest.Instance) {
+			client, err := mysql.NewDatabaseClient(ctx,
+				&pooledClientConfig{testClientConfig{connectionString: my.ConnectionString}})
 			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
 
-			op := env.drain(t, req.OperationID)
-
-			// A successful operation with the gap recorded, not a failure. The
-			// export exists and the subject is entitled to it; which sections
-			// are missing is a fact about the answer rather than about whether
-			// there is one.
-			test.EqOp(t, operations.StateSucceeded, op.State)
-
-			var summary ExportSummary
-			must.NoError(t, json.Unmarshal(op.Result.Detail, &summary))
-			must.MapLen(t, 1, summary.Failures)
-			test.StrContains(t, summary.Failures["billing"], "billing is down")
-
-			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			test.EqOp(t, StatusCompleted, read.Status)
-			test.True(t, read.Partial())
+			runFulfillmentSuite(t, client)
 		})
+	})
 
-		T.Run("an erasure waits for confirmation, then runs", func(t *testing.T) {
-			t.Parallel()
+	T.Run("sqlite", func(t *testing.T) {
+		t.Parallel()
 
-			var erased atomic.Int64
+		client, err := sqlite.NewDatabaseClient(t.Context(),
+			&pooledClientConfig{testClientConfig{connectionString: filepath.Join(t.TempDir(), "fulfillment.db")}})
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
 
-			env := newFulfillmentEnv(t, client, func(r *Registry) {
-				must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"ok":true}`)))
-				must.NoError(t, r.RegisterEraser("identity", countingEraser(5, 1, nil, &erased)))
-				must.NoError(t, r.RegisterEraser("billing",
-					countingEraser(2, 0, map[string]string{"invoices": "tax law"}, nil)))
-			}, WithFulfillerConfirmationWindow(72*time.Hour))
-
-			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestErasure)
-			must.NoError(t, err)
-
-			// Nothing runs and nothing is queued: until somebody confirms it,
-			// there is no operation at all.
-			test.EqOp(t, StatusAwaitingConfirmation, req.Status)
-			test.EqOp(t, "", req.OperationID)
-
-			confirmed, err := env.svc.Confirm(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			must.StrNotEqFold(t, "", confirmed.OperationID)
-
-			op := env.drain(t, confirmed.OperationID)
-
-			test.EqOp(t, operations.StateSucceeded, op.State)
-			test.EqOp(t, KindErasure, op.Kind)
-			test.EqOp(t, int64(1), erased.Load())
-
-			// The erasers are the unit tier and the rows are the count.
-			must.NotNil(t, op.Progress.UnitsTotal)
-			test.EqOp(t, 2, *op.Progress.UnitsTotal)
-			test.EqOp(t, 2, op.Progress.UnitsDone)
-			test.EqOp(t, int64(8), op.Progress.Count)
-
-			var summary ErasureSummary
-			must.NoError(t, json.Unmarshal(op.Result.Detail, &summary))
-			test.EqOp(t, int64(7), summary.Deleted)
-			test.EqOp(t, int64(1), summary.Anonymized)
-			test.EqOp(t, "tax law", summary.Retained["billing.invoices"])
-
-			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			test.EqOp(t, StatusCompleted, read.Status)
-			test.EqOp(t, int64(7), read.Deleted)
-
-			// An erasure has no artifact, so nothing expires.
-			test.EqOp(t, "", read.ArtifactRef)
-			test.True(t, read.ExpiresAt.IsZero())
-		})
-
-		T.Run("a request that cannot be fulfilled ends failed on both records", func(t *testing.T) {
-			t.Parallel()
-
-			env := newFulfillmentEnv(t, client, func(r *Registry) {
-				must.NoError(t, r.RegisterCollector("identity", failingCollector(platformerrors.New("down"))))
-			})
-
-			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
-			must.NoError(t, err)
-
-			op := env.drain(t, req.OperationID)
-
-			test.EqOp(t, operations.StateFailed, op.State)
-			must.NotNil(t, op.Error)
-			test.EqOp(t, operations.CodeAttemptsExhausted, op.Error.Code)
-
-			// The kind's budget, not the worker's: registration carries
-			// FulfillerConfig.MaxAttempts, and a privacy request is not a
-			// webhook replay — one attempt is a fan-out over every registered
-			// domain.
-			test.EqOp(t, DefaultMaxAttempts, op.Attempts)
-
-			// The row is marked on the final attempt and not before, which is
-			// the only moment at which "nobody is getting an answer" is true.
-			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			test.EqOp(t, StatusFailed, read.Status)
-			test.StrContains(t, read.LastError, "no dataprivacy collector succeeded")
-			must.NotNil(t, read.CompletedAt)
-
-			// And it drops off the overdue gauge, because it is terminal: the
-			// request is not still owed in the sense that gauge measures.
-			test.False(t, read.Overdue(read.DueAt.Add(time.Hour)))
-		})
-
-		// The retry itself, which is the half of the old poll loop that moved
-		// rather than being deleted. The worker retries and the row survives the
-		// gap, both of which used to be one package's business and are now two.
-		T.Run("a transient failure is retried and the row survives the gap", func(t *testing.T) {
-			t.Parallel()
-
-			collector := newGatedCollector(`{"email":"a@example.com"}`, 1)
-
-			env := newFulfillmentEnv(t, client, func(r *Registry) {
-				must.NoError(t, r.RegisterCollector("identity", collector))
-			})
-
-			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
-			must.NoError(t, err)
-
-			// The second attempt is held inside the collector, so what follows
-			// reads a retry in flight rather than inferring one afterwards from
-			// a request that happens to have succeeded.
-			collector.awaitEntry(t)
-
-			mid, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-
-			// This is the row a subject's status page reads between a failure
-			// and the retry that fixes it. Marked failed here, it is one the
-			// sweeper reaps and the overdue gauge stops counting, for a
-			// fulfillment that is still coming.
-			test.EqOp(t, StatusInProgress, mid.Status)
-			test.EqOp(t, "", mid.LastError)
-			test.Nil(t, mid.CompletedAt)
-
-			inFlight, err := env.ops.Get(t.Context(), tenancy.Of(testSubject.ID), req.OperationID)
-			must.NoError(t, err)
-
-			// Charged on claim, so the second attempt is already counted while
-			// it runs — which is what makes Final knowable from inside Run.
-			test.EqOp(t, 2, inFlight.Attempts)
-			test.False(t, inFlight.Terminal())
-
-			collector.release()
-
-			op := env.drain(t, req.OperationID)
-
-			test.EqOp(t, operations.StateSucceeded, op.State)
-			test.EqOp(t, 2, op.Attempts)
-			test.EqOp(t, int64(2), collector.calls.Load())
-
-			// And the transient failure left no residue on the record that
-			// outlives the operation by years.
-			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			test.EqOp(t, StatusCompleted, read.Status)
-			test.EqOp(t, "", read.LastError)
-			test.StrNotEqFold(t, "", read.ArtifactRef)
-		})
-
-		T.Run("an unretryable failure gives up on the first attempt", func(t *testing.T) {
-			t.Parallel()
-
-			env := newFulfillmentEnv(t, client, func(r *Registry) {
-				must.NoError(t, r.RegisterCollector("identity",
-					staticCollector(`{"padding":"aaaaaaaaaaaaaaaaaaaa"}`)))
-			}, WithFulfillerMaxDocumentBytes(8))
-
-			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
-			must.NoError(t, err)
-
-			op := env.drain(t, req.OperationID)
-
-			test.EqOp(t, operations.StateFailed, op.State)
-
-			// One attempt rather than the budget: the document is the same size
-			// every time, and spending the rest of it to discover that delays
-			// the moment the subject is told by however long the backoff is.
-			test.EqOp(t, 1, op.Attempts)
-			must.NotNil(t, op.Error)
-			test.False(t, op.Error.Retryable)
-
-			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
-			must.NoError(t, err)
-			test.EqOp(t, StatusFailed, read.Status)
-			test.StrContains(t, read.LastError, "exceeds configured maximum")
-			must.NotNil(t, read.CompletedAt)
-
-			// And nothing reached the bucket, which is the point of checking the
-			// size before the write rather than after it.
-			test.SliceEmpty(t, env.uploader.paths())
-		})
+		runFulfillmentSuite(t, client)
 	})
 }
 
-// fulfillmentEnv is the whole stack over one Postgres database: a dataprivacy
+// runFulfillmentSuite is TestFulfillment's subtests, over one database.
+func runFulfillmentSuite(t *testing.T, client database.Client) {
+	t.Helper()
+
+	t.Run("an export runs from submit to a fetchable artifact", func(t *testing.T) {
+		t.Parallel()
+
+		env := newFulfillmentEnv(t, client, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"email":"a@example.com"}`)))
+			must.NoError(t, r.RegisterCollector("billing", staticCollector(`{"invoices":2}`)))
+			must.NoError(t, r.RegisterCollector("webhooks", staticCollector(`{"hooks":[]}`)))
+		})
+
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		must.NoError(t, err)
+		must.StrNotEqFold(t, "", req.OperationID)
+
+		op := env.drain(t, req.OperationID)
+
+		test.EqOp(t, operations.StateSucceeded, op.State)
+		test.True(t, op.Done)
+
+		// The operation's owner is the subject, which is what lets
+		// operations/http scope a status read to the person it is about.
+		test.EqOp(t, tenancy.Of(testSubject.ID), op.Owner)
+		test.EqOp(t, KindExport, op.Kind)
+
+		// The domains are the unit denominator, for free: the registry
+		// already enumerates them, so "3 of 3" needs no counting pass.
+		must.NotNil(t, op.Progress.UnitsTotal)
+		test.EqOp(t, 3, *op.Progress.UnitsTotal)
+		test.EqOp(t, 3, op.Progress.UnitsDone)
+		test.EqOp(t, "bytes", op.Progress.CountLabel)
+		test.Greater(t, int64(0), op.Progress.Count)
+
+		fraction, ok := op.Progress.Fraction()
+		must.True(t, ok)
+		test.EqOp(t, float64(1), fraction)
+
+		// The artifact is the result pointer, and the summary beside it is
+		// the manifest minus the subject.
+		must.NotNil(t, op.Result)
+		must.StrNotEqFold(t, "", op.Result.URI)
+
+		var summary ExportSummary
+		must.NoError(t, json.Unmarshal(op.Result.Detail, &summary))
+		test.MapEmpty(t, summary.Failures)
+		test.Greater(t, int64(0), summary.Bytes)
+
+		// And the request row is the statutory record, pointing at both.
+		read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		test.EqOp(t, StatusCompleted, read.Status)
+		test.EqOp(t, op.ID, read.OperationID)
+		test.EqOp(t, op.Result.URI, read.ArtifactRef)
+		test.False(t, read.ExpiresAt.IsZero())
+
+		// Delivered, and readable: Open reverses whatever packaging the
+		// fulfiller applied, which is the path that works everywhere.
+		artifact, err := env.svc.Open(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+
+		t.Cleanup(func() { _ = artifact.Close() })
+
+		body, err := io.ReadAll(artifact)
+		must.NoError(t, err)
+
+		var doc Document
+		must.NoError(t, json.Unmarshal(body, &doc))
+
+		test.EqOp(t, DocumentFormat, doc.Manifest.Format)
+		test.EqOp(t, req.ID, doc.Manifest.RequestID)
+		test.Eq(t, []string{"billing", "identity", "webhooks"}, doc.Manifest.Sections)
+	})
+
+	t.Run("a partial export is delivered and says what is missing", func(t *testing.T) {
+		t.Parallel()
+
+		env := newFulfillmentEnv(t, client, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"ok":true}`)))
+			must.NoError(t, r.RegisterCollector("billing", failingCollector(platformerrors.New("billing is down"))))
+		})
+
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		must.NoError(t, err)
+
+		op := env.drain(t, req.OperationID)
+
+		// A successful operation with the gap recorded, not a failure. The
+		// export exists and the subject is entitled to it; which sections
+		// are missing is a fact about the answer rather than about whether
+		// there is one.
+		test.EqOp(t, operations.StateSucceeded, op.State)
+
+		var summary ExportSummary
+		must.NoError(t, json.Unmarshal(op.Result.Detail, &summary))
+		must.MapLen(t, 1, summary.Failures)
+		test.StrContains(t, summary.Failures["billing"], "billing is down")
+
+		read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		test.EqOp(t, StatusCompleted, read.Status)
+		test.True(t, read.Partial())
+	})
+
+	t.Run("an erasure waits for confirmation, then runs", func(t *testing.T) {
+		t.Parallel()
+
+		var erased atomic.Int64
+
+		env := newFulfillmentEnv(t, client, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"ok":true}`)))
+			must.NoError(t, r.RegisterEraser("identity", countingEraser(5, 1, nil, &erased)))
+			must.NoError(t, r.RegisterEraser("billing",
+				countingEraser(2, 0, map[string]string{"invoices": "tax law"}, nil)))
+		}, WithFulfillerConfirmationWindow(72*time.Hour))
+
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestErasure)
+		must.NoError(t, err)
+
+		// Nothing runs and nothing is queued: until somebody confirms it,
+		// there is no operation at all.
+		test.EqOp(t, StatusAwaitingConfirmation, req.Status)
+		test.EqOp(t, "", req.OperationID)
+
+		confirmed, err := env.svc.Confirm(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		must.StrNotEqFold(t, "", confirmed.OperationID)
+
+		op := env.drain(t, confirmed.OperationID)
+
+		test.EqOp(t, operations.StateSucceeded, op.State)
+		test.EqOp(t, KindErasure, op.Kind)
+		test.EqOp(t, int64(1), erased.Load())
+
+		// The erasers are the unit tier and the rows are the count.
+		must.NotNil(t, op.Progress.UnitsTotal)
+		test.EqOp(t, 2, *op.Progress.UnitsTotal)
+		test.EqOp(t, 2, op.Progress.UnitsDone)
+		test.EqOp(t, int64(8), op.Progress.Count)
+
+		var summary ErasureSummary
+		must.NoError(t, json.Unmarshal(op.Result.Detail, &summary))
+		test.EqOp(t, int64(7), summary.Deleted)
+		test.EqOp(t, int64(1), summary.Anonymized)
+		test.EqOp(t, "tax law", summary.Retained["billing.invoices"])
+
+		read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		test.EqOp(t, StatusCompleted, read.Status)
+		test.EqOp(t, int64(7), read.Deleted)
+
+		// An erasure has no artifact, so nothing expires.
+		test.EqOp(t, "", read.ArtifactRef)
+		test.True(t, read.ExpiresAt.IsZero())
+	})
+
+	t.Run("a request that cannot be fulfilled ends failed on both records", func(t *testing.T) {
+		t.Parallel()
+
+		env := newFulfillmentEnv(t, client, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity", failingCollector(platformerrors.New("down"))))
+		})
+
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		must.NoError(t, err)
+
+		op := env.drain(t, req.OperationID)
+
+		test.EqOp(t, operations.StateFailed, op.State)
+		must.NotNil(t, op.Error)
+		test.EqOp(t, operations.CodeAttemptsExhausted, op.Error.Code)
+
+		// The kind's budget, not the worker's: registration carries
+		// FulfillerConfig.MaxAttempts, and a privacy request is not a
+		// webhook replay — one attempt is a fan-out over every registered
+		// domain.
+		test.EqOp(t, DefaultMaxAttempts, op.Attempts)
+
+		// The row is marked on the final attempt and not before, which is
+		// the only moment at which "nobody is getting an answer" is true.
+		read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		test.EqOp(t, StatusFailed, read.Status)
+		test.StrContains(t, read.LastError, "no dataprivacy collector succeeded")
+		must.NotNil(t, read.CompletedAt)
+
+		// And it drops off the overdue gauge, because it is terminal: the
+		// request is not still owed in the sense that gauge measures.
+		test.False(t, read.Overdue(read.DueAt.Add(time.Hour)))
+	})
+
+	// The retry itself, which is the half of the old poll loop that moved
+	// rather than being deleted. The worker retries and the row survives the
+	// gap, both of which used to be one package's business and are now two.
+	t.Run("a transient failure is retried and the row survives the gap", func(t *testing.T) {
+		t.Parallel()
+
+		collector := newGatedCollector(`{"email":"a@example.com"}`, 1)
+
+		env := newFulfillmentEnv(t, client, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity", collector))
+		})
+
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		must.NoError(t, err)
+
+		// The second attempt is held inside the collector, so what follows
+		// reads a retry in flight rather than inferring one afterwards from
+		// a request that happens to have succeeded.
+		collector.awaitEntry(t)
+
+		mid, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+
+		// This is the row a subject's status page reads between a failure
+		// and the retry that fixes it. Marked failed here, it is one the
+		// sweeper reaps and the overdue gauge stops counting, for a
+		// fulfillment that is still coming.
+		test.EqOp(t, StatusInProgress, mid.Status)
+		test.EqOp(t, "", mid.LastError)
+		test.Nil(t, mid.CompletedAt)
+
+		inFlight, err := env.ops.Get(t.Context(), tenancy.Of(testSubject.ID), req.OperationID)
+		must.NoError(t, err)
+
+		// Charged on claim, so the second attempt is already counted while
+		// it runs — which is what makes Final knowable from inside Run.
+		test.EqOp(t, 2, inFlight.Attempts)
+		test.False(t, inFlight.Terminal())
+
+		collector.release()
+
+		op := env.drain(t, req.OperationID)
+
+		test.EqOp(t, operations.StateSucceeded, op.State)
+		test.EqOp(t, 2, op.Attempts)
+		test.EqOp(t, int64(2), collector.calls.Load())
+
+		// And the transient failure left no residue on the record that
+		// outlives the operation by years.
+		read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		test.EqOp(t, StatusCompleted, read.Status)
+		test.EqOp(t, "", read.LastError)
+		test.StrNotEqFold(t, "", read.ArtifactRef)
+	})
+
+	t.Run("an unretryable failure gives up on the first attempt", func(t *testing.T) {
+		t.Parallel()
+
+		env := newFulfillmentEnv(t, client, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity",
+				staticCollector(`{"padding":"aaaaaaaaaaaaaaaaaaaa"}`)))
+		}, WithFulfillerMaxDocumentBytes(8))
+
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		must.NoError(t, err)
+
+		op := env.drain(t, req.OperationID)
+
+		test.EqOp(t, operations.StateFailed, op.State)
+
+		// One attempt rather than the budget: the document is the same size
+		// every time, and spending the rest of it to discover that delays
+		// the moment the subject is told by however long the backoff is.
+		test.EqOp(t, 1, op.Attempts)
+		must.NotNil(t, op.Error)
+		test.False(t, op.Error.Retryable)
+
+		read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
+		must.NoError(t, err)
+		test.EqOp(t, StatusFailed, read.Status)
+		test.StrContains(t, read.LastError, "exceeds configured maximum")
+		must.NotNil(t, read.CompletedAt)
+
+		// And nothing reached the bucket, which is the point of checking the
+		// size before the write rather than after it.
+		test.SliceEmpty(t, env.uploader.paths())
+	})
+}
+
+// fulfillmentEnv is the whole stack over one database: a dataprivacy
 // store and service, an operations store, queue, service, and worker, and a
 // fulfiller registered into the registry the worker runs from.
 type fulfillmentEnv struct {
@@ -498,7 +534,7 @@ func newFulfillmentEnv(
 		opsmigrations.Statements,
 		workqueuemigrations.Statements,
 	} {
-		statements, err := render(dialect.Postgres, prefix)
+		statements, err := render(client.Dialect(), prefix)
 		must.NoError(t, err)
 		must.SliceNotEmpty(t, statements)
 

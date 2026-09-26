@@ -133,6 +133,10 @@ type Hooks interface {
 	// token came out" is a second one, and a log that recorded only the second
 	// would not show the authorization server's login step at all.
 	//
+	// IssueForPrincipal and AdminIssueForPrincipal run it too, for a credential
+	// the consumer proved rather than a password, so a passkey sign-in reaches
+	// the same access log.
+	//
 	// It sees no credential, which is what makes it the safe one to record from.
 	//
 	// An error rolls back whichever operation called it: an Authenticate caller

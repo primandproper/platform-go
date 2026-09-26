@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	grantscfg "github.com/primandproper/platform-go/v14/authentication/grants/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
@@ -28,10 +29,12 @@ const platformModule = "github.com/primandproper/platform-go/v14/"
 // They are the generic and per-type subsystems its documentation says are
 // deliberately absent — registered by a call that supplies a type argument or an
 // index name no environment can — plus the two stores that hang off a
-// primitives-go engine. An operator still sets their variables, so their nesting
+// primitives-go engine, and authentication/grants, whose store is built with an
+// encryptor the caller hands it. An operator still sets their variables, so their nesting
 // is still subject to the rule, and listing them here is what keeps the walk
 // from being a walk of only half the module.
 var unreachableRoots = []any{
+	grantscfg.Config{},
 	oauth2serverstorecfg.Config{},
 	webauthnsessionscfg.Config{},
 	entitlementscfg.Config{},

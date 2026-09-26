@@ -122,25 +122,34 @@ func InsertColumns() []string {
 
 // Render returns the canonical sqlc input for one dialect.
 //
-// It takes the dialect and serves one, which is not a contradiction: the roster
-// is a property of unison.yaml and of the schema operations/migrations ships,
-// and this signature is what a second dialect arriving would be a schema
-// question rather than a rewrite. What it will not do is answer for a dialect
-// this package has no schema for — the transitions below are written in
-// Postgres and would be handed back unchanged, which is the one failure a
-// generator can have that produces a plausible file.
+// Two corpora, chosen by the dialect. Postgres's is the statements in this file:
+// the create, the claim and the flush each hand their row back through
+// RETURNING, and the sets the guards and the listing compare against are bound
+// as arrays. MySQL's and SQLite's is the statements in split.go, which make the
+// same decisions in the shapes those engines can take. See renderSplit, and
+// unison.split.yaml for why the two are two rosters.
 //
 // It panics rather than returning an error, in the manner of the generator it
 // renders through: the argument is a constant in a generator binary. The panic
 // value is an error wrapping dialect.ErrUnsupported.
 func Render(d dialect.Dialect) string {
-	if err := dialect.RequirePostgres("operations queries", d); err != nil {
-		panic(err)
-	}
-
-	g := querygen.For(d)
-
+	// Every table this package owns, whichever set renders: the registry a
+	// consumer reads back is fed by the table existing, not by the statements.
 	querygen.RegisterTable(TableNames...)
+
+	switch d {
+	case dialect.Postgres:
+		return renderPostgres()
+	case dialect.MySQL, dialect.SQLite:
+		return renderSplit(d)
+	default:
+		panic(fmt.Errorf("operations queries for dialect %q: %w", d, dialect.ErrUnsupported))
+	}
+}
+
+// renderPostgres is the Postgres corpus.
+func renderPostgres() string {
+	g := querygen.For(dialect.Postgres)
 
 	rendered := append(singleReads(g), setRead(g))
 
@@ -232,7 +241,8 @@ func listQueries(g *querygen.Generator) []*querygen.Query {
 // from it — so a renamed column is a failed generate here exactly as it is for
 // the reads above.
 //
-// Postgres, and only Postgres. See this package's doc.
+// These are the Postgres corpus's; split.go carries the same decisions for the
+// other two engines.
 func transitions() []*querygen.Query {
 	return []*querygen.Query{
 		{Annotation: querygen.QueryAnnotation{Name: "CreateOperation", Type: querygen.OneType},

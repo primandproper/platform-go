@@ -10,7 +10,7 @@ import (
 // There is no fulfiller lifecycle test here any more, and its absence is the
 // port. The loop it drove — Run, Close, a poll interval, a claim that could
 // fail — belongs to an operations.Worker now, and the end-to-end equivalent
-// lives in the container tests, because operations is Postgres-only.
+// is TestFulfillment, which runs a real worker on each dialect.
 
 func TestSweeper_Lifecycle(T *testing.T) {
 	T.Parallel()

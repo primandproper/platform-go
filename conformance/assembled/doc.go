@@ -24,14 +24,15 @@ it would be proving a service nobody could run.
     and a consumer who forgets the encoder has every mapped sentinel reach their
     clients as Internal, which the anonymous suite reads as a failure.
   - The services Register does not build. identity/config's RegisterService is a
-    call the application makes, and signin has no config block at all — it is
-    built from what the composition root already registered, the way its own
-    documentation says a consumer builds it. oauth2clients and passwordreset do
-    have config blocks, and the harness leaves both unset and builds the two
-    services by hand instead, which is the other way a consumer mounts them;
-    configuring a block as well would register each twice. A surface over a
-    service nobody built stays absent, which is the absence rule working rather
-    than a gap in it.
+    call the application makes. oauth2clients and passwordreset have config
+    blocks, and the harness leaves both unset and builds the two services by
+    hand instead, which is the other way a consumer mounts them. Configuring a
+    block as well would register each service twice. signin is mounted through
+    its block, so its surface is proven to come from a service.Config. What the
+    harness supplies for it is what only an application can: the authenticator,
+    which the hand-built reset flow resolves too, and the sign-in link mailer.
+    A surface over a service nobody built stays absent. That is the absence
+    rule working, not a gap in it.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
   - The extractor, through service.Transports, and the four authorizers that
@@ -76,13 +77,10 @@ composition root failed to mount answers Unimplemented, and the anonymous suite
 reads that as a failure rather than skipping, so a regression in what
 RegisterTransports mounts cannot pass as an absence.
 
-The HTTP surfaces follow what each dialect can serve. mediaregistry mounts
-everywhere. operations runs on a work queue that claims with SKIP LOCKED, which
-is Postgres's alone, and dataprivacy fulfills its requests as operations — so
-both mount on Postgres and are absent on the other two, and Subject.HTTP says
-which, so the HTTP half asserts the routes a dialect serves. A consumer reading
-the README's matrix should know the same thing: dataprivacy's store runs on all
-three dialects, and its service and surface only where operations does.
+The HTTP surfaces are mounted on every dialect too: mediaregistry, operations,
+and dataprivacy, which fulfills its requests as operations. Subject.HTTP still
+says which are mounted, because the flags are how a hand-built subject that
+serves fewer reports it; this harness sets all three.
 
 dataprivacy refuses to start with no collector registered, so the harness
 registers identity's privacy adapter through privacyadapters — the call a

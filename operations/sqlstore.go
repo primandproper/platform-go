@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
+	"github.com/primandproper/platform-go/v14/operations/internal/operationssplitdb"
 	"github.com/primandproper/platform-go/v14/operations/migrations"
 
 	"github.com/primandproper/primitives-go/v2/charset"
@@ -32,20 +33,28 @@ const storeName = serviceName + "_store"
 
 var _ Store = (*SQLStore)(nil)
 
-// SQLStore is the Postgres-backed Store, against the schema
-// operations/migrations renders.
+// SQLStore is the SQL-backed Store, against the schema operations/migrations
+// renders, on any of the three dialects this module names.
 //
 // It is exported, and returned by NewSQLStore, so a caller who has chosen SQL
 // storage can depend on that choice rather than on the Store seam every backing
 // shares.
 //
-// Every statement it runs comes from operations/internal/operationsdb, which is
-// what sqlc-gen-unison generated from the corpus in
+// Every statement it runs comes from operations/internal/operationsdb on
+// Postgres and operations/internal/operationssplitdb on MySQL and SQLite, which
+// are what sqlc-gen-unison generated from the two corpora in
 // operations/internal/queries. Nothing here composes SQL.
 type SQLStore struct {
 	client database.Client
-	q      operationsdb.Querier
-	o11y   observability.Observer
+
+	// Exactly one of the two queriers is set, by NewSQLStore, from the client's
+	// dialect; split being nil is what "this is Postgres" means everywhere
+	// below. The split corpus is the one whose writes read their row back in a
+	// second statement — see split.go.
+	q     operationsdb.Querier
+	split operationssplitdb.Querier
+
+	o11y observability.Observer
 
 	guardMissCounter metrics.Int64Counter
 
@@ -65,7 +74,8 @@ type SQLStore struct {
 	tablePrefix   string
 }
 
-// NewSQLStore builds a Store over the given database, which must speak Postgres.
+// NewSQLStore builds a Store over the given database, in whichever of the three
+// dialects it speaks.
 //
 // The dialect comes from the client, so the two cannot disagree. The prefix must
 // still match the one the migrations were rendered with — nothing here can check
@@ -79,9 +89,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		return nil, ErrNilDatabaseClient
 	}
 
-	if err := dialect.RequirePostgres("operations", client.Dialect()); err != nil {
-		return nil, err
-	}
+	d := client.Dialect()
 
 	s := &SQLStore{client: client, tablePrefix: DefaultTablePrefix}
 	for _, opt := range opts {
@@ -94,24 +102,31 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		return nil, err
 	}
 
-	// The channel is bound as text by the statement this package emits, but the
-	// listener on the other end has to render it into a LISTEN, which takes no
-	// parameters. Vetting it here is what keeps that end from having to.
-	if s.notifyChannel != "" && !dialect.ValidIdentifier(s.notifyChannel) {
-		return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier,
-			"operations notify channel %q", s.notifyChannel)
+	if s.notifyChannel != "" {
+		// NOTIFY is Postgres's. A watcher on the other two polls, which is
+		// correct and later — see the package doc — and a channel configured
+		// there anyway is refused rather than dropped.
+		if !d.SupportsNotify() {
+			return nil, platformerrors.Wrapf(ErrNotifyUnsupported, "operations dialect %q", d)
+		}
+
+		// The channel is bound as text by the statement this package emits, but
+		// the listener on the other end has to render it into a LISTEN, which
+		// takes no parameters. Vetting it here is what keeps that end from
+		// having to.
+		if !dialect.ValidIdentifier(s.notifyChannel) {
+			return nil, platformerrors.Wrapf(dialect.ErrInvalidIdentifier,
+				"operations notify channel %q", s.notifyChannel)
+		}
 	}
 
-	// The generated querier, instantiated once the prefix is settled. The
-	// dialect is not a choice here the way it is for a three-dialect store:
-	// RequirePostgres has already refused everything else, and the generated
-	// package was generated for a roster of one.
-	q, err := operationsdb.New(operationsdb.DialectPostgreSQL, ddl.Qualify(s.tablePrefix))
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "building the operations querier")
+	// The generated querier, instantiated once the prefix is settled: one of
+	// two, because the dialects are served by two statement sets.
+	if err := s.buildQuerier(d, ddl.Qualify(s.tablePrefix)); err != nil {
+		return nil, err
 	}
 
-	s.q = q
+	var err error
 
 	s.o11y = observability.NewObserver(storeName, s.logger, s.tracerProvider)
 
@@ -144,6 +159,29 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	return s, nil
 }
 
+// buildQuerier instantiates the generated querier for d: Postgres's own, or the
+// split one MySQL and SQLite share. See operations/internal/queries.
+func (s *SQLStore) buildQuerier(d dialect.Dialect, prefix string) error {
+	var err error
+
+	switch d {
+	case dialect.Postgres:
+		s.q, err = operationsdb.New(operationsdb.DialectPostgreSQL, prefix)
+	case dialect.MySQL:
+		s.split, err = operationssplitdb.New(operationssplitdb.DialectMySQL, prefix)
+	case dialect.SQLite:
+		s.split, err = operationssplitdb.New(operationssplitdb.DialectSQLite, prefix)
+	default:
+		return platformerrors.Wrapf(dialect.ErrUnsupported, "operations dialect %q", d)
+	}
+
+	if err != nil {
+		return platformerrors.Wrap(err, "building the operations querier")
+	}
+
+	return nil
+}
+
 func (s *SQLStore) Insert(
 	ctx context.Context,
 	tx database.Tx,
@@ -170,7 +208,7 @@ func (s *SQLStore) Insert(
 		kindKey:        op.Kind,
 	})
 
-	row, err := s.q.CreateOperation(ctx, tx, createParams(op))
+	row, err := s.insertRow(ctx, tx, op)
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			// No rows means the conflict clause absorbed a collision, which
@@ -191,9 +229,25 @@ func (s *SQLStore) Insert(
 	// announces a row a listener cannot yet read. The enqueue that follows Start
 	// is the better signal anyway, and nothing subscribes to an operation whose
 	// ID it has not been handed yet.
+	return operationFromRow(row), nil
+}
+
+// insertRow is Insert's write on whichever corpus the store was built over, with
+// the row it wrote. A collision is sql.ErrNoRows from either, which is what the
+// Postgres statement's empty RETURNING reports.
+func (s *SQLStore) insertRow(ctx context.Context, tx database.Tx, op *Operation) (*operationsdb.GetOperationRow, error) {
+	if s.split != nil {
+		return s.insertSplit(ctx, tx, op)
+	}
+
+	row, err := s.q.CreateOperation(ctx, tx, createParams(op))
+	if err != nil {
+		return nil, err
+	}
+
 	shared := operationsdb.GetOperationRow(row)
 
-	return operationFromRow(&shared), nil
+	return &shared, nil
 }
 
 func (s *SQLStore) Get(
@@ -212,7 +266,7 @@ func (s *SQLStore) Get(
 		return nil, span.Error(ErrNilExecutor, "reading operation")
 	}
 
-	row, err := s.q.GetOperationInScope(ctx, q, operationsdb.GetOperationInScopeParams{ID: id, Scope: scope})
+	row, err := s.scopedRow(ctx, q, scope, id)
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			// Attached to the span but not logged as an error. An operation ID
@@ -228,12 +282,43 @@ func (s *SQLStore) Get(
 		return nil, span.Error(err, "reading operation")
 	}
 
-	shared := operationsdb.GetOperationRow(row)
-	op := operationFromRow(&shared)
+	op := operationFromRow(row)
 
 	span.Set(stateKey, string(op.State)).Set(kindKey, op.Kind).Set(revisionKey, op.Revision)
 
 	return op, nil
+}
+
+// scopedRow is the consumer's single read, on whichever corpus the store was
+// built over.
+func (s *SQLStore) scopedRow(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	id string,
+) (*operationsdb.GetOperationRow, error) {
+	var (
+		shared operationsdb.GetOperationRow
+		err    error
+	)
+
+	if s.split != nil {
+		var row operationssplitdb.GetOperationInScopeRow
+
+		row, err = s.split.GetOperationInScope(ctx, q, operationssplitdb.GetOperationInScopeParams{ID: id, Scope: scope})
+		shared = operationsdb.GetOperationRow(row)
+	} else {
+		var row operationsdb.GetOperationInScopeRow
+
+		row, err = s.q.GetOperationInScope(ctx, q, operationsdb.GetOperationInScopeParams{ID: id, Scope: scope})
+		shared = operationsdb.GetOperationRow(row)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &shared, nil
 }
 
 // unscopedRow is the read-back RequestCancel makes, on an id it has just
@@ -241,7 +326,20 @@ func (s *SQLStore) Get(
 // statement in the corpus is for; see Store on the seven methods that take
 // neither, and why this is not a variant a consumer read may reach for.
 func (s *SQLStore) unscopedRow(ctx context.Context, id string) (*Operation, error) {
-	row, err := s.q.GetOperation(ctx, s.client.Reader(), operationsdb.GetOperationParams{ID: id})
+	var (
+		row operationsdb.GetOperationRow
+		err error
+	)
+
+	if s.split != nil {
+		var split operationssplitdb.GetOperationRow
+
+		split, err = s.split.GetOperation(ctx, s.client.Reader(), operationssplitdb.GetOperationParams{ID: id})
+		row = operationsdb.GetOperationRow(split)
+	} else {
+		row, err = s.q.GetOperation(ctx, s.client.Reader(), operationsdb.GetOperationParams{ID: id})
+	}
+
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, platformerrors.Wrapf(ErrOperationNotFound, "operation %q", id)
@@ -277,14 +375,12 @@ func (s *SQLStore) GetMany(
 		return nil, nil
 	}
 
-	rows, err := s.q.GetOperations(ctx, q, operationsdb.GetOperationsParams{Scope: scope, IDs: ids})
+	rows, err := s.manyRows(ctx, q, scope, ids)
 	if err != nil {
 		return nil, span.Error(err, "reading operations")
 	}
 
-	ops := operationsFromRows(rows, func(r operationsdb.GetOperationsRow) operationsdb.GetOperationRow {
-		return operationsdb.GetOperationRow(r)
-	})
+	ops := operationsFromRows(rows)
 
 	span.Set(resultCountKey, len(ops))
 
@@ -332,17 +428,9 @@ func (s *SQLStore) List(
 	// statement text rather than a bound value, so the corpus carries the pair
 	// and the reading of the field is filtering's — one home for it, so a store
 	// cannot come to differ from the generated statements about what "desc" is.
-	listRows, err := sortedRows(filter,
-		func() ([]operationsdb.ListOperationsRow, error) {
-			return s.q.ListOperations(ctx, q, listParams(scope, listScope, filter))
-		},
-		func() ([]operationsdb.ListOperationsDescendingRow, error) {
-			return s.q.ListOperationsDescending(ctx, q,
-				operationsdb.ListOperationsDescendingParams(listParams(scope, listScope, filter)))
-		},
-		func(r operationsdb.ListOperationsDescendingRow) operationsdb.ListOperationsRow {
-			return operationsdb.ListOperationsRow(r)
-		})
+	params := listParams(scope, listScope, filter)
+
+	listRows, err := s.listRows(ctx, q, &params, filter)
 	if err != nil {
 		return nil, span.Error(err, "listing operations")
 	}
@@ -368,13 +456,7 @@ func (s *SQLStore) Begin(ctx context.Context, id string, attempts int, lease tim
 	}))
 	defer span.End()
 
-	row, err := s.q.BeginOperation(ctx, s.client.Writer(), operationsdb.BeginOperationParams{
-		RunningState:      string(StateRunning),
-		Attempts:          int64(attempts),
-		LeaseMicroseconds: lease.Microseconds(),
-		ID:                id,
-		ActiveStates:      activeStates(),
-	})
+	row, err := s.claimRow(ctx, id, attempts, lease)
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			// The guard did its job: the operation is gone, finished, or still
@@ -390,8 +472,7 @@ func (s *SQLStore) Begin(ctx context.Context, id string, attempts int, lease tim
 		return nil, span.Error(err, "beginning operation")
 	}
 
-	shared := operationsdb.GetOperationRow(row)
-	op := operationFromRow(&shared)
+	op := operationFromRow(row)
 
 	span.Set(kindKey, op.Kind).Set(revisionKey, op.Revision)
 	s.notify(ctx)
@@ -414,7 +495,7 @@ func (s *SQLStore) Progress(ctx context.Context, id string, progress Progress, l
 		total = &widened
 	}
 
-	row, err := s.q.RecordOperationProgress(ctx, s.client.Writer(), operationsdb.RecordOperationProgressParams{
+	row, err := s.flushRow(ctx, &operationsdb.RecordOperationProgressParams{
 		UnitsTotal:        total,
 		UnitsDone:         int64(progress.UnitsDone),
 		ProgressUnit:      charset.TruncateUTF8(progress.Unit, MaxMessageLength),
@@ -509,6 +590,10 @@ func (s *SQLStore) finishRows(
 	params *operationsdb.FinishOperationParams,
 	unitsAllDone bool,
 ) (int64, error) {
+	if s.split != nil {
+		return s.finishSplit(ctx, params, unitsAllDone)
+	}
+
 	if unitsAllDone {
 		return s.q.FinishOperationWithEveryUnitDone(ctx, s.client.Writer(),
 			operationsdb.FinishOperationWithEveryUnitDoneParams(*params))
@@ -532,7 +617,16 @@ func (s *SQLStore) Release(ctx context.Context, id string, opErr *Error) error {
 		params.ErrorMessage = charset.TruncateUTF8(opErr.Message, MaxMessageLength)
 	}
 
-	affected, err := s.q.ReleaseOperation(ctx, s.client.Writer(), params)
+	var (
+		affected int64
+		err      error
+	)
+
+	if s.split != nil {
+		affected, err = s.split.ReleaseOperation(ctx, s.client.Writer(), operationssplitdb.ReleaseOperationParams(params))
+	} else {
+		affected, err = s.q.ReleaseOperation(ctx, s.client.Writer(), params)
+	}
 
 	return s.reportGuardedWrite(ctx, span, affected, err, id, "release", "releasing operation")
 }
@@ -541,12 +635,7 @@ func (s *SQLStore) RequestCancel(ctx context.Context, id string) (*Operation, er
 	ctx, span := s.o11y.Begin(ctx, observability.WithValue(operationIDKey, id))
 	defer span.End()
 
-	affected, err := s.q.RequestOperationCancel(ctx, s.client.Writer(), operationsdb.RequestOperationCancelParams{
-		PendingState:   string(StatePending),
-		CancelledState: string(StateCancelled),
-		ID:             id,
-		ActiveStates:   activeStates(),
-	})
+	affected, err := s.cancelRows(ctx, id)
 	if err != nil {
 		return nil, span.Error(err, "requesting operation cancellation")
 	}
@@ -577,19 +666,12 @@ func (s *SQLStore) Stranded(ctx context.Context, grace time.Duration, limit int)
 		return nil, nil
 	}
 
-	rows, err := s.q.ListStrandedOperations(ctx, s.client.Reader(), operationsdb.ListStrandedOperationsParams{
-		PendingState:      string(StatePending),
-		GraceMicroseconds: grace.Microseconds(),
-		RunningState:      string(StateRunning),
-		StrandedLimit:     int64(limit),
-	})
+	rows, err := s.strandedRows(ctx, grace, limit)
 	if err != nil {
 		return nil, span.Error(err, "reading stranded operations")
 	}
 
-	ops := operationsFromRows(rows, func(r operationsdb.ListStrandedOperationsRow) operationsdb.GetOperationRow {
-		return operationsdb.GetOperationRow(r)
-	})
+	ops := operationsFromRows(rows)
 
 	span.Set(resultCountKey, len(ops))
 
@@ -604,11 +686,7 @@ func (s *SQLStore) Reap(ctx context.Context, retention time.Duration, limit int)
 		return 0, nil
 	}
 
-	affected, err := s.q.ReapOperations(ctx, s.client.Writer(), operationsdb.ReapOperationsParams{
-		TerminalStates:        terminalStates(),
-		RetentionMicroseconds: retention.Microseconds(),
-		ReapLimit:             int64(limit),
-	})
+	affected, err := s.reapRows(ctx, retention, limit)
 	if err != nil {
 		return 0, span.Error(err, "reaping operations")
 	}
@@ -616,6 +694,123 @@ func (s *SQLStore) Reap(ctx context.Context, retention time.Duration, limit int)
 	span.Set(rowsAffectedKey, affected)
 
 	return affected, nil
+}
+
+// The rest of the store's statements, on whichever corpus it was built over.
+// Each is the Postgres statement or its split.go counterpart, and each answers
+// in the Postgres roster's row type, so the methods above read one shape.
+
+func (s *SQLStore) manyRows(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	ids []string,
+) ([]operationsdb.GetOperationRow, error) {
+	if s.split != nil {
+		return s.getManySplit(ctx, q, scope, ids)
+	}
+
+	rows, err := s.q.GetOperations(ctx, q, operationsdb.GetOperationsParams{Scope: scope, IDs: ids})
+
+	return convertRows(rows, func(r operationsdb.GetOperationsRow) operationsdb.GetOperationRow {
+		return operationsdb.GetOperationRow(r)
+	}), err
+}
+
+func (s *SQLStore) listRows(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	params *operationsdb.ListOperationsParams,
+	filter *filtering.QueryFilter,
+) ([]operationsdb.ListOperationsRow, error) {
+	if s.split != nil {
+		return s.listSplit(ctx, q, params, filter)
+	}
+
+	return sortedRows(filter,
+		func() ([]operationsdb.ListOperationsRow, error) {
+			return s.q.ListOperations(ctx, q, *params)
+		},
+		func() ([]operationsdb.ListOperationsDescendingRow, error) {
+			return s.q.ListOperationsDescending(ctx, q, operationsdb.ListOperationsDescendingParams(*params))
+		},
+		func(r operationsdb.ListOperationsDescendingRow) operationsdb.ListOperationsRow {
+			return operationsdb.ListOperationsRow(r)
+		})
+}
+
+func (s *SQLStore) claimRow(ctx context.Context, id string, attempts int, lease time.Duration) (*operationsdb.GetOperationRow, error) {
+	if s.split != nil {
+		return s.beginSplit(ctx, id, attempts, lease)
+	}
+
+	row, err := s.q.BeginOperation(ctx, s.client.Writer(), operationsdb.BeginOperationParams{
+		RunningState:      string(StateRunning),
+		Attempts:          int64(attempts),
+		LeaseMicroseconds: lease.Microseconds(),
+		ID:                id,
+		ActiveStates:      activeStates(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	shared := operationsdb.GetOperationRow(row)
+
+	return &shared, nil
+}
+
+func (s *SQLStore) flushRow(
+	ctx context.Context,
+	params *operationsdb.RecordOperationProgressParams,
+) (operationsdb.RecordOperationProgressRow, error) {
+	if s.split != nil {
+		return s.progressSplit(ctx, params)
+	}
+
+	return s.q.RecordOperationProgress(ctx, s.client.Writer(), *params)
+}
+
+func (s *SQLStore) cancelRows(ctx context.Context, id string) (int64, error) {
+	if s.split != nil {
+		return s.requestCancelSplit(ctx, id)
+	}
+
+	return s.q.RequestOperationCancel(ctx, s.client.Writer(), operationsdb.RequestOperationCancelParams{
+		PendingState:   string(StatePending),
+		CancelledState: string(StateCancelled),
+		ID:             id,
+		ActiveStates:   activeStates(),
+	})
+}
+
+func (s *SQLStore) strandedRows(ctx context.Context, grace time.Duration, limit int) ([]operationsdb.GetOperationRow, error) {
+	if s.split != nil {
+		return s.strandedSplit(ctx, grace, limit)
+	}
+
+	rows, err := s.q.ListStrandedOperations(ctx, s.client.Reader(), operationsdb.ListStrandedOperationsParams{
+		PendingState:      string(StatePending),
+		GraceMicroseconds: grace.Microseconds(),
+		RunningState:      string(StateRunning),
+		StrandedLimit:     int64(limit),
+	})
+
+	return convertRows(rows, func(r operationsdb.ListStrandedOperationsRow) operationsdb.GetOperationRow {
+		return operationsdb.GetOperationRow(r)
+	}), err
+}
+
+func (s *SQLStore) reapRows(ctx context.Context, retention time.Duration, limit int) (int64, error) {
+	if s.split != nil {
+		return s.reapSplit(ctx, retention, limit)
+	}
+
+	return s.q.ReapOperations(ctx, s.client.Writer(), operationsdb.ReapOperationsParams{
+		TerminalStates:        terminalStates(),
+		RetentionMicroseconds: retention.Microseconds(),
+		ReapLimit:             int64(limit),
+	})
 }
 
 // notify wakes whatever is watching, after the row has landed.

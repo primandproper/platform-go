@@ -140,7 +140,7 @@ func TestNewTimers(T *testing.T) {
 	T.Run("surfaces the dialect the set refuses", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewTimers[string](t.Context(), validConfig(), clientFor(dialect.SQLite))
+		_, err := NewTimers[string](t.Context(), validConfig(), clientFor(dialect.Dialect("oracle")))
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 

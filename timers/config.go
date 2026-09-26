@@ -98,6 +98,11 @@ type Config struct {
 	//
 	// Nothing in this package listens. A wakeup arrives as a bare channel
 	// through WithWakeup, which database/postgres/pgnotify is one way to fill.
+	//
+	// Postgres only, because NOTIFY is. New refuses a channel on MySQL or
+	// SQLite with ErrNotifyUnsupported rather than ignoring it, since a set
+	// that silently dropped it would look configured and sleep through the
+	// very timer this exists for.
 	NotifyChannel string `env:"NOTIFY_CHANNEL" json:"notifyChannel,omitempty" yaml:"notifyChannel,omitempty"`
 
 	// Retention is how long a fired timer is kept before Reap may delete it.
@@ -128,7 +133,8 @@ type Config struct {
 	// WriteAttempts is how many times a writer re-runs a statement that failed
 	// with a serialization failure or a deadlock — the two conditions Postgres
 	// resolves by asking the caller to try the whole thing again. Anything else
-	// is returned on the first failure.
+	// is returned on the first failure, and that includes every failure on MySQL
+	// and SQLite: the conditions retried are Postgres's SQLSTATEs.
 	WriteAttempts uint `env:"WRITE_ATTEMPTS" json:"writeAttempts,omitempty" yaml:"writeAttempts,omitempty"`
 
 	// MinWakeInterval floors how long Wait sleeps. It bounds both a wake storm

@@ -495,7 +495,7 @@ func (r *SQLReader) List(
 		filter = filtering.DefaultQueryFilter()
 	}
 
-	tracing.AttachQueryFilterToSpan(op.Span(), filter)
+	op.SetValues(filter.ObservabilityValues())
 	query.attachTo(op)
 
 	// Checked after the query is on the span and before anything is bound, so a

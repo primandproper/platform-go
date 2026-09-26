@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/authentication/grants"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -90,6 +91,7 @@ const (
 	entitlementsPkg  = "entitlements"
 	shreddingPkg     = "shredding"
 	mediaRegistryPkg = "mediaregistry"
+	grantsPkg        = "authentication/grants"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -329,14 +331,16 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilStore":          {Err: operations.ErrNilStore, Is: Platform},
 
 		// Registry and worker outcomes: a kind registered twice, a runner that
-		// panicked, a result too large to record, a watcher used after close. They
-		// describe the service rather than the request, and a 500 is the honest
+		// panicked, a result too large to record, a watcher used after close, a
+		// notify channel configured on a dialect with none. They describe the
+		// service rather than the request, and a 500 is the honest
 		// answer. ErrRequestTooLarge is the near miss — it is about something a
 		// caller sent — but it is raised by the service enqueuing work rather than
 		// by a handler decoding a request, and nothing today puts it on a response.
 		"ErrDuplicateKind":       {Err: operations.ErrDuplicateKind, Is: Unhandled},
 		"ErrDuplicateOperation":  {Err: operations.ErrDuplicateOperation, Is: Unhandled},
 		"ErrInvalidDefinition":   {Err: operations.ErrInvalidDefinition, Is: Unhandled},
+		"ErrNotifyUnsupported":   {Err: operations.ErrNotifyUnsupported, Is: Unhandled},
 		"ErrRequestTooLarge":     {Err: operations.ErrRequestTooLarge, Is: Unhandled},
 		"ErrRequestTypeMismatch": {Err: operations.ErrRequestTypeMismatch, Is: Unhandled},
 		"ErrResultTooLarge":      {Err: operations.ErrResultTooLarge, Is: Unhandled},
@@ -1074,6 +1078,42 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilStore":          {Err: mediaregistry.ErrNilStore, Is: Platform},
 		"ErrNilUploadManager":  {Err: mediaregistry.ErrNilUploadManager, Is: Platform},
 	},
+	grantsPkg: {
+		// The endpoints these are for are the consumer's: the consent callback,
+		// the connected-accounts page, and the handler that syncs through a
+		// grant. The absence reads the same whoever's tenant it is in; the lost
+		// refresh race is a conflict the loser resolves by reading again; and
+		// the two that only a new consent fixes share one answer that says so.
+		"ErrGrantNotFound":   {Err: grants.ErrGrantNotFound, Is: Mapped},
+		"ErrStaleRefresh":    {Err: grants.ErrStaleRefresh, Is: Mapped},
+		"ErrProviderRevoked": {Err: grants.ErrProviderRevoked, Is: Mapped},
+		"ErrNoRefreshToken":  {Err: grants.ErrNoRefreshToken, Is: Mapped},
+
+		// The shape refusals a consent callback can be told.
+		"ErrEmptySubject":        {Err: grants.ErrEmptySubject, Is: Mapped},
+		"ErrEmptyProvider":       {Err: grants.ErrEmptyProvider, Is: Mapped},
+		"ErrEmptyAccessToken":    {Err: grants.ErrEmptyAccessToken, Is: Mapped},
+		"ErrInvalidGrantedScope": {Err: grants.ErrInvalidGrantedScope, Is: Mapped},
+
+		// The provider answering a refresh with success and no token. Nobody on
+		// the far side of the consumer's endpoint caused it or can fix it, and
+		// nothing in the module maps a misbehaving third party to a code of its
+		// own, so a 500 is the honest answer — the same one every other failure
+		// of the provider's already gets from Refresh.
+		"ErrProviderReturnedNoAccessToken": {Err: grants.ErrProviderReturnedNoAccessToken, Is: Unhandled},
+
+		// Two that wrap errors.ErrUnrecognizedInputValue, and the nil arguments,
+		// which wrap errors.ErrNilInputParameter.
+		"ErrValueTooLong":            {Err: grants.ErrValueTooLong, Is: Platform},
+		"ErrUnknownRevocationReason": {Err: grants.ErrUnknownRevocationReason, Is: Platform},
+		"ErrNilDatabaseClient":       {Err: grants.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilEncryptor":            {Err: grants.ErrNilEncryptor, Is: Platform},
+		"ErrNilExecutor":             {Err: grants.ErrNilExecutor, Is: Platform},
+		"ErrNilConsent":              {Err: grants.ErrNilConsent, Is: Platform},
+		"ErrNilTokens":               {Err: grants.ErrNilTokens, Is: Platform},
+		"ErrNilGrant":                {Err: grants.ErrNilGrant, Is: Platform},
+		"ErrNilExchanger":            {Err: grants.ErrNilExchanger, Is: Platform},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
@@ -1088,6 +1128,7 @@ var Packages = []string{
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
 	webhooksPkg, billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
 	passwordResetPkg, meteringPkg, entitlementsPkg, shreddingPkg, mediaRegistryPkg,
+	grantsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -1137,6 +1178,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return shredding.HTTPMapper, shredding.GRPCMapper
 	case mediaRegistryPkg:
 		return mediaregistry.HTTPMapper, mediaregistry.GRPCMapper
+	case grantsPkg:
+		return grants.HTTPMapper, grants.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
