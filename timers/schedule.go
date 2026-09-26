@@ -50,11 +50,12 @@ type encodedTimer struct {
 // somebody is firing and let a second worker fire it too.
 //
 // The whole batch is one statement on Postgres and one transaction elsewhere,
-// so either every timer in it is scheduled or none is. Unlike a work queue's enqueue there is no group commit across
-// concurrent callers: scheduling is not a per-request write path — one row is
-// created when a trial starts, not on every read of it — so the contention that
-// makes merging worth its complexity does not arise. If you find yourself
-// scheduling on every request, you want a work queue.
+// so either every timer in it is scheduled or none is. Unlike a work queue's
+// enqueue there is no group commit across concurrent callers: scheduling is not
+// a per-request write path — one row is created when a trial starts, not on
+// every read of it — so the contention that makes merging worth its complexity
+// does not arise. If you find yourself scheduling on every request, you want a
+// work queue.
 //
 // What that statement does not join is the caller's transaction. Schedule writes
 // on this set's own handle and there is no variant taking a database.Tx. Unlike

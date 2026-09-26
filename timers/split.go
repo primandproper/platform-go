@@ -63,8 +63,9 @@ func (t *Timers[K]) claimSplit(ctx context.Context, limit int, lease time.Durati
 		}
 
 		leased, err := t.split.FetchLeasedTimers(ctx, tx, timerssplitdb.FetchLeasedTimersParams{
-			TimerSet: t.cfg.Name,
-			LeasedBy: &leasedBy,
+			TimerSet:  t.cfg.Name,
+			LeasedBy:  &leasedBy,
+			TimerKeys: keys,
 		})
 		if err != nil {
 			return platformerrors.Wrap(err, "reading leased timers")

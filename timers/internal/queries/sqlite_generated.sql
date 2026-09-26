@@ -78,6 +78,7 @@ SELECT
 FROM scheduled_timers
 WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 	AND scheduled_timers.leased_by = sqlc.arg(leased_by)
+	AND scheduled_timers.timer_key IN (sqlc.slice(timer_keys))
 ORDER BY scheduled_timers.run_at, scheduled_timers.timer_key;
 
 -- name: ReadNextDueTimer :one

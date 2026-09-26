@@ -31,8 +31,9 @@ type DeleteReapedTimersParams struct {
 
 // FetchLeasedTimersParams are the arguments to FetchLeasedTimers.
 type FetchLeasedTimersParams struct {
-	TimerSet string
-	LeasedBy *string
+	TimerSet  string
+	LeasedBy  *string
+	TimerKeys []string
 }
 
 // FetchLeasedTimersRow is one row of FetchLeasedTimers's result.

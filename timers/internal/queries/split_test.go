@@ -168,7 +168,9 @@ func TestRenderSplit_TheLeaseRepeatsTheClaimsTest(T *testing.T) {
 }
 
 // TestRenderSplit_TheReadBackFindsTheClaimByItsName. The name is the fact: a
-// key the read selected and the lease did not take is not this claim's.
+// key the read selected and the lease did not take is not this claim's. The
+// keys are bound beside it for the path, so the read walks the primary key and
+// not every row the set holds.
 func TestRenderSplit_TheReadBackFindsTheClaimByItsName(T *testing.T) {
 	T.Parallel()
 
@@ -176,7 +178,7 @@ func TestRenderSplit_TheReadBackFindsTheClaimByItsName(T *testing.T) {
 		fetch := splitStatement(T, d, "FetchLeasedTimers")
 
 		test.StrContains(T, fetch, HolderColumn+" = sqlc.arg("+HolderArg+")", test.Sprintf("dialect %s", d))
-		test.StrNotContains(T, fetch, KeysArg, test.Sprintf("dialect %s", d))
+		test.StrContains(T, fetch, newSplit(d).keys(), test.Sprintf("dialect %s", d))
 	}
 }
 
@@ -400,8 +402,9 @@ func TestRenderSplit_TheKeyedStatementsForceThePrimaryKeyOnMySQL(T *testing.T) {
 		}
 	}
 
-	// The lock, the lease, the two outcome writes, the cancel and the reap.
-	test.EqOp(T, 6, keyed)
+	// The lock, the lease, the read-back, the two outcome writes, the cancel
+	// and the reap.
+	test.EqOp(T, 7, keyed)
 
 	for name, body := range splitCorpus(T, dialect.SQLite) {
 		test.StrNotContains(T, body, "INDEX", test.Sprintf("sqlite %s", name))

@@ -40,6 +40,7 @@ const fetchLeasedTimersSQLite = `SELECT
 FROM {{prefix}}scheduled_timers
 WHERE {{prefix}}scheduled_timers.timer_set = ?1
 	AND {{prefix}}scheduled_timers.leased_by = ?2
+	AND {{prefix}}scheduled_timers.timer_key IN (/*SLICE:timer_keys*/?)
 ORDER BY {{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.timer_key`
 
 const leaseTimersSQLite = `UPDATE {{prefix}}scheduled_timers SET
@@ -258,10 +259,21 @@ func (q *sqliteQueries) DeleteReapedTimers(ctx context.Context, db DBTX, arg Del
 
 // FetchLeasedTimers runs the :many query against sqlite.
 func (q *sqliteQueries) FetchLeasedTimers(ctx context.Context, db DBTX, arg FetchLeasedTimersParams) ([]FetchLeasedTimersRow, error) {
-	rows, err := db.QueryContext(ctx, q.fetchLeasedTimers,
-		arg.TimerSet,
-		arg.LeasedBy,
-	)
+	query := q.fetchLeasedTimers
+
+	args := make([]any, 0, 2+len(arg.TimerKeys))
+
+	args = append(args, arg.TimerSet)
+
+	args = append(args, arg.LeasedBy)
+
+	query = strings.Replace(query, "/*SLICE:timer_keys*/?", slicePlaceholders("?", len(arg.TimerKeys)), 1)
+
+	for _, v := range arg.TimerKeys {
+		args = append(args, v)
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -536,8 +548,9 @@ var (
 		TimerKeys             []string
 	}(DeleteReapedTimersParams{})
 	_ = struct {
-		TimerSet string
-		LeasedBy *string
+		TimerSet  string
+		LeasedBy  *string
+		TimerKeys []string
 	}(FetchLeasedTimersParams{})
 	_ = struct {
 		TimerKey         string

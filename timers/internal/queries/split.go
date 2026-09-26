@@ -56,12 +56,13 @@ const (
 // because the difference is shape rather than syntax. The Postgres claim is one
 // statement that leases rows and hands them back; here it is four — a read of
 // the candidates, a locking read of those by key, the lease, and a read-back by
-// the name the lease stamped — held in one transaction by the set. A Postgres batch is a bound array per column; here it
-// is a bound IN list, which carries one column, so a schedule is a statement
-// per timer and an outcome write is a statement per claim. unison refuses a
-// query whose shape differs across a roster, and rightly, so the two sets are
-// two rosters: this one is generated into timers/internal/timerssplitdb, and
-// Postgres keeps timersdb and its single statements.
+// the name the lease stamped — held in one transaction by the set. A Postgres
+// batch is a bound array per column; here it is a bound IN list, which carries
+// one column, so a schedule is a statement per timer and an outcome write is a
+// statement per claim. unison refuses a query whose shape differs across a
+// roster, and rightly, so the two sets are two rosters: this one is generated
+// into timers/internal/timerssplitdb, and Postgres keeps timersdb and its single
+// statements.
 //
 // What does not change is anything a caller can observe. The reschedule rule,
 // the due predicate, the fences, the lock order and the clock are the same
@@ -306,9 +307,14 @@ WHERE %[8]s
 // fetchLeasedTimers is the fourth: read back what the lease took, by the name it
 // stamped, with the lateness measured on the server's clock.
 //
-// The name rather than the keys, because the name is the fact: a key the read
-// selected and the lease did not take is not this claim's, and the name is
-// minted per claim, so nothing else answers to it.
+// The name is the fence, because the name is the fact: a key the read selected
+// and the lease did not take is not this claim's, and the name is minted per
+// claim, so nothing else answers to it. The keys narrow the read to the rows the
+// lease could have taken, and are there for the path rather than the answer: no
+// index carries the name, so a read by set and name alone walks every row the
+// set holds — fired rows included, for as long as retention keeps them — while
+// the claim's locks are held. The keys name the whole primary key beside the
+// set, and byKey keeps MySQL on it.
 //
 // Whether the payload is NULL is read beside it, because SQLite's driver cannot
 // say: it hands a zero-length blob back as a nil slice, which is the one value
@@ -322,9 +328,10 @@ func (s split) fetchLeasedTimers() string {
 	%[3]s,
 	%[4]s AS late_microseconds,
 	%[5]s
-FROM %[6]s
+FROM %[6]s%[11]s
 WHERE %[7]s = sqlc.arg(%[8]s)
 	AND %[9]s = sqlc.arg(%[10]s)
+	AND %[12]s
 ORDER BY %[3]s, %[1]s`,
 		querygen.Qualify(TimersTable, KeyColumn),
 		querygen.Qualify(TimersTable, PayloadColumn),
@@ -334,6 +341,8 @@ ORDER BY %[3]s, %[1]s`,
 		TimersTable,
 		querygen.Qualify(TimersTable, SetColumn), SetArg,
 		querygen.Qualify(TimersTable, HolderColumn), HolderArg,
+		s.byKey(),
+		s.keys(),
 	)
 }
 
