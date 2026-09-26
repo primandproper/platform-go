@@ -92,7 +92,7 @@ oauth2clients from Config.OAuth2Clients, so its surface mounts from the config
 alone, and passwordreset from Config.PasswordReset, so its surface mounts from
 the config plus the mailer and authenticator only the application can supply.
 
-# The two seams
+# The seams
 
 Everything else about a surface is deterministic from the config. These are not,
 because no environment variable can express them:
@@ -124,6 +124,18 @@ the startup that configured it rather than mounting open — under the surface's
 own sentinel, because the surface is what knows what it was missing. Three have
 a default their own package chose, and leaving the field nil leaves that choice
 alone.
+
+The grants extractor is the optional fourth, and it answers what the caller may
+do for the seven surfaces that ask inside a handler — billing, comments,
+issuereports, notifications, settings, waitlists and webhooks — whether a read
+that sent include_archived receives the archived rows, and whether a settings
+write may name a setting the catalog reserved to administrators. Neither is a
+question a method grant can answer, because both turn on the request. Left nil,
+each surface keeps its own fail-closed answer: include_archived is cleared and
+every reserved write is refused, for administrators too. That is a server that
+withholds rather than one that mounts open, so nil stays legal, and a service
+that means to serve either feature supplies the same
+authorization.GrantsExtractor its authorization interceptor reads.
 
 # What RegisterTransports owns, and what it leaves
 

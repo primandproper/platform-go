@@ -276,6 +276,38 @@ func definitions(t *testing.T, s *conformance.Session) {
 		test.SliceContains(t, definitionNames(res.GetResults()), c.compact)
 	})
 
+	// The granted half. An administrator holds the grant that retires a
+	// setting, so asking is answered with the retired rows — and the listing
+	// that did not ask is the control that the setting really was retired.
+	t.Run("an administrator asking for retired settings receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin())
+		c := names()
+
+		define(t, admin, &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
+		define(t, admin, &settingspb.SettingDefinitionInput{Name: c.compact, Kind: settingspb.SettingKind_SETTING_KIND_BOOLEAN})
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.Settings.ArchiveDefinition(ctx,
+			&settingspb.ArchiveDefinitionRequest{DefinitionId: byName(t, admin, c.digest).GetId()})
+		must.NoError(t, err)
+
+		without, err := admin.Surfaces.Settings.ListDefinitions(ctx, &settingspb.ListDefinitionsRequest{})
+		must.NoError(t, err)
+		test.SliceNotContains(t, definitionNames(without.GetResults()), c.digest)
+
+		include := true
+
+		with, err := admin.Surfaces.Settings.ListDefinitions(ctx,
+			&settingspb.ListDefinitionsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
+		must.NoError(t, err)
+		test.SliceContains(t, definitionNames(with.GetResults()), c.compact)
+		test.SliceContains(t, definitionNames(with.GetResults()), c.digest,
+			test.Sprint("an administrator asked for retired settings and was answered without them"))
+	})
+
 	// The one value-side read no subject authorizer gates, because it names a
 	// setting rather than a subject and answers every subject's row — the read
 	// an administrator makes before narrowing an enumeration.

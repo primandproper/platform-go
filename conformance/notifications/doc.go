@@ -31,9 +31,11 @@ half needs nothing but a client.
 notifications/grpc keeps its construction and contract tests: what NewServer
 refuses to be built from, the permission roster, the reservations in the proto,
 the store-method roster, the converters and the options. It keeps the principal
-with no user identifier, which a subject cannot mint, and everything about
-include_archived, which is the deployment's grants' answer rather than a
-promise a suite can hold every deployment to.
+with no user identifier, which a subject cannot mint, and what include_archived
+answers an ordinary caller, which is the deployment's grants' answer rather
+than a promise a suite can hold every deployment to. What it answers an
+administrator is asserted here: an administrator holds the grant that dismisses
+a notification, so asking for the dismissed ones is answered with them.
 
 It keeps the counts, too. MarkAllNotificationsRead reports how many rows it
 moved and the unread listing reports a badge count, and both are exact only in

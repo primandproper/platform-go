@@ -45,7 +45,9 @@ every test that builds the server some particular way — a SignupAuthorizer tha
 permits, refuses, fails or records what it was handed, a ContactResolver, a
 GrantsExtractor that unlocks archived rows, a scope resolver that cannot place a
 request — because a deployed service was built once and cannot be rebuilt by the
-thing testing it.
+thing testing it. What a deployed service's grants answer an administrator is
+the exception, since an administrator holds the grant that retires a list: an
+administrator asking for retired lists receives them, and that is asserted here.
 
 That includes the withdrawals that succeed. Whether a withdrawal is permitted is
 the consumer's SignupAuthorizer's answer and has no default, so a suite cannot

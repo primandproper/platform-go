@@ -153,6 +153,37 @@ func everyListing(t *testing.T, s *conformance.Session) {
 			must.NoError(t, err, must.Sprint("asking for the archive was refused"))
 			test.SliceContains(t, ids, live.GetId())
 		})
+
+		// The granted half. An administrator holds whatever grant a deployment
+		// reads the archive off, so asking is answered with it — and the read
+		// without the filter, by the same caller, is the control that the
+		// report really did leave the queue.
+		t.Run(name+" gives an administrator the archive it asked for", func(t *testing.T) {
+			t.Parallel()
+
+			admin := s.Subject(t, conformance.AsAdmin())
+			needsUser(t, admin)
+
+			subjectType, subjectID := subjectOfItsOwn(), identifiers.New()
+			live := file(t, admin, subjectType, subjectID)
+			removed := file(t, admin, subjectType, subjectID)
+
+			ctx := admin.Context(t.Context())
+
+			_, err := admin.Surfaces.IssueReports.ArchiveReport(ctx,
+				&issuereportspb.ArchiveReportRequest{ReportId: removed.GetId()})
+			must.NoError(t, err)
+
+			without, err := list(ctx, admin, live, nil)
+			must.NoError(t, err)
+			test.SliceNotContains(t, without, removed.GetId())
+
+			with, err := list(ctx, admin, live, includeArchived())
+			must.NoError(t, err)
+			test.SliceContains(t, with, live.GetId())
+			test.SliceContains(t, with, removed.GetId(),
+				test.Sprint("an administrator asked for the archive and was answered without it"))
+		})
 	}
 }
 

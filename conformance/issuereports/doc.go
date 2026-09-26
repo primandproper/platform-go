@@ -32,11 +32,14 @@ extractor that holds or lacks the archive grant — because a deployed service
 was built once and cannot be rebuilt by the thing testing it. It keeps the
 principal with no user identifier, which a subject cannot mint.
 
-That includes what include_archived answers. Whether a caller receives the
-reports taken out of the queue is the deployment's grants' answer, so a suite
-cannot know which one to expect; what it asserts instead is the half that holds
-under every answer — asking is never refused, and a read that did not ask never
-receives them.
+That includes most of what include_archived answers. Whether an ordinary caller
+receives the reports taken out of the queue is the deployment's grants' answer,
+so a suite cannot know which one to expect; what it asserts for one is the half
+that holds under every answer — asking is never refused, and a read that did not
+ask never receives them. An administrator is the caller whose answer is known,
+because whatever grant a deployment reads the archive off is one an
+administrator holds, so every listing is also asserted to hand an administrator
+the archive it asked for. A subject that mints no administrator skips that half.
 
 # Both directions, deliberately
 

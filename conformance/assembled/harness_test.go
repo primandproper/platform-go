@@ -90,6 +90,7 @@ const (
 	mdUserID  = "conformance-user-id"
 	mdScope   = "conformance-scope"
 	mdAccount = "conformance-account-id"
+	mdAdmin   = "conformance-admin"
 )
 
 // auditedResourceType is what this harness's auditable action touches.
@@ -202,6 +203,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 	service.RegisterTransports(i, &service.Transports{
 		Extractor:   extractPrincipal,
 		Authorizers: authorizers(),
+		Grants:      grantsOf,
 	})
 
 	svc, err := service.New(i)
@@ -239,12 +241,6 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		NewSubject: func(ctx context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
 			req := conformance.NewSubjectRequest(opts...)
 
-			// No administrative caller: service roles are a deployment's to
-			// define, and a stand-in that invented one would be asserted against.
-			if req.Admin {
-				return nil, conformance.ErrSubjectUnsupported
-			}
-
 			scope := tenancy.Of(identifiers.New())
 			if req.Scope != nil {
 				scope = *req.Scope
@@ -269,6 +265,13 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 				return nil, registerErr
 			}
 
+			// An administrator is a caller whose credential says so, and
+			// what that buys is adminRole — the grants the surfaces ask
+			// inside a handler, read through the extractor service mounted
+			// them with. The credential is this harness's stand-in, so the
+			// flag rides on it the way a role claim rides on a consumer's.
+			admin := strconv.FormatBool(req.Admin)
+
 			return &conformance.Subject{
 				Scope:     scope,
 				UserID:    reg.User.ID,
@@ -277,7 +280,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 				Surfaces:  surfaces,
 				HTTP: &conformance.HTTPSurfaces{
 					Client: &http.Client{Transport: &credentialTransport{
-						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID,
+						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID, admin: req.Admin,
 					}},
 					BaseURL:       baseURL,
 					DataPrivacy:   servesOperations,
@@ -294,6 +297,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 						mdUserID, reg.User.ID,
 						mdScope, scope.Owner(),
 						mdAccount, reg.Account.ID,
+						mdAdmin, admin,
 					))
 				},
 			}, nil
@@ -555,6 +559,10 @@ func authenticate(
 		principal.activeAccountID = accounts[0]
 	}
 
+	if admins := md.Get(mdAdmin); len(admins) > 0 {
+		principal.admin = admins[0] == "true"
+	}
+
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
@@ -571,7 +579,12 @@ func authenticateHTTP(next http.Handler) http.Handler {
 			return
 		}
 
-		principal := &testPrincipal{userID: userID, scope: tenancy.Global(), activeAccountID: r.Header.Get(mdAccount)}
+		principal := &testPrincipal{
+			userID:          userID,
+			scope:           tenancy.Global(),
+			activeAccountID: r.Header.Get(mdAccount),
+			admin:           r.Header.Get(mdAdmin) == "true",
+		}
 		if owner := r.Header.Get(mdScope); owner != "" {
 			principal.scope = tenancy.Of(owner)
 		}
@@ -587,6 +600,7 @@ type credentialTransport struct {
 	userID    string
 	accountID string
 	scope     tenancy.Scope
+	admin     bool
 }
 
 func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -594,6 +608,7 @@ func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	req.Header.Set(mdUserID, c.userID)
 	req.Header.Set(mdScope, c.scope.Owner())
 	req.Header.Set(mdAccount, c.accountID)
+	req.Header.Set(mdAdmin, strconv.FormatBool(c.admin))
 
 	return http.DefaultTransport.RoundTrip(req)
 }
@@ -606,10 +621,14 @@ func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
 	return p, ok
 }
 
+// testPrincipal is the stand-in credential, read back. admin is not one of the
+// three facts callers.Principal names — a role is the deployment's notion, not
+// the platform's — so only grantsOf reads it.
 type testPrincipal struct {
 	userID          string
 	activeAccountID string
 	scope           tenancy.Scope
+	admin           bool
 }
 
 var _ callers.Principal = (*testPrincipal)(nil)

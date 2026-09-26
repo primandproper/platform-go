@@ -36,10 +36,13 @@ or who is calling it — an author authorizer that permits or cannot decide, an
 existence check that finds nothing, a catalog narrowed after the fact, and a
 principal that names nobody, which no deployment can produce.
 
-It keeps include_archived too. Whether a caller receives archived comments
-depends on the grants they hold, and a subject mints callers without saying
-what they may do; an assertion about it would be asserting against a principal
-no subject can describe.
+It keeps most of include_archived too. Whether an ordinary caller receives
+archived comments depends on the grants they hold, and a subject mints callers
+without saying what they may do; an assertion about it would be asserting
+against a principal no subject can describe. An administrator is the exception,
+because the grant a deployment reads the archive off is one an administrator
+holds, so what an administrator receives when they ask is asserted here
+wherever the subject mints one.
 
 # Both directions, deliberately
 

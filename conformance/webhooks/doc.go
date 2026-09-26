@@ -44,8 +44,10 @@ either about: a delivery is written only inside the transaction of the
 application change it describes. An action for "publish an event" would still
 leave the assertion waiting on a real worker's real delivery attempt, which is
 a pacing test rather than a promise about a read. It keeps include_archived as
-well, because whether a caller receives retired endpoints depends on grants a
-subject does not describe.
+well, because whether an ordinary caller receives retired endpoints depends on
+grants a subject does not describe — save for an administrator, who holds the
+grant that retires an endpoint and so is asserted to receive retired ones when
+asking, wherever the subject mints one.
 
 # Both directions, deliberately
 

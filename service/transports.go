@@ -35,6 +35,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -118,7 +119,7 @@ var (
 
 // Transports is what a mounted surface needs and a Config cannot carry.
 //
-// Two required seams and one optional third, and they are the whole of the "you
+// Two required seams and two optional ones, and they are the whole of the "you
 // keep the policy" bargain. Every surface this module ships is otherwise
 // deterministic from the config: the store it reads, the client it reads on,
 // the observability it reports through. What is not deterministic is who is
@@ -185,6 +186,28 @@ type Transports struct {
 	// Authorizers are the per-surface rules about which rows a caller who may
 	// make this call may make it against.
 	Authorizers Authorizers
+
+	// Grants is what the caller may do, for the seven surfaces that ask it
+	// inside a handler rather than at the method: billing, comments,
+	// issuereports, notifications, settings, waitlists and webhooks.
+	//
+	// Each of them decides two things off it that no method grant can reach,
+	// because both depend on the request rather than on the RPC — whether a
+	// read that sent include_archived receives the archived rows, and, on
+	// settings, whether a write names a setting the catalog reserved to
+	// administrators. It is the same authorization.GrantsExtractor a consumer
+	// hands primitives-go's authorization/grpc enforcer, so the interceptor
+	// that decides whether a method may be called and the handler that decides
+	// which rows the answer may hold read one authority and cannot disagree.
+	//
+	// Nil is deliberately today's behavior rather than a startup error. Each
+	// surface's own absence rule is the fail-closed one — include_archived is
+	// cleared and every reserved write is refused — which is a server that
+	// withholds features rather than one that mounts open, so a deployment
+	// that has not wired grants loses nothing it was relying on. It is passed
+	// to the seven surfaces only when it is set, for the reason an optional
+	// authorizer is: the absence rule is theirs.
+	Grants authorization.GrantsExtractor
 
 	// Registrations are the application's own gRPC services, mounted on the
 	// same server as the platform's.
@@ -723,9 +746,12 @@ func (m *mount) billing() {
 		return
 	}
 
-	srv, err := billinggrpc.NewServer(store, client, extract, m.t.Authorizers.BillingAccounts,
-		billinggrpc.WithPillars(m.pillars),
-	)
+	opts := []billinggrpc.Option{billinggrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, billinggrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	srv, err := billinggrpc.NewServer(store, client, extract, m.t.Authorizers.BillingAccounts, opts...)
 	if err != nil {
 		m.fail("billing", err)
 
@@ -756,6 +782,10 @@ func (m *mount) comments() {
 	opts := []commentsgrpc.Option{commentsgrpc.WithPillars(m.pillars)}
 	if m.t.Authorizers.CommentAuthors != nil {
 		opts = append(opts, commentsgrpc.WithAuthorAuthorizer(m.t.Authorizers.CommentAuthors))
+	}
+
+	if m.t.Grants != nil {
+		opts = append(opts, commentsgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
 	srv, err := commentsgrpc.NewServer(store, client, extract, opts...)
@@ -827,9 +857,12 @@ func (m *mount) issueReports() {
 		return
 	}
 
-	srv, err := issuereportsgrpc.NewServer(store, client, extract, m.t.Authorizers.IssueReports,
-		issuereportsgrpc.WithPillars(m.pillars),
-	)
+	opts := []issuereportsgrpc.Option{issuereportsgrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, issuereportsgrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	srv, err := issuereportsgrpc.NewServer(store, client, extract, m.t.Authorizers.IssueReports, opts...)
 	if err != nil {
 		m.fail("issue reports", err)
 
@@ -863,9 +896,12 @@ func (m *mount) notifications() {
 		return
 	}
 
-	srv, err := notificationsgrpc.NewServer(inbox, registry, client, extract,
-		notificationsgrpc.WithPillars(m.pillars),
-	)
+	opts := []notificationsgrpc.Option{notificationsgrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, notificationsgrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	srv, err := notificationsgrpc.NewServer(inbox, registry, client, extract, opts...)
 	if err != nil {
 		m.fail("notifications", err)
 
@@ -928,9 +964,12 @@ func (m *mount) settings() {
 		return
 	}
 
-	srv, err := settingsgrpc.NewServer(store, client, extract, m.t.Authorizers.SettingsSubjects,
-		settingsgrpc.WithPillars(m.pillars),
-	)
+	opts := []settingsgrpc.Option{settingsgrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, settingsgrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	srv, err := settingsgrpc.NewServer(store, client, extract, m.t.Authorizers.SettingsSubjects, opts...)
 	if err != nil {
 		m.fail("settings", err)
 
@@ -1018,9 +1057,12 @@ func (m *mount) waitlists() {
 		return
 	}
 
-	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups,
-		waitlistsgrpc.WithPillars(m.pillars),
-	)
+	opts := []waitlistsgrpc.Option{waitlistsgrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, waitlistsgrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups, opts...)
 	if err != nil {
 		m.fail("waitlists", err)
 
@@ -1054,9 +1096,12 @@ func (m *mount) webhooks() {
 		return
 	}
 
-	srv, err := webhooksgrpc.NewServer(dispatcher, store, client, extract,
-		webhooksgrpc.WithPillars(m.pillars),
-	)
+	opts := []webhooksgrpc.Option{webhooksgrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, webhooksgrpc.WithGrantsExtractor(m.t.Grants))
+	}
+
+	srv, err := webhooksgrpc.NewServer(dispatcher, store, client, extract, opts...)
 	if err != nil {
 		m.fail("webhooks", err)
 
