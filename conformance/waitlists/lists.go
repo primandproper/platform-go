@@ -7,6 +7,8 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
@@ -195,6 +197,39 @@ func lists(t *testing.T, s *conformance.Session) {
 			&waitlistspb.GetListRequest{ListId: list.GetId()})
 		must.NoError(t, err)
 		test.EqOp(t, list.GetName(), read.GetResult().GetName())
+	})
+
+	// The granted half of include_archived. An administrator holds the grant
+	// that retires a list, which is the grant a deployment reads the archive
+	// off, so the console's catalog asked for with the archive in it answers
+	// with the retired list.
+	t.Run("an administrator asking for retired lists receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin())
+		live := openList(t, admin, open())
+		retired := openList(t, admin, open())
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.Waitlists.ArchiveList(ctx, &waitlistspb.ArchiveListRequest{ListId: retired.GetId()})
+		must.NoError(t, err)
+
+		// The control: without asking, the retired list is not in the catalog.
+		without, err := admin.Surfaces.Waitlists.ListLists(ctx, &waitlistspb.ListListsRequest{})
+		must.NoError(t, err)
+		test.SliceNotContains(t, listIDs(without.GetResults()), retired.GetId())
+
+		include := true
+
+		with, err := admin.Surfaces.Waitlists.ListLists(ctx,
+			&waitlistspb.ListListsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
+		must.NoError(t, err)
+
+		ids := listIDs(with.GetResults())
+		test.SliceContains(t, ids, live.GetId())
+		test.SliceContains(t, ids, retired.GetId(),
+			test.Sprint("an administrator asked for retired lists and was answered without them"))
 	})
 
 	// Archiving takes the list out of every read that does not ask for

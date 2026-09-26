@@ -19,7 +19,9 @@ scope field, and what the converters do with a nil or a status. It also keeps
 everything that varies how the server was built — an authorizer that cannot
 decide, a wrapped refusal, a grants extractor that holds or lacks the archive
 grant — because a deployed service was built once and cannot be rebuilt by the
-thing testing it.
+thing testing it. The one grant ruling that holds of every deployment is here
+instead: an administrator holds the grant that withdraws a product, so an
+administrator asking for withdrawn products receives them.
 
 It keeps the purchase and ledger halves of the account rules too, for a reason
 that is not about the server. No RPC creates a purchase or a transaction, and

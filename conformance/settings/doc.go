@@ -33,7 +33,10 @@ the converters, and the store-method roster that pins DeleteValuesForSubject's
 absence. It also keeps the assertions that vary how the server was built — an
 authorizer that cannot decide, a server with no grants extractor — and the ones
 that need a caller holding an exact set of grants, which is a principal a
-subject cannot describe. That is where include_archived's grant rulings stay.
+subject cannot describe. That is where include_archived's grant rulings stay,
+save the one every deployment shares: an administrator holds the grant that
+retires a setting, so an administrator asking for retired settings receives
+them, and that half is asserted here wherever the subject mints one.
 
 # Both directions, deliberately
 

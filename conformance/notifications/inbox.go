@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test"
@@ -244,6 +245,39 @@ func archiving(t *testing.T, s *conformance.Session) {
 			&notificationspb.ArchiveNotificationRequest{NotificationId: id})
 		must.Error(t, err, must.Sprint("an archived notification was archived a second time"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
+	})
+
+	// The granted half of include_archived. An administrator holds the grant
+	// that dismisses a notification, which is the grant a deployment reads
+	// the archive off, so an administrator asking for their dismissed
+	// notifications receives them. What an ordinary caller receives is the
+	// deployment's to decide, and is not asserted.
+	t.Run("an administrator asking for dismissed notifications receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin())
+		live := notified(t, s, admin)
+		dismissed := notified(t, s, admin)
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.Notifications.ArchiveNotification(ctx,
+			&notificationspb.ArchiveNotificationRequest{NotificationId: dismissed})
+		must.NoError(t, err)
+
+		// The control: without asking, the dismissed notification is gone.
+		test.SliceNotContains(t, inboxOf(t, admin), dismissed)
+
+		include := true
+
+		page, err := admin.Surfaces.Notifications.ListNotifications(ctx,
+			&notificationspb.ListNotificationsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
+		must.NoError(t, err)
+
+		ids := notificationIDs(page.GetResults())
+		test.SliceContains(t, ids, live)
+		test.SliceContains(t, ids, dismissed,
+			test.Sprint("an administrator asked for dismissed notifications and was answered without them"))
 	})
 
 	t.Run("archiving a colleague's notification is an absence and leaves it in their inbox", func(t *testing.T) {

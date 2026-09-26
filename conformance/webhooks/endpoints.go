@@ -7,6 +7,7 @@ import (
 	domain "github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test"
@@ -181,6 +182,42 @@ func endpoints(t *testing.T, s *conformance.Session) {
 			test.Sprint("an archived endpoint reads back live"))
 		test.SliceNotContains(t, listedEndpoints(t, caller), saved.GetId(),
 			test.Sprint("an archived endpoint is still listed"))
+	})
+
+	// The granted half of include_archived. An administrator holds the grant
+	// that retires an endpoint, which is the grant a deployment reads the
+	// archive off, so asking is answered with the retired row.
+	t.Run("an administrator asking for retired endpoints receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin())
+		eventType := catalog(t, admin, 1)[0]
+		live := registered(t, s, admin, eventType)
+		retired := registered(t, s, admin, eventType)
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.Webhooks.ArchiveEndpoint(ctx,
+			&webhookspb.ArchiveEndpointRequest{EndpointId: retired.GetId()})
+		must.NoError(t, err)
+
+		// The control: without asking, the retired endpoint is not listed.
+		test.SliceNotContains(t, listedEndpoints(t, admin), retired.GetId())
+
+		include := true
+
+		page, err := admin.Surfaces.Webhooks.ListEndpoints(ctx,
+			&webhookspb.ListEndpointsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
+		must.NoError(t, err)
+
+		ids := make([]string, 0, len(page.GetResults()))
+		for _, e := range page.GetResults() {
+			ids = append(ids, e.GetId())
+		}
+
+		test.SliceContains(t, ids, live.GetId())
+		test.SliceContains(t, ids, retired.GetId(),
+			test.Sprint("an administrator asked for retired endpoints and was answered without them"))
 	})
 
 	// Archiving answers "this endpoint is not live", which is true of an

@@ -40,6 +40,16 @@ it would be proving a service nobody could run.
     standing in their own user and their active account — rather than a yes,
     because a permissive authorizer would let every later confinement assertion
     pass on the strength of the rule being absent.
+  - The grants extractor, through service.Transports, which is what the seven
+    surfaces that ask inside a handler read to decide whether include_archived
+    is honored and whether a reserved setting may be written. The stand-in
+    credential carries a role: a member holds every permission those surfaces'
+    Permissions maps name except the archive grants and settings' reserved-write
+    grant, and an administrator holds those as well. That split is what lets the
+    subject mint an administrator for conformance.AsAdmin, so the granted half
+    of each rule is asserted beside the refused one. No method enforcement is
+    installed — service mounts none, and a consumer's main adds its own — so
+    these grants decide only those two questions.
   - The schema. Nothing in service runs migrations; a consumer renders each
     package's migrations.Statements with the prefix they configured, and so does
     this.

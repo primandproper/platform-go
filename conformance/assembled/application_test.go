@@ -2,25 +2,34 @@ package assembled_test
 
 import (
 	"context"
+	"slices"
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
+	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	"github.com/primandproper/platform-go/v14/issuereports"
+	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/privacyadapters"
 	"github.com/primandproper/platform-go/v14/service"
 	"github.com/primandproper/platform-go/v14/settings"
+	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists"
+	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	"github.com/primandproper/platform-go/v14/webhooks"
+	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -199,4 +208,86 @@ func (s standing) AuthorizeSubjectRead(
 // rather than permits.
 func (standing) AuthorizeWithdrawal(context.Context, callers.Principal, tenancy.Scope, string, string) error {
 	return callers.ErrTargetNotPermitted
+}
+
+// administrative are the grants this harness reserves to an administrator, and
+// they are exactly the ones the seven grant-reading surfaces ask inside a
+// handler: every archive grant, which decides whether include_archived is
+// honored, and settings' reserved-write grant.
+//
+// The harness installs no method enforcement — service mounts no
+// authorization interceptor and a consumer's main adds its own — so these are
+// the only grants a request here is ever asked about. That is why they are the
+// line drawn: a member holds every other permission the surfaces' Permissions
+// maps name, the way a consumer's self-service role would, and none of the ones
+// that would make the refused half of each rule and the granted half
+// indistinguishable. A consumer whose members dismiss their own notifications
+// and so hold notifications' archive grant is right to, and sees their own
+// dismissed rows; the suites assert only what an administrator receives.
+var administrative = []authorization.Permission{
+	billinggrpc.PermissionArchiveProducts,
+	billinggrpc.PermissionArchiveSubscriptions,
+	billinggrpc.PermissionArchivePurchases,
+	billinggrpc.PermissionArchiveTransactions,
+	commentsgrpc.PermissionArchiveComments,
+	issuereportsgrpc.PermissionArchiveReports,
+	notificationsgrpc.PermissionArchiveInbox,
+	settingsgrpc.PermissionArchiveDefinitions,
+	settingsgrpc.PermissionWriteAdminValues,
+	waitlistsgrpc.PermissionArchiveLists,
+	waitlistsgrpc.PermissionArchiveSignups,
+	webhooksgrpc.PermissionArchiveEndpoints,
+	webhooksgrpc.PermissionArchiveSubscriptions,
+}
+
+// memberRole and adminRole are the two permission sets a stand-in principal can
+// hold.
+var memberRole, adminRole = roles()
+
+// roles builds the two sets from the seven surfaces' own Permissions maps, so
+// that a permission a surface adds later is a member's without an edit here.
+func roles() (member, admin *authorization.PermissionSet) {
+	var every []authorization.Permission
+
+	for _, surface := range []map[string][]authorization.Permission{
+		billinggrpc.Permissions(),
+		commentsgrpc.Permissions(),
+		issuereportsgrpc.Permissions(),
+		notificationsgrpc.Permissions(),
+		settingsgrpc.Permissions(),
+		waitlistsgrpc.Permissions(),
+		webhooksgrpc.Permissions(),
+	} {
+		for _, required := range surface {
+			every = append(every, required...)
+		}
+	}
+
+	var ordinary []authorization.Permission
+
+	for _, p := range every {
+		if !slices.Contains(administrative, p) {
+			ordinary = append(ordinary, p)
+		}
+	}
+
+	return authorization.NewPermissionSet(ordinary...), authorization.NewPermissionSet(append(every, administrative...)...)
+}
+
+// grantsOf is this harness's grants extractor, handed to service.Transports the
+// way a consumer hands theirs: it reads the principal the stand-in
+// authentication interceptor put on the context and answers with that
+// principal's role. A request with nobody on it has no authority, which every
+// surface reads as a denial.
+func grantsOf(ctx context.Context) (authorization.Grants, bool) {
+	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
+	if !ok {
+		return authorization.Grants{}, false
+	}
+
+	if principal.admin {
+		return authorization.NewGrants(adminRole), true
+	}
+
+	return authorization.NewGrants(memberRole), true
 }

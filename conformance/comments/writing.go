@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/conformance"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test"
@@ -203,6 +204,41 @@ func writing(t *testing.T, s *conformance.Session) {
 
 		test.SliceNotContains(t, commentIDs(roots(t, caller, about).GetResults()), stored.GetId(),
 			test.Sprint("an archived comment is still in its discussion"))
+	})
+
+	// The discussion an administrator asks for with the archive in it. An
+	// administrator holds the grant that archives a comment, and that is the
+	// grant a deployment reads the archive off — so this half, unlike an
+	// ordinary caller's, has one answer everywhere.
+	t.Run("an administrator asking for archived comments receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin())
+		about := target(t, s)
+		live := say(t, admin, about, bodyRoot)
+		removed := say(t, admin, about, bodyReply)
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.Comments.ArchiveComment(ctx,
+			&commentspb.ArchiveCommentRequest{CommentId: removed.GetId()})
+		must.NoError(t, err)
+
+		// The control: without asking, the archived comment is gone.
+		test.SliceNotContains(t, commentIDs(roots(t, admin, about).GetResults()), removed.GetId())
+
+		include := true
+
+		page, err := admin.Surfaces.Comments.ListRootComments(ctx, &commentspb.ListRootCommentsRequest{
+			Target: about,
+			Filter: &filteringpb.QueryFilter{IncludeArchived: &include},
+		})
+		must.NoError(t, err)
+
+		ids := commentIDs(page.GetResults())
+		test.SliceContains(t, ids, live.GetId())
+		test.SliceContains(t, ids, removed.GetId(),
+			test.Sprint("an administrator asked for archived comments and was answered without them"))
 	})
 
 	t.Run("archiving a comment already archived is answered as absent", func(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/conformance"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test"
@@ -129,6 +130,41 @@ func products(t *testing.T, s *conformance.Session) {
 		_, err = mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
 		must.Error(t, err)
 		test.EqOp(t, codes.AlreadyExists, status.Code(err))
+	})
+
+	// The granted half of include_archived. An administrator holds the grant
+	// that withdraws a product from sale, which is the grant a deployment
+	// reads the archive off, so asking is answered with the withdrawn row.
+	t.Run("an administrator asking for withdrawn products receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin())
+		live := stock(t, admin)
+		withdrawn := stock(t, admin)
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.Billing.ArchiveProduct(ctx,
+			&billingpb.ArchiveProductRequest{ProductId: withdrawn.GetId()})
+		must.NoError(t, err)
+
+		// The control: without asking, the withdrawn product is not listed.
+		test.SliceNotContains(t, catalog(t, admin), withdrawn.GetId())
+
+		include := true
+
+		page, err := admin.Surfaces.Billing.ListProducts(ctx,
+			&billingpb.ListProductsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
+		must.NoError(t, err)
+
+		ids := make([]string, 0, len(page.GetResults()))
+		for _, p := range page.GetResults() {
+			ids = append(ids, p.GetId())
+		}
+
+		test.SliceContains(t, ids, live.GetId())
+		test.SliceContains(t, ids, withdrawn.GetId(),
+			test.Sprint("an administrator asked for withdrawn products and was answered without them"))
 	})
 
 	t.Run("an absent product is reported as absent", func(t *testing.T) {
