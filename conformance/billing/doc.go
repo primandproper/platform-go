@@ -11,6 +11,28 @@ standing in is refused before anything is read, and that a row belonging to
 another account is answered exactly as an absent one is, because a different
 answer would tell a caller walking identifiers which of them are real.
 
+# Who a call is made as
+
+The catalog's writes are what a deployment's staff do to what it sells —
+CreateProduct, UpdateProduct and ArchiveProduct — and a deployment may reserve
+them to a service role. It may reserve GetProduct and ListProducts too, though
+billing's own permissions say most let every signed-in caller read the
+catalog. The scope-wide listings and the archivals of the three ledger nouns —
+ListSubscriptions, ListPurchases and ListTransactions, and ArchiveSubscription,
+ArchivePurchase and ArchiveTransaction — may be reserved as well, because a
+read naming no account answers for every account in the tenant, and
+withdrawing a row a provider reported is a correction rather than something an
+account does to its own. Each is made by an operator where the subject
+reserves it and by an ordinary caller where it does not, as
+conformance.ReservableMethods describes, and the catalog's confinement is
+asserted between two such callers in two tenants.
+
+The account-keyed reads are made as an ordinary caller, and that is a promise:
+a member reads their own account's subscriptions, purchases and transactions.
+The refusals of an account the caller has no standing in are asserted of that
+same ordinary caller, which is what makes them refusals of the rule rather than
+of the role.
+
 # What is here and what stayed behind
 
 billing/grpc keeps its construction and contract tests: what NewServer refuses

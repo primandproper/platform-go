@@ -310,11 +310,10 @@ func passworded(t *testing.T, s *conformance.Session) (*conformance.Subject, *id
 		t.Skip("conformance: this subject mounts no identity or password reset surface, so a caller cannot be given a password the suite knows")
 	}
 
-	found, err := sub.Surfaces.Identity.GetUser(sub.Context(t.Context()),
-		&identitypb.GetUserRequest{UserId: sub.UserID})
-	must.NoError(t, err, must.Sprint("a caller could not read its own user"))
+	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
 
-	user := found.GetUser()
+	user := found.GetPrincipal().GetUser()
 	must.NotEqOp(t, "", user.GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
 
 	read := s.Seams().Actions.PasswordResetToken

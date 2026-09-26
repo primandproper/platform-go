@@ -46,18 +46,24 @@ func run(t *testing.T, s *conformance.Session) {
 
 		mine, theirs := twoDirectories(t, s)
 
+		// Reading a user by id is the directory's read, and an operator's.
+		making := []string{
+			identitypb.IdentityService_GetUser_FullMethodName,
+		}
+		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
+
 		// The positive control. "The neighbor's user is absent" is also true of
 		// a read that reaches no directory at all, so this is what makes the
 		// refusal below mean confinement rather than breakage.
-		found, err := mine.Surfaces.Identity.GetUser(mine.Context(t.Context()),
+		found, err := myOperator.Surfaces.Identity.GetUser(myOperator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: mine.UserID})
-		must.NoError(t, err, must.Sprint("this caller cannot read its own user; the absence below proves nothing"))
+		must.NoError(t, err, must.Sprint("this directory's operator cannot read a user in it; the absence below proves nothing"))
 		test.EqOp(t, mine.UserID, found.GetUser().GetId())
 
 		// Absent rather than forbidden, which is what it is from here and is
 		// the answer that is not an oracle: a refusal would confirm the
 		// identifier names somebody.
-		_, err = mine.Surfaces.Identity.GetUser(mine.Context(t.Context()),
+		_, err = myOperator.Surfaces.Identity.GetUser(myOperator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: theirs.UserID})
 		must.Error(t, err, must.Sprint("a neighboring directory's user was readable"))
 		test.EqOp(t, codes.NotFound, status.Code(err),
@@ -65,7 +71,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 		// And the mirror image, which is what rules out a rule that happens to
 		// favor whichever caller was made first.
-		found, err = theirs.Surfaces.Identity.GetUser(theirs.Context(t.Context()),
+		found, err = theirOperator.Surfaces.Identity.GetUser(theirOperator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: theirs.UserID})
 		must.NoError(t, err)
 		test.EqOp(t, theirs.UserID, found.GetUser().GetId())
@@ -75,8 +81,9 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoDirectories(t, s)
+		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_ListUsers_FullMethodName)
 
-		page, err := mine.Surfaces.Identity.ListUsers(mine.Context(t.Context()),
+		page, err := operator.Surfaces.Identity.ListUsers(operator.Context(t.Context()),
 			&identitypb.ListUsersRequest{})
 		must.NoError(t, err)
 
@@ -113,7 +120,11 @@ func run(t *testing.T, s *conformance.Session) {
 		must.StrNotEqFold(t, "", marker,
 			must.Sprint("the credentialed action reported no fragment to search for, so this assertion would pass against any response"))
 
-		found, err := mine.Surfaces.Identity.GetUser(mine.Context(t.Context()),
+		// Through the directory's read, which is an operator's, and the one
+		// most likely to be projected by something in front of this surface.
+		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_GetUser_FullMethodName)
+
+		found, err := operator.Surfaces.Identity.GetUser(operator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: mine.UserID})
 		must.NoError(t, err)
 

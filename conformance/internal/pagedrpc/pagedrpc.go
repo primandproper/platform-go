@@ -25,6 +25,8 @@
 package pagedrpc
 
 import (
+	"testing"
+
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
@@ -114,6 +116,27 @@ func All() []RPC {
 	}
 
 	return out
+}
+
+// Caller is who makes this read: an operator where the subject reserves it,
+// and ordinary otherwise.
+//
+// Both suites reading this package assert what the handler answers, and a
+// read made by a caller the deployment's interceptor refuses is answered by
+// the interceptor instead.
+func (r RPC) Caller(t *testing.T, s *conformance.Session, ordinary *conformance.Subject) *conformance.Subject {
+	t.Helper()
+
+	if !s.Reserves(r.FullName) {
+		return ordinary
+	}
+
+	operator := s.Operator(t, r.FullName)
+	if operator.Conn == nil {
+		t.Skip("conformance: this subject's operator has no connection to invoke a read by name through")
+	}
+
+	return operator
 }
 
 func (r RPC) mounted(surfaces *conformance.Surfaces) bool {

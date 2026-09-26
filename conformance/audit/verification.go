@@ -18,6 +18,9 @@ import (
 // editing a recorded row behind the recorder's back, which no client can do
 // and no deployment should offer a seam for. audit/grpc keeps that assertion,
 // against a database its own test owns.
+//
+// Verifying is an operator's, so the chain an ordinary caller appended to is
+// verified by an operator in that caller's tenant.
 func verification(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
@@ -30,7 +33,9 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		response, err := mine.Surfaces.Audit.VerifyChain(mine.Context(t.Context()), &auditpb.VerifyChainRequest{})
+		verifier := s.OperatorIn(t, mine.Scope, auditpb.AuditService_VerifyChain_FullMethodName)
+
+		response, err := verifier.Surfaces.Audit.VerifyChain(verifier.Context(t.Context()), &auditpb.VerifyChainRequest{})
 		must.NoError(t, err)
 
 		result := response.GetResult()
@@ -56,16 +61,17 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		ctx := mine.Context(t.Context())
+		verifier := s.OperatorIn(t, mine.Scope, auditpb.AuditService_VerifyChain_FullMethodName)
+		ctx := verifier.Context(t.Context())
 
-		fromStart, err := mine.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{})
+		fromStart, err := verifier.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{})
 		must.NoError(t, err)
 		must.Positive(t, fromStart.GetResult().GetChecked(),
 			must.Sprint("a chain this caller appended to verified nothing; the comparison below proves nothing"))
 
 		zero := int64(0)
 
-		pastFirst, err := mine.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{AfterSeq: &zero})
+		pastFirst, err := verifier.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{AfterSeq: &zero})
 		must.NoError(t, err)
 
 		test.EqOp(t, fromStart.GetResult().GetChecked()-1, pastFirst.GetResult().GetChecked(),
@@ -78,13 +84,13 @@ func verification(t *testing.T, s *conformance.Session) {
 	t.Run("verification carries its window back as it was given", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		verifier := s.Operator(t, auditpb.AuditService_VerifyChain_FullMethodName)
 
 		// Whole seconds, so the echo is compared at a precision every dialect
 		// and every encoding keeps.
 		from := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 
-		response, err := mine.Surfaces.Audit.VerifyChain(mine.Context(t.Context()),
+		response, err := verifier.Surfaces.Audit.VerifyChain(verifier.Context(t.Context()),
 			&auditpb.VerifyChainRequest{From: timestamppb.New(from)})
 		must.NoError(t, err)
 

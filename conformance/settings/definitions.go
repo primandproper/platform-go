@@ -20,7 +20,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a definition comes back as it was stored", func(t *testing.T) {
 		t.Parallel()
 
-		op := operator(t, s, s.Subject(t))
+		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
 		c := names()
 
 		definition := define(t, op, &settingspb.SettingDefinitionInput{
@@ -60,7 +60,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_CreateDefinition_FullMethodName)
 		c := names()
 
 		none := define(t, op, &settingspb.SettingDefinitionInput{
@@ -96,7 +96,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a create naming no definition is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		op := operator(t, s, s.Subject(t))
+		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
 
 		_, err := op.Surfaces.Settings.CreateDefinition(op.Context(t.Context()), &settingspb.CreateDefinitionRequest{})
 		must.Error(t, err)
@@ -108,7 +108,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a create naming no kind is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		op := operator(t, s, s.Subject(t))
+		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
 
 		_, err := op.Surfaces.Settings.CreateDefinition(op.Context(t.Context()), &settingspb.CreateDefinitionRequest{
 			Definition: &settingspb.SettingDefinitionInput{Name: names().digest},
@@ -120,7 +120,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a name already defined is refused as taken, and says so", func(t *testing.T) {
 		t.Parallel()
 
-		op := operator(t, s, s.Subject(t))
+		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
 		c := names()
 		define(t, op, &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
 
@@ -140,12 +140,12 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a definition read by name and by id is the same row", func(t *testing.T) {
 		t.Parallel()
 
+		// Reading the catalog is every caller's, so the caller reads it.
 		caller, c := seeded(t, s)
-		op := operator(t, s, caller)
 
-		found := byName(t, op, c.digest)
+		found := byName(t, caller, c.digest)
 
-		byID, err := op.Surfaces.Settings.GetDefinition(op.Context(t.Context()),
+		byID, err := caller.Surfaces.Settings.GetDefinition(caller.Context(t.Context()),
 			&settingspb.GetDefinitionRequest{DefinitionId: found.GetId()})
 		must.NoError(t, err)
 		test.EqOp(t, found.GetId(), byID.GetResult().GetId())
@@ -159,7 +159,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_UpdateDefinition_FullMethodName)
 		existing := byName(t, op, c.digest)
 
 		response, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
@@ -191,7 +191,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_UpdateDefinition_FullMethodName)
 		set(t, caller, c.digest, stringValue(optionDaily))
 
 		_, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
@@ -224,7 +224,10 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope,
+			settingspb.SettingsService_ArchiveDefinition_FullMethodName,
+			settingspb.SettingsService_CreateDefinition_FullMethodName,
+		)
 		set(t, caller, c.digest, stringValue(optionDaily))
 
 		ctx := op.Context(t.Context())
@@ -316,7 +319,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		caller, c := seeded(t, s)
 		other := colleague(t, s, caller)
-		op := operator(t, s, caller)
+		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_ListValuesForDefinition_FullMethodName)
 
 		set(t, caller, c.digest, stringValue(optionDaily))
 		set(t, other, c.digest, stringValue(optionNever))

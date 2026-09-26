@@ -131,10 +131,13 @@ func replies(t *testing.T, caller *conformance.Subject, about *commentspb.Commen
 // byTargetType lists everything said about things of one type, skipping where
 // the caller may not.
 //
-// It is the moderation read and carries a grant of its own, which a deployment
-// enforcing method grants may well withhold from an ordinary caller. That
-// refusal is the deployment being right rather than the surface being wrong,
-// so the assertion that needed the read skips rather than failing.
+// It is the moderation read and carries a grant of its own, so it is one of
+// conformance.ReservableMethods and caller is minted by Session.Operator or
+// Session.OperatorIn. Where the subject does not reserve it those answer an
+// ordinary caller, which a deployment enforcing a grant inside the handler may
+// still refuse; that refusal is the deployment being right rather than the surface
+// being wrong, so the assertion that needed the read skips rather than
+// failing.
 func byTargetType(t *testing.T, caller *conformance.Subject, targetType string) []string {
 	t.Helper()
 

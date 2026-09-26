@@ -22,7 +22,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a new list answers with the row as stored", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 
 		// Whole seconds, because the closing time is compared exactly and the
 		// weakest dialect keeps no more than that.
@@ -60,7 +60,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a creation that names no list is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 
 		_, err := operator.Surfaces.Waitlists.CreateList(operator.Context(t.Context()), &waitlistspb.CreateListRequest{})
 		must.Error(t, err)
@@ -73,7 +73,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a list with no closing time is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 
 		_, err := operator.Surfaces.Waitlists.CreateList(operator.Context(t.Context()), &waitlistspb.CreateListRequest{
 			List: &waitlistspb.WaitlistInput{Name: "Launch"},
@@ -86,7 +86,7 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		list := openList(t, mine, open())
+		list := openList(t, s.OperatorIn(t, mine.Scope, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
 
 		// The positive control: without it, "the neighbor cannot read it" is
 		// also true of a read that reaches nothing at all.
@@ -109,9 +109,12 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		taking := openList(t, mine, open())
-		stopped := openList(t, mine, closed())
-		neighbors := openList(t, theirs, open())
+		myOperator := s.OperatorIn(t, mine.Scope, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		taking := openList(t, myOperator, open())
+		stopped := openList(t, myOperator, closed())
+		neighbors := openList(t, s.OperatorIn(t, theirs.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+		), open())
 
 		page, err := mine.Surfaces.Waitlists.ListLists(mine.Context(t.Context()), &waitlistspb.ListListsRequest{})
 		must.NoError(t, err)
@@ -126,7 +129,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("the open catalog omits the lists that have stopped taking signups", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		taking := openList(t, operator, open())
 		stopped := openList(t, operator, closed())
 
@@ -142,7 +145,7 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		list := openList(t, mine, open())
+		list := openList(t, s.OperatorIn(t, mine.Scope, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
 
 		test.SliceContains(t, openListIDs(t, mine.Context(t.Context()), mine.Surfaces.Waitlists), list.GetId(),
 			test.Sprint("this caller's own open list was missing from its catalog; the absence below proves nothing"))
@@ -155,7 +158,10 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("an update answers with the row as stored rather than as sent", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_UpdateList_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		moved := open().Add(24 * time.Hour)
 
@@ -178,7 +184,10 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("an update will not reach another tenant's list", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoOperators(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_UpdateList_FullMethodName,
+		)
 		list := openList(t, mine, open())
 
 		_, err := theirs.Surfaces.Waitlists.UpdateList(theirs.Context(t.Context()), &waitlistspb.UpdateListRequest{
@@ -238,7 +247,12 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("an archived list takes no more signups and keeps the ones it has", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_ArchiveList_FullMethodName,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		kept := signedUp(t, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())

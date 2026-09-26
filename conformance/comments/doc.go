@@ -63,5 +63,14 @@ moderators supplies a wider rule, and is right to, but the callers a subject
 mints are not its moderators — so the assertions hold there too, and a subject
 that minted every caller as a moderator would be describing a deployment these
 refusals were not written for.
+
+# Who a call is made as
+
+Every call here but one is made as an ordinary caller, and each is a promise:
+a member writes, reads, revises and archives their own words. The exception is
+ListCommentsByTargetType, the moderation read, which answers for everything
+said about a kind of thing across the tenant and so may be reserved to an
+operator; it is made by one where the subject reserves it, as
+conformance.ReservableMethods describes.
 */
 package comments

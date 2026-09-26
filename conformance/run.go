@@ -149,6 +149,8 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 		t.Fatal("conformance: no suites were named; import conformance/all to run every one")
 	}
 
+	checkOperatorMethods(t, seams.OperatorMethods)
+
 	session := &Session{seams: seams}
 
 	probe, err := seams.NewSubject(t.Context())
