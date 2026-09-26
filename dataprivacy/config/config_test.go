@@ -455,11 +455,10 @@ func TestCodecOptions(T *testing.T) {
 
 // stubOperations is an operations.Service that records nothing and runs nothing.
 //
-// A real one cannot be built here: operations is Postgres-only, and this suite
-// is SQLite. What these tests are about is that one Config assembles four parts
-// against one table, and the operations service is a dependency of that
-// assembly rather than a subject of it — the end-to-end run through a real
-// worker is in dataprivacy's container tests.
+// What these tests are about is that one Config assembles four parts against
+// one table, and the operations service is a dependency of that assembly rather
+// than a subject of it — the end-to-end run through a real worker is
+// dataprivacy's TestFulfillment.
 func stubOperations() operations.Service {
 	return &operationsmock.ServiceMock{
 		StartInTransactionFunc: func(

@@ -30,10 +30,10 @@ SQLC_VERSION="$(cat "${PROJECT_ROOT}/.sqlc-version")"
 #
 # The dialects are per component rather than a list of their own, because a
 # roster is a property of the package: identity serves all three, while
-# operations serves Postgres alone for the reason its own doc gives, and
-# checking a package against a dialect it refuses to run on would be checking
-# SQL nobody will ever execute. Each list has to match the keys of that
-# package's unison*.yaml `schemas:` maps taken together.
+# a package that narrowed would list fewer, and checking a package against a
+# dialect it refuses to run on would be checking SQL nobody will ever execute.
+# Every component here serves all three today. Each list has to match the keys
+# of that package's unison*.yaml `schemas:` maps taken together.
 COMPONENTS=(
   "./identity ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./audit ./internal/queriesgen internal/queries postgres mysql sqlite"
@@ -62,7 +62,7 @@ COMPONENTS=(
   "./waitlists ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./webhooks ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./outbox ./internal/queriesgen internal/queries postgres mysql sqlite"
-  "./operations ./internal/queriesgen internal/queries postgres"
+  "./operations ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./timers ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./workqueue ./internal/queriesgen internal/queries postgres mysql sqlite"
 )

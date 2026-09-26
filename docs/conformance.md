@@ -189,16 +189,14 @@ all three files say so and point at each other.
 | `conformance/oauth2clients` | 7 | the administered registry |
 | `conformance/dataprivacy` | 5 | privacy requests over HTTP, and the operations that fulfill them |
 
-668 leaf assertions on the Postgres run of the assembled subject, the one that
-serves every surface; SQLite and MySQL 8 run all but the HTTP surfaces that
-need Postgres. Every one passes on all three — nine skips on Postgres, ten on the
-other two where the privacy surface is not served — every skip
-printing its reason.
+668 leaf assertions on each run of the assembled subject, which serves every
+surface on Postgres, SQLite and MySQL 8 alike. Every one passes on all three,
+with nine skips on each, every skip printing its reason.
 
 | subject | where | mounts |
 | --- | --- | --- |
 | direct | `conformance/audit`, `conformance/identity` | one surface each |
-| assembled | `conformance/assembled` | all twelve gRPC surfaces on all three dialects; mediaregistry everywhere, dataprivacy and operations on Postgres |
+| assembled | `conformance/assembled` | all twelve gRPC surfaces and all three HTTP surfaces, on all three dialects |
 
 **142 was what was enumerated, not what had run.** The anonymous suite reads all
 twelve descriptors, but an RPC is only called on a surface the subject mounted,
@@ -212,11 +210,8 @@ right, and the value of running them is that it now stays right.
 The HTTP half adds ten routes — dataprivacy's five, mediaregistry's one and
 operations' four — each refusing a request with nobody on it as 401. They are
 listed rather than enumerated, since no registry holds an HTTP route, and the
-list is checked against what each package's Mount actually returns. operations
-needs Postgres (its queue claims with `SKIP LOCKED`), and dataprivacy's service
-runs its requests as operations, so those two are asserted on Postgres only;
-the README's matrix lists dataprivacy on all three dialects, which is true of its
-store and not of its surface.
+list is checked against what each package's Mount actually returns, and all
+ten are asserted on all three dialects.
 
 `conformance/filters` and `conformance/pagination` are the other two
 cross-cutting suites, and both find their reads the way `anonymous` does: every

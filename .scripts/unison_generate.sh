@@ -47,7 +47,7 @@ GOBIN="${BIN_DIR}" go install "github.com/primandproper/sqlc-gen-unison/cmd/unis
 # because an identifier is not a bind parameter in any of the three engines.
 #
 # The dialects are per component rather than a list up here, because a roster is
-# a property of the package rather than of this script: operations is
+# a property of the package rather than of this script: timers is
 # Postgres-only for reasons its own doc gives, and rendering it a MySQL schema
 # would be rendering a schema for a database it refuses to run against. Each
 # component's list has to match the keys of its unison*.yaml `schemas:` maps
@@ -80,7 +80,7 @@ COMPONENTS=(
   "waitlists postgres mysql sqlite"
   "webhooks postgres mysql sqlite"
   "outbox postgres mysql sqlite"
-  "operations postgres"
+  "operations postgres mysql sqlite"
   "timers postgres mysql sqlite"
   "workqueue postgres mysql sqlite"
 )
@@ -99,8 +99,9 @@ for component in "${COMPONENTS[@]}"; do
 
   # Every unison*.yaml in the component, each its own roster. A component has
   # more than one when its dialects need statement sets of different shapes,
-  # which unison refuses to converge into one querier: workqueue generates
-  # Postgres from unison.yaml and MySQL and SQLite from unison.split.yaml.
+  # which unison refuses to converge into one querier: workqueue and operations
+  # each generate Postgres from unison.yaml and MySQL and SQLite from
+  # unison.split.yaml.
   for config in "${PROJECT_ROOT}/${package}"/unison*.yaml; do
     (cd "${PROJECT_ROOT}/${package}" && "${UNISON}" generate --config "$(basename "${config}")")
   done

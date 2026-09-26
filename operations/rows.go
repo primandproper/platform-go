@@ -122,12 +122,11 @@ func operationFromRow(r *operationsdb.GetOperationRow) *Operation {
 
 // operationsFromRows converts a batch of the shared projection, for the two
 // reads that answer with many rows and no counts.
-func operationsFromRows[Row any](rows []Row, same func(Row) operationsdb.GetOperationRow) []*Operation {
+func operationsFromRows(rows []operationsdb.GetOperationRow) []*Operation {
 	ops := make([]*Operation, 0, len(rows))
 
 	for i := range rows {
-		row := same(rows[i])
-		ops = append(ops, operationFromRow(&row))
+		ops = append(ops, operationFromRow(&rows[i]))
 	}
 
 	return ops

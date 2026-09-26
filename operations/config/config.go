@@ -7,7 +7,6 @@ import (
 	"github.com/primandproper/platform-go/v14/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/database"
-	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -76,9 +75,10 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 
 // NewStore builds the operations store from configuration.
 //
-// client must speak Postgres: this package's SQL is written against it rather
-// than reduced to a portable subset, and operations.NewSQLStore returns
-// dialect.ErrUnsupported for anything else.
+// client may speak any of the three dialects this module names; the store
+// reads which off it. operations.NewSQLStore returns dialect.ErrUnsupported for
+// anything else, and operations.ErrNotifyUnsupported for a notify channel
+// configured where there is no NOTIFY.
 //
 // ctx is what the configuration is validated under, once its defaults have been
 // applied. The whole Config is validated rather than the store's half of it:
@@ -156,15 +156,6 @@ func NewQueue(ctx context.Context, cfg *Config, client database.Client, opts ...
 	}
 	if o.queueWakeup != nil {
 		base = append(base, workqueue.WithWakeup(o.queueWakeup))
-	}
-
-	// The queue is operations' own, so it serves operations' roster rather than
-	// workqueue's: a queue built on a dialect the store refuses would dispatch
-	// operations nothing can record.
-	if client != nil {
-		if err := dialect.RequirePostgres("operations queue", client.Dialect()); err != nil {
-			return nil, err
-		}
 	}
 
 	return workqueue.New[string](ctx, &cfg.Queue, client, append(base, o.queue...)...)
