@@ -444,6 +444,10 @@ type Service struct {
 	// any password that is not empty.
 	passwordPolicy PasswordPolicy
 
+	// registrationPolicy is nil until WithRegistrationPolicy names one, and nil
+	// registers exactly what the request named.
+	registrationPolicy RegistrationPolicy
+
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider

@@ -207,6 +207,17 @@ var (
 	// and nothing about the first attempt was written or spent.
 	ErrPasswordRefused = platformerrors.New("password does not meet this service's requirements")
 
+	// ErrRegistrationRefused indicates a registration the service's
+	// RegistrationPolicy would not let it write — a registrant who did not
+	// accept the terms the consumer requires, say.
+	//
+	// It is returned joined with the policy's own error, which comes first, for
+	// the reason ErrPasswordRefused is: a policy returning an error the consumer
+	// registered as client-safe is what a gRPC client reads, and one returning
+	// anything else is passed over in favor of these words. It is a request to
+	// correct, and nothing was hashed, minted or written before it was refused.
+	ErrRegistrationRefused = platformerrors.New("registration does not meet this service's requirements")
+
 	// ErrRegistrationNotConfigured indicates Service.Register on a service built
 	// without WithRegistrar.
 	//

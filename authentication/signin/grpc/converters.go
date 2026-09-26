@@ -3,6 +3,7 @@ package grpc
 import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -124,10 +125,25 @@ func AuthStatusToProto(s *signin.AuthStatus) *signinpb.AuthStatus {
 // package deciding that a client which forgot to populate the field meant to
 // create an account nobody can sign into.
 //
-// A nil message is a nil result, for the reason credentialsFromProto's is.
-func registrationFromProto(r *signinpb.RegisterRequest) *signin.Registration {
+// A nil message is signin.ErrNilRegistration rather than an empty
+// Registration, for the reason credentialsFromProto's is a nil result. An
+// unspecified agreement refuses the whole request, for the reason
+// identitygrpc.AgreementFromProto gives: it decides which compliance column
+// gets stamped.
+func registrationFromProto(r *signinpb.RegisterRequest) (*signin.Registration, error) {
 	if r == nil {
-		return nil
+		return nil, signin.ErrNilRegistration
+	}
+
+	agreements := make([]identity.Agreement, 0, len(r.GetAgreements()))
+
+	for _, a := range r.GetAgreements() {
+		agreement, err := identitygrpc.AgreementFromProto(a)
+		if err != nil {
+			return nil, err
+		}
+
+		agreements = append(agreements, agreement)
 	}
 
 	registration := &signin.Registration{
@@ -135,6 +151,7 @@ func registrationFromProto(r *signinpb.RegisterRequest) *signin.Registration {
 		Account:    identitygrpc.AccountFromCreationInput(r.GetAccount()),
 		Credential: credentialFromProto(r),
 		OwnerRoles: r.GetOwnerRoles(),
+		Agreements: agreements,
 	}
 
 	if invitation := r.GetInvitation(); invitation != nil {
@@ -143,7 +160,7 @@ func registrationFromProto(r *signinpb.RegisterRequest) *signin.Registration {
 		registration.InvitationStatusNote = invitation.GetStatusNote()
 	}
 
-	return registration
+	return registration, nil
 }
 
 // credentialFromProto reads the arm a registration named, and answers nil for a
@@ -170,15 +187,28 @@ func credentialFromProto(r *signinpb.RegisterRequest) signin.Credential {
 // absent from the message because whoever called this RPC is a client rather
 // than the person the secret is about, and the schema has no field for it to
 // land in — see the proto's own documentation.
+//
+// The second factor a registration policy minted is carried across, because
+// unlike the verification token it is for whoever called: the registrant, on
+// the client that will render the QR code.
 func RegisteredToProto(r *signin.Registered) *signinpb.Registered {
 	if r == nil {
 		return nil
 	}
 
-	return &signinpb.Registered{
+	registered := &signinpb.Registered{
 		User:       identitygrpc.UserToProto(r.User),
 		Account:    identitygrpc.AccountToProto(r.Account),
 		Membership: identitygrpc.MembershipToProto(r.Membership),
 		Invitation: identitygrpc.InvitationToProto(r.Invitation),
 	}
+
+	if r.TOTPEnrollment != nil {
+		registered.TotpEnrollment = &signinpb.TOTPEnrollment{
+			Secret:          r.TOTPEnrollment.Secret,
+			ProvisioningUri: r.TOTPEnrollment.URI,
+		}
+	}
+
+	return registered
 }

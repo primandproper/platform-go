@@ -627,6 +627,12 @@ var Matrix = map[string]map[string]Decision{
 		// remedies differ.
 		"ErrPasswordRefused": {Err: signin.ErrPasswordRefused, Is: Mapped},
 
+		// A registration the consumer's RegistrationPolicy refused — terms not
+		// accepted, say. A request to correct, like the row above, so
+		// InvalidArgument and a 400, and client-safe so a client can tell the
+		// registration was refused from the password being refused.
+		"ErrRegistrationRefused": {Err: signin.ErrRegistrationRefused, Is: Mapped},
+
 		// A consumer who never named the label an authenticator app shows. It is
 		// wiring rather than anything a caller sent, so a 500 is the honest
 		// answer and no mapper claims it.

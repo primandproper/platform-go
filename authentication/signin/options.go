@@ -305,6 +305,19 @@ func WithPasswordPolicy(policy PasswordPolicy) ServiceOption {
 	}
 }
 
+// WithRegistrationPolicy sets what [Service.Register] asks before it writes
+// anybody: what the consumer's own registration adds to the request, and
+// whether it admits the registrant at all. A nil policy is ignored, leaving
+// none, which registers exactly what the request named. See
+// [RegistrationPolicy].
+func WithRegistrationPolicy(policy RegistrationPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.registrationPolicy = policy
+		}
+	}
+}
+
 // WithTokenTTL sets how long an ordinary sign-in's token lives. A non-positive
 // duration is ignored, leaving DefaultTokenTTL.
 func WithTokenTTL(ttl time.Duration) ServiceOption {
