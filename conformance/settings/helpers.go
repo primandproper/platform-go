@@ -125,7 +125,7 @@ func seeded(t *testing.T, s *conformance.Session) (*conformance.Subject, catalog
 	needsUser(t, caller)
 
 	c := names()
-	defineCatalog(t, s.OperatorIn(t, caller.Scope), &c)
+	defineCatalog(t, s.OperatorIn(t, caller.Scope, settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
 
 	return caller, c
 }

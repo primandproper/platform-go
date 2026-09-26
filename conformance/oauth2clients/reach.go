@@ -23,8 +23,15 @@ func reach(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's registration is readable and can be withdrawn", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Operator(t)
-		other := colleague(t, s, caller)
+		caller := s.Operator(t,
+			oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
+		)
+		other := colleague(t, s, caller,
+			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+		)
 		theirs := register(t, other).GetClient().GetId()
 		ctx := caller.Context(t.Context())
 
@@ -51,8 +58,11 @@ func reach(t *testing.T, s *conformance.Session) {
 	t.Run("a listing pages the caller's whole registry and nobody else's", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoRegistries(t, s)
-		other := colleague(t, s, mine)
+		mine, theirs := twoRegistries(t, s,
+			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
+		)
+		other := colleague(t, s, mine, oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName)
 
 		own := register(t, mine).GetClient().GetId()
 		shared := register(t, other).GetClient().GetId()
@@ -70,7 +80,12 @@ func reach(t *testing.T, s *conformance.Session) {
 	t.Run("a registration in another registry is absent to a caller naming it", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoRegistries(t, s)
+		mine, theirs := twoRegistries(t, s,
+			oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
+		)
 		own := register(t, mine).GetClient().GetId()
 
 		// The positive control: the minter reaches it.
@@ -102,7 +117,10 @@ func reach(t *testing.T, s *conformance.Session) {
 	t.Run("another registry's registration is answered exactly as one never minted", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoRegistries(t, s)
+		mine, theirs := twoRegistries(t, s,
+			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
+			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+		)
 		own := register(t, mine).GetClient().GetId()
 		ctx := theirs.Context(t.Context())
 

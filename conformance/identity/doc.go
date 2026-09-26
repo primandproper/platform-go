@@ -41,12 +41,13 @@ controls went in.
 
 # Who a call is made as
 
-The directory is administered, and a deployment reserves administering it to a
-service role. Register, GetUser, ListUsers, SearchUsersByUsername, ListAccounts,
-ArchiveUser, UpdateUserAccountStatus, SetUserServiceRoles and
-SetUserRequiresPasswordChange are therefore made by operators, as
-conformance.OperatorMethods describes, and the directory's confinement is
-asserted between an operator in each of two tenants. Register here is the
+The directory is administered, and a deployment may reserve administering it
+to a service role. Register, GetUser, ListUsers, SearchUsersByUsername,
+ListAccounts, ArchiveUser, UpdateUserAccountStatus, SetUserServiceRoles and
+SetUserRequiresPasswordChange are therefore each made by an operator where the
+subject reserves it, and by an ordinary caller where it does not, as
+conformance.ReservableMethods describes; the directory's confinement is
+asserted between whoever makes those calls in each of two tenants. Register here is the
 administered door; the one a person registers themselves through is signin's.
 
 The rest is made as an ordinary caller, and each is a promise: a signed-in

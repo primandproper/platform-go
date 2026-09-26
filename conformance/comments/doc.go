@@ -66,7 +66,8 @@ refusals were not written for.
 Every call here but one is made as an ordinary caller, and each is a promise:
 a member writes, reads, revises and archives their own words. The exception is
 ListCommentsByTargetType, the moderation read, which answers for everything
-said about a kind of thing across the tenant and is made by an operator, as
-conformance.OperatorMethods describes.
+said about a kind of thing across the tenant and so may be reserved to an
+operator; it is made by one where the subject reserves it, as
+conformance.ReservableMethods describes.
 */
 package comments

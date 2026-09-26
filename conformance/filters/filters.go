@@ -46,12 +46,11 @@ func malformed() map[string]*filteringpb.QueryFilter {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
-	// An ordinary caller for most reads, and an operator for the ones a
-	// deployment reserves to one, so the code asserted is the handler's rather
-	// than an authorization interceptor's.
-	ordinary, operator := s.Subject(t), s.Operator(t)
+	// An ordinary caller for every read the subject leaves to one, and an
+	// operator for each it reserves; see pagedrpc.RPC.Caller.
+	ordinary := s.Subject(t)
 
-	if ordinary.Conn == nil || operator.Conn == nil {
+	if ordinary.Conn == nil {
 		t.Skip("conformance: this subject supplies no connection to invoke a read by name through")
 	}
 
@@ -68,7 +67,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Run(read.Surface+" "+string(read.Method.Name()), func(t *testing.T) {
 			t.Parallel()
 
-			subject := read.Caller(ordinary, operator)
+			subject := read.Caller(t, s, ordinary)
 			ctx := subject.Context(t.Context())
 
 			control, reason := read.Request(subject, &seams, &filteringpb.QueryFilter{SortBy: new("asc")})

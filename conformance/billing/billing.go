@@ -61,12 +61,12 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 
 // twoOperators mints an operator in each of two tenants, for the confinement
 // assertions about the catalog, every call on which is an operator's.
-func twoOperators(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
 	mine, theirs = twoTenants(t, s)
 
-	return s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+	return s.OperatorIn(t, mine.Scope, methods...), s.OperatorIn(t, theirs.Scope, methods...)
 }
 
 // colleague mints a second caller in of's tenant, with an account of their own

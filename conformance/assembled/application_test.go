@@ -220,7 +220,7 @@ func (standing) AuthorizeWithdrawal(context.Context, callers.Principal, tenancy.
 // honored, and settings' reserved-write grant.
 //
 // The harness installs one piece of method enforcement, reserveOperatorCalls,
-// and it reads conformance's roster rather than these grants — service mounts
+// and it reads the run's reservation rather than these grants — service mounts
 // no authorization interceptor and a consumer's main adds its own — so these
 // are the only grants a request here is ever asked about inside a handler.
 // That is why they are the line drawn: a member holds every other permission
@@ -297,38 +297,51 @@ func grantsOf(ctx context.Context) (authorization.Grants, bool) {
 	return authorization.NewGrants(memberRole), true
 }
 
-// operatorMethods is conformance.OperatorMethods as a set, read once.
-var operatorMethods = func() map[string]struct{} {
+// reservableMethods is conformance.ReservableMethods as a set, read once.
+var reservableMethods = func() map[string]struct{} {
 	out := map[string]struct{}{}
-	for _, method := range conformance.OperatorMethods() {
+	for _, method := range conformance.ReservableMethods() {
 		out[method] = struct{}{}
 	}
 
 	return out
 }()
 
-// reserveOperatorCalls refuses an operator-grade call to a caller who is not an
-// administrator, the way a consumer's authorization interceptor refuses a call
-// its caller's role does not cover.
+// reserveOperatorCalls refuses a reservable call to a caller who is not an
+// administrator, in the run that reserves them, the way a consumer's
+// authorization interceptor refuses a call its caller's role does not cover.
 //
-// It is what keeps the suites honest about who they make those calls as. With
-// no enforcement at all, a suite that set up a waitlist or a product as an
-// ordinary caller passed here and failed in every deployment that reserves the
-// catalog to a service role; with this, it fails here first. A request with
-// nobody on it is left to the handler, which refuses it on its own terms and
-// is what the anonymous suite asserts.
+// It is what keeps the suites honest about who they make those calls as. A
+// call a suite makes without naming it to Session.Operator passes in the run
+// whose members make every call and fails in this one, which is where it should
+// fail rather than in a deployment that reserves that call and not the others
+// named beside it. So an administrator Operator minted for some methods is
+// refused every other reservable one, as an ordinary caller is refused all of
+// them; one minted directly, with conformance.AsAdmin, named none and is
+// refused nothing. A request with nobody on it is left to the handler, which
+// refuses it on its own terms and is what the anonymous suite asserts.
 func reserveOperatorCalls(
 	ctx context.Context,
 	req any,
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (any, error) {
-	if _, reserved := operatorMethods[info.FullMethod]; !reserved {
+	if _, reservable := reservableMethods[info.FullMethod]; !reservable {
 		return handler(ctx, req)
 	}
 
-	if principal, ok := ctx.Value(principalKey{}).(*testPrincipal); ok && !principal.admin {
+	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
+	if !ok || !principal.reserving {
+		return handler(ctx, req)
+	}
+
+	if !principal.admin {
 		return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
+	}
+
+	if len(principal.methods) > 0 && !slices.Contains(principal.methods, info.FullMethod) {
+		return nil, status.Errorf(codes.PermissionDenied,
+			"%s was made by an operator minted for %v; the suite must name it to Session.Operator", info.FullMethod, principal.methods)
 	}
 
 	return handler(ctx, req)

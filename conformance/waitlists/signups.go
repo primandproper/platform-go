@@ -19,7 +19,11 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a signup read by id is scoped to the caller's tenant", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoOperators(t, s)
+		mine, theirs := twoOperators(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		)
 		list := openList(t, mine, open())
 		contact := freshContact()
 		signup := signedUp(t, mine, mine, list.GetId(), contact)
@@ -42,7 +46,11 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a signup named against the wrong list is absent", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		other := openList(t, operator, open())
 		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
@@ -59,7 +67,9 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a signup is found by whichever capitalization the operator has", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		typed := "Conf." + freshContact()
 
@@ -74,7 +84,10 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a signup read by its address is scoped to the caller's tenant", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoOperators(t, s)
+		mine, theirs := twoOperators(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, mine, open())
 		contact := freshContact()
 
@@ -91,7 +104,11 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a list's signups are its own and its tenant's", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoOperators(t, s)
+		mine, theirs := twoOperators(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, mine, open())
 		other := openList(t, mine, open())
 
@@ -127,7 +144,11 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("an invitation moves a waiting signup and answers with the moment it moved", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
 
@@ -152,7 +173,11 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a second invitation is refused, in words a person can read", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
@@ -171,7 +196,12 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("an invitation will not reach another tenant's signup", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoOperators(t, s)
+		mine, theirs := twoOperators(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, mine, open())
 		signup := signedUp(t, mine, mine, list.GetId(), freshContact())
 
@@ -191,7 +221,12 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a conversion moves an invited signup", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_Convert_FullMethodName,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
@@ -209,7 +244,11 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("a conversion of somebody never invited is refused", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_Convert_FullMethodName,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
 
@@ -228,7 +267,12 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("rewriting a note does not move the signup", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+			waitlistspb.WaitlistsService_UpdateSignupNotes_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
@@ -256,7 +300,12 @@ func signups(t *testing.T, s *conformance.Session) {
 	t.Run("an archived signup is hidden and suppresses nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_ArchiveSignup_FullMethodName,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 		signup := signedUp(t, operator, operator, list.GetId(), contact)

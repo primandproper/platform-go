@@ -21,7 +21,10 @@ func confinement(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoDirectories(t, s)
 		ours, neighbor := names(), names()
 
-		myOperator, theirOperator := s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+		making := []string{
+			settingspb.SettingsService_CreateDefinition_FullMethodName,
+		}
+		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
 		define(t, myOperator, &settingspb.SettingDefinitionInput{Name: ours.compact, Kind: settingspb.SettingKind_SETTING_KIND_BOOLEAN})
 		define(t, theirOperator, &settingspb.SettingDefinitionInput{Name: neighbor.compact, Kind: settingspb.SettingKind_SETTING_KIND_BOOLEAN})
 
@@ -57,7 +60,12 @@ func confinement(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoDirectories(t, s)
 		c := names()
 
-		myOperator, theirOperator := s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+		making := []string{
+			settingspb.SettingsService_CreateDefinition_FullMethodName,
+			settingspb.SettingsService_ListValuesForDefinition_FullMethodName,
+			settingspb.SettingsService_UpdateDefinition_FullMethodName,
+		}
+		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
 		define(t, myOperator, &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
 		id := byName(t, myOperator, c.digest).GetId()
 
@@ -109,7 +117,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		needsUser(t, theirs)
 
 		c := names()
-		defineCatalog(t, s.OperatorIn(t, mine.Scope), &c)
+		defineCatalog(t, s.OperatorIn(t, mine.Scope, settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
 		set(t, mine, c.digest, stringValue(optionDaily))
 
 		// The positive control: the caller reaches its own setting and its
@@ -179,7 +187,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		needsAccount(t, theirs)
 
 		c := names()
-		defineCatalog(t, s.OperatorIn(t, mine.Scope), &c)
+		defineCatalog(t, s.OperatorIn(t, mine.Scope, settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
 
 		// The positive control: this caller's own resolution is answered.
 		_, err := mine.Surfaces.Settings.Resolve(mine.Context(t.Context()),

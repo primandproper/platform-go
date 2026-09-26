@@ -33,7 +33,7 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		verifier := s.OperatorIn(t, mine.Scope)
+		verifier := s.OperatorIn(t, mine.Scope, auditpb.AuditService_VerifyChain_FullMethodName)
 
 		response, err := verifier.Surfaces.Audit.VerifyChain(verifier.Context(t.Context()), &auditpb.VerifyChainRequest{})
 		must.NoError(t, err)
@@ -61,7 +61,7 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		verifier := s.OperatorIn(t, mine.Scope)
+		verifier := s.OperatorIn(t, mine.Scope, auditpb.AuditService_VerifyChain_FullMethodName)
 		ctx := verifier.Context(t.Context())
 
 		fromStart, err := verifier.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{})
@@ -84,7 +84,7 @@ func verification(t *testing.T, s *conformance.Session) {
 	t.Run("verification carries its window back as it was given", func(t *testing.T) {
 		t.Parallel()
 
-		verifier := s.Operator(t)
+		verifier := s.Operator(t, auditpb.AuditService_VerifyChain_FullMethodName)
 
 		// Whole seconds, so the echo is compared at a precision every dialect
 		// and every encoding keeps.

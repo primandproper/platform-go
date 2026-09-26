@@ -70,7 +70,9 @@ func reading(t *testing.T, s *conformance.Session) {
 		answer := reply(t, caller, root.GetId(), bodyReply)
 		elsewhere := say(t, caller, second, "about the other one")
 
-		got := byTargetType(t, s.OperatorIn(t, caller.Scope), first.GetType())
+		got := byTargetType(t, s.OperatorIn(t, caller.Scope,
+			commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
+		), first.GetType())
 		test.SliceContains(t, got, root.GetId(), test.Sprint("a root was missing from the moderation read"))
 		test.SliceContains(t, got, answer.GetId(), test.Sprint("a reply was missing from the moderation read"))
 		test.SliceContains(t, got, elsewhere.GetId(),
@@ -85,7 +87,7 @@ func reading(t *testing.T, s *conformance.Session) {
 
 		target(t, s) // The skip, where the subject names no target type at all.
 
-		byTargetType(t, s.Operator(t), "conformance_withdrawn_"+identifiers.New())
+		byTargetType(t, s.Operator(t, commentspb.CommentsService_ListCommentsByTargetType_FullMethodName), "conformance_withdrawn_"+identifiers.New())
 	})
 
 	// An empty author is the caller's own, which is what a "your comments" page

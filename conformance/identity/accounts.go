@@ -46,7 +46,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 		needsAccount(t, other)
 
 		// Every account in the directory is an operator's read.
-		operator := s.OperatorIn(t, mine.Scope)
+		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_ListAccounts_FullMethodName)
 
 		page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()), &identitypb.ListAccountsRequest{})
 		must.NoError(t, err)

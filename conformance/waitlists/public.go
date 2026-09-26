@@ -25,13 +25,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor sees the open catalog of the tenant they land in, and only that", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		taking := openList(t, operator, open())
 		stopped := openList(t, operator, closed())
 
 		// A list in a tenant of its own, which a visitor landing anywhere but
 		// there must not be offered.
-		elsewhere := openList(t, s.Operator(t), open())
+		elsewhere := openList(t, s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
 
 		ids := openListIDs(t, t.Context(), anonymous)
 		test.SliceContains(t, ids, taking.GetId(),
@@ -45,7 +45,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor's signup is kept as typed and attributed to nobody", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		typed := "Conf." + freshContact()
 
@@ -76,10 +79,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor cannot be joined to a list outside the tenant they land in", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		home := openList(t, operator, open())
 
-		owner := s.Operator(t)
+		owner := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		elsewhere := openList(t, owner, open())
 
 		// The positive control: the same visitor joins a list where they land.
@@ -102,7 +108,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope)
+		operator := s.OperatorIn(t, caller.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 
 		stored := signedUp(t, caller, operator, list.GetId(), freshContact())
@@ -114,7 +123,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		operator := s.OperatorIn(t, mine.Scope)
+		operator := s.OperatorIn(t, mine.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 
 		// The positive control: the owner's own join lands.
@@ -136,7 +148,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a list that has stopped taking signups refuses them, in words a person can read", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, closed())
 		contact := freshContact()
 
@@ -157,7 +172,11 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join says nothing about an address already on the list, and writes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 		first := signedUp(t, operator, operator, list.GetId(), contact)
@@ -189,7 +208,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join says nothing about an address that withdrew, and re-subscribes nobody", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+		)
 		needsUser(t, operator)
 		list := openList(t, operator, open())
 		contact := freshContact()
@@ -221,7 +246,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join answers a new, an existing and a withdrawn address identically, and with nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+		)
 		list := openList(t, operator, open())
 
 		existing := freshContact()
@@ -269,7 +297,11 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a withdrawal nobody can be tied to reads as an identifier nobody minted, and moves nothing", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 		signup := signedUp(t, operator, operator, list.GetId(), contact)

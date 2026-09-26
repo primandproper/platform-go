@@ -47,7 +47,10 @@ func run(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoDirectories(t, s)
 
 		// Reading a user by id is the directory's read, and an operator's.
-		myOperator, theirOperator := s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+		making := []string{
+			identitypb.IdentityService_GetUser_FullMethodName,
+		}
+		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
 
 		// The positive control. "The neighbor's user is absent" is also true of
 		// a read that reaches no directory at all, so this is what makes the
@@ -78,7 +81,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoDirectories(t, s)
-		operator := s.OperatorIn(t, mine.Scope)
+		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_ListUsers_FullMethodName)
 
 		page, err := operator.Surfaces.Identity.ListUsers(operator.Context(t.Context()),
 			&identitypb.ListUsersRequest{})
@@ -119,7 +122,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 		// Through the directory's read, which is an operator's, and the one
 		// most likely to be projected by something in front of this surface.
-		operator := s.OperatorIn(t, mine.Scope)
+		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_GetUser_FullMethodName)
 
 		found, err := operator.Surfaces.Identity.GetUser(operator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: mine.UserID})

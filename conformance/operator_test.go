@@ -14,19 +14,19 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// TestOperatorMethods keeps the roster honest in the two directions it can be
+// TestReservableMethods keeps the roster honest in the two directions it can be
 // wrong without anything else saying so.
 //
-// An entry naming no RPC is one the assembled subject reserves to nobody, and
-// the filters suite consults for nothing: a rename would leave the suites making
-// the renamed call as an ordinary caller with every check still green. And an
+// An entry naming no RPC is one no deployment can reserve through it: a rename
+// would leave a deployment's reservation of the renamed call refused by Run, or
+// its operator minted for a name the call no longer has. And an
 // entry its surface's suite does not name in its documentation is a call a
 // deployment reserving it is not told about, which is the promise the roster
 // exists to keep. Each suite lives in the directory named for its surface.
-func TestOperatorMethods(t *testing.T) {
+func TestReservableMethods(t *testing.T) {
 	t.Parallel()
 
-	methods := conformance.OperatorMethods()
+	methods := conformance.ReservableMethods()
 	must.SliceNotEmpty(t, methods)
 
 	all := services.All()
@@ -60,6 +60,6 @@ func TestOperatorMethods(t *testing.T) {
 		doc, err := os.ReadFile(filepath.Join(svc.Name, "doc.go"))
 		must.NoError(t, err, must.Sprintf("reading the %s suite's documentation", svc.Name))
 		test.StrContains(t, string(doc), name,
-			test.Sprintf("the %s suite's documentation does not name %s, which it makes only as an operator", svc.Name, name))
+			test.Sprintf("the %s suite's documentation does not name %s, which it routes to an operator where a deployment reserves it", svc.Name, name))
 	}
 }

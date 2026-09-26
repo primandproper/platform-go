@@ -43,11 +43,11 @@ func Suite() conformance.Suite {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
-	// An ordinary caller for most reads, and an operator for the ones a
-	// deployment reserves to one; see pagedrpc.RPC.Caller.
-	ordinary, operator := s.Subject(t), s.Operator(t)
+	// An ordinary caller for every read the subject leaves to one, and an
+	// operator for each it reserves; see pagedrpc.RPC.Caller.
+	ordinary := s.Subject(t)
 
-	if ordinary.Conn == nil || operator.Conn == nil {
+	if ordinary.Conn == nil {
 		t.Skip("conformance: this subject supplies no connection to invoke a read by name through")
 	}
 
@@ -64,7 +64,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Run(read.Surface+" "+string(read.Method.Name()), func(t *testing.T) {
 			t.Parallel()
 
-			subject := read.Caller(ordinary, operator)
+			subject := read.Caller(t, s, ordinary)
 
 			page := func(t *testing.T, filter *filteringpb.QueryFilter) *filteringpb.Pagination {
 				t.Helper()

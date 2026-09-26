@@ -122,6 +122,20 @@ type Seams struct {
 	// closely a timestamp may be compared — see the package documentation.
 	Dialect dialect.Dialect
 
+	// OperatorMethods are the calls the deployment reserves to an operator, as
+	// full method names, and the suites make each one it names as an
+	// administrator and every other as an ordinary caller. Nil reserves
+	// nothing, which is a deployment whose members may make every call.
+	//
+	// A deployment's own list is the one to hand over — the one its
+	// authorization interceptor reads — and it may name methods on services no
+	// suite covers. What it may not name is a covered call outside
+	// ReservableMethods: the suites make those as an ordinary caller because
+	// every signed-in caller is promised them, and Run fails a reservation of
+	// one rather than letting it surface as some other assertion's refused
+	// setup.
+	OperatorMethods []string
+
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
 	// ticket everybody assigned to it may open. True skips the assertion that
@@ -453,6 +467,13 @@ type SubjectRequest struct {
 	// Reading presence off the zero value would collapse them, which is the
 	// conflation tenancy's own documentation exists to prevent.
 	Scope *tenancy.Scope
+
+	// Methods, on an administrator Session.Operator asks for, are the
+	// reserved calls it was asked for to make. A factory may ignore them; they
+	// are there for a harness that wants to refuse that administrator every
+	// other reserved call, which is how this module's own keeps each suite
+	// honest about naming every call it routes. Empty on every other request.
+	Methods []string
 
 	// Admin asks for a caller holding whatever service role the deployment
 	// treats as administrative.

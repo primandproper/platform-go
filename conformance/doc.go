@@ -66,20 +66,26 @@ missing, because a suite that silently asserted nothing is worse than no suite.
 # Who a call is made as
 
 Most calls are made as an ordinary caller: somebody signed in, acting in their
-own tenant. Some are not. Stocking a catalog, reading the directory, verifying
-a chain and deciding whose turn it is on a waitlist act on the deployment rather
-than on the caller's own rows, and a deployment reserves them to a service role,
-refusing everybody else in its authorization interceptor before a handler runs.
-OperatorMethods names those calls, and the suites make them through
-Session.Operator and Session.OperatorIn: an administrator where the subject
-mints one, and an ordinary caller where it declines — which a subject enforcing
-no method grants answers exactly as it would an administrator. The same goes for
-an assertion that a malformed request is refused: it is made by a caller the
-method admits, so the code asserted is the handler's and not the interceptor's.
+own tenant. Some a deployment may keep from its members. Stocking a catalog,
+reading the directory, verifying a chain and deciding whose turn it is on a
+waitlist act on the deployment rather than on the caller's own rows, and a
+deployment may reserve them to a service role, refusing everybody else in its
+authorization interceptor before a handler runs. Whether it does is the
+deployment's decision rather than this module's, so the subject says which it
+reserves, in Seams.OperatorMethods, and ReservableMethods names every call it
+may. The suites make each of those through Session.Operator and
+Session.OperatorIn: an administrator where the subject reserves the call, and
+an ordinary caller where it does not — so a deployment that lets its members
+make a call has that promise asserted rather than stepped around. The same goes
+for an assertion that a malformed request is refused: it is made by a caller
+the method admits, so the code asserted is the handler's and not the
+interceptor's.
 
-The assembled subject refuses every one of OperatorMethods to a caller who is
-not an administrator, which is what keeps that honest. A suite that makes one
-as an ordinary caller fails in this module rather than in a consumer's
+The assembled subject runs every suite twice, which is what keeps that honest.
+Once its members make every call, and each is asserted as an ordinary caller;
+once it reserves every one of ReservableMethods, refusing each to anybody but
+an administrator minted for it. A suite that makes a reserved call without
+naming it to Session.Operator fails there rather than in a consumer's
 deployment.
 
 The converse is a promise. What a suite makes as an ordinary caller it relies on

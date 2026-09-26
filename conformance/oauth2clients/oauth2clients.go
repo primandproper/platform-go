@@ -41,7 +41,7 @@ const redirect = "https://example.test/callback"
 //
 // Operators, because every call on this surface is one: the registry is the
 // deployment's list of who may ask it for tokens.
-func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+func twoRegistries(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
 	mine, theirs = s.Subject(t), s.Subject(t)
@@ -49,7 +49,7 @@ func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conforma
 	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
 		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
 
-	return s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+	return s.OperatorIn(t, mine.Scope, methods...), s.OperatorIn(t, theirs.Scope, methods...)
 }
 
 // colleague mints a second operator in of's registry. A subject that cannot
@@ -57,10 +57,10 @@ func twoRegistries(t *testing.T, s *conformance.Session) (mine, theirs *conforma
 // administrator for every request in a tenant cannot show a registry being the
 // tenant's rather than the registrar's; the assertion that asked skips either
 // way.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	other := s.OperatorIn(t, of.Scope)
+	other := s.OperatorIn(t, of.Scope, methods...)
 
 	if of.UserID == other.UserID {
 		t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a colleague's registration cannot be told from the caller's own")

@@ -96,6 +96,16 @@ const (
 	mdScope   = "conformance-scope"
 	mdAccount = "conformance-account-id"
 	mdAdmin   = "conformance-admin"
+
+	// mdReserving says which of the harness's two runs a caller was minted in:
+	// the one reserving operator calls, or the one whose members make every
+	// call. The server is one server either way, so the reservation rides on
+	// the credential, the way a role claim would.
+	mdReserving = "conformance-reserving"
+
+	// mdMethods are the reserved calls an operator was minted to make, and
+	// in the reserving run the only ones it may.
+	mdMethods = "conformance-methods"
 )
 
 // auditedResourceType is what this harness's auditable action touches.
@@ -247,141 +257,173 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect) {
 		Webhooks:      webhooksclient.Wrap(conn),
 	}
 
-	conformanceall.Run(t, conformance.Seams{
-		NewSubject: func(ctx context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
-			req := conformance.NewSubjectRequest(opts...)
+	// Every run against this server is one of these, differing only in what
+	// it reserves.
+	seams := func(reserved []string) conformance.Seams {
+		reserving := strconv.FormatBool(len(reserved) > 0)
 
-			scope := tenancy.Of(identifiers.New())
-			if req.Scope != nil {
-				scope = *req.Scope
-			}
+		return conformance.Seams{
+			OperatorMethods: reserved,
 
-			// Through the service rather than the surface: every identity RPC
-			// requires a caller, Register included, so there is no client-only
-			// way to mint the first one.
-			reg, registerErr := identitySvc.Register(ctx, scope,
-				// In good standing, because a subject is a signed-in caller
-				// and an unverified account is one sign-in does not admit:
-				// a caller registered as one could not exist in a
-				// deployment, and the principal read says so.
-				&identity.User{
-					Username:      "conf_" + identifiers.New(),
-					EmailAddress:  identifiers.New() + "@conformance.invalid",
-					AccountStatus: identity.StatusGood,
-				},
-				&identity.Account{Name: "conf_" + identifiers.New()},
-				[]string{"account_admin"})
-			if registerErr != nil {
-				return nil, registerErr
-			}
+			NewSubject: func(ctx context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
+				req := conformance.NewSubjectRequest(opts...)
 
-			// An administrator is a caller whose credential says so, and
-			// what that buys is adminRole — the grants the surfaces ask
-			// inside a handler, read through the extractor service mounted
-			// them with. The credential is this harness's stand-in, so the
-			// flag rides on it the way a role claim rides on a consumer's.
-			admin := strconv.FormatBool(req.Admin)
-
-			return &conformance.Subject{
-				Scope:     scope,
-				UserID:    reg.User.ID,
-				AccountID: reg.Account.ID,
-				Conn:      conn,
-				Surfaces:  surfaces,
-				HTTP: &conformance.HTTPSurfaces{
-					Client: &http.Client{Transport: &credentialTransport{
-						userID: reg.User.ID, scope: scope, accountID: reg.Account.ID, admin: req.Admin,
-					}},
-					BaseURL:       baseURL,
-					DataPrivacy:   true,
-					MediaRegistry: true,
-					Operations:    true,
-				},
-				// The scope travels as its owner identifier rather than its
-				// String, which is prose: String renders the global scope as a
-				// placeholder, and the interceptor would read that back as a
-				// tenant of that name rather than as the scope belonging to
-				// nobody.
-				Decorate: func(ctx context.Context) context.Context {
-					return metadata.NewOutgoingContext(ctx, metadata.Pairs(
-						mdUserID, reg.User.ID,
-						mdScope, scope.Owner(),
-						mdAccount, reg.Account.ID,
-						mdAdmin, admin,
-					))
-				},
-			}, nil
-		},
-
-		Actions: conformance.Actions{
-			InvitationToken:    invites.token,
-			EmailVerified:      verifyEmail(client, identityStore),
-			Subscribed:         subscribe(client, do.MustInvoke[billing.Store](i)),
-			PasswordResetToken: mailbox.token,
-			Notified:           notify(client, do.MustInvoke[notifications.Inbox](i)),
-			VerificationToken:  invites.verificationToken,
-			MagicLinkToken:     links.token,
-			Registered: register(client,
-				do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
-
-			// The recorder the composition root built, inside a transaction on
-			// the client it built — the end of the path a consumer's handler
-			// takes, since no surface in this module records an entry itself.
-			Auditable: func(ctx context.Context, scope tenancy.Scope) (*conformance.Audited, error) {
-				entry := &audit.Entry{
-					Scope:        scope,
-					EventType:    audit.EventType("conformance.acted"),
-					ResourceType: auditedResourceType,
-					ResourceID:   identifiers.New(),
-					Actor:        audit.Actor{ID: identifiers.New(), Type: audit.ActorUser},
+				scope := tenancy.Of(identifiers.New())
+				if req.Scope != nil {
+					scope = *req.Scope
 				}
 
-				if recordErr := client.WithTransaction(context.WithoutCancel(ctx), func(tx database.Tx) error {
-					return recorder.Record(ctx, tx, scope, entry)
-				}); recordErr != nil {
-					return nil, recordErr
+				// Through the service rather than the surface: every identity RPC
+				// requires a caller, Register included, so there is no client-only
+				// way to mint the first one.
+				reg, registerErr := identitySvc.Register(ctx, scope,
+					// In good standing, because a subject is a signed-in caller
+					// and an unverified account is one sign-in does not admit:
+					// a caller registered as one could not exist in a
+					// deployment, and the principal read says so.
+					&identity.User{
+						Username:      "conf_" + identifiers.New(),
+						EmailAddress:  identifiers.New() + "@conformance.invalid",
+						AccountStatus: identity.StatusGood,
+					},
+					&identity.Account{Name: "conf_" + identifiers.New()},
+					[]string{"account_admin"})
+				if registerErr != nil {
+					return nil, registerErr
 				}
 
-				return &conformance.Audited{
-					ResourceType: entry.ResourceType,
-					ResourceID:   entry.ResourceID,
-					ActorID:      entry.Actor.ID,
+				// An administrator is a caller whose credential says so, and
+				// what that buys is adminRole — the grants the surfaces ask
+				// inside a handler, read through the extractor service mounted
+				// them with. The credential is this harness's stand-in, so the
+				// flag rides on it the way a role claim rides on a consumer's.
+				admin := strconv.FormatBool(req.Admin)
+
+				return &conformance.Subject{
+					Scope:     scope,
+					UserID:    reg.User.ID,
+					AccountID: reg.Account.ID,
+					Conn:      conn,
+					Surfaces:  surfaces,
+					HTTP: &conformance.HTTPSurfaces{
+						Client: &http.Client{Transport: &credentialTransport{
+							userID: reg.User.ID, scope: scope, accountID: reg.Account.ID, admin: req.Admin,
+						}},
+						BaseURL:       baseURL,
+						DataPrivacy:   true,
+						MediaRegistry: true,
+						Operations:    true,
+					},
+					// The scope travels as its owner identifier rather than its
+					// String, which is prose: String renders the global scope as a
+					// placeholder, and the interceptor would read that back as a
+					// tenant of that name rather than as the scope belonging to
+					// nobody.
+					Decorate: func(ctx context.Context) context.Context {
+						md := metadata.Pairs(
+							mdUserID, reg.User.ID,
+							mdScope, scope.Owner(),
+							mdAccount, reg.Account.ID,
+							mdAdmin, admin,
+							mdReserving, reserving,
+						)
+						md.Append(mdMethods, req.Methods...)
+
+						return metadata.NewOutgoingContext(ctx, md)
+					},
 				}, nil
 			},
 
-			Credentialed: func(ctx context.Context, scope tenancy.Scope, userID string) (string, error) {
-				const hash = "$argon2id$v=19$m=65536,t=3,p=2$Y29uZm9ybWFuY2U$notarealsecret"
+			Actions: conformance.Actions{
+				InvitationToken:    invites.token,
+				EmailVerified:      verifyEmail(client, identityStore),
+				Subscribed:         subscribe(client, do.MustInvoke[billing.Store](i)),
+				PasswordResetToken: mailbox.token,
+				Notified:           notify(client, do.MustInvoke[notifications.Inbox](i)),
+				VerificationToken:  invites.verificationToken,
+				MagicLinkToken:     links.token,
+				Registered: register(client,
+					do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
 
-				if writeErr := client.WithTransaction(context.WithoutCancel(ctx), func(tx database.Tx) error {
-					return identityStore.UpdateUserPassword(ctx, tx, scope, userID, hash)
-				}); writeErr != nil {
-					return "", writeErr
-				}
+				// The recorder the composition root built, inside a transaction on
+				// the client it built — the end of the path a consumer's handler
+				// takes, since no surface in this module records an entry itself.
+				Auditable: func(ctx context.Context, scope tenancy.Scope) (*conformance.Audited, error) {
+					entry := &audit.Entry{
+						Scope:        scope,
+						EventType:    audit.EventType("conformance.acted"),
+						ResourceType: auditedResourceType,
+						ResourceID:   identifiers.New(),
+						Actor:        audit.Actor{ID: identifiers.New(), Type: audit.ActorUser},
+					}
 
-				return "notarealsecret", nil
+					if recordErr := client.WithTransaction(context.WithoutCancel(ctx), func(tx database.Tx) error {
+						return recorder.Record(ctx, tx, scope, entry)
+					}); recordErr != nil {
+						return nil, recordErr
+					}
+
+					return &conformance.Audited{
+						ResourceType: entry.ResourceType,
+						ResourceID:   entry.ResourceID,
+						ActorID:      entry.Actor.ID,
+					}, nil
+				},
+
+				Credentialed: func(ctx context.Context, scope tenancy.Scope, userID string) (string, error) {
+					const hash = "$argon2id$v=19$m=65536,t=3,p=2$Y29uZm9ybWFuY2U$notarealsecret"
+
+					if writeErr := client.WithTransaction(context.WithoutCancel(ctx), func(tx database.Tx) error {
+						return identityStore.UpdateUserPassword(ctx, tx, scope, userID, hash)
+					}); writeErr != nil {
+						return "", writeErr
+					}
+
+					return "notarealsecret", nil
+				},
 			},
-		},
 
-		// This harness's credential is per call, so a caller with none is the
-		// same connection without the metadata.
-		Anonymous: func(context.Context) (grpc.ClientConnInterface, error) {
-			return conn, nil
-		},
-		AnonymousHTTP: func(context.Context) (*http.Client, error) {
-			return http.DefaultClient, nil
-		},
+			// This harness's credential is per call, so a caller with none is the
+			// same connection without the metadata.
+			Anonymous: func(context.Context) (grpc.ClientConnInterface, error) {
+				return conn, nil
+			},
+			AnonymousHTTP: func(context.Context) (*http.Client, error) {
+				return http.DefaultClient, nil
+			},
 
-		// The one target type registerApplication declares.
-		CommentTargetType: "conformance_thing",
+			// The one target type registerApplication declares.
+			CommentTargetType: "conformance_thing",
 
-		Dialect: d,
+			Dialect: d,
 
-		// Every table is this run's own, by prefix.
-		ExclusiveDatabase: true,
+			// Every table is this run's own, by prefix.
+			ExclusiveDatabase: true,
 
-		// service mounts waitlists with its default scope resolver, which is
-		// the single-tenant answer: a visitor is in the global directory.
-		VisitorScope: new(tenancy.Global()),
+			// service mounts waitlists with its default scope resolver, which is
+			// the single-tenant answer: a visitor is in the global directory.
+			VisitorScope: new(tenancy.Global()),
+		}
+	}
+
+	// Twice, because which calls a deployment keeps from its members is the
+	// deployment's to decide, and the suites have to be right either way.
+	//
+	// The first run is this module's own answer, where a member holds every
+	// grant but the archive ones and so makes every call the suites route: it is
+	// what keeps each of them asserted as an ordinary caller. The second
+	// reserves every one of conformance.ReservableMethods, which
+	// reserveOperatorCalls then refuses to anybody else: it is what keeps the
+	// suites honest about naming each call they route, since one made without
+	// being named reaches the interceptor as an ordinary caller and fails here
+	// rather than in a consumer's deployment. Sequential rather than parallel,
+	// because each claims the database as its own.
+	t.Run("members make every call", func(t *testing.T) {
+		conformanceall.Run(t, seams(nil))
+	})
+
+	t.Run("operator calls reserved", func(t *testing.T) {
+		conformanceall.Run(t, seams(conformance.ReservableMethods()))
 	})
 }
 
@@ -559,6 +601,12 @@ func authenticate(
 		principal.admin = admins[0] == "true"
 	}
 
+	if reserving := md.Get(mdReserving); len(reserving) > 0 {
+		principal.reserving = reserving[0] == "true"
+	}
+
+	principal.methods = md.Get(mdMethods)
+
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
@@ -624,7 +672,9 @@ type testPrincipal struct {
 	userID          string
 	activeAccountID string
 	scope           tenancy.Scope
+	methods         []string
 	admin           bool
+	reserving       bool
 }
 
 var _ callers.Principal = (*testPrincipal)(nil)

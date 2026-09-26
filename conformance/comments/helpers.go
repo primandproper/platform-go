@@ -97,10 +97,10 @@ func replies(t *testing.T, caller *conformance.Subject, about *commentspb.Commen
 // the caller may not.
 //
 // It is the moderation read and carries a grant of its own, so it is one of
-// conformance.OperatorMethods and caller is minted by Session.Operator or
-// Session.OperatorIn. Where the subject mints no administrator those answer
-// an ordinary caller, which a deployment enforcing method grants may well
-// refuse; that refusal is the deployment being right rather than the surface
+// conformance.ReservableMethods and caller is minted by Session.Operator or
+// Session.OperatorIn. Where the subject does not reserve it those answer an
+// ordinary caller, which a deployment enforcing a grant inside the handler may
+// still refuse; that refusal is the deployment being right rather than the surface
 // being wrong, so the assertion that needed the read skips rather than
 // failing.
 func byTargetType(t *testing.T, caller *conformance.Subject, targetType string) []string {

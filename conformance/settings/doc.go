@@ -49,9 +49,10 @@ nothing, would otherwise pass every one of them.
 # Who a call is made as
 
 CreateDefinition, UpdateDefinition, ArchiveDefinition and
-ListValuesForDefinition are an operator's, the last because it answers every
-subject's value for one setting across the tenant. They are made by operators,
-as conformance.OperatorMethods describes. Reading the catalog and reading,
+ListValuesForDefinition may be reserved to an operator, the last because it
+answers every subject's value for one setting across the tenant. Each is made
+by an operator where the subject reserves it and by an ordinary caller where it
+does not, as conformance.ReservableMethods describes. Reading the catalog and reading,
 writing and resolving a subject's own values are made as an ordinary caller,
 and each is a promise: the settings screen is a person acting on themselves.
 */

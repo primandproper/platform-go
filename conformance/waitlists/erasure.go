@@ -25,7 +25,10 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope)
+		operator := s.OperatorIn(t, caller.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		first := openList(t, operator, open())
 		second := openList(t, operator, open())
 
@@ -53,7 +56,10 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		owner := s.Subject(t)
 		needsUser(t, owner)
-		operator := s.OperatorIn(t, owner.Scope)
+		operator := s.OperatorIn(t, owner.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 
 		person := colleague(t, s, owner)
@@ -83,7 +89,12 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope)
+		operator := s.OperatorIn(t, caller.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+		)
 		first := openList(t, operator, open())
 		second := openList(t, operator, open())
 
@@ -129,7 +140,11 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope)
+		operator := s.OperatorIn(t, caller.Scope,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		signup := signedUp(t, caller, operator, list.GetId(), freshContact())
 
@@ -154,7 +169,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 	t.Run("an erasure of a person with nothing here reports zero", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName)
 
 		erased, err := operator.Surfaces.Waitlists.WithdrawSignupsForSubject(operator.Context(t.Context()),
 			&waitlistspb.WithdrawSignupsForSubjectRequest{
@@ -169,7 +184,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 	t.Run("an erasure that names no person is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName)
 
 		_, err := operator.Surfaces.Waitlists.WithdrawSignupsForSubject(operator.Context(t.Context()),
 			&waitlistspb.WithdrawSignupsForSubjectRequest{})
@@ -182,7 +197,13 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		mine, theirs := twoTenants(t, s)
 		needsUser(t, theirs)
-		myOperator, theirOperator := s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+		making := []string{
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		}
+		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
 		list := openList(t, theirOperator, open())
 		signup := signedUp(t, theirs, theirOperator, list.GetId(), freshContact())
 

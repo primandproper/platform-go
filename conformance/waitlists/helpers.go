@@ -156,12 +156,12 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 
 // twoOperators mints an operator in each of two tenants, for the confinement
 // assertions whose every call is the console's.
-func twoOperators(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
 	mine, theirs = twoTenants(t, s)
 
-	return s.OperatorIn(t, mine.Scope), s.OperatorIn(t, theirs.Scope)
+	return s.OperatorIn(t, mine.Scope, methods...), s.OperatorIn(t, theirs.Scope, methods...)
 }
 
 // colleague mints a second caller in of's tenant. A subject that cannot put two
@@ -183,7 +183,7 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 //
 // It skips, with the reason, where the subject supplies no anonymous connection,
 // does not say where its visitors land, or cannot mint a caller there.
-func visitor(t *testing.T, s *conformance.Session) (waitlistspb.WaitlistsServiceClient, *conformance.Subject) {
+func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlistspb.WaitlistsServiceClient, *conformance.Subject) {
 	t.Helper()
 
 	seams := s.Seams()
@@ -199,7 +199,7 @@ func visitor(t *testing.T, s *conformance.Session) (waitlistspb.WaitlistsService
 	conn, err := seams.Anonymous(t.Context())
 	must.NoError(t, err, must.Sprint("opening a connection with nobody on it"))
 
-	operator := s.OperatorIn(t, *seams.VisitorScope)
+	operator := s.OperatorIn(t, *seams.VisitorScope, methods...)
 
 	return waitlistspb.NewWaitlistsServiceClient(conn), operator
 }

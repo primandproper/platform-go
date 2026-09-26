@@ -1,43 +1,54 @@
 package conformance
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
-// OperatorMethods are the RPCs the suites make only as an administrator, as
-// the full method names a client invokes.
+// ReservableMethods are the RPCs a deployment may reserve to an operator, as
+// the full method names a client invokes, and which the suites then make as
+// one. It is a roster of what the suites can route, not a policy: which of
+// them a deployment actually reserves is its own to say, in
+// Seams.OperatorMethods, and a deployment that reserves none has every one of
+// them made by an ordinary caller.
 //
-// They are the calls that act on the deployment rather than on the caller's
-// own rows: a catalog somebody publishes, a directory somebody administers, a
-// read across every tenant, a transition that decides whose turn it is. A
-// deployment reserves those to a service role, and a suite that made them as
-// an ordinary caller would be asserting against its authorization interceptor
-// rather than against the handler — which is how an assertion about a
-// malformed filter came to be answered PermissionDenied.
+// They are the calls a deployment might reasonably keep from its members,
+// because they act on the deployment rather than on the caller's own rows: a
+// catalog somebody publishes, a directory somebody administers, a read across
+// every tenant, a transition that decides whose turn it is. Whether it does is
+// its product's decision — billing's own documentation says most deployments
+// let every signed-in caller read the catalog — and this module's own assembled
+// subject is run both ways.
 //
 // What is not here the suites make as an ordinary caller, and that is a
 // promise rather than an oversight: each suite's documentation names the
 // ordinary calls it relies on, so a deployment that refuses one is told which
-// promise it broke. Being on this list asserts nothing about an ordinary
-// caller either way — a deployment that lets one make these calls passes, and
-// so does one that refuses — so an entry costs a deployment nothing, and the
-// cost of a missing one is a deployment failing for being right.
+// promise it broke. Run refuses a Seams.OperatorMethods entry naming one, for
+// the same reason. An entry here costs a deployment nothing; the cost of a
+// missing one is a deployment failing for a reservation it was entitled to
+// make.
 //
 // Each suite's documentation names the ones on its own surface; the filters
-// and pagination suites read the list itself, since they enumerate every
-// paged read rather than naming them.
-func OperatorMethods() []string {
+// and pagination suites read Session.Reserves, since they enumerate every paged
+// read rather than naming them.
+func ReservableMethods() []string {
 	return []string{
 		auditpb.AuditService_VerifyChain_FullMethodName,
 
@@ -89,44 +100,82 @@ func OperatorMethods() []string {
 	}
 }
 
-// Operator mints the caller an operator-grade call is made as, in a tenant of
-// its own: an administrator where the subject mints one, and an ordinary
-// caller where it declines.
+// Reserves reports whether the subject reserves method to an operator, by
+// naming it in Seams.OperatorMethods.
+func (s *Session) Reserves(method string) bool {
+	return slices.Contains(s.seams.OperatorMethods, method)
+}
+
+// Operator mints the caller that makes methods, in a tenant of its own: an
+// administrator where the subject reserves any of them to one, and an ordinary
+// caller where it reserves none. methods are every one of ReservableMethods
+// the caller goes on to make.
 //
-// The fallback is what keeps a subject with no notion of a service role
-// asserting rather than skipping. Such a subject is one enforcing no method
-// grants — a harness over a hand-built server — and its ordinary caller makes
-// every call there is; a deployment that enforces grants and mints no
-// administrator is refused, and the refusal is its own to explain.
-func (s *Session) Operator(t *testing.T) *Subject {
+// The ordinary caller is the point. A deployment that lets its members make
+// these calls has promised they can, and a suite that made them as an
+// administrator anyway would never check it. A deployment that reserves one and
+// mints no administrator skips, with that said: it has told the suite nobody it
+// can mint may make the call.
+func (s *Session) Operator(t *testing.T, methods ...string) *Subject {
 	t.Helper()
 
-	if admin := s.admin(t, AsAdmin()); admin != nil {
-		return admin
-	}
-
-	return s.Subject(t)
+	return s.operator(t, nil, methods)
 }
 
 // OperatorIn is Operator in an existing tenant, for the operator-grade call
 // whose rows an ordinary caller there goes on to read, or has already written.
-// Where the subject mints no administrator it answers an ordinary caller in that
-// tenant, and where it cannot put one there either the assertion skips.
-func (s *Session) OperatorIn(t *testing.T, scope tenancy.Scope) *Subject {
+// Where the subject reserves none of methods it answers an ordinary caller in
+// that tenant, and where it cannot put one there the assertion skips.
+func (s *Session) OperatorIn(t *testing.T, scope tenancy.Scope, methods ...string) *Subject {
 	t.Helper()
 
-	if admin := s.admin(t, AsAdmin(), InTenant(scope)); admin != nil {
+	return s.operator(t, &scope, methods)
+}
+
+func (s *Session) operator(t *testing.T, scope *tenancy.Scope, methods []string) *Subject {
+	t.Helper()
+
+	if len(methods) == 0 {
+		t.Fatal("conformance: an operator was asked for without naming the methods it makes")
+	}
+
+	reserved := ""
+
+	for _, method := range methods {
+		if !slices.Contains(ReservableMethods(), method) {
+			t.Fatalf("conformance: %s is made as an operator but is not in ReservableMethods", method)
+		}
+
+		if reserved == "" && s.Reserves(method) {
+			reserved = method
+		}
+	}
+
+	var opts []SubjectOption
+	if scope != nil {
+		opts = append(opts, InTenant(*scope))
+	}
+
+	if reserved == "" {
+		return s.Subject(t, opts...)
+	}
+
+	making := func(r *SubjectRequest) { r.Methods = slices.Clone(methods) }
+
+	if admin := s.admin(t, append(opts, AsAdmin(), making)...); admin != nil {
 		return admin
 	}
 
-	return s.Subject(t, InTenant(scope))
+	t.Skipf("conformance: this subject reserves %s to an operator and mints no administrator to make it", reserved)
+
+	return nil
 }
 
 // admin mints an administrator, or reports nil where the subject declines to.
 //
-// It calls the factory itself rather than through Subject, because Subject
-// turns a decline into a skip and a decline is what the two callers above
-// fall back from.
+// It calls the factory itself rather than through Subject, because Subject's
+// skip for a decline names neither the reservation nor the method, and the
+// skip operator prints names both.
 func (s *Session) admin(t *testing.T, opts ...SubjectOption) *Subject {
 	t.Helper()
 
@@ -146,4 +195,49 @@ func (s *Session) admin(t *testing.T, opts ...SubjectOption) *Subject {
 	}
 
 	return admin
+}
+
+// checkOperatorMethods fails a run whose Seams.OperatorMethods reserves a call
+// the suites make as an ordinary caller.
+func checkOperatorMethods(t *testing.T, methods []string) {
+	t.Helper()
+
+	if refused := unreservable(methods); len(refused) > 0 {
+		t.Fatalf("conformance: Seams.OperatorMethods reserves %s, which the suites make as an ordinary caller "+
+			"and rely on every signed-in caller being allowed; each suite's documentation says why", strings.Join(refused, ", "))
+	}
+}
+
+// unreservable is the methods a deployment may not reserve: every one on a
+// surface the suites cover that is not in ReservableMethods.
+//
+// A method on a service no suite covers is the deployment's own business and
+// is let through, so a consumer can hand over the same list its interceptor
+// reads.
+func unreservable(methods []string) []string {
+	covered := []string{
+		auditpb.AuditService_ServiceDesc.ServiceName,
+		billingpb.BillingService_ServiceDesc.ServiceName,
+		commentspb.CommentsService_ServiceDesc.ServiceName,
+		identitypb.IdentityService_ServiceDesc.ServiceName,
+		issuereportspb.IssueReportsService_ServiceDesc.ServiceName,
+		notificationspb.NotificationsService_ServiceDesc.ServiceName,
+		oauth2clientspb.OAuth2ClientsService_ServiceDesc.ServiceName,
+		passwordresetpb.PasswordResetService_ServiceDesc.ServiceName,
+		settingspb.SettingsService_ServiceDesc.ServiceName,
+		signinpb.SignInService_ServiceDesc.ServiceName,
+		waitlistspb.WaitlistsService_ServiceDesc.ServiceName,
+		webhookspb.WebhooksService_ServiceDesc.ServiceName,
+	}
+
+	var out []string
+
+	for _, method := range methods {
+		service, _, _ := strings.Cut(strings.TrimPrefix(method, "/"), "/")
+		if slices.Contains(covered, service) && !slices.Contains(ReservableMethods(), method) {
+			out = append(out, method)
+		}
+	}
+
+	return out
 }

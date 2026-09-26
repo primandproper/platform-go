@@ -58,13 +58,14 @@ next.
 
 # Who a call is made as
 
-The console is an operator's, and a deployment reserves nearly all of it to a
-service role. CreateList, UpdateList and ArchiveList decide which launches exist;
+The console is an operator's, and a deployment may reserve nearly all of it to
+a service role. CreateList, UpdateList and ArchiveList decide which launches exist;
 GetSignup, GetSignupByContact and ListSignups read who is on them, the second
 being the membership oracle this surface is otherwise careful never to be;
 UpdateSignupNotes, Invite, Convert and ArchiveSignup decide whose turn it is;
-and WithdrawSignupsForSubject is the erasure path. Those are made by operators,
-as conformance.OperatorMethods describes, minted into the tenant whose lists
+and WithdrawSignupsForSubject is the erasure path. Each is made by an operator
+where the subject reserves it and by an ordinary caller where it does not, as
+conformance.ReservableMethods describes, minted into the tenant whose lists
 they are.
 
 The rest is made as an ordinary caller, and each is a promise. A signed-in

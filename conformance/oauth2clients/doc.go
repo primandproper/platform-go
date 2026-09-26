@@ -34,12 +34,13 @@ also what a deployment that resolves every caller to the wrong registry answers.
 
 # Who a call is made as
 
-All four RPCs are an operator's — CreateOAuth2Client, GetOAuth2Client,
-ListOAuth2Clients and ArchiveOAuth2Client — because the registry is the
-deployment's list of who may ask it for tokens. They are made by operators, as
-conformance.OperatorMethods describes; a registry's confinement is asserted
-between an operator in each of two tenants, and its being the tenant's rather
-than the registrar's between two operators in one, which a subject minting a
-single administrator per tenant cannot show and skips.
+All four RPCs may be reserved to an operator — CreateOAuth2Client,
+GetOAuth2Client, ListOAuth2Clients and ArchiveOAuth2Client — because the
+registry is the deployment's list of who may ask it for tokens. Each is made by
+an operator where the subject reserves it and by an ordinary caller where it
+does not, as conformance.ReservableMethods describes; a registry's confinement
+is asserted between two such callers in two tenants, and its being the
+tenant's rather than the registrar's between two in one, which a subject
+minting a single administrator per tenant cannot show and skips.
 */
 package oauth2clients

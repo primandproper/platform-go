@@ -20,11 +20,12 @@ should be able to do.
 
 # Who a call is made as
 
-VerifyChain is an operator's: whether a record has been tampered with is a
+VerifyChain may be an operator's: whether a record has been tampered with is a
 question about the deployment, asked by whoever answers for it, and a
-deployment reserves it to a service role. So the chain an ordinary caller
-appended to is verified by an operator minted into that caller's tenant, as
-conformance.OperatorMethods describes.
+deployment may reserve it to a service role. So the chain an ordinary caller
+appended to is verified by a caller minted into that caller's tenant — an
+operator where the subject reserves VerifyChain — as
+conformance.ReservableMethods describes.
 
 GetEntry and ListEntries are made as the ordinary caller whose chain it is, and
 that is a promise: a member reads what was recorded in their own tenant.
