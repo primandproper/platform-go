@@ -5,9 +5,6 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks"
-	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
@@ -22,8 +19,8 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
+	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
-	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -77,13 +74,19 @@ func registerApplication(i do.Injector, prefix string) {
 	})
 
 	// identity's service, which identity/config ships a registration for and
-	// service.Register does not call.
+	// service.Register does not call. The sign-in block's registration door
+	// registers people through it.
 	identitycfg.RegisterService(i)
 
-	// Three services built by hand, the way each package's documentation says a
+	// The one password engine. The sign-in block resolves it, and so does the
+	// reset flow below, so a reset writes a password sign-in can check.
+	do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+
+	// Two services built by hand, the way each package's documentation says a
 	// consumer builds it, from what the composition root already registered.
-	// signin has no config block; oauth2clients and passwordreset have one each,
-	// left unset here so that neither is registered twice.
+	// oauth2clients and passwordreset have a config block each, left unset here
+	// so that neither is registered twice. signin is not here: its block in
+	// assemble's config mounts it.
 	do.Provide(i, func(i do.Injector) (oauth2clients.Store, error) {
 		store, err := oauth2clients.NewSQLStore(do.MustInvoke[database.Client](i), oauth2clients.WithTablePrefix(prefix))
 		if err != nil {
@@ -108,39 +111,7 @@ func registerApplication(i do.Injector, prefix string) {
 		// The mailbox assemble registered, which is where the reset suite reads
 		// the link a person would have been sent.
 		return passwordreset.NewService(db, resetTokens, do.MustInvoke[identity.Store](i),
-			argon2.NewArgon2Authenticator(), do.MustInvoke[*resetMailbox](i))
-	})
-
-	do.Provide(i, func(i do.Injector) (*signin.Service, error) {
-		db := do.MustInvoke[database.Client](i)
-		directory := do.MustInvoke[identity.Store](i)
-
-		// Rotation and the passwordless door, each the store signin ships for
-		// it under the run's prefix. Both are optional and a consumer adopting
-		// them does exactly this, which is what puts refresh, sign-out and the
-		// mailed sign-in link under assertion rather than under "not
-		// configured".
-		refreshTokens, err := refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: prefix}, db)
-		if err != nil {
-			return nil, err
-		}
-
-		magicLinks, err := magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: prefix}, db)
-		if err != nil {
-			return nil, err
-		}
-
-		return signin.NewService(db, directory,
-			argon2.NewArgon2Authenticator(), do.MustInvoke[tokens.Issuer](i),
-			signin.WithTOTPIssuer("conformance"),
-			signin.WithRegistrar(do.MustInvoke[*identity.Service](i)),
-			signin.WithVerifications(directory),
-			signin.WithRefreshTokenStore(refreshTokens),
-			signin.WithMagicLinkStore(magicLinks),
-			// The mailbox assemble registered, which is where the sign-in
-			// suite reads the link a person would have been sent.
-			signin.WithMagicLinkMailer(do.MustInvoke[*magicLinkMailbox](i)),
-		)
+			do.MustInvoke[authentication.Authenticator](i), do.MustInvoke[*resetMailbox](i))
 	})
 }
 
