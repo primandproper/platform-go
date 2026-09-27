@@ -101,6 +101,12 @@ type Seams struct {
 	// types are checked supplies the action as well, and the action wins.
 	CommentTargetType string
 
+	// Roles is the deployment's role vocabulary, for the assertions that grant
+	// a role. The zero value is this package's own literals, which a deployment
+	// whose roles are open accepts; one whose roles are a closed vocabulary
+	// names the ones it declares. See Roles.
+	Roles Roles
+
 	// WebhookURL is an address the deployment's webhooks surface accepts an
 	// endpoint at, for the assertions that register one. Empty is not an
 	// absence: it is https://192.0.2.1/conformance/hook, in the block RFC 5737

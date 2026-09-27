@@ -27,7 +27,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s)
-		who, registered := register(t, s, withPassword(registrationRequest()))
+		who, registered := register(t, s, withPassword(registrationRequest(s)))
 
 		test.EqOp(t, who.username, registered.GetUser().GetUsername())
 		test.NotNil(t, registered.GetAccount(), test.Sprint("a registration naming an account answered with none"))
@@ -49,7 +49,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 		link := mailedVerification(t, s, who.email)
 
 		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{Token: link, NewPassword: password})
@@ -70,14 +70,14 @@ func registration(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s)
 
-		without, _ := register(t, s, withNoPassword(registrationRequest()))
+		without, _ := register(t, s, withNoPassword(registrationRequest(s)))
 		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
 			Token:       mailedVerification(t, s, without.email),
 			NewPassword: password,
 		})
 		must.NoError(t, err, must.Sprint("the control: an account with no password could not be given one"))
 
-		holder, _ := register(t, s, withPassword(registrationRequest()))
+		holder, _ := register(t, s, withPassword(registrationRequest(s)))
 		link := mailedVerification(t, s, holder.email)
 
 		const chosenBySomebodyElse = "a password somebody else chose, long enough"
@@ -110,7 +110,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, domain.ErrInvalidCredentials.Error(), status.Convert(err).Message())
 
 		// A spent link lands in the same place.
-		who, _ := register(t, s, withPassword(registrationRequest()))
+		who, _ := register(t, s, withPassword(registrationRequest(s)))
 		link := mailedVerification(t, s, who.email)
 
 		_, spendErr := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
@@ -128,7 +128,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		by := registrar(t, s)
-		request := registrationRequest()
+		request := registrationRequest(s)
 
 		_, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), request)
 		refused(t, s, err, codes.InvalidArgument, reasonNoCredentialNamed)
@@ -147,7 +147,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		must.Error(t, err)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
-		register(t, s, withPassword(registrationRequest()))
+		register(t, s, withPassword(registrationRequest(s)))
 	})
 
 	// The secret that claims an account goes to the person the account is
@@ -156,7 +156,7 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registration's answer never carries the link that claims it", func(t *testing.T) {
 		t.Parallel()
 
-		who, registered := register(t, s, withNoPassword(registrationRequest()))
+		who, registered := register(t, s, withNoPassword(registrationRequest(s)))
 		link := mailedVerification(t, s, who.email)
 
 		test.StrNotContains(t, registered.String(), link,

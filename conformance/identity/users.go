@@ -31,7 +31,7 @@ func users(t *testing.T, s *conformance.Session) {
 				LastName:     "Body",
 			},
 			Account:    &identitypb.AccountCreationInput{Name: "Acme", TimeZone: "UTC"},
-			OwnerRoles: []string{"owner"},
+			OwnerRoles: []string{s.Roles().Owner},
 		})
 		must.NoError(t, err)
 
@@ -55,7 +55,7 @@ func users(t *testing.T, s *conformance.Session) {
 			_, err := caller.Surfaces.Identity.Register(caller.Context(t.Context()), &identitypb.RegisterRequest{
 				User:       &identitypb.UserRegistrationInput{Username: username, EmailAddress: email},
 				Account:    &identitypb.AccountCreationInput{Name: account},
-				OwnerRoles: []string{"owner"},
+				OwnerRoles: []string{s.Roles().Owner},
 			})
 
 			return err
@@ -226,9 +226,9 @@ func users(t *testing.T, s *conformance.Session) {
 		ctx := operator.Context(t.Context())
 
 		granted, err := operator.Surfaces.Identity.SetUserServiceRoles(ctx,
-			&identitypb.SetUserServiceRolesRequest{UserId: user.UserID, Roles: []string{"service_admin"}})
+			&identitypb.SetUserServiceRolesRequest{UserId: user.UserID, Roles: []string{s.Roles().Service}})
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_admin"}, granted.GetUser().GetServiceRoles())
+		test.Eq(t, []string{s.Roles().Service}, granted.GetUser().GetServiceRoles())
 
 		withdrawn, err := operator.Surfaces.Identity.SetUserServiceRoles(ctx,
 			&identitypb.SetUserServiceRolesRequest{UserId: user.UserID})

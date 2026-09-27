@@ -186,7 +186,7 @@ func freshEmail() string { return identifiers.New() + "@conformance.invalid" }
 
 // registrationRequest is a registration for somebody nobody has registered,
 // naming no credential; each caller names the one it is about.
-func registrationRequest() *signinpb.RegisterRequest {
+func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
 	username := "conf_" + identifiers.New()
 
 	return &signinpb.RegisterRequest{
@@ -196,7 +196,7 @@ func registrationRequest() *signinpb.RegisterRequest {
 			FirstName:    "Some",
 		},
 		Account:    &identitypb.AccountCreationInput{Name: username + "'s"},
-		OwnerRoles: []string{"owner"},
+		OwnerRoles: []string{s.Roles().Owner},
 	}
 }
 
@@ -265,7 +265,7 @@ func verify(t *testing.T, s *conformance.Session, anon signinpb.SignInServiceCli
 func signInAs(t *testing.T, s *conformance.Session, anon signinpb.SignInServiceClient) *registrant {
 	t.Helper()
 
-	who, _ := register(t, s, withPassword(registrationRequest()))
+	who, _ := register(t, s, withPassword(registrationRequest(s)))
 	verify(t, s, anon, who)
 
 	return who

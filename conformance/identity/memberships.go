@@ -16,6 +16,8 @@ import (
 func memberships(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	role, otherRole := membershipRoles(s)
+
 	t.Run("setting a default account moves where the caller lands, and only there", func(t *testing.T) {
 		t.Parallel()
 
@@ -23,7 +25,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 		needsAccount(t, first)
 		second := colleague(t, s, first)
 		needsAccount(t, second)
-		join(t, s, second, first, "member")
+		join(t, s, second, first, role)
 
 		ctx := first.Context(t.Context())
 
@@ -67,17 +69,17 @@ func memberships(t *testing.T, s *conformance.Session) {
 		owner := s.Subject(t)
 		needsAccount(t, owner)
 		member := colleague(t, s, owner)
-		join(t, s, owner, member, "billing", roleSupport)
+		join(t, s, owner, member, otherRole, role)
 
 		ctx := owner.Context(t.Context())
 
 		response, err := owner.Surfaces.Identity.SetMembershipRoles(ctx, &identitypb.SetMembershipRolesRequest{
 			AccountId: owner.AccountID,
 			UserId:    member.UserID,
-			Roles:     []string{roleSupport},
+			Roles:     []string{role},
 		})
 		must.NoError(t, err)
-		test.Eq(t, []string{roleSupport}, response.GetMembership().GetRoles(),
+		test.Eq(t, []string{role}, response.GetMembership().GetRoles(),
 			test.Sprint("the roles were merged rather than replaced, so nothing here can revoke one"))
 
 		read, err := owner.Surfaces.Identity.GetMembership(ctx, &identitypb.GetMembershipRequest{
@@ -85,7 +87,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 			AccountId: owner.AccountID,
 		})
 		must.NoError(t, err)
-		test.Eq(t, []string{roleSupport}, read.GetMembership().GetRoles())
+		test.Eq(t, []string{role}, read.GetMembership().GetRoles())
 	})
 
 	t.Run("removing a membership ends it", func(t *testing.T) {
@@ -94,7 +96,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 		owner := s.Subject(t)
 		needsAccount(t, owner)
 		member := colleague(t, s, owner)
-		join(t, s, owner, member, roleSupport)
+		join(t, s, owner, member, role)
 
 		// The positive control: the member is on the roster before removal.
 		must.SliceContains(t, memberIDs(t, owner, owner.AccountID), member.UserID)
@@ -157,7 +159,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 		owner := s.Subject(t)
 		needsAccount(t, owner)
 		member := colleague(t, s, owner)
-		join(t, s, owner, member, roleSupport)
+		join(t, s, owner, member, role)
 
 		roster, err := owner.Surfaces.Identity.ListAccountMembers(owner.Context(t.Context()),
 			&identitypb.ListAccountMembersRequest{AccountId: owner.AccountID})

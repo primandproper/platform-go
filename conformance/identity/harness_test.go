@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -24,8 +26,10 @@ import (
 
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // TestMain registers the domain tier's error mappers, which is the call a
@@ -173,6 +177,11 @@ func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 			return conn, nil
 		},
 
+		// This harness's roles are a closed vocabulary, refused by
+		// closedVocabulary, so the names the suites grant have to be the
+		// ones it declares — which is the case the literals broke.
+		Roles: vocabulary,
+
 		Dialect: d,
 
 		// The tables are this run's own, by prefix, so nothing else is writing
@@ -218,6 +227,49 @@ func authenticate(
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
+// vocabulary is the only role names this harness's deployment accepts, spelled
+// as a deployment that foreign-keys its roles spells them, and none of them the
+// conformance package's own literals.
+var vocabulary = conformance.Roles{
+	Owner:      "account_admin",
+	Service:    "service_admin",
+	Membership: [2]string{"account_admin", "account_member"},
+}
+
+// closedVocabulary refuses a request naming a role outside vocabulary, which
+// is what a deployment whose roles are a table does at the foreign key. It
+// stands in front of the service rather than inside it because identity's role
+// names are the consumer's and it validates none of them.
+func closedVocabulary(
+	ctx context.Context,
+	req any,
+	_ *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (any, error) {
+	declared := []string{vocabulary.Owner, vocabulary.Service, vocabulary.Membership[0], vocabulary.Membership[1]}
+
+	var named []string
+
+	switch r := req.(type) {
+	case *identitypb.RegisterRequest:
+		named = r.GetOwnerRoles()
+	case *identitypb.InviteRequest:
+		named = r.GetRoles()
+	case *identitypb.SetMembershipRolesRequest:
+		named = r.GetRoles()
+	case *identitypb.SetUserServiceRolesRequest:
+		named = r.GetRoles()
+	}
+
+	for _, role := range named {
+		if !slices.Contains(declared, role) {
+			return nil, status.Errorf(codes.InvalidArgument, "role %q is not declared", role)
+		}
+	}
+
+	return handler(ctx, req)
+}
+
 type principalKey struct{}
 
 func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
@@ -242,7 +294,7 @@ func serve(t *testing.T, srv *identitygrpc.Server) *grpc.ClientConn {
 	t.Helper()
 
 	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
-		grpcerrors.UnaryErrorEncodingInterceptor(), authenticate,
+		grpcerrors.UnaryErrorEncodingInterceptor(), authenticate, closedVocabulary,
 	))
 	srv.RegisterOn(grpcServer)
 
