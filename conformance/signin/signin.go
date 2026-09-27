@@ -162,13 +162,22 @@ func anonymous(t *testing.T, s *conformance.Session) signinpb.SignInServiceClien
 	return signinpb.NewSignInServiceClient(conn)
 }
 
-// registrar is a caller in the directory the anonymous doors place a request
-// in, which is who registers somebody for them to sign in. See the package
-// documentation for why that directory is the global one.
-func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
+// member is an ordinary caller in the directory the anonymous doors place a
+// request in. See the package documentation for why that directory is the
+// global one.
+func member(t *testing.T, s *conformance.Session) *conformance.Subject {
 	t.Helper()
 
 	return s.Subject(t, conformance.InTenant(surface, tenancy.Global()))
+}
+
+// registrar is who registers somebody for the anonymous doors to sign in: a
+// caller in that same directory, and an operator there where the subject
+// reserves Register to one.
+func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
+	t.Helper()
+
+	return s.OperatorIn(t, surface, tenancy.Global(), signinpb.SignInService_Register_FullMethodName)
 }
 
 // registrant is somebody registered over the wire: what they would type to sign
@@ -308,7 +317,7 @@ func loggedIn(t *testing.T, client signinpb.SignInServiceClient, username, secre
 func passworded(t *testing.T, s *conformance.Session) (*conformance.Subject, *identitypb.User) {
 	t.Helper()
 
-	sub := registrar(t, s)
+	sub := member(t, s)
 
 	if sub.Surfaces.Identity == nil || sub.Surfaces.PasswordReset == nil {
 		t.Skip("conformance: this subject mounts no identity or password reset surface, so a caller cannot be given a password the suite knows")

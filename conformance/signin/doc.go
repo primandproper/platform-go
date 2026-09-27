@@ -57,6 +57,20 @@ sign-in with none, which the client contract calls a valid shape — so the
 assertions about rotation and signing out skip, with the reason printed, when
 the sign-in they start from carried no refresh token.
 
+# Who a call is made as
+
+Register is the one call here a deployment may reserve. It requires a caller
+and registers somebody else, which is the directory's administered door by
+another name: a deployment whose public sign-up is a door of its own may keep
+this one to a service role, as it may identity's Register. So every
+registration here is made by an operator in the global directory where the
+subject reserves it, and by an ordinary caller there where it does not, as
+conformance.ReservableMethods describes.
+
+The rest is made as an ordinary caller or as nobody, and each is a promise: a
+signed-in caller reads their own status through GetAuthStatus, and every door,
+link and exchange answers somebody with nobody on the connection.
+
 # What is here and what stayed behind
 
 authentication/signin/grpc keeps what is about a server rather than a call:

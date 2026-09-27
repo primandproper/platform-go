@@ -29,7 +29,7 @@ func self(t *testing.T, s *conformance.Session) {
 
 		// The control: the same question from a caller is answered yes, so the
 		// no above was about the request rather than about the surface.
-		sub := registrar(t, s)
+		sub := member(t, s)
 
 		somebody, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
 		must.NoError(t, err)
@@ -39,7 +39,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a caller's status names them, the account they are in, and their credentials", func(t *testing.T) {
 		t.Parallel()
 
-		sub := registrar(t, s)
+		sub := member(t, s)
 
 		before, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
 		must.NoError(t, err)
