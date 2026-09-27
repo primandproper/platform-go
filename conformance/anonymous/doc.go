@@ -26,8 +26,9 @@ codes.Unauthenticated. That is the direction everybody remembers.
 
 A method that is deliberately anonymous must *not* be refused that way. That is
 the direction nothing else checks, and it is the one with a user-visible
-failure: the three public waitlists RPCs are a signup form, the link in the mail
-that follows it, and the unsubscribe in that same mail. A deployment that puts
+failure: the five public waitlists RPCs are a signup form, the catalog it
+offers, the confirmation link in the mail that follows it, and the two ways off
+the list. A deployment that puts
 authentication in front of those has broken the page for exactly the people who
 have no account yet, and every authenticated test in the suite still passes.
 

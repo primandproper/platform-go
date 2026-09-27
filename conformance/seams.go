@@ -451,6 +451,28 @@ type Actions struct {
 	// whose deployment mails no sign-in links leaves it nil.
 	MagicLinkToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
 
+	// WaitlistLinks reports the links the deployment most recently mailed to
+	// an address that joined a list — the confirmation link a person follows
+	// to make their signup count, and the unsubscribe link beside it.
+	//
+	// Its presence is also the statement that this deployment confirms: that
+	// its waitlists surface was built with waitlistsgrpc.WithConfirmation, so
+	// a join is held pending until its link is followed. The waitlists suite
+	// follows the link after every join it makes when this is set, and asserts
+	// the loop itself; left nil, it asserts a deployment whose joins wait at
+	// once. A confirming deployment that leaves it nil fails the assertions
+	// that read a signup's status, because every signup they make is still
+	// pending.
+	//
+	// There is no RPC that returns either token, for PasswordResetToken's
+	// reason: Join answers every address identically, and the links reach the
+	// person through the deployment's waitlistsgrpc.ConfirmationMailer. A
+	// consumer implements this by reading the mail their deployment sent; this
+	// module's harnesses by a mailer that remembers what it was handed. The
+	// scope is the tenant the signup was made in, and the contact is as it was
+	// typed.
+	WaitlistLinks func(ctx context.Context, scope tenancy.Scope, listID, contact string) (*WaitlistLinks, error)
+
 	// Registered stores an object's bytes and registers them in this tenant
 	// as the user's, the way the deployment's own upload path does, and
 	// reports what it registered.
@@ -489,6 +511,18 @@ type Actions struct {
 	// same target type too, since the moderation read is asserted across two
 	// targets of one type.
 	CommentTarget func(ctx context.Context, scope tenancy.Scope) (targetType, targetID string, err error)
+}
+
+// WaitlistLinks are the two secrets a confirming deployment mails to an address
+// that joined a list, as bare tokens.
+type WaitlistLinks struct {
+	// Confirm is the token the confirmation link carries, which the waitlists
+	// surface's Confirm spends.
+	Confirm string
+
+	// Unsubscribe is the token the unsubscribe link beside it carries, which
+	// the surface's Unsubscribe spends.
+	Unsubscribe string
 }
 
 // RegisteredObject is what a registration action stored, as the guarded read

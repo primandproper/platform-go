@@ -32,8 +32,8 @@ func erasure(t *testing.T, s *conformance.Session) {
 		first := openList(t, operator, open())
 		second := openList(t, operator, open())
 
-		onFirst := signedUp(t, caller, operator, first.GetId(), freshContact())
-		onSecond := signedUp(t, caller, operator, second.GetId(), freshContact())
+		onFirst := signedUp(t, s, caller, operator, first.GetId(), freshContact())
+		onSecond := signedUp(t, s, caller, operator, second.GetId(), freshContact())
 
 		// A person reading their own signups is an ordinary caller's read, and
 		// a promise: the export a person asks for is theirs to ask for.
@@ -64,7 +64,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		person := colleague(t, s, owner)
 		needsUser(t, person)
-		theirs := signedUp(t, person, operator, list.GetId(), freshContact())
+		theirs := signedUp(t, s, person, operator, list.GetId(), freshContact())
 
 		// The positive control: the person whose signup it is reads it, so the
 		// refusal below is about who asked and not about a read that reaches
@@ -99,8 +99,8 @@ func erasure(t *testing.T, s *conformance.Session) {
 		second := openList(t, operator, open())
 
 		contact := freshContact()
-		onFirst := signedUp(t, caller, operator, first.GetId(), contact)
-		onSecond := signedUp(t, caller, operator, second.GetId(), freshContact())
+		onFirst := signedUp(t, s, caller, operator, first.GetId(), contact)
+		onSecond := signedUp(t, s, caller, operator, second.GetId(), freshContact())
 
 		// At least the two made here, rather than exactly two: the count is of
 		// rows, and a deployment is entitled to have signed this person up to
@@ -146,7 +146,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		signup := signedUp(t, caller, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, caller, operator, list.GetId(), freshContact())
 
 		// The positive control: before the erasure the listing carries it.
 		before, err := caller.Surfaces.Waitlists.ListSignupsForSubject(caller.Context(t.Context()),
@@ -205,7 +205,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 		}
 		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
 		list := openList(t, theirOperator, open())
-		signup := signedUp(t, theirs, theirOperator, list.GetId(), freshContact())
+		signup := signedUp(t, s, theirs, theirOperator, list.GetId(), freshContact())
 
 		// Naming a person from another tenant erases nothing there.
 		_, err := myOperator.Surfaces.Waitlists.WithdrawSignupsForSubject(myOperator.Context(t.Context()),

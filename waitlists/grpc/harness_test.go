@@ -169,7 +169,7 @@ func newHarness(tb testing.TB, opts ...waitlistsgrpc.Option) *harness {
 // waitlistsScopeResolver places an anonymous caller in testScope, which is what
 // a multi-tenant deployment's resolver does.
 //
-// The suite uses it almost everywhere, because it is what makes the public three
+// The suite uses it almost everywhere, because it is what makes the public five
 // testable against the same rows the administrative fourteen see. The package's
 // GlobalScope default is the subject of a test of its own — see
 // newHarnessWithScope.

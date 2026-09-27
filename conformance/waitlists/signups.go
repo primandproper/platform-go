@@ -26,7 +26,7 @@ func signups(t *testing.T, s *conformance.Session) {
 		)
 		list := openList(t, mine, open())
 		contact := freshContact()
-		signup := signedUp(t, mine, mine, list.GetId(), contact)
+		signup := signedUp(t, s, mine, mine, list.GetId(), contact)
 
 		// The positive control, through the same RPC the neighbor is refused.
 		read, err := mine.Surfaces.Waitlists.GetSignup(mine.Context(t.Context()),
@@ -53,7 +53,7 @@ func signups(t *testing.T, s *conformance.Session) {
 		)
 		list := openList(t, operator, open())
 		other := openList(t, operator, open())
-		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 
 		_, err := operator.Surfaces.Waitlists.GetSignup(operator.Context(t.Context()),
 			&waitlistspb.GetSignupRequest{ListId: other.GetId(), SignupId: signup.GetId()})
@@ -73,7 +73,7 @@ func signups(t *testing.T, s *conformance.Session) {
 		list := openList(t, operator, open())
 		typed := "Conf." + freshContact()
 
-		join(t, operator, list.GetId(), typed)
+		join(t, s, operator, list.GetId(), typed)
 
 		found := byContact(t, operator, list.GetId(), strings.ToUpper(typed))
 		must.NotNil(t, found, must.Sprint("a signup was not found by its address in another case"))
@@ -93,7 +93,7 @@ func signups(t *testing.T, s *conformance.Session) {
 
 		// signedUp is the positive control: it fails unless this caller finds
 		// its own signup by the address.
-		signedUp(t, mine, mine, list.GetId(), contact)
+		signedUp(t, s, mine, mine, list.GetId(), contact)
 
 		// The read behind "is this address on this list" is the one this
 		// surface is most careful with, and a neighbor must find nothing.
@@ -112,9 +112,9 @@ func signups(t *testing.T, s *conformance.Session) {
 		list := openList(t, mine, open())
 		other := openList(t, mine, open())
 
-		first := signedUp(t, mine, mine, list.GetId(), freshContact())
-		second := signedUp(t, mine, mine, list.GetId(), freshContact())
-		elsewhere := signedUp(t, mine, mine, other.GetId(), freshContact())
+		first := signedUp(t, s, mine, mine, list.GetId(), freshContact())
+		second := signedUp(t, s, mine, mine, list.GetId(), freshContact())
+		elsewhere := signedUp(t, s, mine, mine, other.GetId(), freshContact())
 
 		page, err := mine.Surfaces.Waitlists.ListSignups(mine.Context(t.Context()),
 			&waitlistspb.ListSignupsRequest{ListId: list.GetId()})
@@ -150,11 +150,21 @@ func signups(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 
 		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, signup.GetStatus())
-		test.Nil(t, signup.GetStatusChangedAt(),
-			test.Sprint("a signup nobody has moved says it was moved"))
+
+		// A signup that went straight to waiting has not moved. One a
+		// confirming deployment held has — its confirmation is a move, stamped
+		// when the address said yes — and the invitation must move it again
+		// rather than leave that stamp standing.
+		if confirms(s) {
+			must.NotNil(t, signup.GetStatusChangedAt(),
+				must.Sprint("a confirmed signup does not say when it was confirmed"))
+		} else {
+			test.Nil(t, signup.GetStatusChangedAt(),
+				test.Sprint("a signup nobody has moved says it was moved"))
+		}
 
 		invited, err := operator.Surfaces.Waitlists.Invite(operator.Context(t.Context()),
 			&waitlistspb.InviteRequest{ListId: list.GetId(), SignupId: signup.GetId()})
@@ -163,6 +173,11 @@ func signups(t *testing.T, s *conformance.Session) {
 		must.NotNil(t, invited.GetResult().GetStatusChangedAt(),
 			must.Sprint("an invitation answered with no moment it moved"))
 		test.False(t, invited.GetResult().GetStatusChangedAt().AsTime().IsZero())
+
+		if confirms(s) {
+			test.False(t, invited.GetResult().GetStatusChangedAt().AsTime().Before(signup.GetStatusChangedAt().AsTime()),
+				test.Sprint("the invitation's moment is earlier than the confirmation it followed"))
+		}
 	})
 
 	// The guard is the affected-row count of one update rather than a decision
@@ -179,7 +194,7 @@ func signups(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
 
 		_, err := operator.Surfaces.Waitlists.Invite(ctx,
@@ -203,7 +218,7 @@ func signups(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, mine, open())
-		signup := signedUp(t, mine, mine, list.GetId(), freshContact())
+		signup := signedUp(t, s, mine, mine, list.GetId(), freshContact())
 
 		_, err := theirs.Surfaces.Waitlists.Invite(theirs.Context(t.Context()),
 			&waitlistspb.InviteRequest{ListId: list.GetId(), SignupId: signup.GetId()})
@@ -228,7 +243,7 @@ func signups(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
 
 		_, err := operator.Surfaces.Waitlists.Invite(ctx,
@@ -250,7 +265,7 @@ func signups(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 
 		_, err := operator.Surfaces.Waitlists.Convert(operator.Context(t.Context()),
 			&waitlistspb.ConvertRequest{ListId: list.GetId(), SignupId: signup.GetId()})
@@ -274,7 +289,7 @@ func signups(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		signup := signedUp(t, operator, operator, list.GetId(), freshContact())
+		signup := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
 
 		invited, err := operator.Surfaces.Waitlists.Invite(ctx,
@@ -308,7 +323,7 @@ func signups(t *testing.T, s *conformance.Session) {
 		)
 		list := openList(t, operator, open())
 		contact := freshContact()
-		signup := signedUp(t, operator, operator, list.GetId(), contact)
+		signup := signedUp(t, s, operator, operator, list.GetId(), contact)
 		ctx := operator.Context(t.Context())
 
 		_, err := operator.Surfaces.Waitlists.ArchiveSignup(ctx,

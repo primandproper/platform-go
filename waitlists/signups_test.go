@@ -418,6 +418,108 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 		})
 	})
 
+	t.Run("Confirm", func(T *testing.T) {
+		T.Run("a pending signup waits only once it is confirmed", func(t *testing.T) {
+			t.Parallel()
+
+			c := newStubClock()
+			store := env.newStore(t, WithClock(c))
+
+			list := mustCreateList(t, env, store, testScope, openList("Launch"))
+			pending := mustJoin(t, env, store, testScope, list.ID,
+				&Signup{Contact: "ada@example.com", Status: StatusPending})
+
+			test.EqOp(t, StatusPending, pending.Status)
+			test.Nil(t, pending.StatusChangedAt)
+
+			// Nobody said yes yet, so nobody may be let in: the invitation's
+			// guard names waiting, and pending is not it.
+			test.ErrorIs(t, refused(env.invite(t, store, testScope, list.ID, pending.ID)), ErrWrongStatus)
+
+			c.advance(time.Hour)
+
+			confirmed, err := env.confirm(t, store, testScope, list.ID, pending.ID)
+			must.NoError(t, err)
+			must.NotNil(t, confirmed)
+
+			test.EqOp(t, StatusWaiting, confirmed.Status)
+			must.NotNil(t, confirmed.StatusChangedAt)
+			test.EqOp(t, c.Now().UTC(), *confirmed.StatusChangedAt)
+
+			read, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, pending.ID)
+			must.NoError(t, err)
+			test.Eq(t, confirmed, read)
+
+			// And now the ordinary lifecycle takes over.
+			mustInvite(t, env, store, testScope, list.ID, pending.ID)
+		})
+
+		T.Run("happens once, and refuses a signup nobody held", func(t *testing.T) {
+			t.Parallel()
+
+			store := env.newStore(t)
+
+			list := mustCreateList(t, env, store, testScope, openList("Launch"))
+			waiting := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
+			pending := mustJoin(t, env, store, testScope, list.ID,
+				&Signup{Contact: "grace@example.com", Status: StatusPending})
+
+			// A signup that was never held has nothing to confirm.
+			test.ErrorIs(t, refused(env.confirm(t, store, testScope, list.ID, waiting.ID)), ErrWrongStatus)
+
+			// The link followed twice — by the person and by the scanner in
+			// front of their inbox — confirms once.
+			_, err := env.confirm(t, store, testScope, list.ID, pending.ID)
+			must.NoError(t, err)
+			test.ErrorIs(t, refused(env.confirm(t, store, testScope, list.ID, pending.ID)), ErrWrongStatus)
+
+			test.ErrorIs(t, refused(env.confirm(t, store, testScope, list.ID, "nope")), ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.confirm(t, store, otherScope, list.ID, pending.ID)), ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.confirm(t, store, testScope, list.ID, "")),
+				platformerrors.ErrInvalidIDProvided)
+		})
+
+		T.Run("a pending signup holds its address, and withdraws like any other", func(t *testing.T) {
+			t.Parallel()
+
+			store := env.newStore(t)
+
+			list := mustCreateList(t, env, store, testScope, openList("Launch"))
+			pending := mustJoin(t, env, store, testScope, list.ID,
+				&Signup{Contact: "ada@example.com", Status: StatusPending})
+
+			// A second join from the address is the ordinary collision, which
+			// is what makes resending the confirmation the transport's
+			// decision rather than a second row.
+			_, err := env.join(t, store, testScope, list.ID, &Signup{Contact: "ADA@example.com"})
+			test.ErrorIs(t, err, ErrAlreadySignedUp)
+
+			// "This was not me" is a withdrawal, and it suppresses the address
+			// whether or not the signup was ever confirmed.
+			left, err := env.withdraw(t, store, testScope, list.ID, pending.ID)
+			must.NoError(t, err)
+			test.EqOp(t, StatusPending, left.Status)
+
+			test.ErrorIs(t, refused(env.confirm(t, store, testScope, list.ID, pending.ID)), ErrWrongStatus)
+
+			_, err = env.join(t, store, testScope, list.ID,
+				&Signup{Contact: "ada@example.com", Status: StatusPending})
+			test.ErrorIs(t, err, ErrContactWithdrawn)
+		})
+
+		T.Run("a status other than pending is still the store's", func(t *testing.T) {
+			t.Parallel()
+
+			store := env.newStore(t)
+
+			list := mustCreateList(t, env, store, testScope, openList("Launch"))
+			joined := mustJoin(t, env, store, testScope, list.ID,
+				&Signup{Contact: "ada@example.com", Status: StatusInvited})
+
+			test.EqOp(t, StatusWaiting, joined.Status)
+		})
+	})
+
 	t.Run("Invite and Convert", func(T *testing.T) {
 		T.Run("walk the lifecycle and stamp each move", func(t *testing.T) {
 			t.Parallel()

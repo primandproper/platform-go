@@ -157,7 +157,7 @@ func TestSchemaConformance(T *testing.T) {
 // TestTheStatusEnumCoversEveryStoredStatus holds the one generated enum in this
 // schema to the closed set waitlists owns.
 //
-// It is an enum where a consumer's catalog would be a string, because the four
+// It is an enum where a consumer's catalog would be a string, because the five
 // statuses decide which transitions the store will make and what a withdrawal
 // means — a fifth is not a word an application adds, it is a row nothing can
 // move. What follows from that is that the two sets have to stay the same size:
@@ -167,6 +167,7 @@ func TestTheStatusEnumCoversEveryStoredStatus(T *testing.T) {
 	T.Parallel()
 
 	stored := []waitlists.Status{
+		waitlists.StatusPending,
 		waitlists.StatusWaiting,
 		waitlists.StatusInvited,
 		waitlists.StatusConverted,

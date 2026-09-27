@@ -48,7 +48,7 @@ func exceptions() map[string]surface {
 		},
 		"waitlists": {
 			anonymous: waitlistsgrpc.PublicMethods(),
-			why:       "the signup page, the form it submits, and the unsubscribe link in the mail that follows",
+			why:       "the signup page, the form it submits, the confirmation link it mails, and the two ways off the list",
 		},
 	}
 }

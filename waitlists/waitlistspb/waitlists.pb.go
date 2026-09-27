@@ -3,11 +3,12 @@
 // operator opens, and the signups against them with a lifecycle of their own.
 //
 // It is one service with two audiences, which is what makes it different from
-// the three domain surfaces that came before it. Three RPCs are the signup page
-// — the open lists, the form, and the unsubscribe — and are reachable by
-// somebody who has not signed in and frequently does not have an account to
-// sign in to. The other fourteen are whoever is running the launch, and every
-// one of them is behind a grant. See the service comment at the bottom.
+// the three domain surfaces that came before it. Five RPCs are the signup page
+// — the open lists, the form, the confirmation link, and the two ways off the
+// list — and are reachable by somebody who has not signed in and frequently
+// does not have an account to sign in to. The other fourteen are whoever is
+// running the launch, and every one of them is behind a grant. See the service
+// comment at the bottom.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts
@@ -33,8 +34,8 @@
 // three are under is that a consumer's catalog stays a string, because a
 // generated enum puts the application's vocabulary on this module's release
 // cadence. This is the opposite case and waitlists.Status says so in its own
-// documentation: the four statuses decide which transitions the store will
-// make and what a withdrawal means, so a fifth is not a word an application
+// documentation: the five statuses decide which transitions the store will
+// make and what a withdrawal means, so a sixth is not a word an application
 // adds -- it is a row nothing can move. settings.Kind is the other one of these.
 //
 // SubjectType is the string on this surface, and it is the one that is genuinely
@@ -138,7 +139,8 @@ const (
 	// A request carrying it is a client that did not set the field.
 	SignupStatus_SIGNUP_STATUS_UNSPECIFIED SignupStatus = 0
 	// SIGNUP_STATUS_WAITING is somebody who has joined and not yet been invited.
-	// It is where every signup starts, and it is the only status Join writes.
+	// It is where a signup starts on a deployment that does not confirm
+	// addresses, and where a confirmed one lands.
 	SignupStatus_SIGNUP_STATUS_WAITING SignupStatus = 1
 	// SIGNUP_STATUS_INVITED is somebody who has been let in and has not yet taken
 	// it up. status_changed_at is when, which is the field a reminder is
@@ -153,6 +155,13 @@ const (
 	// that identifies a person, so a later signup from the same address is
 	// refused rather than quietly re-subscribing whoever asked to be left alone.
 	SignupStatus_SIGNUP_STATUS_WITHDRAWN SignupStatus = 4
+	// SIGNUP_STATUS_PENDING is somebody whose address was given and not yet
+	// confirmed. It is where Join starts a signup on a deployment that confirms
+	// addresses, and Confirm is the one move out of it besides a withdrawal:
+	// Invite requires waiting, so nobody reaches the front of the queue with an
+	// address that has not said yes. It is numbered last rather than first
+	// because numbers are never reused, not because it comes last.
+	SignupStatus_SIGNUP_STATUS_PENDING SignupStatus = 5
 )
 
 // Enum value maps for SignupStatus.
@@ -163,6 +172,7 @@ var (
 		2: "SIGNUP_STATUS_INVITED",
 		3: "SIGNUP_STATUS_CONVERTED",
 		4: "SIGNUP_STATUS_WITHDRAWN",
+		5: "SIGNUP_STATUS_PENDING",
 	}
 	SignupStatus_value = map[string]int32{
 		"SIGNUP_STATUS_UNSPECIFIED": 0,
@@ -170,6 +180,7 @@ var (
 		"SIGNUP_STATUS_INVITED":     2,
 		"SIGNUP_STATUS_CONVERTED":   3,
 		"SIGNUP_STATUS_WITHDRAWN":   4,
+		"SIGNUP_STATUS_PENDING":     5,
 	}
 )
 
@@ -1225,10 +1236,17 @@ func (x *JoinRequest) GetContact() string {
 // GetSignupByContact is where an authenticated caller asks the same question on
 // the wire.
 //
-// A public Join is therefore not a subscription. Nothing here has established
-// that the person at that address asked for anything, and confirming it is the
-// consumer's -- see the waitlists package documentation, which states the
-// obligation and why this module cannot ship the send.
+// A public Join is therefore not a subscription by itself. Nothing here has
+// established that the person at that address asked for anything. A deployment
+// built with waitlists/grpc's WithConfirmation writes the signup pending and
+// mails a confirmation link, which lands on Confirm; one built without it owes
+// that loop itself -- see the waitlists package documentation.
+//
+// The uniform answer covers the mail too. A new address is sent a confirmation,
+// and so is an address whose signup is still pending, since the person who lost
+// the first message is the one most likely to fill the form in again; an
+// address already confirmed and one that withdrew are sent nothing. The caller
+// is told none of that.
 type JoinResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1997,8 +2015,8 @@ func (x *ConvertResponse) GetResult() *Signup {
 
 // WithdrawRequest is somebody asking to come off a list, at their own request.
 //
-// It is the second of the three RPCs a caller reaches without a grant, and it is
-// the one that names a row. A grant on the method could not have said whose row
+// It is one of the five RPCs a caller reaches without a grant, and the only one
+// of them that names a row. A grant on the method could not have said whose row
 // this is, and neither can a signup identifier, which is minted by the store and
 // is not a credential -- so the standing to withdraw this signup is asked of the
 // consumer's own [waitlists/grpc.SignupAuthorizer], from inside the handler,
@@ -2095,6 +2113,199 @@ func (*WithdrawResponse) Descriptor() ([]byte, []int) {
 	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{33}
 }
 
+// ConfirmRequest is the confirmation link somebody followed: the reply half of a
+// double opt-in, reachable without a grant because the person at the address
+// has frequently never signed in to anything.
+//
+// It carries the token and nothing else. The link was minted against one signup
+// on one list, and the token is what names both -- a request that could also
+// name a signup is a request that could name somebody else's. Which tenant it is
+// in is the connection's, exactly as it is for Join, and a link minted in
+// another tenant is refused as though it had never been minted.
+//
+// It spends the link, so it is what a POST calls and not what a GET does. Mail
+// security fetches every URL in every message before the person sees it, and a
+// page that confirmed on load would be confirmed by the scanner; render a page
+// with a button on the GET and call this from the button.
+type ConfirmRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmRequest) Reset() {
+	*x = ConfirmRequest{}
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmRequest) ProtoMessage() {}
+
+func (x *ConfirmRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *ConfirmRequest) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+// ConfirmResponse is empty. The person holding the link already knows which
+// list they asked to join, and every refusal -- a link that expired, was spent,
+// was never minted, or names a signup that has since withdrawn -- is one
+// answer, so a holder of a guessed token learns nothing.
+type ConfirmResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmResponse) Reset() {
+	*x = ConfirmResponse{}
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmResponse) ProtoMessage() {}
+
+func (x *ConfirmResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmResponse.ProtoReflect.Descriptor instead.
+func (*ConfirmResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{35}
+}
+
+// UnsubscribeRequest is the unsubscribe link somebody followed: a withdrawal
+// whose standing is the link rather than a caller.
+//
+// It is Withdraw's second door, and it exists because Withdraw's request names a
+// signup, which is a row identifier and not a credential. This one names only
+// the token, which was minted against exactly one signup, so nothing about it
+// asks the deployment's SignupAuthorizer: the link is the authorization. A
+// confirmation mail carries one -- "this was not me" is a withdrawal, and it
+// suppresses the address whether or not the signup was ever confirmed -- and a
+// consumer puts one in every later message to the list through
+// waitlists/grpc's MintUnsubscribeLink.
+//
+// It spends the link, for Confirm's reason; the GET renders, the POST calls.
+type UnsubscribeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnsubscribeRequest) Reset() {
+	*x = UnsubscribeRequest{}
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnsubscribeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnsubscribeRequest) ProtoMessage() {}
+
+func (x *UnsubscribeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnsubscribeRequest.ProtoReflect.Descriptor instead.
+func (*UnsubscribeRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *UnsubscribeRequest) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+// UnsubscribeResponse is empty, for WithdrawResponse's reason, and every refusal
+// is one answer, for ConfirmResponse's.
+type UnsubscribeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnsubscribeResponse) Reset() {
+	*x = UnsubscribeResponse{}
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnsubscribeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnsubscribeResponse) ProtoMessage() {}
+
+func (x *UnsubscribeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnsubscribeResponse.ProtoReflect.Descriptor instead.
+func (*UnsubscribeResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{37}
+}
+
 // WithdrawSignupsForSubjectRequest withdraws every signup one principal holds in
 // the tenant, archived signups included, and is the erasure path.
 //
@@ -2114,7 +2325,7 @@ type WithdrawSignupsForSubjectRequest struct {
 
 func (x *WithdrawSignupsForSubjectRequest) Reset() {
 	*x = WithdrawSignupsForSubjectRequest{}
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[34]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2126,7 +2337,7 @@ func (x *WithdrawSignupsForSubjectRequest) String() string {
 func (*WithdrawSignupsForSubjectRequest) ProtoMessage() {}
 
 func (x *WithdrawSignupsForSubjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[34]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2139,7 +2350,7 @@ func (x *WithdrawSignupsForSubjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WithdrawSignupsForSubjectRequest.ProtoReflect.Descriptor instead.
 func (*WithdrawSignupsForSubjectRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{34}
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *WithdrawSignupsForSubjectRequest) GetSubject() *SignupSubject {
@@ -2160,7 +2371,7 @@ type WithdrawSignupsForSubjectResponse struct {
 
 func (x *WithdrawSignupsForSubjectResponse) Reset() {
 	*x = WithdrawSignupsForSubjectResponse{}
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[35]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2172,7 +2383,7 @@ func (x *WithdrawSignupsForSubjectResponse) String() string {
 func (*WithdrawSignupsForSubjectResponse) ProtoMessage() {}
 
 func (x *WithdrawSignupsForSubjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[35]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2185,7 +2396,7 @@ func (x *WithdrawSignupsForSubjectResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use WithdrawSignupsForSubjectResponse.ProtoReflect.Descriptor instead.
 func (*WithdrawSignupsForSubjectResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{35}
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *WithdrawSignupsForSubjectResponse) GetWithdrawn() int64 {
@@ -2212,7 +2423,7 @@ type ArchiveSignupRequest struct {
 
 func (x *ArchiveSignupRequest) Reset() {
 	*x = ArchiveSignupRequest{}
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[36]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2224,7 +2435,7 @@ func (x *ArchiveSignupRequest) String() string {
 func (*ArchiveSignupRequest) ProtoMessage() {}
 
 func (x *ArchiveSignupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[36]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2237,7 +2448,7 @@ func (x *ArchiveSignupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveSignupRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveSignupRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{36}
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ArchiveSignupRequest) GetListId() string {
@@ -2262,7 +2473,7 @@ type ArchiveSignupResponse struct {
 
 func (x *ArchiveSignupResponse) Reset() {
 	*x = ArchiveSignupResponse{}
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[37]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2274,7 +2485,7 @@ func (x *ArchiveSignupResponse) String() string {
 func (*ArchiveSignupResponse) ProtoMessage() {}
 
 func (x *ArchiveSignupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[37]
+	mi := &file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2287,7 +2498,7 @@ func (x *ArchiveSignupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveSignupResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveSignupResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{37}
+	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{41}
 }
 
 var File_primandproper_platform_waitlists_v1_waitlists_proto protoreflect.FileDescriptor
@@ -2405,7 +2616,13 @@ const file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc = "" +
 	"\x0fWithdrawRequest\x12\x17\n" +
 	"\alist_id\x18\x01 \x01(\tR\x06listID\x12\x1b\n" +
 	"\tsignup_id\x18\x02 \x01(\tR\bsignupIDR\x05scope\"\x12\n" +
-	"\x10WithdrawResponse\"w\n" +
+	"\x10WithdrawResponse\"-\n" +
+	"\x0eConfirmRequest\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05tokenR\x05scope\"\x11\n" +
+	"\x0fConfirmResponse\"1\n" +
+	"\x12UnsubscribeRequest\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05tokenR\x05scope\"\x15\n" +
+	"\x13UnsubscribeResponse\"w\n" +
 	" WithdrawSignupsForSubjectRequest\x12L\n" +
 	"\asubject\x18\x01 \x01(\v22.primandproper.platform.waitlists.v1.SignupSubjectR\asubjectR\x05scope\"A\n" +
 	"!WithdrawSignupsForSubjectResponse\x12\x1c\n" +
@@ -2413,13 +2630,14 @@ const file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc = "" +
 	"\x14ArchiveSignupRequest\x12\x17\n" +
 	"\alist_id\x18\x01 \x01(\tR\x06listID\x12\x1b\n" +
 	"\tsignup_id\x18\x02 \x01(\tR\bsignupIDR\x05scope\"\x17\n" +
-	"\x15ArchiveSignupResponse*\x9d\x01\n" +
+	"\x15ArchiveSignupResponse*\xb8\x01\n" +
 	"\fSignupStatus\x12\x1d\n" +
 	"\x19SIGNUP_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15SIGNUP_STATUS_WAITING\x10\x01\x12\x19\n" +
 	"\x15SIGNUP_STATUS_INVITED\x10\x02\x12\x1b\n" +
 	"\x17SIGNUP_STATUS_CONVERTED\x10\x03\x12\x1b\n" +
-	"\x17SIGNUP_STATUS_WITHDRAWN\x10\x042\xe0\x11\n" +
+	"\x17SIGNUP_STATUS_WITHDRAWN\x10\x04\x12\x19\n" +
+	"\x15SIGNUP_STATUS_PENDING\x10\x052\xd9\x13\n" +
 	"\x10WaitlistsService\x12}\n" +
 	"\n" +
 	"CreateList\x126.primandproper.platform.waitlists.v1.CreateListRequest\x1a7.primandproper.platform.waitlists.v1.CreateListResponse\x12t\n" +
@@ -2429,7 +2647,8 @@ const file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc = "" +
 	"\n" +
 	"UpdateList\x126.primandproper.platform.waitlists.v1.UpdateListRequest\x1a7.primandproper.platform.waitlists.v1.UpdateListResponse\x12\x80\x01\n" +
 	"\vArchiveList\x127.primandproper.platform.waitlists.v1.ArchiveListRequest\x1a8.primandproper.platform.waitlists.v1.ArchiveListResponse\x12k\n" +
-	"\x04Join\x120.primandproper.platform.waitlists.v1.JoinRequest\x1a1.primandproper.platform.waitlists.v1.JoinResponse\x12z\n" +
+	"\x04Join\x120.primandproper.platform.waitlists.v1.JoinRequest\x1a1.primandproper.platform.waitlists.v1.JoinResponse\x12t\n" +
+	"\aConfirm\x123.primandproper.platform.waitlists.v1.ConfirmRequest\x1a4.primandproper.platform.waitlists.v1.ConfirmResponse\x12z\n" +
 	"\tGetSignup\x125.primandproper.platform.waitlists.v1.GetSignupRequest\x1a6.primandproper.platform.waitlists.v1.GetSignupResponse\x12\x95\x01\n" +
 	"\x12GetSignupByContact\x12>.primandproper.platform.waitlists.v1.GetSignupByContactRequest\x1a?.primandproper.platform.waitlists.v1.GetSignupByContactResponse\x12\x80\x01\n" +
 	"\vListSignups\x127.primandproper.platform.waitlists.v1.ListSignupsRequest\x1a8.primandproper.platform.waitlists.v1.ListSignupsResponse\x12\x9e\x01\n" +
@@ -2437,7 +2656,8 @@ const file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc = "" +
 	"\x11UpdateSignupNotes\x12=.primandproper.platform.waitlists.v1.UpdateSignupNotesRequest\x1a>.primandproper.platform.waitlists.v1.UpdateSignupNotesResponse\x12q\n" +
 	"\x06Invite\x122.primandproper.platform.waitlists.v1.InviteRequest\x1a3.primandproper.platform.waitlists.v1.InviteResponse\x12t\n" +
 	"\aConvert\x123.primandproper.platform.waitlists.v1.ConvertRequest\x1a4.primandproper.platform.waitlists.v1.ConvertResponse\x12w\n" +
-	"\bWithdraw\x124.primandproper.platform.waitlists.v1.WithdrawRequest\x1a5.primandproper.platform.waitlists.v1.WithdrawResponse\x12\xaa\x01\n" +
+	"\bWithdraw\x124.primandproper.platform.waitlists.v1.WithdrawRequest\x1a5.primandproper.platform.waitlists.v1.WithdrawResponse\x12\x80\x01\n" +
+	"\vUnsubscribe\x127.primandproper.platform.waitlists.v1.UnsubscribeRequest\x1a8.primandproper.platform.waitlists.v1.UnsubscribeResponse\x12\xaa\x01\n" +
 	"\x19WithdrawSignupsForSubject\x12E.primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest\x1aF.primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse\x12\x86\x01\n" +
 	"\rArchiveSignup\x129.primandproper.platform.waitlists.v1.ArchiveSignupRequest\x1a:.primandproper.platform.waitlists.v1.ArchiveSignupResponseBLZJgithub.com/primandproper/platform-go/v14/waitlists/waitlistspb;waitlistspbb\x06proto3"
 
@@ -2454,7 +2674,7 @@ func file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP() []by
 }
 
 var file_primandproper_platform_waitlists_v1_waitlists_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_primandproper_platform_waitlists_v1_waitlists_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_primandproper_platform_waitlists_v1_waitlists_proto_goTypes = []any{
 	(SignupStatus)(0),                         // 0: primandproper.platform.waitlists.v1.SignupStatus
 	(*Waitlist)(nil),                          // 1: primandproper.platform.waitlists.v1.Waitlist
@@ -2491,45 +2711,49 @@ var file_primandproper_platform_waitlists_v1_waitlists_proto_goTypes = []any{
 	(*ConvertResponse)(nil),                   // 32: primandproper.platform.waitlists.v1.ConvertResponse
 	(*WithdrawRequest)(nil),                   // 33: primandproper.platform.waitlists.v1.WithdrawRequest
 	(*WithdrawResponse)(nil),                  // 34: primandproper.platform.waitlists.v1.WithdrawResponse
-	(*WithdrawSignupsForSubjectRequest)(nil),  // 35: primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest
-	(*WithdrawSignupsForSubjectResponse)(nil), // 36: primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse
-	(*ArchiveSignupRequest)(nil),              // 37: primandproper.platform.waitlists.v1.ArchiveSignupRequest
-	(*ArchiveSignupResponse)(nil),             // 38: primandproper.platform.waitlists.v1.ArchiveSignupResponse
-	(*timestamppb.Timestamp)(nil),             // 39: google.protobuf.Timestamp
-	(*filteringpb.QueryFilter)(nil),           // 40: primandproper.platform.filtering.v1.QueryFilter
-	(*filteringpb.Pagination)(nil),            // 41: primandproper.platform.filtering.v1.Pagination
+	(*ConfirmRequest)(nil),                    // 35: primandproper.platform.waitlists.v1.ConfirmRequest
+	(*ConfirmResponse)(nil),                   // 36: primandproper.platform.waitlists.v1.ConfirmResponse
+	(*UnsubscribeRequest)(nil),                // 37: primandproper.platform.waitlists.v1.UnsubscribeRequest
+	(*UnsubscribeResponse)(nil),               // 38: primandproper.platform.waitlists.v1.UnsubscribeResponse
+	(*WithdrawSignupsForSubjectRequest)(nil),  // 39: primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest
+	(*WithdrawSignupsForSubjectResponse)(nil), // 40: primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse
+	(*ArchiveSignupRequest)(nil),              // 41: primandproper.platform.waitlists.v1.ArchiveSignupRequest
+	(*ArchiveSignupResponse)(nil),             // 42: primandproper.platform.waitlists.v1.ArchiveSignupResponse
+	(*timestamppb.Timestamp)(nil),             // 43: google.protobuf.Timestamp
+	(*filteringpb.QueryFilter)(nil),           // 44: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),            // 45: primandproper.platform.filtering.v1.Pagination
 }
 var file_primandproper_platform_waitlists_v1_waitlists_proto_depIdxs = []int32{
-	39, // 0: primandproper.platform.waitlists.v1.Waitlist.created_at:type_name -> google.protobuf.Timestamp
-	39, // 1: primandproper.platform.waitlists.v1.Waitlist.closes_at:type_name -> google.protobuf.Timestamp
-	39, // 2: primandproper.platform.waitlists.v1.Waitlist.last_updated_at:type_name -> google.protobuf.Timestamp
-	39, // 3: primandproper.platform.waitlists.v1.Waitlist.archived_at:type_name -> google.protobuf.Timestamp
-	39, // 4: primandproper.platform.waitlists.v1.Signup.created_at:type_name -> google.protobuf.Timestamp
-	39, // 5: primandproper.platform.waitlists.v1.Signup.last_updated_at:type_name -> google.protobuf.Timestamp
-	39, // 6: primandproper.platform.waitlists.v1.Signup.status_changed_at:type_name -> google.protobuf.Timestamp
-	39, // 7: primandproper.platform.waitlists.v1.Signup.archived_at:type_name -> google.protobuf.Timestamp
+	43, // 0: primandproper.platform.waitlists.v1.Waitlist.created_at:type_name -> google.protobuf.Timestamp
+	43, // 1: primandproper.platform.waitlists.v1.Waitlist.closes_at:type_name -> google.protobuf.Timestamp
+	43, // 2: primandproper.platform.waitlists.v1.Waitlist.last_updated_at:type_name -> google.protobuf.Timestamp
+	43, // 3: primandproper.platform.waitlists.v1.Waitlist.archived_at:type_name -> google.protobuf.Timestamp
+	43, // 4: primandproper.platform.waitlists.v1.Signup.created_at:type_name -> google.protobuf.Timestamp
+	43, // 5: primandproper.platform.waitlists.v1.Signup.last_updated_at:type_name -> google.protobuf.Timestamp
+	43, // 6: primandproper.platform.waitlists.v1.Signup.status_changed_at:type_name -> google.protobuf.Timestamp
+	43, // 7: primandproper.platform.waitlists.v1.Signup.archived_at:type_name -> google.protobuf.Timestamp
 	2,  // 8: primandproper.platform.waitlists.v1.Signup.subject:type_name -> primandproper.platform.waitlists.v1.SignupSubject
 	0,  // 9: primandproper.platform.waitlists.v1.Signup.status:type_name -> primandproper.platform.waitlists.v1.SignupStatus
-	39, // 10: primandproper.platform.waitlists.v1.WaitlistInput.closes_at:type_name -> google.protobuf.Timestamp
+	43, // 10: primandproper.platform.waitlists.v1.WaitlistInput.closes_at:type_name -> google.protobuf.Timestamp
 	4,  // 11: primandproper.platform.waitlists.v1.CreateListRequest.list:type_name -> primandproper.platform.waitlists.v1.WaitlistInput
 	1,  // 12: primandproper.platform.waitlists.v1.CreateListResponse.result:type_name -> primandproper.platform.waitlists.v1.Waitlist
 	1,  // 13: primandproper.platform.waitlists.v1.GetListResponse.result:type_name -> primandproper.platform.waitlists.v1.Waitlist
-	40, // 14: primandproper.platform.waitlists.v1.ListListsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	41, // 15: primandproper.platform.waitlists.v1.ListListsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	44, // 14: primandproper.platform.waitlists.v1.ListListsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	45, // 15: primandproper.platform.waitlists.v1.ListListsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 16: primandproper.platform.waitlists.v1.ListListsResponse.results:type_name -> primandproper.platform.waitlists.v1.Waitlist
-	40, // 17: primandproper.platform.waitlists.v1.ListOpenListsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	41, // 18: primandproper.platform.waitlists.v1.ListOpenListsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	44, // 17: primandproper.platform.waitlists.v1.ListOpenListsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	45, // 18: primandproper.platform.waitlists.v1.ListOpenListsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 19: primandproper.platform.waitlists.v1.ListOpenListsResponse.results:type_name -> primandproper.platform.waitlists.v1.Waitlist
 	4,  // 20: primandproper.platform.waitlists.v1.UpdateListRequest.list:type_name -> primandproper.platform.waitlists.v1.WaitlistInput
 	1,  // 21: primandproper.platform.waitlists.v1.UpdateListResponse.result:type_name -> primandproper.platform.waitlists.v1.Waitlist
 	3,  // 22: primandproper.platform.waitlists.v1.GetSignupResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
 	3,  // 23: primandproper.platform.waitlists.v1.GetSignupByContactResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	40, // 24: primandproper.platform.waitlists.v1.ListSignupsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	41, // 25: primandproper.platform.waitlists.v1.ListSignupsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	44, // 24: primandproper.platform.waitlists.v1.ListSignupsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	45, // 25: primandproper.platform.waitlists.v1.ListSignupsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	3,  // 26: primandproper.platform.waitlists.v1.ListSignupsResponse.results:type_name -> primandproper.platform.waitlists.v1.Signup
 	2,  // 27: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.subject:type_name -> primandproper.platform.waitlists.v1.SignupSubject
-	40, // 28: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	41, // 29: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	44, // 28: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	45, // 29: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	3,  // 30: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.results:type_name -> primandproper.platform.waitlists.v1.Signup
 	3,  // 31: primandproper.platform.waitlists.v1.UpdateSignupNotesResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
 	3,  // 32: primandproper.platform.waitlists.v1.InviteResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
@@ -2542,35 +2766,39 @@ var file_primandproper_platform_waitlists_v1_waitlists_proto_depIdxs = []int32{
 	13, // 39: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:input_type -> primandproper.platform.waitlists.v1.UpdateListRequest
 	15, // 40: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:input_type -> primandproper.platform.waitlists.v1.ArchiveListRequest
 	17, // 41: primandproper.platform.waitlists.v1.WaitlistsService.Join:input_type -> primandproper.platform.waitlists.v1.JoinRequest
-	19, // 42: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:input_type -> primandproper.platform.waitlists.v1.GetSignupRequest
-	21, // 43: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:input_type -> primandproper.platform.waitlists.v1.GetSignupByContactRequest
-	23, // 44: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:input_type -> primandproper.platform.waitlists.v1.ListSignupsRequest
-	25, // 45: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest
-	27, // 46: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:input_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesRequest
-	29, // 47: primandproper.platform.waitlists.v1.WaitlistsService.Invite:input_type -> primandproper.platform.waitlists.v1.InviteRequest
-	31, // 48: primandproper.platform.waitlists.v1.WaitlistsService.Convert:input_type -> primandproper.platform.waitlists.v1.ConvertRequest
-	33, // 49: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:input_type -> primandproper.platform.waitlists.v1.WithdrawRequest
-	35, // 50: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest
-	37, // 51: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:input_type -> primandproper.platform.waitlists.v1.ArchiveSignupRequest
-	6,  // 52: primandproper.platform.waitlists.v1.WaitlistsService.CreateList:output_type -> primandproper.platform.waitlists.v1.CreateListResponse
-	8,  // 53: primandproper.platform.waitlists.v1.WaitlistsService.GetList:output_type -> primandproper.platform.waitlists.v1.GetListResponse
-	10, // 54: primandproper.platform.waitlists.v1.WaitlistsService.ListLists:output_type -> primandproper.platform.waitlists.v1.ListListsResponse
-	12, // 55: primandproper.platform.waitlists.v1.WaitlistsService.ListOpenLists:output_type -> primandproper.platform.waitlists.v1.ListOpenListsResponse
-	14, // 56: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:output_type -> primandproper.platform.waitlists.v1.UpdateListResponse
-	16, // 57: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:output_type -> primandproper.platform.waitlists.v1.ArchiveListResponse
-	18, // 58: primandproper.platform.waitlists.v1.WaitlistsService.Join:output_type -> primandproper.platform.waitlists.v1.JoinResponse
-	20, // 59: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:output_type -> primandproper.platform.waitlists.v1.GetSignupResponse
-	22, // 60: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:output_type -> primandproper.platform.waitlists.v1.GetSignupByContactResponse
-	24, // 61: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:output_type -> primandproper.platform.waitlists.v1.ListSignupsResponse
-	26, // 62: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse
-	28, // 63: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:output_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesResponse
-	30, // 64: primandproper.platform.waitlists.v1.WaitlistsService.Invite:output_type -> primandproper.platform.waitlists.v1.InviteResponse
-	32, // 65: primandproper.platform.waitlists.v1.WaitlistsService.Convert:output_type -> primandproper.platform.waitlists.v1.ConvertResponse
-	34, // 66: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:output_type -> primandproper.platform.waitlists.v1.WithdrawResponse
-	36, // 67: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse
-	38, // 68: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:output_type -> primandproper.platform.waitlists.v1.ArchiveSignupResponse
-	52, // [52:69] is the sub-list for method output_type
-	35, // [35:52] is the sub-list for method input_type
+	35, // 42: primandproper.platform.waitlists.v1.WaitlistsService.Confirm:input_type -> primandproper.platform.waitlists.v1.ConfirmRequest
+	19, // 43: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:input_type -> primandproper.platform.waitlists.v1.GetSignupRequest
+	21, // 44: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:input_type -> primandproper.platform.waitlists.v1.GetSignupByContactRequest
+	23, // 45: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:input_type -> primandproper.platform.waitlists.v1.ListSignupsRequest
+	25, // 46: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest
+	27, // 47: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:input_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesRequest
+	29, // 48: primandproper.platform.waitlists.v1.WaitlistsService.Invite:input_type -> primandproper.platform.waitlists.v1.InviteRequest
+	31, // 49: primandproper.platform.waitlists.v1.WaitlistsService.Convert:input_type -> primandproper.platform.waitlists.v1.ConvertRequest
+	33, // 50: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:input_type -> primandproper.platform.waitlists.v1.WithdrawRequest
+	37, // 51: primandproper.platform.waitlists.v1.WaitlistsService.Unsubscribe:input_type -> primandproper.platform.waitlists.v1.UnsubscribeRequest
+	39, // 52: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest
+	41, // 53: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:input_type -> primandproper.platform.waitlists.v1.ArchiveSignupRequest
+	6,  // 54: primandproper.platform.waitlists.v1.WaitlistsService.CreateList:output_type -> primandproper.platform.waitlists.v1.CreateListResponse
+	8,  // 55: primandproper.platform.waitlists.v1.WaitlistsService.GetList:output_type -> primandproper.platform.waitlists.v1.GetListResponse
+	10, // 56: primandproper.platform.waitlists.v1.WaitlistsService.ListLists:output_type -> primandproper.platform.waitlists.v1.ListListsResponse
+	12, // 57: primandproper.platform.waitlists.v1.WaitlistsService.ListOpenLists:output_type -> primandproper.platform.waitlists.v1.ListOpenListsResponse
+	14, // 58: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:output_type -> primandproper.platform.waitlists.v1.UpdateListResponse
+	16, // 59: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:output_type -> primandproper.platform.waitlists.v1.ArchiveListResponse
+	18, // 60: primandproper.platform.waitlists.v1.WaitlistsService.Join:output_type -> primandproper.platform.waitlists.v1.JoinResponse
+	36, // 61: primandproper.platform.waitlists.v1.WaitlistsService.Confirm:output_type -> primandproper.platform.waitlists.v1.ConfirmResponse
+	20, // 62: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:output_type -> primandproper.platform.waitlists.v1.GetSignupResponse
+	22, // 63: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:output_type -> primandproper.platform.waitlists.v1.GetSignupByContactResponse
+	24, // 64: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:output_type -> primandproper.platform.waitlists.v1.ListSignupsResponse
+	26, // 65: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse
+	28, // 66: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:output_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesResponse
+	30, // 67: primandproper.platform.waitlists.v1.WaitlistsService.Invite:output_type -> primandproper.platform.waitlists.v1.InviteResponse
+	32, // 68: primandproper.platform.waitlists.v1.WaitlistsService.Convert:output_type -> primandproper.platform.waitlists.v1.ConvertResponse
+	34, // 69: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:output_type -> primandproper.platform.waitlists.v1.WithdrawResponse
+	38, // 70: primandproper.platform.waitlists.v1.WaitlistsService.Unsubscribe:output_type -> primandproper.platform.waitlists.v1.UnsubscribeResponse
+	40, // 71: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse
+	42, // 72: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:output_type -> primandproper.platform.waitlists.v1.ArchiveSignupResponse
+	54, // [54:73] is the sub-list for method output_type
+	35, // [35:54] is the sub-list for method input_type
 	35, // [35:35] is the sub-list for extension type_name
 	35, // [35:35] is the sub-list for extension extendee
 	0,  // [0:35] is the sub-list for field type_name
@@ -2587,7 +2815,7 @@ func file_primandproper_platform_waitlists_v1_waitlists_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc), len(file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   38,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

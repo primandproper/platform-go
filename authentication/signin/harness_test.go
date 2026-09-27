@@ -525,6 +525,12 @@ type recordingHooks struct {
 	attachErr error
 	verifyErr error
 
+	// The three credential writes' hooks, each failable on its own so that a
+	// test can prove the write it follows rolls back with it.
+	passwordErr   error
+	refreshErr    error
+	verifyTOTPErr error
+
 	// verified is the user the second-factor hook was handed: the row the
 	// directory's write answered with, rather than the copy read before it.
 	verified *identity.User
@@ -576,7 +582,7 @@ func (h *recordingHooks) AfterFailedSignIn(
 func (h *recordingHooks) AfterUpdatePassword(_ context.Context, _ database.Tx, _ tenancy.Scope, _ *identity.User) error {
 	h.passwords++
 
-	return nil
+	return h.passwordErr
 }
 
 func (h *recordingHooks) AfterAttachPassword(_ context.Context, _ database.Tx, _ tenancy.Scope, user *identity.User) error {
@@ -601,7 +607,7 @@ func (h *recordingHooks) AfterVerify(
 func (h *recordingHooks) AfterRefreshTOTPSecret(_ context.Context, _ database.Tx, _ tenancy.Scope, _ *identity.User) error {
 	h.refreshes++
 
-	return nil
+	return h.refreshErr
 }
 
 func (h *recordingHooks) AfterVerifyTOTPSecret(
@@ -613,7 +619,7 @@ func (h *recordingHooks) AfterVerifyTOTPSecret(
 	h.verifications++
 	h.verified = user
 
-	return nil
+	return h.verifyTOTPErr
 }
 
 // stubAuthenticator is an Authenticator with no argon2 behind it, for the tests

@@ -138,19 +138,21 @@ func TestNoRowOutlivesItsMethod(T *testing.T) {
 	}
 }
 
-// TestThePublicThreeAreTheSignupPage names them, because a roster that only
+// TestThePublicFiveAreTheSignupPage names them, because a roster that only
 // counted would let one be swapped for another.
 //
 // The one that would be added in good faith is GetSignupByContact — it is a
 // read, it looks harmless beside Join, and answering it to anybody who can reach
 // the port makes the surface an oracle over which addresses are on which list.
-func TestThePublicThreeAreTheSignupPage(T *testing.T) {
+func TestThePublicFiveAreTheSignupPage(T *testing.T) {
 	T.Parallel()
 
 	test.Eq(T, []string{
 		waitlistspb.WaitlistsService_ListOpenLists_FullMethodName,
 		waitlistspb.WaitlistsService_Join_FullMethodName,
+		waitlistspb.WaitlistsService_Confirm_FullMethodName,
 		waitlistspb.WaitlistsService_Withdraw_FullMethodName,
+		waitlistspb.WaitlistsService_Unsubscribe_FullMethodName,
 	}, waitlistsgrpc.PublicMethods())
 
 	_, permissioned := waitlistsgrpc.Permissions()[waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName]

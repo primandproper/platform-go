@@ -65,10 +65,10 @@ import (
 // transaction sees it. The signups counter is fed when the statement lands,
 // which is before the caller commits — see SQLStore.countSignups.
 //
-// # Nine writes answer with the row they wrote
+// # Ten writes answer with the row they wrote
 //
 // Every write here but one hands back a row: the two creates, the two updates,
-// the two transitions, the withdrawal and the two retirements. None of them
+// the three transitions, the withdrawal and the two retirements. None of them
 // touches the value it was handed — mutating the argument and returning deliver
 // the same guarantee, and returning is the one spelling available to a write
 // addressed by an id rather than by an entity, so it is the one this module
@@ -203,8 +203,12 @@ type SignupStore interface {
 	//
 	// The signup's Contact is stored as it was given and digested as
 	// [Normalize] renders it, so two capitalizations of one address are one
-	// person. Status and the timestamps are the store's; whatever the caller
-	// set on them is ignored. The scope is the argument's, and a signup naming a
+	// person. The timestamps are the store's, and so is the status, with one
+	// exception: a signup naming StatusPending is held there until Confirm
+	// moves it, and anything else starts at StatusWaiting. A pending signup
+	// occupies the address exactly as a waiting one does — a second Join from
+	// it is ErrAlreadySignedUp — because what it is waiting on is the person
+	// at that address. The scope is the argument's, and a signup naming a
 	// different one is ErrScopeMismatch; see Store.
 	Join(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signup *Signup) (*Signup, error)
 
@@ -256,11 +260,26 @@ type SignupStore interface {
 		listID, signupID, notes string,
 	) (*Signup, error)
 
+	// Confirm moves a pending signup to waiting and stamps the moment, in the
+	// caller's transaction, and answers with the signup it moved.
+	//
+	// It is the reply half of a double opt-in: somebody at the address came
+	// back and said the signup was theirs. It refuses anything that is not
+	// pending with ErrWrongStatus, guarded the way Invite is, so a link
+	// followed twice confirms once. The StatusChangedAt it stamps is when the
+	// address was proven, which is the moment a list built from confirmed
+	// addresses may start writing to it.
+	//
+	// Nothing in this package decides that a caller may confirm a signup;
+	// waitlists/grpc's Confirm is where a mailed link is redeemed for one.
+	Confirm(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) (*Signup, error)
+
 	// Invite moves a waiting signup to invited and stamps the moment, in the
 	// caller's transaction — so the invitation and the record of who sent it
 	// land together or not at all — and answers with the signup it moved.
 	//
-	// It refuses anything that is not waiting with ErrWrongStatus, and the
+	// It refuses anything that is not waiting with ErrWrongStatus — a pending
+	// signup included, since nobody has confirmed it is wanted — and the
 	// refusal is the affected-row count of a guarded update rather than a
 	// decision made on a read — so two requests inviting the same person send
 	// one email between them. A refused move answers with a nil signup; the row

@@ -14,7 +14,7 @@ import (
 // ScopeResolver says whose catalog of waitlists a request is against, for the
 // requests that arrive with nobody on them.
 //
-// It is here for the reason authentication/signin/grpc has one: three of this
+// It is here for the reason authentication/signin/grpc has one: five of this
 // service's RPCs are reachable by somebody who has not signed in, and a scope on
 // the request message would let them name the tenant whose lists they join. So
 // for those it comes off the connection instead, and what on the connection

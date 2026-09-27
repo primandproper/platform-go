@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -423,5 +424,80 @@ func TestService_GetSelf(T *testing.T) {
 
 		_, err := e.svc.GetSelf(t.Context(), testScope, "user_nobody")
 		test.ErrorIs(t, err, identity.ErrUserNotFound)
+	})
+}
+
+// TestCredentialHooksCommitWithTheirWrite is the property a consumer publishing
+// an event from these hooks relies on: the hook runs in the transaction that
+// made the change, so an outbox row it writes commits with the change or not at
+// all. What is asserted is the direction that can be observed from here — a
+// hook that refuses takes the change back with it — since a change that
+// survived its hook's failure is the one that would commit without its event.
+func TestCredentialHooksCommitWithTheirWrite(T *testing.T) {
+	T.Parallel()
+
+	refused := platformerrors.New("the consumer could not record it")
+
+	T.Run("a refused AfterUpdatePassword leaves the old password in place", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		e.hooks.passwordErr = refused
+
+		err := e.svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: e.password,
+			NewPassword:     "a whole new password",
+		})
+		test.ErrorIs(t, err, refused)
+		test.EqOp(t, 1, e.hooks.passwords)
+
+		_, err = e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		test.NoError(t, err, test.Sprint("the old password stopped working, so the write outlived its hook"))
+
+		_, err = e.svc.LoginForToken(t.Context(), testScope,
+			&signin.Credentials{Username: "jane", Password: "a whole new password"})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	T.Run("a refused AfterRefreshTOTPSecret leaves no secret issued", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		e.hooks.refreshErr = refused
+
+		enrollment, err := e.svc.RefreshTOTPSecret(t.Context(), testScope, e.user.ID,
+			&signin.SecretRefresh{CurrentPassword: e.password})
+		test.ErrorIs(t, err, refused)
+		test.Nil(t, enrollment, test.Sprint("a secret was handed out for a write that rolled back"))
+		test.EqOp(t, 1, e.hooks.refreshes)
+
+		user, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, e.user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "", user.TwoFactorSecret, test.Sprint("the secret was stored although its hook refused"))
+	})
+
+	T.Run("a refused AfterVerifyTOTPSecret leaves the second factor unproven", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		enrollment, err := e.svc.RefreshTOTPSecret(t.Context(), testScope, e.user.ID,
+			&signin.SecretRefresh{CurrentPassword: e.password})
+		must.NoError(t, err)
+
+		e.hooks.verifyTOTPErr = refused
+
+		err = e.svc.VerifyTOTPSecret(t.Context(), testScope, e.user.ID, code(t, enrollment.Secret))
+		test.ErrorIs(t, err, refused)
+		test.EqOp(t, 1, e.hooks.verifications)
+
+		status, err := e.svc.GetAuthStatus(t.Context(), testScope, e.user.ID, "")
+		must.NoError(t, err)
+		test.False(t, status.TwoFactorEnrolled, test.Sprint("the proof was recorded although its hook refused"))
+
+		// Nothing was spent by the refusal, so the same code proves it once the
+		// hook stops refusing.
+		e.hooks.verifyTOTPErr = nil
+		must.NoError(t, e.svc.VerifyTOTPSecret(t.Context(), testScope, e.user.ID, code(t, enrollment.Secret)))
 	})
 }

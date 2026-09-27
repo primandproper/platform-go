@@ -107,19 +107,20 @@ func TestJoinResponseCarriesNothing(T *testing.T) {
 		"JoinResponse does not reserve field 1, so the row could come back under its old number"))
 }
 
-// TestTheServiceIsSeventeenMethods pins the count the .proto's service comment
-// argues for, so that an eighteenth arrives with a failing test naming the
+// TestTheServiceIsNineteenMethods pins the count the .proto's service comment
+// argues for, so that a twentieth arrives with a failing test naming the
 // argument rather than as a diff nobody weighed against it.
 //
-// Seventeen is every method of waitlists.Store, which is unusual on this lane;
-// roster_test.go is where that correspondence is checked rather than counted.
-func TestTheServiceIsSeventeenMethods(T *testing.T) {
+// Nineteen is every method of waitlists.Store, which is unusual on this lane,
+// and Unsubscribe, which is Withdraw's second door; roster_test.go is where that
+// correspondence is checked rather than counted.
+func TestTheServiceIsNineteenMethods(T *testing.T) {
 	T.Parallel()
 
 	methods := waitlistspb.File_primandproper_platform_waitlists_v1_waitlists_proto.
 		Services().ByName("WaitlistsService").Methods()
 
-	test.EqOp(T, 17, methods.Len())
+	test.EqOp(T, 19, methods.Len())
 }
 
 // isResponse reports whether a message is one of the service's responses, which

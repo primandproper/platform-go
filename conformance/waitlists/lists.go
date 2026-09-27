@@ -254,7 +254,7 @@ func lists(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
 		list := openList(t, operator, open())
-		kept := signedUp(t, operator, operator, list.GetId(), freshContact())
+		kept := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())
 
 		_, err := operator.Surfaces.Waitlists.ArchiveList(ctx, &waitlistspb.ArchiveListRequest{ListId: list.GetId()})

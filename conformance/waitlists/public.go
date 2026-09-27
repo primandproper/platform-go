@@ -59,7 +59,6 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		must.NotNil(t, stored, must.Sprint("a visitor's join left no row the console can find"))
 
 		test.EqOp(t, list.GetId(), stored.GetListId())
-		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, stored.GetStatus())
 		test.EqOp(t, typed, stored.GetContact(),
 			test.Sprint("the address was stored as something other than what was typed"))
 
@@ -71,6 +70,25 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		test.False(t, stored.GetCreatedAt().AsTime().IsZero())
 		test.Nil(t, stored.GetStatusChangedAt())
+
+		if !confirms(s) {
+			test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, stored.GetStatus())
+
+			return
+		}
+
+		// A deployment that confirms holds it until somebody at the address
+		// says so, and the visitor who typed it is the one who follows the
+		// link — still without signing in.
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_PENDING, stored.GetStatus(),
+			test.Sprint("a deployment that confirms counted a signup nobody had confirmed"))
+
+		confirm(t, s, anonymous, t.Context(), operator.ScopeFor(surface), list.GetId(), typed)
+
+		confirmed := byContact(t, operator, list.GetId(), strings.ToLower(typed))
+		must.NotNil(t, confirmed)
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, confirmed.GetStatus())
+		test.NotNil(t, confirmed.GetStatusChangedAt(), test.Sprint("the confirmation stamped no moment"))
 	})
 
 	// The tenant of an anonymous join is the connection's, so a list in another
@@ -114,7 +132,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		)
 		list := openList(t, operator, open())
 
-		stored := signedUp(t, caller, operator, list.GetId(), freshContact())
+		stored := signedUp(t, s, caller, operator, list.GetId(), freshContact())
 		test.EqOp(t, string(domain.SubjectUser), stored.GetSubject().GetType())
 		test.EqOp(t, caller.UserID, stored.GetSubject().GetId())
 	})
@@ -130,7 +148,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		list := openList(t, operator, open())
 
 		// The positive control: the owner's own join lands.
-		signedUp(t, mine, operator, list.GetId(), freshContact())
+		signedUp(t, s, mine, operator, list.GetId(), freshContact())
 
 		contact := freshContact()
 		_, err := theirs.Surfaces.Waitlists.Join(theirs.Context(t.Context()),
@@ -179,7 +197,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		)
 		list := openList(t, operator, open())
 		contact := freshContact()
-		first := signedUp(t, operator, operator, list.GetId(), contact)
+		first := signedUp(t, s, operator, operator, list.GetId(), contact)
 
 		_, err := operator.Surfaces.Waitlists.Join(operator.Context(t.Context()), &waitlistspb.JoinRequest{
 			ListId: list.GetId(), Contact: "  " + strings.ToUpper(contact) + " ",
@@ -218,7 +236,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		needsUser(t, operator)
 		list := openList(t, operator, open())
 		contact := freshContact()
-		signup := signedUp(t, operator, operator, list.GetId(), contact)
+		signup := signedUp(t, s, operator, operator, list.GetId(), contact)
 
 		eraseSubject(t, operator, operator)
 
@@ -253,14 +271,14 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		list := openList(t, operator, open())
 
 		existing := freshContact()
-		join(t, operator, list.GetId(), existing)
+		join(t, s, operator, list.GetId(), existing)
 
 		// The withdrawn address is a colleague's, so the erasure that
 		// withdraws it leaves the operator's own signup where it is.
 		leaver := colleague(t, s, operator)
 		needsUser(t, leaver)
 		gone := freshContact()
-		join(t, leaver, list.GetId(), gone)
+		join(t, s, leaver, list.GetId(), gone)
 		eraseSubject(t, operator, leaver)
 
 		var answers [][]byte
@@ -304,7 +322,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		)
 		list := openList(t, operator, open())
 		contact := freshContact()
-		signup := signedUp(t, operator, operator, list.GetId(), contact)
+		signup := signedUp(t, s, operator, operator, list.GetId(), contact)
 		madeUp := identifiers.New()
 
 		_, refused := anonymous.Withdraw(t.Context(),
@@ -332,5 +350,101 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err)
 		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, read.GetResult().GetStatus())
 		test.EqOp(t, contact, read.GetResult().GetContact())
+	})
+
+	// The loop itself, on a deployment that runs it. What is asserted is the
+	// part a consumer's page depends on: that a join is not a subscription
+	// until its link is followed, and that the link in the same mail takes the
+	// address off the list without anybody signing in.
+	t.Run("an unconfirmed signup cannot be invited, and its link confirms it once", func(t *testing.T) {
+		t.Parallel()
+
+		needsConfirmation(t, s)
+
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+		)
+		list := openList(t, operator, open())
+		contact := freshContact()
+
+		_, err := anonymous.Join(t.Context(), &waitlistspb.JoinRequest{ListId: list.GetId(), Contact: contact})
+		must.NoError(t, err)
+
+		pending := byContact(t, operator, list.GetId(), contact)
+		must.NotNil(t, pending)
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_PENDING, pending.GetStatus())
+
+		// Nobody said yes, so nobody may be let in.
+		_, err = operator.Surfaces.Waitlists.Invite(operator.Context(t.Context()),
+			&waitlistspb.InviteRequest{ListId: list.GetId(), SignupId: pending.GetId()})
+		must.Error(t, err, must.Sprint("a signup nobody confirmed was invited"))
+		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+
+		mailed := linksFor(t, t.Context(), s, operator.ScopeFor(surface), list.GetId(), contact)
+
+		_, err = anonymous.Confirm(t.Context(), &waitlistspb.ConfirmRequest{Token: mailed.Confirm})
+		must.NoError(t, err, must.Sprint("a visitor could not follow their confirmation link"))
+
+		// The same link again — the person's click after the scanner's — is
+		// refused, and reads as a token nobody minted.
+		_, spent := anonymous.Confirm(t.Context(), &waitlistspb.ConfirmRequest{Token: mailed.Confirm})
+		must.Error(t, spent, must.Sprint("a confirmation link worked twice"))
+		test.EqOp(t, codes.NotFound, status.Code(spent))
+
+		_, madeUp := anonymous.Confirm(t.Context(), &waitlistspb.ConfirmRequest{Token: identifiers.New()})
+		must.Error(t, madeUp)
+		test.EqOp(t, status.Code(spent), status.Code(madeUp))
+		test.EqOp(t, status.Convert(spent).Message(), status.Convert(madeUp).Message(),
+			test.Sprint("a spent link and a made-up one were answered in different words"))
+
+		_, err = operator.Surfaces.Waitlists.Invite(operator.Context(t.Context()),
+			&waitlistspb.InviteRequest{ListId: list.GetId(), SignupId: pending.GetId()})
+		must.NoError(t, err, must.Sprint("a confirmed signup could not be invited"))
+	})
+
+	t.Run("the unsubscribe link in the confirmation takes the address off the list with nobody signed in", func(t *testing.T) {
+		t.Parallel()
+
+		needsConfirmation(t, s)
+
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		)
+		list := openList(t, operator, open())
+		contact := freshContact()
+
+		_, err := anonymous.Join(t.Context(), &waitlistspb.JoinRequest{ListId: list.GetId(), Contact: contact})
+		must.NoError(t, err)
+
+		pending := byContact(t, operator, list.GetId(), contact)
+		must.NotNil(t, pending)
+
+		mailed := linksFor(t, t.Context(), s, operator.ScopeFor(surface), list.GetId(), contact)
+
+		// A confirmation link is not an unsubscribe link, and presenting one at
+		// the wrong door must not spend it.
+		_, wrongDoor := anonymous.Unsubscribe(t.Context(), &waitlistspb.UnsubscribeRequest{Token: mailed.Confirm})
+		must.Error(t, wrongDoor, must.Sprint("a confirmation link unsubscribed somebody"))
+		test.EqOp(t, codes.NotFound, status.Code(wrongDoor))
+
+		// "This was not me": withdrawn while still pending, and suppressed.
+		_, err = anonymous.Unsubscribe(t.Context(), &waitlistspb.UnsubscribeRequest{Token: mailed.Unsubscribe})
+		must.NoError(t, err, must.Sprint("a visitor could not follow their unsubscribe link"))
+
+		read, err := operator.Surfaces.Waitlists.GetSignup(operator.Context(t.Context()),
+			&waitlistspb.GetSignupRequest{ListId: list.GetId(), SignupId: pending.GetId()})
+		must.NoError(t, err)
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, read.GetResult().GetStatus())
+		test.EqOp(t, "", read.GetResult().GetContact())
+
+		// And the confirmation link that was left unspent above now has
+		// nowhere to take anybody.
+		_, err = anonymous.Confirm(t.Context(), &waitlistspb.ConfirmRequest{Token: mailed.Confirm})
+		must.Error(t, err, must.Sprint("a withdrawn signup was confirmed"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 }

@@ -122,8 +122,10 @@ const (
 
 // PublicMethods are the RPCs that require no grant at all.
 //
-// Three of them, and they are the signup page: the open catalog it renders, the
-// form it submits, and the unsubscribe link in the mail that follows. Public
+// Five of them, and they are the signup page: the open catalog it renders, the
+// form it submits, the confirmation link in the mail that follows, and the two
+// ways off the list — Withdraw for a caller a [SignupAuthorizer] can place, and
+// Unsubscribe for the link in the mail. Public
 // here means "no authorization check", not "no authentication" — the consumer's
 // authentication interceptor still runs, and a caller who does arrive with a
 // principal has their signup attributed to them.
@@ -137,12 +139,16 @@ const (
 // Withdraw is on this list and is not thereby unguarded. It names a row, and the
 // standing to move that row is [SignupAuthorizer]'s — a seam with no default,
 // asked inside the handler, because it is the question a grant on the method
-// could not have answered.
+// could not have answered. Confirm and Unsubscribe are not unguarded either:
+// each names nothing but a token, and the token is the standing. On a server
+// built without [WithConfirmation] both answer codes.Unimplemented, so listing
+// them public opens nothing a deployment did not build.
 // What a consumer accepts along with them: an anonymous Join writes a signup
 // with no subject, and waitlists/privacy reads and erases by subject
 // — ListSignupsForSubject and WithdrawSignupsForSubject. A signup nobody is
-// named on is reachable by neither. The person's own remedy is Withdraw, which
-// is why it is public beside Join and not an administrative RPC.
+// named on is reachable by neither. The person's own remedy is Withdraw — or,
+// on a confirming deployment, the unsubscribe link every confirmation mail
+// carries — which is why both are public beside Join and not administrative.
 //
 // That is a fork rather than a defect, and it is stated here because it is
 // decided by mounting these and not by anything else. A deployment whose
@@ -156,14 +162,16 @@ func PublicMethods() []string {
 	return []string{
 		waitlistspb.WaitlistsService_ListOpenLists_FullMethodName,
 		waitlistspb.WaitlistsService_Join_FullMethodName,
+		waitlistspb.WaitlistsService_Confirm_FullMethodName,
 		waitlistspb.WaitlistsService_Withdraw_FullMethodName,
+		waitlistspb.WaitlistsService_Unsubscribe_FullMethodName,
 	}
 }
 
 // Permissions is the default map from method name to what it requires: the
 // fourteen administrative RPCs, and nothing else.
 //
-// The three in [PublicMethods] are deliberately absent, and permissions_test.go
+// The five in [PublicMethods] are deliberately absent, and permissions_test.go
 // reads the service descriptor rather than a list in order to check that every
 // method is in exactly one of the two — so an RPC added later and decided about
 // in neither fails there rather than being denied in somebody's production.
@@ -197,7 +205,7 @@ func Permissions() map[string][]authorization.Permission {
 }
 
 // Require declares every method of this service on a requirements builder: the
-// fourteen behind their grants and the three as public.
+// fourteen behind their grants and the five as public.
 //
 // It is the exported name rather than a paragraph asking a consumer to write the
 // loop, because authorization/grpc is fail-closed — a method declared nowhere is
@@ -205,7 +213,7 @@ func Permissions() map[string][]authorization.Permission {
 // service's method set changes.
 //
 // A method declared twice is ErrDuplicateMethod, so a consumer who wants one of
-// the public three gated after all declares the whole set themselves rather than
+// the public five gated after all declares the whole set themselves rather than
 // calling this and amending it.
 //
 // A nil builder is tolerated and returns nil, so composing several domains'

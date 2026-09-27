@@ -77,11 +77,19 @@ func (s *SQLStore) Join(
 	// describing a signup that has already happened, and honoring it would put
 	// somebody straight into a status the lifecycle guards exist to move them
 	// through.
+	//
+	// StatusPending is the one exception, and it is not one in the direction
+	// that matters: it is a signup that has happened *less* than a waiting one,
+	// held behind a guard rather than past one, so honoring it skips nothing.
 	joined := *signup
 	joined.Scope = scope
 	joined.ListID = listID
 	joined.ContactDigest = s.Digest(signup.Contact)
 	joined.Status = StatusWaiting
+
+	if signup.Status == StatusPending {
+		joined.Status = StatusPending
+	}
 	joined.StatusChangedAt = nil
 	joined.LastUpdatedAt = nil
 	joined.ArchivedAt = nil
@@ -118,7 +126,7 @@ func (s *SQLStore) Join(
 
 	joined.CreatedAt = row.CreatedAt.UTC()
 
-	s.countSignups(ctx, StatusWaiting, 1)
+	s.countSignups(ctx, joined.Status, 1)
 
 	return &joined, nil
 }
@@ -356,6 +364,38 @@ func (s *SQLStore) UpdateSignupNotes(
 	return updated, nil
 }
 
+// Confirm moves a pending signup to waiting, through the caller's transaction,
+// and answers with the signup it moved. See [Store].
+//
+// It is the same guarded move Invite and Convert are, which is what makes a
+// confirmation link that is followed twice — by the person and by the mail
+// scanner in front of them — confirm once.
+func (s *SQLStore) Confirm(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	listID, signupID string,
+) (*Signup, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(listKey, listID),
+		observability.WithValue(signupKey, signupID),
+		observability.WithValue(statusKey, string(StatusWaiting)),
+	)
+	defer op.End()
+
+	if tx == nil {
+		return nil, op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusWaiting)
+	}
+
+	confirmed, err := s.transition(ctx, tx, scope, listID, signupID, StatusPending, StatusWaiting)
+	if err != nil {
+		return nil, op.Error(err, "moving waitlist signup %q to %s", signupID, StatusWaiting)
+	}
+
+	return confirmed, nil
+}
+
 // Invite moves a waiting signup to invited, through the caller's transaction —
 // so the invitation and the record of who sent it land together or not at all —
 // and answers with the signup it moved. See [Store].
@@ -415,8 +455,8 @@ func (s *SQLStore) Convert(
 	return converted, nil
 }
 
-// transition is the guarded lifecycle move both Invite and Convert are, on the
-// transaction the caller is holding, and the signup as the move left it.
+// transition is the guarded lifecycle move Confirm, Invite and Convert are, on
+// the transaction the caller is holding, and the signup as the move left it.
 //
 // The guard is in the statement rather than in a read before it, which is what
 // makes the move happen once: two requests inviting the same signup both find it

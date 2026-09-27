@@ -15,13 +15,14 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The queue half of the surface: eleven RPCs, nine behind a permission and two
-// behind none.
+// The queue half of the surface: thirteen RPCs, nine behind a permission and
+// four behind none.
 //
-// The two are the person's own — the form they filled in, and their asking to
-// come off the list — and they are the reason this service has a
-// [SignupAuthorizer] and a [ScopeResolver] where the surfaces next door have
-// neither. Everything else here is whoever is running the launch.
+// The four are the person's own — the form they filled in, the confirmation
+// link it mailed them, and the two ways of asking to come off the list — and
+// they are the reason this service has a [SignupAuthorizer] and a
+// [ScopeResolver] where the surfaces next door have neither. Everything else
+// here is whoever is running the launch.
 //
 // Every write opens its own transaction with Client.WithTransaction, and the
 // three that revise or move a row answer with what the store handed back — read
@@ -61,10 +62,14 @@ import (
 // address: a list that is closed, and a list that is not there. Neither says
 // anything about who is on it, and both are what a signup page has to render.
 //
-// It does not confirm the address, because this module sends nothing. A public
-// join is not a subscription until somebody at that address says so, and the
-// double opt-in that closes it is the consumer's — see the waitlists package
-// documentation, which states the obligation and why it cannot be shipped here.
+// On a server built with [WithConfirmation] the signup is written pending, and
+// once it commits a confirmation link and an unsubscribe link are minted and
+// handed to the consumer's [ConfirmationMailer]; [Server.Confirm] is where the
+// first lands. An address already on the list whose signup is still pending is
+// mailed afresh, and nothing else that collides is mailed at all — which the
+// caller is told nothing about either. A server built without it writes the
+// signup waiting and mails nothing, and the double opt-in is then the
+// consumer's; see the waitlists package documentation.
 //
 // The signup's subject is the caller where there is one and nobody where there
 // is not. It is never read off the request — see [waitlistspb.JoinRequest],
@@ -118,6 +123,12 @@ func (s *Server) Join(
 		return nil, err
 	}
 
+	// Held until somebody at the address says it was them. See
+	// WithConfirmation.
+	if s.confirming {
+		signup.Status = waitlists.StatusPending
+	}
+
 	var joined *waitlists.Signup
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
@@ -145,12 +156,67 @@ func (s *Server) Join(
 		// went anywhere.
 		err = nil
 
+		if s.confirming && outcome == joinOutcomeSignedUp {
+			if err = s.resendConfirmation(ctx, req, listID, contact); err != nil {
+				err = grpcerrors.PrepareAndLogGRPCStatus(err,
+					req.op.Logger(), req.op.Span(), codes.Internal, "confirming a signup to waitlist %q", listID)
+
+				return nil, err
+			}
+		}
+
 		return &waitlistspb.JoinResponse{}, nil
 	}
 
 	req.op.Set(signupKey, joined.ID).Set(joinOutcomeKey, joinOutcomeJoined)
 
+	// After the commit and never inside it; see ConfirmationMailer. A failure
+	// here is reported as the service's own, as a failed insert would be, and
+	// leaves a pending signup the next Join from the address mails again.
+	if s.confirming {
+		if err = s.sendConfirmation(ctx, req, joined); err != nil {
+			err = grpcerrors.PrepareAndLogGRPCStatus(err,
+				req.op.Logger(), req.op.Span(), codes.Internal, "confirming a signup to waitlist %q", listID)
+
+			return nil, err
+		}
+	}
+
 	return &waitlistspb.JoinResponse{}, nil
+}
+
+// resendConfirmation mails a fresh confirmation to an address whose signup is
+// still pending, and does nothing for one that is past it.
+//
+// It is what makes a lost message recoverable without a support ticket: the
+// person who never got the first mail fills the form in again, and the
+// collision the store reports is the one case where filling it in again should
+// do something. An address already confirmed, and one that withdrew, are sent
+// nothing — the first has nothing to confirm, and the second asked to be left
+// alone. The caller is told none of it; see [Server.Join].
+//
+// The read is the reader's rather than a transaction's, because nothing is
+// decided on it that a race could make wrong: a signup confirmed between the
+// read and the mail is sent a link Confirm will refuse, which costs one mail.
+func (s *Server) resendConfirmation(ctx context.Context, req *request, listID, contact string) error {
+	existing, err := s.store.GetSignupByContact(ctx, s.client.Reader(), req.scope, listID, contact)
+	if err != nil {
+		// An archived signup holds the address and answers no live read, so
+		// the collision was real and there is nobody to mail.
+		if errors.Is(err, waitlists.ErrSignupNotFound) {
+			return nil
+		}
+
+		return err
+	}
+
+	if existing.Status != waitlists.StatusPending {
+		return nil
+	}
+
+	req.op.Set(signupKey, existing.ID).Set(joinOutcomeKey, joinOutcomeResent)
+
+	return s.sendConfirmation(ctx, req, existing)
 }
 
 // The outcomes a join records on its operation.
@@ -160,7 +226,7 @@ func (s *Server) Join(
 // on. So what the response no longer carries is recorded here instead, where it
 // reaches whoever runs the deployment and nobody else.
 //
-// None of the three names a contact. The address is deliberately absent from
+// None of the four names a contact. The address is deliberately absent from
 // this surface's operations — see [Server.GetSignupByContact] — so what lands in
 // whatever the deployment exports traces to is that a join against this list was
 // admitted or suppressed, never whose.
@@ -168,6 +234,9 @@ const (
 	joinOutcomeJoined    = "joined"
 	joinOutcomeSignedUp  = "already_signed_up"
 	joinOutcomeWithdrawn = "contact_withdrawn"
+	// joinOutcomeResent is an address already on the list whose signup is
+	// still pending, mailed a fresh confirmation. See resendConfirmation.
+	joinOutcomeResent = "confirmation_resent"
 )
 
 // quietJoinOutcome reports whether err is one of the two refusals the public
@@ -508,6 +577,135 @@ func (s *Server) Withdraw(
 	}
 
 	return &waitlistspb.WithdrawResponse{}, nil
+}
+
+// Confirm redeems a confirmation link, moving the pending signup it was minted
+// for to waiting. It is reachable without a grant: the link is the standing,
+// and the person following it has frequently never signed in to anything.
+//
+// The token is the whole request. It names the signup and the list, and the
+// tenant is the connection's, compared against the one the link was minted in
+// rather than read off it — see readLink. Every way the link can fail is one
+// answer, [ErrInvalidLink] as codes.NotFound, including a link whose signup has
+// since been confirmed, withdrawn or archived: the person holding it has
+// nothing to act on that a more specific refusal would give them.
+//
+// The link is read before the move and spent only once the move has committed,
+// so a move that fails for a reason that is not a refusal — the database went
+// away — leaves the link unspent and the signup pending, and following the same
+// link again confirms. See spendLink for why honoring the link before spending
+// it is sound here.
+func (s *Server) Confirm(
+	ctx context.Context,
+	request *waitlistspb.ConfirmRequest,
+) (*waitlistspb.ConfirmResponse, error) {
+	ctx, req, done, err := s.visitor(ctx, waitlistspb.WaitlistsService_Confirm_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if !s.confirming {
+		err = s.notConfirming(req, waitlistspb.WaitlistsService_Confirm_FullMethodName)
+
+		return nil, err
+	}
+
+	linked, err := s.readLink(ctx, req, ConfirmAction, request.GetToken())
+	if err != nil {
+		return nil, err
+	}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		_, confirmErr := s.store.Confirm(ctx, tx, req.scope, linked.listID, linked.signupID)
+
+		return confirmErr
+	}); err != nil {
+		if linkNamesAMovedSignup(err) {
+			err = s.refuseLink(req, err.Error())
+
+			return nil, err
+		}
+
+		err = grpcerrors.PrepareAndLogGRPCStatus(err,
+			req.op.Logger(), req.op.Span(), codes.Internal, "confirming waitlist signup %q", linked.signupID)
+
+		return nil, err
+	}
+
+	s.spendLink(ctx, req, request.GetToken())
+
+	return &waitlistspb.ConfirmResponse{}, nil
+}
+
+// Unsubscribe redeems an unsubscribe link, withdrawing the signup it was minted
+// for. It is [Server.Withdraw]'s second door, and it asks no
+// [SignupAuthorizer]: Withdraw's request names a signup, which is a row
+// identifier anybody who has seen it holds, while this one names a token minted
+// against exactly one signup and delivered only to its address. The link is the
+// authorization.
+//
+// It withdraws a signup in any status, a pending one included — "this was not
+// me" in a confirmation mail is a withdrawal, and the suppression it leaves is
+// unconditional. A link whose signup was already withdrawn some other way
+// answers as though this one had done it, since the person asking to be off the
+// list is. A second click on one link is [ErrInvalidLink], because the link is
+// spent; the signup is withdrawn either way, and the page a consumer renders for
+// both can say so.
+func (s *Server) Unsubscribe(
+	ctx context.Context,
+	request *waitlistspb.UnsubscribeRequest,
+) (*waitlistspb.UnsubscribeResponse, error) {
+	ctx, req, done, err := s.visitor(ctx, waitlistspb.WaitlistsService_Unsubscribe_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if !s.confirming {
+		err = s.notConfirming(req, waitlistspb.WaitlistsService_Unsubscribe_FullMethodName)
+
+		return nil, err
+	}
+
+	linked, err := s.readLink(ctx, req, UnsubscribeAction, request.GetToken())
+	if err != nil {
+		return nil, err
+	}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		_, withdrawErr := s.store.Withdraw(ctx, tx, req.scope, linked.listID, linked.signupID)
+
+		return withdrawErr
+	}); err != nil {
+		// Somebody already off the list — erased, or withdrawn through
+		// another link — asked to be off it and is. The link was theirs, so
+		// it is spent like any other that did its job, and there is nothing a
+		// refusal would tell them.
+		if errors.Is(err, waitlists.ErrAlreadyWithdrawn) {
+			err = nil
+			s.spendLink(ctx, req, request.GetToken())
+
+			return &waitlistspb.UnsubscribeResponse{}, nil
+		}
+
+		if linkNamesAMovedSignup(err) {
+			err = s.refuseLink(req, err.Error())
+
+			return nil, err
+		}
+
+		err = grpcerrors.PrepareAndLogGRPCStatus(err,
+			req.op.Logger(), req.op.Span(), codes.Internal, "withdrawing waitlist signup %q", linked.signupID)
+
+		return nil, err
+	}
+
+	s.spendLink(ctx, req, request.GetToken())
+
+	return &waitlistspb.UnsubscribeResponse{}, nil
 }
 
 // WithdrawSignupsForSubject withdraws every signup one principal holds in the

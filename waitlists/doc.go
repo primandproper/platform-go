@@ -93,10 +93,10 @@ people's signups at some providers and split one person's at others.
 
 # A transition is a guarded write, not a read and a write
 
-[SignupStore.Invite] and [SignupStore.Convert] each run one UPDATE whose WHERE
-names the status the row must already hold, and it is the affected-row count —
-not a read before it — that decides whether this caller is the one that moved the
-signup. Two requests inviting the same person both find them waiting; one of the
+[SignupStore.Confirm], [SignupStore.Invite] and [SignupStore.Convert] each run
+one UPDATE whose WHERE names the status the row must already hold, and it is the
+affected-row count — not a read before it — that decides whether this caller is
+the one that moved the signup. Two requests inviting the same person both find them waiting; one of the
 updates reports a row and the other is told [ErrWrongStatus], so one email goes
 out between them.
 
@@ -227,9 +227,6 @@ row to a caller holding another list's id.
 
 # A public signup is not a subscription until it is confirmed
 
-This is the obligation a consumer owes and this package cannot discharge, so it
-is written here rather than assumed.
-
 [SignupStore.Join] takes an address and stores it. Nothing in that establishes
 that the person at the address asked for anything: on a public form, the address
 is whatever the caller typed, and the caller may be somebody else entirely. A
@@ -239,17 +236,32 @@ shaped around remembers them forever for a signup they never made.
 
 What closes it is a double opt-in: the write is followed by one message to the
 address, and nothing else is sent there until somebody at it comes back and
-says so. That loop is the consumer's, because the send is — see the section
-below — and [github.com/primandproper/platform-go/v14/links] is the action link
-the reply usually travels on. [SignupStore.Invite] is not that reply and must
-not be read as one: it is the operator deciding whose turn it is, and an
-unconfirmed signup is one nobody should have reached that far.
+says so. The store carries the state that loop needs. A signup joined as
+[StatusPending] occupies its address — a second join from it is refused exactly
+as one from a waiting signup is — and [SignupStore.Confirm] is the guarded move
+that makes it an ordinary waiting signup. [SignupStore.Invite] requires
+[StatusWaiting], so a signup nobody confirmed is one nobody can reach the front
+of the queue with: the operator deciding whose turn it is never sees an address
+that has not said yes.
 
-It is worth saying which half of the problem this package does solve. The
-suppression is unconditional: an address that withdrew stays off the list
-whether its signup was ever confirmed or not, which is the direction that must
-not be got wrong. What the confirmation adds is the other direction — that being
-on the list meant something in the first place.
+The loop itself is waitlists/grpc's, because the link is a transport's to
+redeem. Built with its WithConfirmation option, the public Join writes a pending
+signup, mints a confirmation link and an unsubscribe link through
+[github.com/primandproper/platform-go/v14/links] after the signup commits, and
+hands both to a mailer the consumer supplies; its Confirm and Unsubscribe RPCs
+are what the two links land on. The send is still the consumer's — see below —
+and so is the rate limit in front of a form that mails on every submission.
+
+A Go caller joining somebody whose address it already vouches for — an
+application's own signed-in user, whose address it proved at registration —
+passes no status and gets a waiting signup, which is what every caller had
+before the pending state existed.
+
+It is worth saying which half of the problem the suppression solves on its own.
+It is unconditional: an address that withdrew stays off the list whether its
+signup was ever confirmed or not, which is the direction that must not be got
+wrong. What the confirmation adds is the other direction — that being on the
+list meant something in the first place.
 
 waitlists/grpc's public Join is shaped by the same fact from the other end. It
 answers uniformly for a new address, one already on the list and one that
@@ -261,9 +273,11 @@ that package, which states the disclosure it makes, which is none.
 It does not send anything. [SignupStore.Invite] records that somebody was let in;
 what reaches them is
 [github.com/primandproper/primitives-go/v2/email]'s to deliver, off the
-[Signup.StatusChangedAt] this stamps. The confirmation the section above asks
-for is the same absence: this package owns a table and not a mailer, and a store
-that sent mail would be one a consumer could not put in their own transaction.
+[Signup.StatusChangedAt] this stamps. The confirmation the section above
+describes is the same absence one layer up: this package owns a table and not a
+mailer, and a store that sent mail would be one a consumer could not put in
+their own transaction. waitlists/grpc mints the links and hands them to the
+consumer's mailer; it does not deliver them either.
 
 It does not number the queue. "You are 4,102nd in line" is a count that changes
 under whoever is reading it — every withdrawal ahead of somebody renumbers them —

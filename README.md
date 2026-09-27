@@ -465,21 +465,25 @@ fourteenth method, `DeleteValuesForSubject`, is erasure and stays behind for
 the reason every erasure does: it commits inside the transaction that removes
 the rest of the person.
 
-`waitlists` is the one where nothing stayed behind. All seventeen of its
+`waitlists` is the one where nothing stayed behind. All eighteen of its
 store's methods are on the wire, which is unusual on this lane: every carve-out
 elsewhere is one test applied to different machinery — is the realistic caller
 a worker on a timer, a processor callback, or your own code inside your own
 transaction — and a waitlist has no queue protocol, no fan-out and no provider
-callback. What it has instead is two audiences. Three RPCs are the signup page
-— the open catalog, the form, and the unsubscribe link — and are reached by
+callback. What it has instead is two audiences. Five RPCs are the signup page
+— the open catalog, the form, the confirmation link, and the two ways off the
+list — and are reached by
 somebody who has not signed in and, on a pre-launch list, has nothing to sign
 in to; the other fourteen are whoever is running the launch. So the tenant
 comes off the caller where there is one and off the connection where there is
 not, which is `authentication/signin/grpc`'s arrangement applied to half a
 surface. And `Withdraw` is public and names a row, which no grant on a method
 could ever have been about, so the standing to move that row is a seam a
-consumer answers — usually by redeeming the action link the unsubscribe URL
-carried. The read that stayed administrative is the one worth naming: "is this
+consumer answers. The link in a mail does not need that seam: built with
+`WithConfirmation`, the surface runs the double opt-in itself — a join is held
+pending, a confirmation link and an unsubscribe link are minted through `links`
+and handed to the consumer's mailer, and `Confirm` and `Unsubscribe` redeem
+them, with the token as the whole of the standing. The read that stayed administrative is the one worth naming: "is this
 address on this list" is what the table holds, and answering it to anybody who
 can reach the port would make the surface an oracle over it.
 

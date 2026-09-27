@@ -30,6 +30,8 @@ import (
 // rather than told the wrong status.
 func statusToProto(s waitlists.Status) waitlistspb.SignupStatus {
 	switch s {
+	case waitlists.StatusPending:
+		return waitlistspb.SignupStatus_SIGNUP_STATUS_PENDING
 	case waitlists.StatusWaiting:
 		return waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING
 	case waitlists.StatusInvited:
