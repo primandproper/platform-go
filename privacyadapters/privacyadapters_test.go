@@ -19,6 +19,7 @@ import (
 	oauth2clientsmock "github.com/primandproper/platform-go/v14/authentication/oauth2clients/mock"
 	passkeysmock "github.com/primandproper/platform-go/v14/authentication/passkeys/mock"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
+	phonecodesmock "github.com/primandproper/platform-go/v14/authentication/phonecodes/mock"
 	recoverycodesmock "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/mock"
 	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
 	billingprivacy "github.com/primandproper/platform-go/v14/billing/privacy"
@@ -66,6 +67,7 @@ func everything() *privacyadapters.Adapters {
 		Grants:        &privacyadapters.GrantsAdapter{Store: &grantsmock.StoreMock{}, Resolve: resolve},
 		Passkeys:      &privacyadapters.PasskeysAdapter{Store: &passkeysmock.StoreMock{}, Resolve: resolve},
 		PasswordReset: &privacyadapters.PasswordResetAdapter{Store: &passwordresetmock.StoreMock{}, Resolve: resolve},
+		PhoneCodes:    &privacyadapters.PhoneCodesAdapter{Store: &phonecodesmock.StoreMock{}, Resolve: resolve},
 		RecoveryCodes: &privacyadapters.RecoveryCodesAdapter{Store: &recoverycodesmock.StoreMock{}, Resolve: resolve},
 		Identity:      &privacyadapters.IdentityAdapter{Store: &identitymock.StoreMock{}, Resolve: resolve},
 		Notifications: &privacyadapters.NotificationsAdapter{
@@ -508,6 +510,7 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 		"authentication/oauth2clients/privacy",
 		"authentication/passkeys/privacy",
 		"authentication/passwordreset/privacy",
+		"authentication/phonecodes/privacy",
 		"authentication/signin/recoverycodes/privacy",
 		"billing/privacy",
 		"comments/privacy",
@@ -523,5 +526,5 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 		test.True(T, ok, test.Sprintf("the walk did not find %s, so nothing in this file asserted about it", dir))
 	}
 
-	test.MapLen(T, 14, found)
+	test.MapLen(T, 15, found)
 }

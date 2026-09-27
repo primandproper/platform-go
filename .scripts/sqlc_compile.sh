@@ -40,6 +40,7 @@ COMPONENTS=(
   "./authentication/oauth2serverstore ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/oauth2clients ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/grants ./internal/queriesgen internal/queries postgres mysql sqlite"
+  "./authentication/phonecodes ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/passkeys ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/passwordreset ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/signin/magiclinks ./internal/queriesgen internal/queries postgres mysql sqlite"
@@ -64,6 +65,7 @@ COMPONENTS=(
   "./outbox ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./operations ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./timers ./internal/queriesgen internal/queries postgres mysql sqlite"
+  "./series ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./workqueue ./internal/queriesgen internal/queries postgres mysql sqlite"
 )
 

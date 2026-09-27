@@ -17,6 +17,7 @@ import (
 	oauth2serverstoremigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	phonecodesmigrations "github.com/primandproper/platform-go/v14/authentication/phonecodes/migrations"
 	magiclinksmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodesmigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokensmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
@@ -34,6 +35,7 @@ import (
 	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
 	rbacmigrations "github.com/primandproper/platform-go/v14/rbac/migrations"
 	sagamigrations "github.com/primandproper/platform-go/v14/saga/migrations"
+	seriesmigrations "github.com/primandproper/platform-go/v14/series/migrations"
 	sessionsmigrations "github.com/primandproper/platform-go/v14/sessions/database/migrations"
 	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
 	shreddingmigrations "github.com/primandproper/platform-go/v14/shredding/migrations"
@@ -76,6 +78,7 @@ var renderers = map[string]renderer{
 	"authentication/oauth2serverstore":    oauth2serverstoremigrations.Statements,
 	"authentication/passkeys":             passkeysmigrations.Statements,
 	"authentication/passwordreset":        passwordresetmigrations.Statements,
+	"authentication/phonecodes":           phonecodesmigrations.Statements,
 	"authentication/signin/magiclinks":    magiclinksmigrations.Statements,
 	"authentication/signin/recoverycodes": recoverycodesmigrations.Statements,
 	"authentication/signin/refreshtokens": refreshtokensmigrations.Statements,
@@ -95,6 +98,7 @@ var renderers = map[string]renderer{
 	"saga":                                sagamigrations.Statements,
 	"sessions/database":                   sessionsmigrations.Statements,
 	"settings":                            settingsmigrations.Statements,
+	"series":                              seriesmigrations.Statements,
 	"shredding":                           shreddingmigrations.Statements,
 	"timers":                              timersmigrations.Statements,
 	"waitlists":                           waitlistsmigrations.Statements,
@@ -141,6 +145,8 @@ var conventional = map[string]renderer{
 	"oauth2_registered_clients": oauth2clientsmigrations.Statements,
 	"webauthn_credentials":      passkeysmigrations.Statements,
 	"oauth2_grants":             grantsmigrations.Statements,
+	"series":                    seriesmigrations.Statements,
+	"series_occurrences":        seriesmigrations.Statements,
 }
 
 // exemption is a table that deliberately carries none of the triple, and the
@@ -204,6 +210,13 @@ var exempt = map[string]exemption{
 	// two different stories an operator reconstructs an incident from.
 	"signin_magic_links": {magiclinksmigrations.Statements,
 		"mailed, followed once and swept on purge_after; issued_at is the creation time and redeemed_at and revoked_at are the row's only mutations"},
+
+	// phone_codes is signin_magic_links' shape keyed on the number rather than
+	// the digest, because six digits are not a key: one row per number, replaced
+	// outright by the next issue, so a revived row is a new code rather than an
+	// old relationship and created_at would be a second name for issued_at.
+	"phone_codes": {phonecodesmigrations.Statements,
+		"texted, replaced by the next code to the same number, spent once and swept on purge_after; issued_at is the creation time and attempts, redeemed_at and revoked_at are the row's only mutations"},
 
 	// signin_recovery_codes is the fifth, and the one with no deadline at all: a
 	// recovery code does not lapse, so there is nothing to sweep and no

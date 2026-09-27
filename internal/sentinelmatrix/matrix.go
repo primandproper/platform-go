@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/grants"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -20,6 +21,7 @@ import (
 	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v14/series"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/shredding"
@@ -92,6 +94,8 @@ const (
 	shreddingPkg     = "shredding"
 	mediaRegistryPkg = "mediaregistry"
 	grantsPkg        = "authentication/grants"
+	phoneCodesPkg    = "authentication/phonecodes"
+	seriesPkg        = "series"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -1120,6 +1124,58 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilGrant":                {Err: grants.ErrNilGrant, Is: Platform},
 		"ErrNilExchanger":            {Err: grants.ErrNilExchanger, Is: Platform},
 	},
+	phoneCodesPkg: {
+		// The endpoints these are for are the consumer's: the one a person types
+		// a number into and the one they type the code into. Every refusal a
+		// redemption produces is one sentinel, answered as a failed sign-in.
+		"ErrCodeInvalid": {Err: phonecodes.ErrCodeInvalid, Is: Mapped},
+
+		// The shape refusals a form can be told.
+		"ErrInvalidPhoneNumber": {Err: phonecodes.ErrInvalidPhoneNumber, Is: Mapped},
+		"ErrEmptySubjectID":     {Err: phonecodes.ErrEmptySubjectID, Is: Mapped},
+		"ErrEmptyCode":          {Err: phonecodes.ErrEmptyCode, Is: Mapped},
+
+		// Three that wrap errors.ErrUnrecognizedInputValue, and the nil
+		// arguments, which wrap errors.ErrNilInputParameter.
+		"ErrValueTooLong":       {Err: phonecodes.ErrValueTooLong, Is: Platform},
+		"ErrInvalidMaxAttempts": {Err: phonecodes.ErrInvalidMaxAttempts, Is: Platform},
+		"ErrInvalidSetting":     {Err: phonecodes.ErrInvalidSetting, Is: Platform},
+		"ErrNilDatabaseClient":  {Err: phonecodes.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":        {Err: phonecodes.ErrNilExecutor, Is: Platform},
+		"ErrNilRequest":         {Err: phonecodes.ErrNilRequest, Is: Platform},
+	},
+	seriesPkg: {
+		// The endpoints these are for are the consumer's: the schedule page, the
+		// week view, and the five buttons that skip, close, end, move and make
+		// up. Absence reads the same whoever's tenant it is in, and each state
+		// refusal says which of the other four commands was meant.
+		"ErrSeriesNotFound":       {Err: series.ErrSeriesNotFound, Is: Mapped},
+		"ErrOccurrenceNotFound":   {Err: series.ErrOccurrenceNotFound, Is: Mapped},
+		"ErrSeriesEnded":          {Err: series.ErrSeriesEnded, Is: Mapped},
+		"ErrOccurrenceSkipped":    {Err: series.ErrOccurrenceSkipped, Is: Mapped},
+		"ErrOccurrenceNotSkipped": {Err: series.ErrOccurrenceNotSkipped, Is: Mapped},
+		"ErrOccurrenceReplaced":   {Err: series.ErrOccurrenceReplaced, Is: Mapped},
+
+		// The shape refusals a schedule form or a week view can be told.
+		"ErrInvalidRule":     {Err: series.ErrInvalidRule, Is: Mapped},
+		"ErrUnknownTimeZone": {Err: series.ErrUnknownTimeZone, Is: Mapped},
+		"ErrInvalidWindow":   {Err: series.ErrInvalidWindow, Is: Mapped},
+		"ErrWindowTooLarge":  {Err: series.ErrWindowTooLarge, Is: Mapped},
+		"ErrTooFarAhead":     {Err: series.ErrTooFarAhead, Is: Mapped},
+		"ErrTooFarBack":      {Err: series.ErrTooFarBack, Is: Mapped},
+
+		// Three that wrap errors.ErrUnrecognizedInputValue, and the nil
+		// arguments, which wrap errors.ErrNilInputParameter.
+		"ErrValueTooLong":      {Err: series.ErrValueTooLong, Is: Platform},
+		"ErrNoInstant":         {Err: series.ErrNoInstant, Is: Platform},
+		"ErrInvalidPageSize":   {Err: series.ErrInvalidPageSize, Is: Platform},
+		"ErrNilDatabaseClient": {Err: series.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: series.ErrNilExecutor, Is: Platform},
+		"ErrNilRule":           {Err: series.ErrNilRule, Is: Platform},
+		"ErrNilStore":          {Err: series.ErrNilStore, Is: Platform},
+		"ErrNilLocker":         {Err: series.ErrNilLocker, Is: Platform},
+		"ErrNilConfig":         {Err: series.ErrNilConfig, Is: Platform},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
@@ -1134,7 +1190,7 @@ var Packages = []string{
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
 	webhooksPkg, billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
 	passwordResetPkg, meteringPkg, entitlementsPkg, shreddingPkg, mediaRegistryPkg,
-	grantsPkg,
+	grantsPkg, phoneCodesPkg, seriesPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -1186,6 +1242,10 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return mediaregistry.HTTPMapper, mediaregistry.GRPCMapper
 	case grantsPkg:
 		return grants.HTTPMapper, grants.GRPCMapper
+	case phoneCodesPkg:
+		return phonecodes.HTTPMapper, phonecodes.GRPCMapper
+	case seriesPkg:
+		return series.HTTPMapper, series.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}

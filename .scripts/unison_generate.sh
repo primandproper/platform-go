@@ -59,6 +59,7 @@ COMPONENTS=(
   "authentication/oauth2clients postgres mysql sqlite"
   "authentication/grants postgres mysql sqlite"
   "authentication/passkeys postgres mysql sqlite"
+  "authentication/phonecodes postgres mysql sqlite"
   "authentication/passwordreset postgres mysql sqlite"
   "authentication/signin/refreshtokens postgres mysql sqlite"
   "authentication/signin/magiclinks postgres mysql sqlite"
@@ -82,6 +83,7 @@ COMPONENTS=(
   "outbox postgres mysql sqlite"
   "operations postgres mysql sqlite"
   "timers postgres mysql sqlite"
+  "series postgres mysql sqlite"
   "workqueue postgres mysql sqlite"
 )
 

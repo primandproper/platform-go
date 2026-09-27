@@ -9,6 +9,7 @@ import (
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	phonecodescfg "github.com/primandproper/platform-go/v14/authentication/phonecodes/config"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -26,6 +27,7 @@ import (
 	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
+	seriescfg "github.com/primandproper/platform-go/v14/series/config"
 	sessionscfg "github.com/primandproper/platform-go/v14/sessions/config"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
@@ -126,6 +128,7 @@ func zeroValueCases() []zeroValueCase {
 		// authenticator are the application's, and RegisterService reports a
 		// missing one when it is invoked rather than here.
 		{name: "authentication/passwordreset", cfg: &passwordresetcfg.Config{}, why: "the prefix, the token lifetime, the request floor and the sweep interval all default"},
+		{name: "authentication/phonecodes", cfg: &phonecodescfg.Config{}, why: "the prefix, the code length, the lifetime, the attempt limit, the retention and the sweep interval all default"},
 		// The zero config is decisive for the same reason passwordreset's is:
 		// the authenticator and the token issuer are resolved from the injector
 		// when the service is invoked, not checked here.
@@ -191,6 +194,9 @@ func zeroValueCases() []zeroValueCase {
 		{name: "secrets", cfg: &secretscfg.Config{}, why: "an unset provider reads secrets from the environment"},
 		{name: "sessions", cfg: &sessionscfg.Config{}, needs: "provider"},
 		{name: "settings", cfg: &settingscfg.Config{}, why: "the table prefix is the only field, and which settings exist is rows rather than environment"},
+		// The worker's lock is a dependency rather than a field, and NewWorker
+		// refuses a nil one when it is called rather than here.
+		{name: "series", cfg: &seriescfg.Config{}, why: "the table prefix and every worker knob default"},
 		{name: "timers", cfg: &timerscfg.Config{}, needs: "name"},
 		{name: "waitlists", cfg: &waitlistscfg.Config{}, why: "the table prefix is the only field, and which waitlists exist is rows rather than environment"},
 		{name: "webhooks", cfg: &webhookscfg.Config{}, why: "the sender's worker, client and breaker all have defaults"},

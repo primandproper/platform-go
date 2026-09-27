@@ -66,6 +66,7 @@ var roster = map[string]entry{
 	"retention":     {tier: domain},
 	"saga":          {tier: domain},
 	"searchsync":    {tier: domain},
+	"series":        {tier: domain},
 	"sessions":      {tier: domain},
 	"settings":      {tier: domain},
 	"shredding":     {tier: domain},
@@ -84,7 +85,7 @@ var roster = map[string]entry{
 
 	// The straddles: a domain package under a path whose parent is a
 	// primitives-go package. There is one such parent left, and it is the one
-	// that groups rather than indirects — authentication/ holds seven related
+	// that groups rather than indirects — authentication/ holds eight related
 	// domain packages, so the name says something a reader wants, which is why
 	// it survived the flattening the other six parents did not. The README's
 	// "Primitives and Domains" section says why each one splits where it does.
@@ -93,6 +94,7 @@ var roster = map[string]entry{
 	"authentication/passkeys":          {tier: domain, why: "the registered-credential table, under a protocol engine that is a primitive"},
 	"authentication/oauth2serverstore": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
 	"authentication/passwordreset":     {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
+	"authentication/phonecodes":        {tier: domain, why: "a table of codes texted to a person who is not a user, under engines that hash and issue"},
 	"authentication/signin":            {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own — the refresh tokens its rotation mints live in a subpackage, which inherits this row by longest-prefix match"},
 	"authentication/webauthnsessions":  {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 
