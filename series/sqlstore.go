@@ -149,6 +149,10 @@ func (s *SQLStore) CreateSeries(ctx context.Context, tx database.Tx, scope tenan
 		return nil, s.failed(ctx, op.Error(err, "creating series"))
 	}
 
+	if err = withinWriteBehind(midnight(loc, rule.StartsOn), s.now()); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "creating series"))
+	}
+
 	if err = scope.Validate(); err != nil {
 		return nil, s.failed(ctx, op.Error(err, "creating series"))
 	}
@@ -803,6 +807,10 @@ func (s *SQLStore) SkipWindow(ctx context.Context, tx database.Tx, scope tenancy
 	}
 
 	if err = withinWriteAhead(window.To, s.now()); err != nil {
+		return 0, s.failed(ctx, op.Error(err, "closing window"))
+	}
+
+	if err = withinWriteBehind(window.From, s.now()); err != nil {
 		return 0, s.failed(ctx, op.Error(err, "closing window"))
 	}
 

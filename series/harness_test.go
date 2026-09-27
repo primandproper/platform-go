@@ -61,8 +61,18 @@ func (e *storeEnv) newStore(t *testing.T) *SQLStore {
 	store, err := NewSQLStore(e.client, WithTablePrefix(e.migrate(t)))
 	must.NoError(t, err)
 
+	// The fixtures name fixed dates, so the clock the write bounds measure
+	// from is fixed beside them rather than read off a database whose now
+	// walks away from them.
+	store.now = func() time.Time { return storeNow }
+
 	return store
 }
+
+// storeNow is the instant every store here takes as now: a few months into
+// weeklyUTC, so its start is inside MaxWriteBehind and everything covers no
+// more than MaxWriteAhead.
+var storeNow = time.Date(2025, time.December, 1, 0, 0, 0, 0, time.UTC)
 
 // migrate renders uniquely prefixed tables and returns the prefix.
 func (e *storeEnv) migrate(t *testing.T) string {

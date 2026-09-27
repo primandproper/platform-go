@@ -90,6 +90,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "that date is too far ahead to schedule yet; ask for a nearer one",
 			grpcCode: codes.InvalidArgument,
 		},
+		"a write too far back": {
+			err:      series.ErrTooFarBack,
+			httpCode: httperrors.ErrValidatingRequestInput,
+			httpMsg:  "that date is too far in the past; ask for a later one",
+			grpcCode: codes.InvalidArgument,
+		},
 	}
 
 	for name, tc := range cases {

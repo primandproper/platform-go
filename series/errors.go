@@ -58,6 +58,12 @@ var (
 	// it comes into reach.
 	ErrTooFarAhead = platformerrors.New("series write reaches further ahead than the write-ahead limit")
 
+	// ErrTooFarBack indicates a CreateSeries whose start date, or a SkipWindow
+	// whose start, is further before now than MaxWriteBehind, measured by the
+	// database's clock. The answer is a later date: a series started today
+	// carries the same rule forward.
+	ErrTooFarBack = platformerrors.New("series write reaches further back than the write-behind limit")
+
 	// ErrWindowTooLarge indicates a window holding more than
 	// MaxOccurrencesPerRead occurrences. The answer is a narrower window, not
 	// the first part of this one.

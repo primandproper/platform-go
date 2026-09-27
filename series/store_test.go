@@ -734,7 +734,7 @@ func runRefusalCases(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		created := env.mustCreate(t, store, testScope, weeklyUTC())
-		tooFar := time.Now().Add(MaxWriteAhead + 7*24*time.Hour)
+		tooFar := storeNow.Add(MaxWriteAhead + 7*24*time.Hour)
 
 		err := env.inTx(t, func(tx database.Tx) error {
 			_, matErr := store.Materialize(t.Context(), tx, testScope, created.ID, tooFar)
@@ -749,6 +749,39 @@ func runRefusalCases(t *testing.T, env *storeEnv) {
 			return skipErr
 		})
 		test.ErrorIs(t, err, ErrTooFarAhead)
+
+		test.SliceEmpty(t, env.occurrences(t, store, testScope, created.ID))
+	})
+
+	t.Run("a write before the write-behind limit writes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		created := env.mustCreate(t, store, testScope, weeklyUTC())
+		tooLongAgo := storeNow.Add(-MaxWriteBehind - 7*24*time.Hour)
+
+		// A typo'd year: every Tuesday since would be one insert each.
+		typo := weeklyUTC()
+		typo.StartsOn = Date{Year: 1025, Month: time.September, Day: 2}
+
+		err := env.inTx(t, func(tx database.Tx) error {
+			_, createErr := store.CreateSeries(t.Context(), tx, testScope, typo)
+
+			return createErr
+		})
+		test.ErrorIs(t, err, ErrTooFarBack)
+
+		// The positive control: a start just inside the limit is taken.
+		recent := weeklyUTC()
+		recent.StartsOn = DateOf(storeNow.Add(-MaxWriteBehind + 24*time.Hour))
+		env.mustCreate(t, store, testScope, recent)
+
+		err = env.inTx(t, func(tx database.Tx) error {
+			_, skipErr := store.SkipWindow(t.Context(), tx, testScope, Window{From: tooLongAgo, To: tuesday(4)}, "forever")
+
+			return skipErr
+		})
+		test.ErrorIs(t, err, ErrTooFarBack)
 
 		test.SliceEmpty(t, env.occurrences(t, store, testScope, created.ID))
 	})

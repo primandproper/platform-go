@@ -64,9 +64,11 @@ nothing. A consumer that wants a new series' rows at once calls Materialize
 itself, in the transaction that created it.
 
 No write reaches further past now than [MaxWriteAhead] — not a Materialize,
-not a closure, not the worker's Horizon — and a rule's dates fall in [MinYear]
-to [MaxYear]. The bounds are there so a typo'd year is [ErrTooFarAhead] or
-[ErrInvalidRule] rather than one insert per week for every week it names.
+not a closure, not the worker's Horizon — nor further before it than
+[MaxWriteBehind]: a series' start date and a closure's start are both refused
+past it. A rule's dates fall in [MinYear] to [MaxYear]. The bounds are there so
+a typo'd year is [ErrTooFarAhead], [ErrTooFarBack] or [ErrInvalidRule] rather
+than one insert per week for every week it names.
 
 # Time
 

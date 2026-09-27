@@ -39,7 +39,9 @@ type Store interface {
 	// horizon worker does otherwise.
 	//
 	// The rule is validated first — see ErrInvalidRule, ErrUnknownTimeZone —
-	// and is not modified. A nil tx is an error wrapping ErrNilExecutor.
+	// and is not modified. A start date further before now than
+	// MaxWriteBehind, by the database's clock, is ErrTooFarBack. A nil tx is
+	// an error wrapping ErrNilExecutor.
 	CreateSeries(ctx context.Context, tx database.Tx, scope tenancy.Scope, rule *Rule) (*Series, error)
 
 	// GetSeries reads one live series by id. One in another scope reads as
@@ -84,7 +86,9 @@ type Store interface {
 	// It writes from where the series was last written to, not from now: a
 	// series whose start date is in the past is written from its start. That
 	// is the rows the rule implies, and a consumer who did not want the past
-	// ones starts the series today.
+	// ones starts the series today. How far back that reaches is bounded where
+	// the start date is set: CreateSeries refuses one further back than
+	// MaxWriteBehind.
 	//
 	// A through further past now than MaxWriteAhead, by the database's clock,
 	// is ErrTooFarAhead; a zero one is ErrNoInstant.
@@ -144,7 +148,8 @@ type Store interface {
 	//
 	// Occurrences already skipped are left as they are, reason included.
 	// Replacements in the window are skipped like any other occurrence. A
-	// window ending further past now than MaxWriteAhead is ErrTooFarAhead. A
+	// window ending further past now than MaxWriteAhead is ErrTooFarAhead, and
+	// one starting further before now than MaxWriteBehind is ErrTooFarBack. A
 	// nil tx is an error wrapping ErrNilExecutor.
 	SkipWindow(ctx context.Context, tx database.Tx, scope tenancy.Scope, window Window, reason string) (int64, error)
 

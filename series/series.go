@@ -110,6 +110,13 @@ const (
 	// one insert per week for every week in it, on one transaction. A write
 	// past it is ErrTooFarAhead.
 	MaxWriteAhead = 104 * 7 * 24 * time.Hour
+	// MaxWriteBehind is the furthest before now a write may reach: a series'
+	// start date, from which Materialize writes, and a SkipWindow's start. A
+	// year holds any series a consumer is backfilling from last term, and a
+	// bound is what keeps a typo'd year from becoming one insert per week for
+	// every week since it — or a closure from skipping every lesson ever held.
+	// A write before it is ErrTooFarBack.
+	MaxWriteBehind = 365 * 24 * time.Hour
 
 	// sweepBatch is how many occurrences one pass of a closure or an end
 	// skips. The store repeats the pass on the caller's transaction until one
@@ -145,6 +152,15 @@ func (w Window) bounds() (after, through time.Time, err error) {
 func withinWriteAhead(end, now time.Time) error {
 	if limit := now.Add(MaxWriteAhead); end.After(limit) {
 		return platformerrors.Wrapf(ErrTooFarAhead, "%s is past %s", end.UTC(), limit.UTC())
+	}
+
+	return nil
+}
+
+// withinWriteBehind refuses a start further before now than MaxWriteBehind.
+func withinWriteBehind(start, now time.Time) error {
+	if limit := now.Add(-MaxWriteBehind); start.Before(limit) {
+		return platformerrors.Wrapf(ErrTooFarBack, "%s is before %s", start.UTC(), limit.UTC())
 	}
 
 	return nil

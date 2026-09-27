@@ -1134,6 +1134,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrInvalidWindow":   {Err: series.ErrInvalidWindow, Is: Mapped},
 		"ErrWindowTooLarge":  {Err: series.ErrWindowTooLarge, Is: Mapped},
 		"ErrTooFarAhead":     {Err: series.ErrTooFarAhead, Is: Mapped},
+		"ErrTooFarBack":      {Err: series.ErrTooFarBack, Is: Mapped},
 
 		// Three that wrap errors.ErrUnrecognizedInputValue, and the nil
 		// arguments, which wrap errors.ErrNilInputParameter.
