@@ -331,16 +331,25 @@ func users(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
-	t.Run("the last owner of an account cannot be archived", func(t *testing.T) {
+	t.Run("archiving an account's sole owner leaves no account ownerless", func(t *testing.T) {
 		t.Parallel()
 
 		owner := s.Subject(t)
-		operator := s.OperatorIn(t, surface, owner.ScopeFor(surface), identitypb.IdentityService_ArchiveUser_FullMethodName)
+		needsAccount(t, owner)
 
-		_, err := operator.Surfaces.Identity.ArchiveUser(operator.Context(t.Context()),
-			&identitypb.ArchiveUserRequest{UserId: owner.UserID})
-		must.Error(t, err)
-		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+		archiveOwner(t, s, owner)
+	})
+
+	t.Run("archiving an owner whose account has members leaves no account ownerless", func(t *testing.T) {
+		t.Parallel()
+
+		owner := s.Subject(t)
+		needsAccount(t, owner)
+		member := colleague(t, s, owner)
+		role, _ := membershipRoles(s)
+		join(t, s, owner, member, role)
+
+		archiveOwner(t, s, owner)
 	})
 
 	t.Run("the principal read answers for the caller", func(t *testing.T) {
