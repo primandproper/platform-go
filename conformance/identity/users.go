@@ -346,7 +346,8 @@ func users(t *testing.T, s *conformance.Session) {
 		owner := s.Subject(t)
 		needsAccount(t, owner)
 		member := colleague(t, s, owner)
-		join(t, s, owner, member, "member")
+		role, _ := membershipRoles(s)
+		join(t, s, owner, member, role)
 
 		archiveOwner(t, s, owner)
 	})
