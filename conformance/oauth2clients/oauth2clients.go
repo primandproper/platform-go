@@ -47,6 +47,9 @@ func run(t *testing.T, s *conformance.Session) {
 // the registry is not also an assertion about URI validation.
 const redirect = "https://example.test/callback"
 
+// clientName is the name every registration here is minted with.
+const clientName = "conformance client"
+
 // twoRegistries mints a caller making methods in each of two tenants, and
 // refuses to proceed if the subject put them in one, which would make every
 // confinement assertion here compare a registry with itself.
@@ -81,7 +84,7 @@ func register(t *testing.T, sub *conformance.Subject) *oauth2clientspb.IssuedOAu
 
 	created, err := sub.Surfaces.OAuth2Clients.CreateOAuth2Client(sub.Context(t.Context()),
 		&oauth2clientspb.CreateOAuth2ClientRequest{Input: &oauth2clientspb.OAuth2ClientCreationInput{
-			Name:         "conformance client",
+			Name:         clientName,
 			RedirectUris: []string{redirect},
 		}})
 	must.NoError(t, err, must.Sprint("minting a registration"))

@@ -163,6 +163,47 @@ func values(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, caller.UserID, response.GetResult().GetSubject().GetId())
 	})
 
+	// A write converges rather than inserts: a subject has one answer to a
+	// setting, so a second answer replaces the first in its own row, and one
+	// after a clear revives the row that was cleared. Asserted by identifier
+	// rather than by counting a listing, which would be a count of rows the
+	// suite may not own.
+	t.Run("a second answer, and an answer after a clear, converge on the row the first one wrote", func(t *testing.T) {
+		t.Parallel()
+
+		caller, c := seeded(t, s, conformance.Making(setValue, getValue, clearValue))
+		ctx := caller.Context(t.Context())
+
+		first := set(t, caller, c.digest, stringValue(optionDaily)).GetValue()
+		must.NotNil(t, first, must.Sprint("an answer resolved with no stored row"))
+
+		second := set(t, caller, c.digest, stringValue(optionNever)).GetValue()
+		must.NotNil(t, second, must.Sprint("a second answer resolved with no stored row"))
+		test.EqOp(t, first.GetId(), second.GetId(), test.Sprint("a second answer wrote a row of its own"))
+		test.EqOp(t, optionNever, second.GetRaw())
+
+		// Whole seconds, because one dialect keeps no finer.
+		test.EqOp(t, first.GetCreatedAt().AsTime().Unix(), second.GetCreatedAt().AsTime().Unix(),
+			test.Sprint("a second answer was stamped as a new row"))
+
+		// Read back: one live row holding the second answer, not a new one
+		// shadowing the old.
+		read, err := caller.Surfaces.Settings.GetValue(ctx, &settingspb.GetValueRequest{Subject: self(caller), Name: c.digest})
+		must.NoError(t, err)
+		test.EqOp(t, first.GetId(), read.GetResult().GetId())
+		test.EqOp(t, optionNever, read.GetResult().GetRaw())
+
+		_, err = caller.Surfaces.Settings.ClearValue(ctx, &settingspb.ClearValueRequest{Subject: self(caller), Name: c.digest})
+		must.NoError(t, err)
+
+		revived := set(t, caller, c.digest, stringValue(optionWeekly)).GetValue()
+		must.NotNil(t, revived, must.Sprint("an answer after a clear resolved with no stored row"))
+		test.EqOp(t, first.GetId(), revived.GetId(), test.Sprint("an answer after a clear wrote a row of its own"))
+		test.EqOp(t, optionWeekly, revived.GetRaw())
+		test.EqOp(t, second.GetCreatedAt().AsTime().Unix(), revived.GetCreatedAt().AsTime().Unix(),
+			test.Sprint("a revived answer was stamped as a new row"))
+	})
+
 	// A screen that has just shown a "reset to default" button has to render
 	// something next, and it is the default — or, for a setting with none, the
 	// third answer.

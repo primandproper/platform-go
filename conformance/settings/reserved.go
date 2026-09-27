@@ -76,6 +76,45 @@ func reserved(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, int64(90), resolved.GetResolution().GetTypedValue().GetIntValue())
 	})
 
+	// The flag is recorded rather than enforced on a read: it is what a
+	// self-service page reads to know which settings to hide, so it has to
+	// reach the ordinary caller that page is rendered for. Whether that caller
+	// may read the catalog at all is the deployment's, which is why the reader
+	// is minted as a member.
+	t.Run("a reserved setting is readable by an ordinary caller, and says it is reserved", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(getDefinitionByName, getDefinition), conformance.AsMember())
+		needsUser(t, caller)
+
+		op := s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface)))
+		reservedName, openName := "conformance.reserved."+identifiers.New(), "conformance.open."+identifiers.New()
+
+		reservedDefinition := define(t, op, &settingspb.SettingDefinitionInput{
+			Name:      reservedName,
+			Kind:      settingspb.SettingKind_SETTING_KIND_INTEGER,
+			AdminOnly: true,
+		})
+		define(t, op, &settingspb.SettingDefinitionInput{
+			Name: openName,
+			Kind: settingspb.SettingKind_SETTING_KIND_INTEGER,
+		})
+
+		test.True(t, byName(t, caller, reservedName).GetAdminOnly(),
+			test.Sprint("a reserved setting read by name did not say it was reserved"))
+
+		byID, err := caller.Surfaces.Settings.GetDefinition(caller.Context(t.Context()),
+			&settingspb.GetDefinitionRequest{DefinitionId: reservedDefinition.GetId()})
+		must.NoError(t, err)
+		test.EqOp(t, reservedName, byID.GetResult().GetName())
+		test.True(t, byID.GetResult().GetAdminOnly(),
+			test.Sprint("a reserved setting read by id did not say it was reserved"))
+
+		// The control: the flag is the row's, not a constant every read carries.
+		test.False(t, byName(t, caller, openName).GetAdminOnly(),
+			test.Sprint("a setting nobody reserved read back as reserved"))
+	})
+
 	// The other half, and the one that makes the refusal above a rule rather
 	// than a setting nobody can write. It needs an administrator, which only a
 	// subject with a notion of one can mint.

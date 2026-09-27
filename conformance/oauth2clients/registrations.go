@@ -71,4 +71,37 @@ func registrations(t *testing.T, s *conformance.Session) {
 		must.Error(t, err)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
+
+	// The store's refusals, as a client reads them: each row fails on the one
+	// field under test and keeps the suite's redirect everywhere else, so no
+	// row is refused for URI policy it did not mean to exercise.
+	for name, input := range map[string]*oauth2clientspb.OAuth2ClientCreationInput{
+		"a registration with no name is refused as malformed":         {RedirectUris: []string{redirect}},
+		"a registration with no redirect URI is refused as malformed": {Name: clientName},
+		// A relative reference: there is nothing for the authorization server
+		// to match a request's redirect against exactly.
+		"a registration with an unusable redirect URI is refused as malformed": {
+			Name:         clientName,
+			RedirectUris: []string{"/callback"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			caller := s.Subject(t, conformance.Making(createOAuth2Client))
+
+			// The positive control: a whole registration goes through, so the
+			// refusal below is the input's rather than the caller's.
+			register(t, caller)
+
+			created, err := caller.Surfaces.OAuth2Clients.CreateOAuth2Client(caller.Context(t.Context()),
+				&oauth2clientspb.CreateOAuth2ClientRequest{Input: input})
+			must.Error(t, err)
+			test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+			// A refusal that minted a secret anyway is the worst version of
+			// this: a credential nobody asked to keep.
+			test.Nil(t, created.GetIssued(), test.Sprint("a refused registration answered with an issued credential"))
+		})
+	}
 }
