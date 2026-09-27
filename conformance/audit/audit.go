@@ -3,7 +3,6 @@ package audit
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/conformance"
 
@@ -11,12 +10,18 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "audit"
 
 // Suite is the audit surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "audit",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.Audit != nil },
 		Run:     run,
 	}
@@ -52,11 +57,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("an entry in another session's chain is not readable by id", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
-		theirs, _ := subject(t, s)
-
-		must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-			must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+		mine, theirs, act := twoChains(t, s)
 
 		// The neighbor learns their own entry's identifier the only way
 		// anybody legitimately can: by reading their own chain. Nothing here
@@ -82,16 +83,18 @@ func run(t *testing.T, s *conformance.Session) {
 			&auditpb.GetEntryRequest{EntryId: neighbor.GetId()})
 
 		// Absent rather than refused, which is what it is from here: a refusal
-		// would confirm the identifier names something.
-		test.ErrorIs(t, err, audit.ErrEntryNotFound,
-			test.Sprint("another session's entry was readable by identifier"))
+		// would confirm the identifier names something. The code, not the
+		// sentinel: a deployment may strip the encoded chain a Go client
+		// decodes audit.ErrEntryNotFound from, and NotFound is what every
+		// client reads.
+		must.Error(t, err, must.Sprint("another session's entry was readable by identifier"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("a listing holds this session's entries and not a neighbor's", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
-		theirs, _ := subject(t, s)
+		mine, theirs, act := twoChains(t, s)
 
 		ours, neighbor := act(t, mine), act(t, theirs)
 
@@ -114,8 +117,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("querying a neighbor's actor searches this session's chain", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
-		theirs, _ := subject(t, s)
+		mine, theirs, act := twoChains(t, s)
 
 		ours, neighbor := act(t, mine), act(t, theirs)
 
@@ -169,15 +171,35 @@ func run(t *testing.T, s *conformance.Session) {
 func subject(t *testing.T, s *conformance.Session) (caller *conformance.Subject, act func(*testing.T, *conformance.Subject) *conformance.Audited) {
 	t.Helper()
 
+	act = actor(t, s)
+
+	return s.Subject(t), act
+}
+
+// twoChains mints two callers in audit tenants of their own together with the
+// action they perform, for the assertions that one chain does not reach the
+// other.
+func twoChains(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject, act func(*testing.T, *conformance.Subject) *conformance.Audited) {
+	t.Helper()
+
+	act = actor(t, s)
+	mine, theirs = s.TwoTenants(t, surface)
+
+	return mine, theirs, act
+}
+
+// actor is the subject's auditable action, skipping the test where it offers
+// none.
+func actor(t *testing.T, s *conformance.Session) func(*testing.T, *conformance.Subject) *conformance.Audited {
+	t.Helper()
+
 	auditable := s.Seams().Actions.Auditable
 	s.NeedsAction(t, auditable != nil, "auditable")
 
-	caller = s.Subject(t)
-
-	return caller, func(t *testing.T, as *conformance.Subject) *conformance.Audited {
+	return func(t *testing.T, as *conformance.Subject) *conformance.Audited {
 		t.Helper()
 
-		did, err := auditable(as.Context(t.Context()), as.Scope)
+		did, err := auditable(as.Context(t.Context()), as.ScopeFor(surface))
 		must.NoError(t, err, must.Sprint("performing an auditable action"))
 		must.NotNil(t, did, must.Sprint("the auditable action reported nothing it touched"))
 		must.StrNotEqFold(t, "", did.ResourceID, must.Sprint("the auditable action named no resource"))

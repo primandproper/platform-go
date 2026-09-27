@@ -31,6 +31,7 @@ const fanoutName = "notifications_push_fanout"
 const (
 	scopeKey       = notifications.ScopeAttributeKey
 	principalsKey  = "notifications.push.principals"
+	skippedKey     = "notifications.push.skipped"
 	devicesKey     = "notifications.push.devices"
 	sentKey        = "notifications.push.sent"
 	failedKey      = "notifications.push.failed"
@@ -60,6 +61,34 @@ var (
 	// wants no pushes names notifications/mobile/noop.
 	ErrNilSender = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil push notification sender for the fan-out")
 )
+
+// RecipientFilter answers whether one principal should receive one push. True
+// sends to every handset they have registered; false leaves them out of this
+// fan-out entirely.
+//
+// It is handed the executor and the scope [Fanout.Push] was, so a filter reading
+// a preference out of settings runs in the caller's transaction when the caller
+// is in one, and sees a preference written moments earlier in it. The message
+// is there so a filter can tell one kind of announcement from another — a
+// person who muted marketing has not muted "your order shipped".
+//
+// It is asked once per distinct principal, not once per device. A preference is
+// a person's, so a person with four handsets costs one read rather than four,
+// and a filter never sees the device list at all: the fan-out resolves handsets
+// only for the principals it let through. A seam that answered differently per
+// handset — this platform yes, that one no — is a different feature, and one
+// this deliberately is not.
+//
+// An error stops the fan-out before anything is resolved or sent, answering
+// with a nil [Result] the way a failed resolve does. A filter that failed open
+// would be an opt-out that held only while the database did.
+type RecipientFilter func(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	principal string,
+	msg mobile.PushMessage,
+) (bool, error)
 
 // Delivery is one device's share of a fan-out: the registration that was pushed
 // to, and what came of it.
@@ -102,6 +131,12 @@ type Result struct {
 	// registered no handsets.
 	Deliveries []Delivery
 
+	// Skipped names the principals a [RecipientFilter] left out, each once, in
+	// the order they were first named. It is what separates "asked not to
+	// receive this" from "registered no handsets", which Deliveries alone cannot:
+	// neither leaves a delivery behind. A fan-out with no filter skips nobody.
+	Skipped []string
+
 	// Sent is how many pushes the sender accepted.
 	Sent int
 
@@ -125,6 +160,10 @@ type Fanout struct {
 	registry notifications.Registry
 	sender   mobile.PushNotificationSender
 	o11y     observability.Observer
+
+	// filter is asked about each principal before their handsets are resolved,
+	// and is nil for a fan-out that sends to everyone it is handed.
+	filter RecipientFilter
 
 	// instruments count the sends rather than the fan-outs, because a push to
 	// one token is the unit that succeeds or fails: a request count of "how many
@@ -211,8 +250,14 @@ func NewFanout(
 // [notifications.Registry.ListDevicesByPrincipals] — and answers with an empty
 // [Result] and no error.
 //
-// A resolve that fails is the one failure that stops everything, and it answers
-// with a nil Result: nothing was sent, and there is nothing to describe. After
+// A fan-out built [WithRecipientFilter] asks the filter about each distinct
+// principal first, on this same executor and scope, and resolves handsets only
+// for the ones it let through. The ones it left out are named in
+// [Result.Skipped].
+//
+// A filter or a resolve that fails is the one failure that stops everything,
+// and it answers with a nil Result: nothing was sent, and there is nothing to
+// describe. After
 // that every device is attempted whatever the ones before it answered, and the
 // answer is both values — the Result describing every delivery, and the failures
 // joined into one error. A caller that checks only the error still learns that
@@ -231,12 +276,17 @@ func (f *Fanout) Push(
 	)
 	defer op.End()
 
-	devices, err := f.registry.ListDevicesByPrincipals(ctx, q, scope, principals)
+	recipients, skipped, err := f.recipients(ctx, q, scope, principals, msg)
+	if err != nil {
+		return nil, op.Error(err, "asking which principals receive this push")
+	}
+
+	devices, err := f.registry.ListDevicesByPrincipals(ctx, q, scope, recipients)
 	if err != nil {
 		return nil, op.Error(err, "resolving the handsets to push to")
 	}
 
-	result := &Result{Deliveries: make([]Delivery, 0, len(devices))}
+	result := &Result{Deliveries: make([]Delivery, 0, len(devices)), Skipped: skipped}
 
 	var errs []error
 
@@ -257,7 +307,8 @@ func (f *Fanout) Push(
 		}
 	}
 
-	op.SpanOnly(devicesKey, len(devices)).
+	op.SpanOnly(skippedKey, len(skipped)).
+		SpanOnly(devicesKey, len(devices)).
 		SpanOnly(sentKey, result.Sent).
 		SpanOnly(failedKey, result.Failed).
 		SpanOnly(invalidatedKey, result.Invalidated)
@@ -267,6 +318,49 @@ func (f *Fanout) Push(
 	}
 
 	return result, nil
+}
+
+// recipients asks the filter about each distinct principal and answers with the
+// ones it let through and the ones it left out, both in the order they were
+// first named.
+//
+// With no filter it answers with the principals exactly as they were handed
+// over, duplicates and all, so a fan-out built without one reads precisely what
+// it read before the seam existed.
+func (f *Fanout) recipients(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	principals []string,
+	msg mobile.PushMessage,
+) (included, skipped []string, err error) {
+	if f.filter == nil {
+		return principals, nil, nil
+	}
+
+	included = make([]string, 0, len(principals))
+	seen := make(map[string]struct{}, len(principals))
+
+	for _, principal := range principals {
+		if _, asked := seen[principal]; asked {
+			continue
+		}
+
+		seen[principal] = struct{}{}
+
+		receives, filterErr := f.filter(ctx, q, scope, principal, msg)
+		if filterErr != nil {
+			return nil, nil, filterErr
+		}
+
+		if receives {
+			included = append(included, principal)
+		} else {
+			skipped = append(skipped, principal)
+		}
+	}
+
+	return included, skipped, nil
 }
 
 // deliver sends to one handset and acts on the provider's verdict.

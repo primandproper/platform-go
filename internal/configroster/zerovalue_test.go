@@ -9,6 +9,7 @@ import (
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	phonecodescfg "github.com/primandproper/platform-go/v14/authentication/phonecodes/config"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -127,6 +128,7 @@ func zeroValueCases() []zeroValueCase {
 		// authenticator are the application's, and RegisterService reports a
 		// missing one when it is invoked rather than here.
 		{name: "authentication/passwordreset", cfg: &passwordresetcfg.Config{}, why: "the prefix, the token lifetime, the request floor and the sweep interval all default"},
+		{name: "authentication/phonecodes", cfg: &phonecodescfg.Config{}, why: "the prefix, the code length, the lifetime, the attempt limit, the retention and the sweep interval all default"},
 		// The zero config is decisive for the same reason passwordreset's is:
 		// the authenticator and the token issuer are resolved from the injector
 		// when the service is invoked, not checked here.

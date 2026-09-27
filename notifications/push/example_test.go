@@ -10,12 +10,15 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/notifications/migrations"
 	"github.com/primandproper/platform-go/v14/notifications/push"
+	"github.com/primandproper/platform-go/v14/settings"
+	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/notifications/mobile"
+	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
@@ -86,6 +89,105 @@ func Example() {
 	// a push failed: true
 	// sent: 2 failed: 1 pruned: 1
 	// handsets left: 2
+}
+
+// Example_recipientFilter leaves out somebody who asked not to be told.
+//
+// Which setting counts as "not this person" is the consumer's decision, and the
+// fan-out reads none of it: the filter is where that decision is spelled, once,
+// and every Push through this fan-out asks it. It is asked once per person, on
+// the executor Push was handed, before a single handset is resolved.
+func Example_recipientFilter() {
+	ctx := context.Background()
+
+	client := exampleClient(ctx)
+
+	stmts, err := settingsmigrations.Statements(dialect.SQLite, settings.DefaultTablePrefix)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, stmt := range stmts {
+		if _, err = client.Writer().ExecContext(ctx, stmt); err != nil {
+			panic(err)
+		}
+	}
+
+	devices, err := notifications.NewSQLStore(client)
+	if err != nil {
+		panic(err)
+	}
+
+	preferences, err := settings.NewSQLStore(client)
+	if err != nil {
+		panic(err)
+	}
+
+	scope := tenancy.Of("acct_1")
+
+	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
+		for _, registration := range []*notifications.Device{
+			{Principal: "user_1", Platform: notifications.PlatformIOS, Token: "ios-token"},
+			{Principal: "user_2", Platform: notifications.PlatformAndroid, Token: "android-token"},
+		} {
+			if _, txErr := devices.RegisterDevice(ctx, tx, scope, registration); txErr != nil {
+				return txErr
+			}
+		}
+
+		// Everybody hears about their orders unless they say otherwise, and
+		// user_2 has said otherwise.
+		if _, txErr := preferences.CreateDefinition(ctx, tx, scope, &settings.Definition{
+			Name:    "notifications.push.orders",
+			Kind:    settings.KindBool,
+			Default: pointer.To("true"),
+		}); txErr != nil {
+			return txErr
+		}
+
+		_, txErr := preferences.SetValue(ctx, tx, scope,
+			settings.Subject{Type: settings.SubjectUser, ID: "user_2"}, "notifications.push.orders", "false")
+
+		return txErr
+	}); err != nil {
+		panic(err)
+	}
+
+	// The consumer's rule, in the one place it is written.
+	wantsOrderUpdates := func(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		principal string,
+		_ mobile.PushMessage,
+	) (bool, error) {
+		resolved, resolveErr := preferences.Resolve(ctx, q, scope,
+			settings.Subject{Type: settings.SubjectUser, ID: principal}, "notifications.push.orders")
+		if resolveErr != nil {
+			return false, resolveErr
+		}
+
+		return resolved.Bool()
+	}
+
+	fanout, err := push.NewFanout(devices, &exampleSender{}, push.WithRecipientFilter(wantsOrderUpdates))
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := fanout.Push(ctx, client.Reader(), scope,
+		[]string{"user_1", "user_2"},
+		mobile.PushMessage{Title: "Your order shipped", Body: "Arriving Thursday."})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("sent:", result.Sent)
+	fmt.Println("skipped:", result.Skipped)
+
+	// Output:
+	// sent: 1
+	// skipped: [user_2]
 }
 
 // exampleSender is what a provider adapter does in two lines: deliver, and

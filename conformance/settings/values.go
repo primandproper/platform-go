@@ -282,10 +282,9 @@ func values(t *testing.T, s *conformance.Session) {
 			answered[value.GetDefinitionId()] = value.GetRaw()
 		}
 
-		op := operator(t, s, caller)
-		test.EqOp(t, optionDaily, answered[byName(t, op, c.digest).GetId()])
-		test.EqOp(t, "30", answered[byName(t, op, c.retention).GetId()])
-		test.MapNotContainsKey(t, answered, byName(t, op, c.compact).GetId(),
+		test.EqOp(t, optionDaily, answered[byName(t, caller, c.digest).GetId()])
+		test.EqOp(t, "30", answered[byName(t, caller, c.retention).GetId()])
+		test.MapNotContainsKey(t, answered, byName(t, caller, c.compact).GetId(),
 			test.Sprint("a setting the subject never answered was listed as an override"))
 	})
 }

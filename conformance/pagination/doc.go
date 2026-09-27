@@ -24,5 +24,9 @@ than against a number this suite carries:
 A read that answers the plain request with something other than a page — an
 absence, for a read keyed on an identifier nothing holds — has no pagination to
 read, and skips with the code it gave.
+
+Each read the subject reserves in Seams.OperatorMethods is made by an operator
+and every other read by an ordinary caller, for the reason the filters suite gives: a read an
+interceptor refused has no page to report on.
 */
 package pagination

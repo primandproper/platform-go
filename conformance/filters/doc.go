@@ -22,5 +22,13 @@ request and a well-formed filter, and that call must not be InvalidArgument; onl
 then is the malformed one asserted. The requests come from
 conformance/internal/pagedrpc, which writes out the ones that need more than a
 filter and checks that none is missing.
+
+# Who a read is made as
+
+A read a deployment reserves to an operator is refused by its authorization
+interceptor before the handler sees the filter, and PermissionDenied is then
+the interceptor's answer rather than the surface's. So each read the subject
+reserves in Seams.OperatorMethods is made by an operator, and every other read
+by an ordinary caller.
 */
 package filters

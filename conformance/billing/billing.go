@@ -12,14 +12,18 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// Suite is the billing surface's behavioral assertions.
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "billing"
+
 // currencyUSD is the currency every product here is priced in. Which one is
 // immaterial; that it is one the surface accepts is what matters.
 const currencyUSD = "USD"
 
+// Suite is the billing surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "billing",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.Billing != nil },
 		Run:     run,
 	}
@@ -51,12 +55,19 @@ func run(t *testing.T, s *conformance.Session) {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
+}
+
+// twoOperators mints an operator in each of two tenants, for the confinement
+// assertions about the catalog, every call on which is an operator's.
+func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
+	t.Helper()
+
+	mine, theirs = twoTenants(t, s)
+
+	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
 }
 
 // colleague mints a second caller in of's tenant, with an account of their own
@@ -65,7 +76,7 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsAccount(t, other)
 
 	must.StrNotEqFold(t, of.AccountID, other.AccountID,
@@ -93,7 +104,7 @@ func subscribed(t *testing.T, s *conformance.Session, sub *conformance.Subject) 
 	s.NeedsAction(t, subscribe != nil, "subscribed")
 	needsAccount(t, sub)
 
-	subscription, err := subscribe(t.Context(), sub.Scope, sub.AccountID)
+	subscription, err := subscribe(t.Context(), sub.ScopeFor(surface), sub.AccountID)
 	must.NoError(t, err, must.Sprint("making a paid subscription exist"))
 	must.NotNil(t, subscription, must.Sprint("the subscribed action reported no subscription"))
 	must.StrNotEqFold(t, "", subscription.ID, must.Sprint("the subscribed action reported a subscription with no identifier"))
@@ -114,7 +125,8 @@ func productInput() *billingpb.ProductCreationInput {
 	}
 }
 
-// stock puts a product in sub's catalog through the surface.
+// stock puts a product in sub's catalog through the surface. Stocking is an
+// operator's, so sub is one.
 func stock(t *testing.T, sub *conformance.Subject) *billingpb.Product {
 	t.Helper()
 

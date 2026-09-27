@@ -11,6 +11,8 @@ import (
 	passkeysprivacy "github.com/primandproper/platform-go/v14/authentication/passkeys/privacy"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetprivacy "github.com/primandproper/platform-go/v14/authentication/passwordreset/privacy"
+	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
+	phonecodesprivacy "github.com/primandproper/platform-go/v14/authentication/phonecodes/privacy"
 	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes"
 	recoverycodesprivacy "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/privacy"
 	"github.com/primandproper/platform-go/v14/billing"
@@ -80,6 +82,7 @@ type Adapters struct {
 	Grants        *GrantsAdapter
 	Passkeys      *PasskeysAdapter
 	PasswordReset *PasswordResetAdapter
+	PhoneCodes    *PhoneCodesAdapter
 	RecoveryCodes *RecoveryCodesAdapter
 	Identity      *IdentityAdapter
 	Notifications *NotificationsAdapter
@@ -208,6 +211,20 @@ type PasswordResetAdapter struct {
 	_ struct{} `json:"-" yaml:"-"`
 
 	Store   passwordreset.Store
+	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
+}
+
+// PhoneCodesAdapter registers authentication/phonecodes/privacy's collector and
+// eraser. That collector exports the numbers a person was texted a code at and
+// never a code, and that eraser deletes, spent and withdrawn codes included.
+type PhoneCodesAdapter struct {
+	_ struct{} `json:"-" yaml:"-"`
+
+	Store   phonecodes.Store
 	Resolve dataprivacy.ScopeResolver
 	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
 	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
@@ -501,6 +518,14 @@ func (a *Adapters) build() ([]registration, error) {
 
 		built = append(built, registration{key: passwordresetprivacy.DefaultKey, collector: collector, eraser: precede(a.PasswordReset.BeforeErase, eraser)})
 	}
+	if a.PhoneCodes != nil {
+		collector, eraser, err := a.PhoneCodes.build(a.Reader)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", phonecodesprivacy.DefaultKey)
+		}
+
+		built = append(built, registration{key: phonecodesprivacy.DefaultKey, collector: collector, eraser: precede(a.PhoneCodes.BeforeErase, eraser)})
+	}
 	if a.RecoveryCodes != nil {
 		collector, eraser, err := a.RecoveryCodes.build(a.Reader)
 		if err != nil {
@@ -701,6 +726,22 @@ func (c *PasswordResetAdapter) build(
 	}
 
 	eraser, err := passwordresetprivacy.NewEraser(c.Store, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return collector, eraser, nil
+}
+
+func (c *PhoneCodesAdapter) build(
+	reader database.SQLQueryExecutor,
+) (dataprivacy.Collector, dataprivacy.Eraser, error) {
+	collector, err := phonecodesprivacy.NewCollector(c.Store, reader, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	eraser, err := phonecodesprivacy.NewEraser(c.Store, c.Resolve)
 	if err != nil {
 		return nil, nil, err
 	}

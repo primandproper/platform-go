@@ -36,7 +36,7 @@ func closed() time.Time { return time.Now().UTC().Add(-time.Hour).Truncate(time.
 // this assertion made.
 func freshContact() string { return identifiers.New() + "@conformance.invalid" }
 
-// openList opens a list in the caller's tenant through the console.
+// openList opens a list in the operator's tenant through the console.
 func openList(t *testing.T, operator *conformance.Subject, closesAt time.Time) *waitlistspb.Waitlist {
 	t.Helper()
 
@@ -146,12 +146,19 @@ func eraseSubject(t *testing.T, operator, of *conformance.Subject) int64 {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
+}
+
+// twoOperators mints an operator in each of two tenants, for the confinement
+// assertions whose every call is the console's.
+func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
+	t.Helper()
+
+	mine, theirs = twoTenants(t, s)
+
+	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
 }
 
 // colleague mints a second caller in of's tenant. A subject that cannot put two
@@ -159,7 +166,7 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
@@ -173,7 +180,7 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 //
 // It skips, with the reason, where the subject supplies no anonymous connection,
 // does not say where its visitors land, or cannot mint a caller there.
-func visitor(t *testing.T, s *conformance.Session) (waitlistspb.WaitlistsServiceClient, *conformance.Subject) {
+func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlistspb.WaitlistsServiceClient, *conformance.Subject) {
 	t.Helper()
 
 	seams := s.Seams()
@@ -189,7 +196,7 @@ func visitor(t *testing.T, s *conformance.Session) (waitlistspb.WaitlistsService
 	conn, err := seams.Anonymous(t.Context())
 	must.NoError(t, err, must.Sprint("opening a connection with nobody on it"))
 
-	operator := s.Subject(t, conformance.InTenant(*seams.VisitorScope))
+	operator := s.OperatorIn(t, surface, *seams.VisitorScope, methods...)
 
 	return waitlistspb.NewWaitlistsServiceClient(conn), operator
 }

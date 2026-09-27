@@ -58,28 +58,53 @@ const auditedResourceType = "conformance_audited"
 func TestConformance_Direct(T *testing.T) {
 	T.Parallel()
 
-	db := newDatabase(T)
+	runDirect(T)
+}
+
+// TestConformance_DirectChainStripped is the direct mode behind an edge that
+// strips the encoded error chain before a response leaves, which is what a
+// deployment reachable by untrusted clients does so internal wording never
+// reaches one. The suite asserts what every client reads — the status code —
+// so it passes there too; an assertion that decoded a Go sentinel off the wire
+// would fail here and nowhere else.
+func TestConformance_DirectChainStripped(T *testing.T) {
+	T.Parallel()
+
+	runDirect(T, grpc.ChainUnaryInterceptor(
+		func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			res, err := handler(ctx, req)
+
+			return res, grpcerrors.StripEncodedErrorDetail(err)
+		}))
+}
+
+// runDirect stands up the direct subject, with edge prepended to the server's
+// interceptors, and runs the suite against it.
+func runDirect(t *testing.T, edge ...grpc.ServerOption) {
+	t.Helper()
+
+	db := newDatabase(t)
 
 	stmts, err := migrations.Statements(dialect.SQLite, audit.DefaultTablePrefix)
-	must.NoError(T, err)
+	must.NoError(t, err)
 
 	for _, stmt := range stmts {
-		_, execErr := db.Writer().ExecContext(T.Context(), stmt)
-		must.NoError(T, execErr)
+		_, execErr := db.Writer().ExecContext(t.Context(), stmt)
+		must.NoError(t, execErr)
 	}
 
 	reader, err := audit.NewReader(db.Dialect())
-	must.NoError(T, err)
+	must.NoError(t, err)
 
 	recorder, err := audit.NewRecorder(db.Dialect())
-	must.NoError(T, err)
+	must.NoError(t, err)
 
 	srv, err := auditgrpc.NewServer(reader, db, auditgrpc.WithScopeResolver(scopeFromMetadata))
-	must.NoError(T, err)
+	must.NoError(t, err)
 
-	client := serve(T, srv)
+	client := serve(t, srv, edge...)
 
-	conformance.Run(T, conformance.Seams{
+	conformance.Run(t, conformance.Seams{
 		NewSubject: func(_ context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
 			req := conformance.NewSubjectRequest(opts...)
 
@@ -168,11 +193,11 @@ func scopeFromMetadata(ctx context.Context) (tenancy.Scope, error) {
 
 var errNoScope = platformerrors.New("conformance harness: the connection names no scope")
 
-func serve(t *testing.T, srv *auditgrpc.Server) *auditclient.Client {
+func serve(t *testing.T, srv *auditgrpc.Server, edge ...grpc.ServerOption) *auditclient.Client {
 	t.Helper()
 
-	grpcServer := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(grpcerrors.UnaryErrorEncodingInterceptor()))
+	grpcServer := grpc.NewServer(append(edge,
+		grpc.ChainUnaryInterceptor(grpcerrors.UnaryErrorEncodingInterceptor()))...)
 	srv.RegisterOn(grpcServer)
 
 	listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")

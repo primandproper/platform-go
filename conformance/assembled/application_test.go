@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
+	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -34,6 +35,9 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // registerApplication is what a consumer's main registers beyond its config:
@@ -43,12 +47,10 @@ import (
 // Each surface below mounts only because something here made its dependency
 // resolvable, which is service.RegisterTransports' absence rule doing its job —
 // a surface over half a service is not a surface.
-func registerApplication(i do.Injector, prefix string) {
+func registerApplication(i do.Injector, prefix string, commentable *things) {
 	// The declarations. Which kinds of thing accept comments, and which events
 	// an application publishes, are the application's to say.
-	do.ProvideValue(i, comments.Targets{
-		"conformance_thing": {Description: "a thing the conformance suite comments on"},
-	})
+	do.ProvideValue(i, comments.Targets{thingType: commentable.definition()})
 	// Two event types rather than one, because the webhooks suite's assertions
 	// about a subscription set — reconciling it, retiring one of it — need a
 	// set with more than one member to be observable.
@@ -215,13 +217,14 @@ func (standing) AuthorizeWithdrawal(context.Context, callers.Principal, tenancy.
 // handler: every archive grant, which decides whether include_archived is
 // honored, and settings' reserved-write grant.
 //
-// The harness installs no method enforcement — service mounts no
-// authorization interceptor and a consumer's main adds its own — so these are
-// the only grants a request here is ever asked about. That is why they are the
-// line drawn: a member holds every other permission the surfaces' Permissions
-// maps name, the way a consumer's self-service role would, and none of the ones
-// that would make the refused half of each rule and the granted half
-// indistinguishable. A consumer whose members dismiss their own notifications
+// The harness installs one piece of method enforcement, reserveOperatorCalls,
+// and it reads the run's reservation rather than these grants — service mounts
+// no authorization interceptor and a consumer's main adds its own — so these
+// are the only grants a request here is ever asked about inside a handler.
+// That is why they are the line drawn: a member holds every other permission
+// the surfaces' Permissions maps name, the way a consumer's self-service role
+// would, and none of the ones that would make the refused half of each rule
+// and the granted half indistinguishable. A consumer whose members dismiss their own notifications
 // and so hold notifications' archive grant is right to, and sees their own
 // dismissed rows; the suites assert only what an administrator receives.
 var administrative = []authorization.Permission{
@@ -290,4 +293,54 @@ func grantsOf(ctx context.Context) (authorization.Grants, bool) {
 	}
 
 	return authorization.NewGrants(memberRole), true
+}
+
+// reservableMethods is conformance.ReservableMethods as a set, read once.
+var reservableMethods = func() map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, method := range conformance.ReservableMethods() {
+		out[method] = struct{}{}
+	}
+
+	return out
+}()
+
+// reserveOperatorCalls refuses a reservable call to a caller who is not an
+// administrator, in the run that reserves them, the way a consumer's
+// authorization interceptor refuses a call its caller's role does not cover.
+//
+// It is what keeps the suites honest about who they make those calls as. A
+// call a suite makes without naming it to Session.Operator passes in the run
+// whose members make every call and fails in this one, which is where it should
+// fail rather than in a deployment that reserves that call and not the others
+// named beside it. So an administrator Operator minted for some methods is
+// refused every other reservable one, as an ordinary caller is refused all of
+// them; one minted directly, with conformance.AsAdmin, named none and is
+// refused nothing. A request with nobody on it is left to the handler, which
+// refuses it on its own terms and is what the anonymous suite asserts.
+func reserveOperatorCalls(
+	ctx context.Context,
+	req any,
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (any, error) {
+	if _, reservable := reservableMethods[info.FullMethod]; !reservable {
+		return handler(ctx, req)
+	}
+
+	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
+	if !ok || !principal.reserving {
+		return handler(ctx, req)
+	}
+
+	if !principal.admin {
+		return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
+	}
+
+	if len(principal.methods) > 0 && !slices.Contains(principal.methods, info.FullMethod) {
+		return nil, status.Errorf(codes.PermissionDenied,
+			"%s was made by an operator minted for %v; the suite must name it to Session.Operator", info.FullMethod, principal.methods)
+	}
+
+	return handler(ctx, req)
 }

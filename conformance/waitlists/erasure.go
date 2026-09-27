@@ -25,12 +25,18 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		first := openList(t, caller, open())
-		second := openList(t, caller, open())
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
+		first := openList(t, operator, open())
+		second := openList(t, operator, open())
 
-		onFirst := signedUp(t, caller, caller, first.GetId(), freshContact())
-		onSecond := signedUp(t, caller, caller, second.GetId(), freshContact())
+		onFirst := signedUp(t, caller, operator, first.GetId(), freshContact())
+		onSecond := signedUp(t, caller, operator, second.GetId(), freshContact())
 
+		// A person reading their own signups is an ordinary caller's read, and
+		// a promise: the export a person asks for is theirs to ask for.
 		page, err := caller.Surfaces.Waitlists.ListSignupsForSubject(caller.Context(t.Context()),
 			&waitlistspb.ListSignupsForSubjectRequest{Subject: userSubject(caller)})
 		must.NoError(t, err)
@@ -50,11 +56,15 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		owner := s.Subject(t)
 		needsUser(t, owner)
-		list := openList(t, owner, open())
+		operator := s.OperatorIn(t, surface, owner.ScopeFor(surface),
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
+		list := openList(t, operator, open())
 
 		person := colleague(t, s, owner)
 		needsUser(t, person)
-		theirs := signedUp(t, person, owner, list.GetId(), freshContact())
+		theirs := signedUp(t, person, operator, list.GetId(), freshContact())
 
 		// The positive control: the person whose signup it is reads it, so the
 		// refusal below is about who asked and not about a read that reaches
@@ -79,21 +89,27 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		first := openList(t, caller, open())
-		second := openList(t, caller, open())
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+		)
+		first := openList(t, operator, open())
+		second := openList(t, operator, open())
 
 		contact := freshContact()
-		onFirst := signedUp(t, caller, caller, first.GetId(), contact)
-		onSecond := signedUp(t, caller, caller, second.GetId(), freshContact())
+		onFirst := signedUp(t, caller, operator, first.GetId(), contact)
+		onSecond := signedUp(t, caller, operator, second.GetId(), freshContact())
 
 		// At least the two made here, rather than exactly two: the count is of
 		// rows, and a deployment is entitled to have signed this person up to
 		// something of its own on the way in.
-		test.GreaterEq(t, int64(2), eraseSubject(t, caller, caller),
+		test.GreaterEq(t, int64(2), eraseSubject(t, operator, caller),
 			test.Sprint("an erasure reported fewer signups than this person held"))
 
 		for _, erased := range []*waitlistspb.Signup{onFirst, onSecond} {
-			read, err := caller.Surfaces.Waitlists.GetSignup(caller.Context(t.Context()),
+			read, err := operator.Surfaces.Waitlists.GetSignup(operator.Context(t.Context()),
 				&waitlistspb.GetSignupRequest{ListId: erased.GetListId(), SignupId: erased.GetId()})
 			must.NoError(t, err, must.Sprint("an erased signup is gone rather than withdrawn, which frees its address"))
 			test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, read.GetResult().GetStatus())
@@ -109,7 +125,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		// The address finds the withdrawn row and no other: the join neither
 		// revived it nor wrote a fresh one beside it.
-		found := byContact(t, caller, first.GetId(), contact)
+		found := byContact(t, operator, first.GetId(), contact)
 		must.NotNil(t, found, must.Sprint("an erased address no longer finds the row that suppresses it"))
 		test.EqOp(t, onFirst.GetId(), found.GetId(),
 			test.Sprint("a join after an erasure wrote a fresh signup for the person erased"))
@@ -124,8 +140,13 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		list := openList(t, caller, open())
-		signup := signedUp(t, caller, caller, list.GetId(), freshContact())
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
+		list := openList(t, operator, open())
+		signup := signedUp(t, caller, operator, list.GetId(), freshContact())
 
 		// The positive control: before the erasure the listing carries it.
 		before, err := caller.Surfaces.Waitlists.ListSignupsForSubject(caller.Context(t.Context()),
@@ -133,7 +154,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err)
 		must.SliceContains(t, signupIDs(before.GetResults()), signup.GetId())
 
-		eraseSubject(t, caller, caller)
+		eraseSubject(t, operator, caller)
 
 		after, err := caller.Surfaces.Waitlists.ListSignupsForSubject(caller.Context(t.Context()),
 			&waitlistspb.ListSignupsForSubjectRequest{Subject: userSubject(caller)})
@@ -148,7 +169,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 	t.Run("an erasure of a person with nothing here reports zero", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName)
 
 		erased, err := operator.Surfaces.Waitlists.WithdrawSignupsForSubject(operator.Context(t.Context()),
 			&waitlistspb.WithdrawSignupsForSubjectRequest{
@@ -163,7 +184,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 	t.Run("an erasure that names no person is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t, waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName)
 
 		_, err := operator.Surfaces.Waitlists.WithdrawSignupsForSubject(operator.Context(t.Context()),
 			&waitlistspb.WithdrawSignupsForSubjectRequest{})
@@ -176,15 +197,22 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		mine, theirs := twoTenants(t, s)
 		needsUser(t, theirs)
-		list := openList(t, theirs, open())
-		signup := signedUp(t, theirs, theirs, list.GetId(), freshContact())
+		making := []string{
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		}
+		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
+		list := openList(t, theirOperator, open())
+		signup := signedUp(t, theirs, theirOperator, list.GetId(), freshContact())
 
 		// Naming a person from another tenant erases nothing there.
-		_, err := mine.Surfaces.Waitlists.WithdrawSignupsForSubject(mine.Context(t.Context()),
+		_, err := myOperator.Surfaces.Waitlists.WithdrawSignupsForSubject(myOperator.Context(t.Context()),
 			&waitlistspb.WithdrawSignupsForSubjectRequest{Subject: userSubject(theirs)})
 		must.NoError(t, err)
 
-		read, err := theirs.Surfaces.Waitlists.GetSignup(theirs.Context(t.Context()),
+		read, err := theirOperator.Surfaces.Waitlists.GetSignup(theirOperator.Context(t.Context()),
 			&waitlistspb.GetSignupRequest{ListId: list.GetId(), SignupId: signup.GetId()})
 		must.NoError(t, err)
 		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, read.GetResult().GetStatus(),
@@ -193,9 +221,9 @@ func erasure(t *testing.T, s *conformance.Session) {
 		// The positive control, after the fact: the same erasure from the
 		// person's own tenant does withdraw it, so the survival above is about
 		// the tenant and not an erasure that reaches nothing.
-		eraseSubject(t, theirs, theirs)
+		eraseSubject(t, theirOperator, theirs)
 
-		read, err = theirs.Surfaces.Waitlists.GetSignup(theirs.Context(t.Context()),
+		read, err = theirOperator.Surfaces.Waitlists.GetSignup(theirOperator.Context(t.Context()),
 			&waitlistspb.GetSignupRequest{ListId: list.GetId(), SignupId: signup.GetId()})
 		must.NoError(t, err)
 		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, read.GetResult().GetStatus())

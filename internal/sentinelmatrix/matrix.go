@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/grants"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -93,6 +94,7 @@ const (
 	shreddingPkg     = "shredding"
 	mediaRegistryPkg = "mediaregistry"
 	grantsPkg        = "authentication/grants"
+	phoneCodesPkg    = "authentication/phonecodes"
 	seriesPkg        = "series"
 )
 
@@ -629,6 +631,12 @@ var Matrix = map[string]map[string]Decision{
 		// remedies differ.
 		"ErrPasswordRefused": {Err: signin.ErrPasswordRefused, Is: Mapped},
 
+		// A registration the consumer's RegistrationPolicy refused — terms not
+		// accepted, say. A request to correct, like the row above, so
+		// InvalidArgument and a 400, and client-safe so a client can tell the
+		// registration was refused from the password being refused.
+		"ErrRegistrationRefused": {Err: signin.ErrRegistrationRefused, Is: Mapped},
+
 		// A consumer who never named the label an authenticator app shows. It is
 		// wiring rather than anything a caller sent, so a 500 is the honest
 		// answer and no mapper claims it.
@@ -1116,6 +1124,26 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilGrant":                {Err: grants.ErrNilGrant, Is: Platform},
 		"ErrNilExchanger":            {Err: grants.ErrNilExchanger, Is: Platform},
 	},
+	phoneCodesPkg: {
+		// The endpoints these are for are the consumer's: the one a person types
+		// a number into and the one they type the code into. Every refusal a
+		// redemption produces is one sentinel, answered as a failed sign-in.
+		"ErrCodeInvalid": {Err: phonecodes.ErrCodeInvalid, Is: Mapped},
+
+		// The shape refusals a form can be told.
+		"ErrInvalidPhoneNumber": {Err: phonecodes.ErrInvalidPhoneNumber, Is: Mapped},
+		"ErrEmptySubjectID":     {Err: phonecodes.ErrEmptySubjectID, Is: Mapped},
+		"ErrEmptyCode":          {Err: phonecodes.ErrEmptyCode, Is: Mapped},
+
+		// Three that wrap errors.ErrUnrecognizedInputValue, and the nil
+		// arguments, which wrap errors.ErrNilInputParameter.
+		"ErrValueTooLong":       {Err: phonecodes.ErrValueTooLong, Is: Platform},
+		"ErrInvalidMaxAttempts": {Err: phonecodes.ErrInvalidMaxAttempts, Is: Platform},
+		"ErrInvalidSetting":     {Err: phonecodes.ErrInvalidSetting, Is: Platform},
+		"ErrNilDatabaseClient":  {Err: phonecodes.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":        {Err: phonecodes.ErrNilExecutor, Is: Platform},
+		"ErrNilRequest":         {Err: phonecodes.ErrNilRequest, Is: Platform},
+	},
 	seriesPkg: {
 		// The endpoints these are for are the consumer's: the schedule page, the
 		// week view, and the five buttons that skip, close, end, move and make
@@ -1162,7 +1190,7 @@ var Packages = []string{
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
 	webhooksPkg, billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
 	passwordResetPkg, meteringPkg, entitlementsPkg, shreddingPkg, mediaRegistryPkg,
-	grantsPkg, seriesPkg,
+	grantsPkg, phoneCodesPkg, seriesPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -1214,6 +1242,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return mediaregistry.HTTPMapper, mediaregistry.GRPCMapper
 	case grantsPkg:
 		return grants.HTTPMapper, grants.GRPCMapper
+	case phoneCodesPkg:
+		return phonecodes.HTTPMapper, phonecodes.GRPCMapper
 	case seriesPkg:
 		return series.HTTPMapper, series.GRPCMapper
 	default:

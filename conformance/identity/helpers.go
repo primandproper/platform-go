@@ -21,7 +21,7 @@ const roleSupport = "support"
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
@@ -41,14 +41,18 @@ func needsAccount(t *testing.T, sub *conformance.Subject) {
 
 // self reads a caller's own user, which is how a suite learns the parts of it
 // the subject did not report — an email address, a username.
+//
+// Through GetPrincipal rather than GetUser. GetUser is the directory's read, a
+// deployment reserves it to an operator, and a caller reading themselves
+// through it was a caller asserting that every user may read the directory.
+// GetPrincipal is the self-service read every signed-in caller is promised.
 func self(t *testing.T, sub *conformance.Subject) *identitypb.User {
 	t.Helper()
 
-	found, err := sub.Surfaces.Identity.GetUser(sub.Context(t.Context()),
-		&identitypb.GetUserRequest{UserId: sub.UserID})
-	must.NoError(t, err, must.Sprint("a caller could not read its own user"))
+	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
 
-	return found.GetUser()
+	return found.GetPrincipal().GetUser()
 }
 
 // freshEmail is an address nobody registered, for invitations that are about
@@ -82,7 +86,7 @@ func tokenFor(t *testing.T, s *conformance.Session, sender *conformance.Subject,
 	delivered := s.Seams().Actions.InvitationToken
 	s.NeedsAction(t, delivered != nil, "invitation token")
 
-	token, err := delivered(t.Context(), sender.Scope, invitationID)
+	token, err := delivered(t.Context(), sender.ScopeFor(surface), invitationID)
 	must.NoError(t, err, must.Sprint("reading the token the deployment delivered"))
 	must.StrNotEqFold(t, "", token, must.Sprint("the deployment delivered an empty token"))
 
