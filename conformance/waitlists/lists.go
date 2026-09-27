@@ -86,7 +86,7 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		list := openList(t, s.OperatorIn(t, mine.Scope, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
+		list := openList(t, s.OperatorIn(t, surface, mine.ScopeFor(surface), waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
 
 		// The positive control: without it, "the neighbor cannot read it" is
 		// also true of a read that reaches nothing at all.
@@ -109,10 +109,10 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		myOperator := s.OperatorIn(t, mine.Scope, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		myOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		taking := openList(t, myOperator, open())
 		stopped := openList(t, myOperator, closed())
-		neighbors := openList(t, s.OperatorIn(t, theirs.Scope,
+		neighbors := openList(t, s.OperatorIn(t, surface, theirs.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 		), open())
 
@@ -145,7 +145,7 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		list := openList(t, s.OperatorIn(t, mine.Scope, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
+		list := openList(t, s.OperatorIn(t, surface, mine.ScopeFor(surface), waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
 
 		test.SliceContains(t, openListIDs(t, mine.Context(t.Context()), mine.Surfaces.Waitlists), list.GetId(),
 			test.Sprint("this caller's own open list was missing from its catalog; the absence below proves nothing"))

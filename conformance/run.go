@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // ErrSubjectUnsupported is what a subject factory returns for a caller it
@@ -81,8 +82,8 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 	switch {
 	case platformerrors.Is(err, ErrSubjectUnsupported):
 		req := NewSubjectRequest(opts...)
-		t.Skipf("conformance: the subject cannot mint this caller (admin=%t, tenant named=%t); skipping",
-			req.Admin, req.Scope != nil)
+		t.Skipf("conformance: the subject cannot mint this caller (admin=%t, tenant named=%t, surface=%q); skipping",
+			req.Admin, req.Scope != nil, req.Surface)
 
 		return nil
 	case err != nil:
@@ -96,6 +97,56 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 	}
 
 	return subject
+}
+
+// TwoTenants mints two callers in tenants of their own on surface, for an
+// assertion that one cannot see what the other did there.
+//
+// It refuses to proceed if the subject put them in one tenant, and the refusal
+// comes in two strengths. Two callers who share a scope other than the global
+// one are a factory that ignored its request and handed back one tenant twice,
+// which would make every confinement assertion compare a tenant with itself
+// and pass — that fails. Two callers who share the global scope are a
+// deployment that serves this surface from one directory, as a consumer may
+// serve its catalog or its settings; there is no confinement there to observe,
+// and the assertion skips with that said rather than failing a deployment for
+// a promise it never made.
+func (s *Session) TwoTenants(t *testing.T, surface string) (mine, theirs *Subject) {
+	t.Helper()
+
+	mine, theirs = s.Subject(t), s.Subject(t)
+
+	switch separation(mine.ScopeFor(surface), theirs.ScopeFor(surface)) {
+	case separate:
+		return mine, theirs
+	case sharedGlobal:
+		t.Skipf("conformance: this subject serves %s from the global scope, so no caller's rows there are confined from another's", surface)
+	case sharedTenant:
+		t.Fatalf("conformance: the subject minted two callers in one %s tenant; the confinement this asserts cannot be observed", surface)
+	}
+
+	return nil, nil
+}
+
+// apartness is what two callers' scopes on one surface say about asserting a
+// confinement between them.
+type apartness int
+
+const (
+	separate apartness = iota
+	sharedGlobal
+	sharedTenant
+)
+
+func separation(ours, others tenancy.Scope) apartness {
+	switch {
+	case ours != others:
+		return separate
+	case ours.IsGlobal():
+		return sharedGlobal
+	default:
+		return sharedTenant
+	}
 }
 
 // NeedsAction skips the test unless the subject can bring about the state it

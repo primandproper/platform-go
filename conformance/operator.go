@@ -123,16 +123,19 @@ func (s *Session) Operator(t *testing.T, methods ...string) *Subject {
 }
 
 // OperatorIn is Operator in an existing tenant, for the operator-grade call
-// whose rows an ordinary caller there goes on to read, or has already written.
-// Where the subject reserves none of methods it answers an ordinary caller in
-// that tenant, and where it cannot put one there the assertion skips.
-func (s *Session) OperatorIn(t *testing.T, scope tenancy.Scope, methods ...string) *Subject {
+// whose rows an ordinary caller there goes on to read, or has already written:
+// the tenant scope names on surface, as InTenant reads the pair. A suite passes
+// its own Suite.Name, and reads scope off the caller it wants an operator
+// beside with Subject.ScopeFor. Where the subject reserves none of methods it
+// answers an ordinary caller in that tenant, and where it cannot put one there
+// the assertion skips.
+func (s *Session) OperatorIn(t *testing.T, surface string, scope tenancy.Scope, methods ...string) *Subject {
 	t.Helper()
 
-	return s.operator(t, &scope, methods)
+	return s.operator(t, []SubjectOption{InTenant(surface, scope)}, methods)
 }
 
-func (s *Session) operator(t *testing.T, scope *tenancy.Scope, methods []string) *Subject {
+func (s *Session) operator(t *testing.T, opts []SubjectOption, methods []string) *Subject {
 	t.Helper()
 
 	if len(methods) == 0 {
@@ -149,11 +152,6 @@ func (s *Session) operator(t *testing.T, scope *tenancy.Scope, methods []string)
 		if reserved == "" && s.Reserves(method) {
 			reserved = method
 		}
-	}
-
-	var opts []SubjectOption
-	if scope != nil {
-		opts = append(opts, InTenant(*scope))
 	}
 
 	if reserved == "" {

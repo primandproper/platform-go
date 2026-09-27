@@ -15,7 +15,7 @@ import (
 )
 
 // target is a thing to comment on that nothing else in the run has commented
-// on, and that exists in in's tenant.
+// on, and that exists in in's comments tenant.
 //
 // Where the subject can bring one into being, it does, since a deployment whose
 // target type checks existence refuses a comment on anything else. Where it
@@ -27,7 +27,7 @@ func target(t *testing.T, s *conformance.Session, in *conformance.Subject) *comm
 	t.Helper()
 
 	if bring := s.Seams().Actions.CommentTarget; bring != nil {
-		targetType, targetID, err := bring(t.Context(), in.Scope)
+		targetType, targetID, err := bring(t.Context(), in.ScopeFor(surface))
 		must.NoError(t, err, must.Sprint("bringing a comment target into being"))
 		must.StrNotEqFold(t, "", targetType, must.Sprint("the comment target action reported no target type"))
 		must.StrNotEqFold(t, "", targetID, must.Sprint("the comment target action reported no identifier"))
@@ -202,10 +202,7 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -217,7 +214,7 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 
 	needsUser(t, of)
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,

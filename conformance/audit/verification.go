@@ -33,7 +33,7 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		verifier := s.OperatorIn(t, mine.Scope, auditpb.AuditService_VerifyChain_FullMethodName)
+		verifier := s.OperatorIn(t, surface, mine.ScopeFor(surface), auditpb.AuditService_VerifyChain_FullMethodName)
 
 		response, err := verifier.Surfaces.Audit.VerifyChain(verifier.Context(t.Context()), &auditpb.VerifyChainRequest{})
 		must.NoError(t, err)
@@ -61,7 +61,7 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		verifier := s.OperatorIn(t, mine.Scope, auditpb.AuditService_VerifyChain_FullMethodName)
+		verifier := s.OperatorIn(t, surface, mine.ScopeFor(surface), auditpb.AuditService_VerifyChain_FullMethodName)
 		ctx := verifier.Context(t.Context())
 
 		fromStart, err := verifier.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{})

@@ -12,10 +12,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "identity"
+
 // Suite is the identity surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "identity",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.Identity != nil },
 		Run:     run,
 	}
@@ -50,7 +54,7 @@ func run(t *testing.T, s *conformance.Session) {
 		making := []string{
 			identitypb.IdentityService_GetUser_FullMethodName,
 		}
-		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
+		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
 
 		// The positive control. "The neighbor's user is absent" is also true of
 		// a read that reaches no directory at all, so this is what makes the
@@ -81,7 +85,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoDirectories(t, s)
-		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_ListUsers_FullMethodName)
+		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_ListUsers_FullMethodName)
 
 		page, err := operator.Surfaces.Identity.ListUsers(operator.Context(t.Context()),
 			&identitypb.ListUsersRequest{})
@@ -115,14 +119,14 @@ func run(t *testing.T, s *conformance.Session) {
 
 		mine := s.Subject(t)
 
-		marker, err := credentialed(mine.Context(t.Context()), mine.Scope, mine.UserID)
+		marker, err := credentialed(mine.Context(t.Context()), mine.ScopeFor(surface), mine.UserID)
 		must.NoError(t, err, must.Sprint("giving this caller a stored secret"))
 		must.StrNotEqFold(t, "", marker,
 			must.Sprint("the credentialed action reported no fragment to search for, so this assertion would pass against any response"))
 
 		// Through the directory's read, which is an operator's, and the one
 		// most likely to be projected by something in front of this surface.
-		operator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_GetUser_FullMethodName)
+		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_GetUser_FullMethodName)
 
 		found, err := operator.Surfaces.Identity.GetUser(operator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: mine.UserID})
@@ -145,10 +149,8 @@ func run(t *testing.T, s *conformance.Session) {
 func twoDirectories(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
+	mine, theirs = s.TwoTenants(t, surface)
 
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
 	must.StrNotEqFold(t, mine.UserID, theirs.UserID,
 		must.Sprint("the subject minted two callers as one user"))
 

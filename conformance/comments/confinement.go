@@ -101,7 +101,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		// Last, because it is the one read a deployment reserves to an
 		// operator, and a subject that mints none may skip it, which would
 		// skip everything after it.
-		got := byTargetType(t, s.OperatorIn(t, mine.Scope,
+		got := byTargetType(t, s.OperatorIn(t, surface, mine.ScopeFor(surface),
 			commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
 		), myTarget.GetType())
 		test.SliceContains(t, got, myReply.GetId(), test.Sprint("this tenant's own reply was missing from the moderation read"))

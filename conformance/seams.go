@@ -235,9 +235,34 @@ type Subject struct {
 	// need one skip.
 	HTTP *HTTPSurfaces
 
-	// Scope is whose directory this caller is in. Assertions use it to name
-	// the rows they seeded and to prove a neighbor's are absent.
+	// Scopes is the tenant this caller is in on each surface whose tenancy
+	// differs from Scope, keyed by the surface's Suite.Name. Nil is a
+	// deployment whose surfaces all share one tenancy, which is every one this
+	// module assembles.
+	//
+	// It exists because a consumer's surfaces need not agree on what a tenant
+	// is. One deployment serves its directory, its settings and its catalog
+	// from the global scope and confines its issue reports, its webhooks and
+	// its audit chain to the caller's account; no single value of Scope
+	// describes both, and a suite that read one surface's tenancy off another's
+	// would assert a confinement the deployment never promised — or miss one it
+	// did. Read it through ScopeFor rather than directly.
+	Scopes map[string]tenancy.Scope
+
+	// Scope is whose directory this caller is in, on every surface Scopes does
+	// not name. Assertions use it to name the rows they seeded and to prove a
+	// neighbor's are absent.
 	Scope tenancy.Scope
+}
+
+// ScopeFor is the tenant this caller is in on the named surface: its entry in
+// Scopes where there is one, and Scope where there is not.
+func (s *Subject) ScopeFor(surface string) tenancy.Scope {
+	if scope, ok := s.Scopes[surface]; ok {
+		return scope
+	}
+
+	return s.Scope
 }
 
 // HTTPSurfaces are the three surfaces this module serves over HTTP, as one
@@ -446,7 +471,9 @@ type Actions struct {
 
 	// CommentTarget brings a thing that accepts comments into being in this
 	// tenant, the way the deployment does, and reports its target type and
-	// identifier — a recipe created, a ticket opened.
+	// identifier — a recipe created, a ticket opened. The tenant is the one
+	// the commenting caller is in on the comments surface, as
+	// Subject.ScopeFor reads it.
 	//
 	// It is needed wherever a target type's comments.TargetDefinition carries
 	// an existence check, which refuses a comment on a thing the application
@@ -511,6 +538,14 @@ type SubjectRequest struct {
 	// conflation tenancy's own documentation exists to prevent.
 	Scope *tenancy.Scope
 
+	// Surface is the surface whose tenancy Scope was read from, as its
+	// Suite.Name, and empty where Scope is nil. A factory whose surfaces differ
+	// in what a tenant is reads the two together: an account's scope named for
+	// issuereports asks for a second member of that account, and the global
+	// scope named for billing asks for a caller in the same directory with an
+	// account of their own.
+	Surface string
+
 	// Methods, on an administrator Session.Operator asks for, are the
 	// reserved calls it was asked for to make. A factory may ignore them; they
 	// are there for a harness that wants to refuse that administrator every
@@ -523,9 +558,14 @@ type SubjectRequest struct {
 	Admin bool
 }
 
-// InTenant asks for a caller in an existing tenant rather than a fresh one.
-func InTenant(scope tenancy.Scope) SubjectOption {
-	return func(r *SubjectRequest) { r.Scope = &scope }
+// InTenant asks for a caller in an existing tenant rather than a fresh one: the
+// tenant scope names on surface. A suite passes its own Suite.Name, and reads
+// scope off the caller it wants company for with Subject.ScopeFor.
+func InTenant(surface string, scope tenancy.Scope) SubjectOption {
+	return func(r *SubjectRequest) {
+		r.Scope = &scope
+		r.Surface = surface
+	}
 }
 
 // AsAdmin asks for an administrative caller.

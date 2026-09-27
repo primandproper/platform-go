@@ -210,8 +210,8 @@ func users(t *testing.T, s *conformance.Session) {
 
 		// Each finds itself by its own name, which is the control for each
 		// failing to find the other by theirs.
-		myOperator := s.OperatorIn(t, mine.Scope, identitypb.IdentityService_SearchUsersByUsername_FullMethodName)
-		theirOperator := s.OperatorIn(t, theirs.Scope, identitypb.IdentityService_SearchUsersByUsername_FullMethodName)
+		myOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_SearchUsersByUsername_FullMethodName)
+		theirOperator := s.OperatorIn(t, surface, theirs.ScopeFor(surface), identitypb.IdentityService_SearchUsersByUsername_FullMethodName)
 		test.SliceContains(t, search(myOperator, myName), mine.UserID)
 		test.SliceContains(t, search(theirOperator, theirName), theirs.UserID)
 		test.SliceNotContains(t, search(myOperator, theirName), theirs.UserID,
@@ -222,7 +222,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, user.Scope, identitypb.IdentityService_SetUserServiceRoles_FullMethodName)
+		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_SetUserServiceRoles_FullMethodName)
 		ctx := operator.Context(t.Context())
 
 		granted, err := operator.Surfaces.Identity.SetUserServiceRoles(ctx,
@@ -241,7 +241,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, user.Scope, identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
+		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
 		ctx := operator.Context(t.Context())
 
 		test.False(t, self(t, user).GetRequiresPasswordChange(),
@@ -263,7 +263,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, user.Scope, identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
+		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
 		ctx := operator.Context(t.Context())
 
 		_, err := operator.Surfaces.Identity.SetUserRequiresPasswordChange(ctx,
@@ -283,7 +283,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, user.Scope, identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
+		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
 
 		response, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
 			&identitypb.UpdateUserAccountStatusRequest{
@@ -300,7 +300,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, user.Scope, identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
+		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
 
 		_, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
 			&identitypb.UpdateUserAccountStatusRequest{
@@ -315,7 +315,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		owner := s.Subject(t)
-		operator := s.OperatorIn(t, owner.Scope, identitypb.IdentityService_ArchiveUser_FullMethodName)
+		operator := s.OperatorIn(t, surface, owner.ScopeFor(surface), identitypb.IdentityService_ArchiveUser_FullMethodName)
 
 		_, err := operator.Surfaces.Identity.ArchiveUser(operator.Context(t.Context()),
 			&identitypb.ArchiveUserRequest{UserId: owner.UserID})
@@ -343,7 +343,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
-		operator := s.OperatorIn(t, caller.Scope, identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface), identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
 
 		// The control: admitted before.
 		_, err := caller.Surfaces.Identity.GetPrincipal(caller.Context(t.Context()), &identitypb.GetPrincipalRequest{})

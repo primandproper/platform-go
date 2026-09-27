@@ -9,10 +9,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "oauth2clients"
+
 // Suite is the OAuth2 client registry surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "oauth2clients",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.OAuth2Clients != nil },
 		Run:     run,
 	}
@@ -44,12 +48,9 @@ const redirect = "https://example.test/callback"
 func twoRegistries(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
+	mine, theirs = s.TwoTenants(t, surface)
 
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
-
-	return s.OperatorIn(t, mine.Scope, methods...), s.OperatorIn(t, theirs.Scope, methods...)
+	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
 }
 
 // colleague mints a second operator in of's registry. A subject that cannot
@@ -60,7 +61,7 @@ func twoRegistries(t *testing.T, s *conformance.Session, methods ...string) (min
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	other := s.OperatorIn(t, of.Scope, methods...)
+	other := s.OperatorIn(t, surface, of.ScopeFor(surface), methods...)
 
 	if of.UserID == other.UserID {
 		t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a colleague's registration cannot be told from the caller's own")

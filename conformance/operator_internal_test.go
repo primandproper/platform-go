@@ -15,7 +15,8 @@ import (
 
 // minting is a session whose factory answers every request with a caller that
 // says what it was asked for, reserving reserved and minting an administrator
-// only where admins says it can.
+// only where admins says it can. A tenant named for a surface is that surface's
+// alone, so a caller asked into one reads it back only through ScopeFor.
 func minting(admins bool, reserved ...string) *Session {
 	return &Session{seams: Seams{
 		OperatorMethods: reserved,
@@ -27,7 +28,7 @@ func minting(admins bool, reserved ...string) *Session {
 
 			sub := &Subject{Scope: tenancy.Of("fresh")}
 			if req.Scope != nil {
-				sub.Scope = *req.Scope
+				sub.Scopes = map[string]tenancy.Scope{req.Surface: *req.Scope}
 			}
 
 			if req.Admin {
@@ -60,13 +61,13 @@ func TestSession_Operator(T *testing.T) {
 		test.EqOp(t, "admin", op.UserID)
 	})
 
-	T.Run("OperatorIn puts either caller in the tenant named", func(t *testing.T) {
+	T.Run("OperatorIn puts either caller in the tenant named on the surface named", func(t *testing.T) {
 		t.Parallel()
 
 		account := tenancy.Of("account")
 
-		test.EqOp(t, account, minting(true).OperatorIn(t, account, create).Scope)
-		test.EqOp(t, account, minting(true, create).OperatorIn(t, account, create).Scope)
+		test.EqOp(t, account, minting(true).OperatorIn(t, "billing", account, create).ScopeFor("billing"))
+		test.EqOp(t, account, minting(true, create).OperatorIn(t, "billing", account, create).ScopeFor("billing"))
 	})
 
 	T.Run("a subject that reserves a method and mints no administrator skips", func(t *testing.T) {

@@ -125,7 +125,7 @@ func seeded(t *testing.T, s *conformance.Session) (*conformance.Subject, catalog
 	needsUser(t, caller)
 
 	c := names()
-	defineCatalog(t, s.OperatorIn(t, caller.Scope, settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
+	defineCatalog(t, s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
 
 	return caller, c
 }
@@ -189,10 +189,7 @@ func byName(t *testing.T, caller *conformance.Subject, name string) *settingspb.
 func twoDirectories(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -202,7 +199,7 @@ func twoDirectories(t *testing.T, s *conformance.Session) (mine, theirs *conform
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,

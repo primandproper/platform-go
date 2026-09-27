@@ -65,7 +65,7 @@ func products(t *testing.T, s *conformance.Session) {
 		)
 
 		// A second operator in the tenant, stocking under a user of its own.
-		other := s.OperatorIn(t, mine.Scope, billingpb.BillingService_CreateProduct_FullMethodName)
+		other := s.OperatorIn(t, surface, mine.ScopeFor(surface), billingpb.BillingService_CreateProduct_FullMethodName)
 		if other.UserID == mine.UserID {
 			t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a catalog being the tenant's rather than the stocker's cannot be observed")
 		}

@@ -129,7 +129,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 
 		// The scope-wide listing is an operator's; this one holds none of the
 		// three subscriptions it is asked about.
-		operator := s.OperatorIn(t, mine.Scope, billingpb.BillingService_ListSubscriptions_FullMethodName)
+		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), billingpb.BillingService_ListSubscriptions_FullMethodName)
 
 		page, err := operator.Surfaces.Billing.ListSubscriptions(operator.Context(t.Context()),
 			&billingpb.ListSubscriptionsRequest{})
@@ -151,7 +151,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		holder := s.Subject(t)
-		operator := s.OperatorIn(t, holder.Scope, billingpb.BillingService_ArchiveSubscription_FullMethodName)
+		operator := s.OperatorIn(t, surface, holder.ScopeFor(surface), billingpb.BillingService_ArchiveSubscription_FullMethodName)
 		theirs := subscribed(t, s, holder)
 		holderCtx := holder.Context(t.Context())
 
@@ -175,7 +175,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 
 		// Archiving is an operator's, so it is the neighboring tenant's
 		// operator who is refused.
-		neighbor := s.OperatorIn(t, theirs.Scope, billingpb.BillingService_ArchiveSubscription_FullMethodName)
+		neighbor := s.OperatorIn(t, surface, theirs.ScopeFor(surface), billingpb.BillingService_ArchiveSubscription_FullMethodName)
 
 		_, err := neighbor.Surfaces.Billing.ArchiveSubscription(neighbor.Context(t.Context()),
 			&billingpb.ArchiveSubscriptionRequest{SubscriptionId: own})

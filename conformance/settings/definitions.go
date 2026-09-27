@@ -60,7 +60,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName)
 		c := names()
 
 		none := define(t, op, &settingspb.SettingDefinitionInput{
@@ -159,7 +159,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_UpdateDefinition_FullMethodName)
+		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_UpdateDefinition_FullMethodName)
 		existing := byName(t, op, c.digest)
 
 		response, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
@@ -191,7 +191,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_UpdateDefinition_FullMethodName)
+		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_UpdateDefinition_FullMethodName)
 		set(t, caller, c.digest, stringValue(optionDaily))
 
 		_, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
@@ -224,7 +224,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := s.OperatorIn(t, caller.Scope,
+		op := s.OperatorIn(t, surface, caller.ScopeFor(surface),
 			settingspb.SettingsService_ArchiveDefinition_FullMethodName,
 			settingspb.SettingsService_CreateDefinition_FullMethodName,
 		)
@@ -319,7 +319,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		caller, c := seeded(t, s)
 		other := colleague(t, s, caller)
-		op := s.OperatorIn(t, caller.Scope, settingspb.SettingsService_ListValuesForDefinition_FullMethodName)
+		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_ListValuesForDefinition_FullMethodName)
 
 		set(t, caller, c.digest, stringValue(optionDaily))
 		set(t, other, c.digest, stringValue(optionNever))

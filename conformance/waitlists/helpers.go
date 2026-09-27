@@ -146,10 +146,7 @@ func eraseSubject(t *testing.T, operator, of *conformance.Subject) int64 {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -161,7 +158,7 @@ func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine
 
 	mine, theirs = twoTenants(t, s)
 
-	return s.OperatorIn(t, mine.Scope, methods...), s.OperatorIn(t, theirs.Scope, methods...)
+	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
 }
 
 // colleague mints a second caller in of's tenant. A subject that cannot put two
@@ -169,7 +166,7 @@ func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(of.Scope))
+	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
@@ -199,7 +196,7 @@ func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlists
 	conn, err := seams.Anonymous(t.Context())
 	must.NoError(t, err, must.Sprint("opening a connection with nobody on it"))
 
-	operator := s.OperatorIn(t, *seams.VisitorScope, methods...)
+	operator := s.OperatorIn(t, surface, *seams.VisitorScope, methods...)
 
 	return waitlistspb.NewWaitlistsServiceClient(conn), operator
 }

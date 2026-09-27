@@ -25,7 +25,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope,
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
@@ -56,7 +56,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		owner := s.Subject(t)
 		needsUser(t, owner)
-		operator := s.OperatorIn(t, owner.Scope,
+		operator := s.OperatorIn(t, surface, owner.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
@@ -89,7 +89,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope,
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
@@ -140,7 +140,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope,
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
@@ -203,7 +203,7 @@ func erasure(t *testing.T, s *conformance.Session) {
 			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		}
-		myOperator, theirOperator := s.OperatorIn(t, mine.Scope, making...), s.OperatorIn(t, theirs.Scope, making...)
+		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
 		list := openList(t, theirOperator, open())
 		signup := signedUp(t, theirs, theirOperator, list.GetId(), freshContact())
 

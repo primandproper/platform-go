@@ -108,7 +108,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, caller.Scope,
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
@@ -123,7 +123,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		operator := s.OperatorIn(t, mine.Scope,
+		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface),
 			waitlistspb.WaitlistsService_CreateList_FullMethodName,
 			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
 		)
