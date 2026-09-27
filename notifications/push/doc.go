@@ -1,6 +1,8 @@
 /*
 Package push is the fan-out: one announcement, every handset the people named
-have registered, and the dead tokens pruned on the way.
+have registered, and the dead tokens pruned on the way. A fan-out built with
+[WithRecipientFilter] first asks, once per person, whether each of them should
+hear it at all.
 
 It is three calls a consumer otherwise writes for itself, and the third is the
 one that gets written wrong. [notifications.Registry.ListDevicesByPrincipals]
@@ -63,6 +65,35 @@ is idempotent, and a token the sender already removed is removed again to no
 effect. The two are not alternatives either. The sender's hook prunes for every
 caller of that sender, this prunes for every caller of this fan-out, and a
 deployment whose sender is not one of this module's has only the second.
+
+# Leaving somebody out
+
+What a preference is — which setting, which categories, quiet hours — belongs
+to the consumer, and this package reads none of it. What the fan-out owes is a
+place to ask, because the alternative is every caller filtering its principals
+ahead of every [Fanout.Push], and the call site that forgets is the one that
+pushes to somebody who asked it not to.
+
+	fanout, err := push.NewFanout(store, sender, push.WithRecipientFilter(
+		func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope,
+			principal string, msg mobile.PushMessage) (bool, error) {
+			resolved, err := preferences.Resolve(ctx, q, scope,
+				settings.Subject{Type: settings.SubjectUser, ID: principal}, "notifications.push.orders")
+			if err != nil {
+				return false, err
+			}
+
+			return resolved.Bool()
+		}))
+
+The [RecipientFilter] is asked once per distinct principal, with the executor
+and scope Push was handed, before any handset is resolved — a preference is a
+person's, so a person with four handsets is one question, and a person left out
+has no handsets read at all. [Result.Skipped] names them, which is how a caller
+tells "asked not to be told" from "registered no handsets". A filter that fails
+stops the fan-out before anything is sent: an opt-out that gave way whenever
+the database did would not be one. Answering differently per handset is a
+different feature, and not this one.
 
 # What this does not do
 

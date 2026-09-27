@@ -12,7 +12,8 @@ import (
 // The observability dependencies are options rather than parameters because
 // every one of them is genuinely optional: an absent logger logs nowhere, an
 // absent tracer provider traces nowhere, and an absent metrics provider records
-// nothing. A caller wanting none of the three names none of them.
+// nothing. A caller wanting none of the three names none of them. The same is
+// true of a recipient filter: an absent one leaves nobody out.
 type Option func(*Fanout)
 
 // WithLogger attaches a logger. An absent logger logs nowhere.
@@ -42,4 +43,17 @@ func WithMetricsProvider(provider metrics.Provider) Option {
 // leaves this fan-out unmetered.
 func WithPillars(p *observability.Pillars) Option {
 	return func(f *Fanout) { f.logger, f.tracerProvider, f.metricsProvider = p.Deps() }
+}
+
+// WithRecipientFilter asks the filter, once per distinct principal and before a
+// single handset is resolved, whether that person should receive this push. A
+// nil filter asks nothing, which is what a fan-out built without this option
+// does.
+//
+// What a preference is — which setting, which categories, quiet hours — is the
+// consumer's, and this package reads none of it. What the fan-out owes is the
+// one place to ask, so the call site that forgets to filter its principals is a
+// call site that cannot exist. See [RecipientFilter].
+func WithRecipientFilter(filter RecipientFilter) Option {
+	return func(f *Fanout) { f.filter = filter }
 }
