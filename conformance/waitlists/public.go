@@ -29,15 +29,17 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		taking := openList(t, operator, open())
 		stopped := openList(t, operator, closed())
 
-		// A list in a tenant of its own, which a visitor landing anywhere but
-		// there must not be offered.
-		elsewhere := openList(t, s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
-
 		ids := openListIDs(t, t.Context(), anonymous)
 		test.SliceContains(t, ids, taking.GetId(),
 			test.Sprint("an open list was missing from the catalog of the tenant a visitor lands in; the absences below prove nothing"))
 		test.SliceNotContains(t, ids, stopped.GetId(), test.Sprint("a closed list reached a visitor's catalog"))
-		test.SliceNotContains(t, ids, elsewhere.GetId(), test.Sprint("another tenant's list reached a visitor's catalog"))
+
+		// A list in a tenant of its own, which a visitor landing anywhere but
+		// there must not be offered.
+		other := openList(t, elsewhere(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
+
+		test.SliceNotContains(t, openListIDs(t, t.Context(), anonymous), other.GetId(),
+			test.Sprint("another tenant's list reached a visitor's catalog"))
 	})
 
 	// The form somebody filled in, reached by somebody who has not signed in.
@@ -100,22 +102,22 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		home := openList(t, operator, open())
 
-		owner := s.Operator(t,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-		)
-		elsewhere := openList(t, owner, open())
-
 		// The positive control: the same visitor joins a list where they land.
 		_, err := anonymous.Join(t.Context(), &waitlistspb.JoinRequest{ListId: home.GetId(), Contact: freshContact()})
 		must.NoError(t, err, must.Sprint("a visitor could not join a list where they land; the refusal below proves nothing"))
 
+		owner := elsewhere(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
+		other := openList(t, owner, open())
+
 		contact := freshContact()
-		_, err = anonymous.Join(t.Context(), &waitlistspb.JoinRequest{ListId: elsewhere.GetId(), Contact: contact})
+		_, err = anonymous.Join(t.Context(), &waitlistspb.JoinRequest{ListId: other.GetId(), Contact: contact})
 		must.Error(t, err, must.Sprint("a visitor was joined to another tenant's list"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
 
-		test.Nil(t, byContact(t, owner, elsewhere.GetId(), contact),
+		test.Nil(t, byContact(t, owner, other.GetId(), contact),
 			test.Sprint("a refused join still wrote a row"))
 	})
 
