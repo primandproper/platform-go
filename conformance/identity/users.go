@@ -2,6 +2,7 @@ package identity
 
 import (
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -155,6 +156,12 @@ func users(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 
+		// A deployment's registration may already have stamped both documents,
+		// at one moment, so a present pair proves nothing about this call: the
+		// stamps have to be this call's. A second of slack, as SQLite keeps
+		// whole seconds.
+		asked := time.Now().Add(-time.Second)
+
 		response, err := caller.Surfaces.Identity.RecordAgreement(caller.Context(t.Context()), &identitypb.RecordAgreementRequest{
 			Agreements: []identitypb.Agreement{
 				identitypb.Agreement_AGREEMENT_TERMS_OF_SERVICE,
@@ -166,6 +173,10 @@ func users(t *testing.T, s *conformance.Session) {
 		accepted := response.GetUser()
 		must.NotNil(t, accepted.GetLastAcceptedTermsOfService())
 		must.NotNil(t, accepted.GetLastAcceptedPrivacyPolicy())
+		test.True(t, accepted.GetLastAcceptedTermsOfService().AsTime().After(asked),
+			test.Sprint("the terms of service carry a stamp from before the call that recorded them"))
+		test.True(t, accepted.GetLastAcceptedPrivacyPolicy().AsTime().After(asked),
+			test.Sprint("the privacy policy carries a stamp from before the call that recorded it"))
 		test.EqOp(t, accepted.GetLastAcceptedTermsOfService().AsTime(), accepted.GetLastAcceptedPrivacyPolicy().AsTime(),
 			test.Sprint("two documents accepted in one call were stamped at two moments"))
 	})
@@ -174,6 +185,10 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller := s.Subject(t)
+
+		// A deployment's registration may already have stamped the terms, so
+		// "stamps nothing" is the stamp being what it was, not being absent.
+		before := self(t, caller).GetLastAcceptedTermsOfService()
 
 		_, err := caller.Surfaces.Identity.RecordAgreement(caller.Context(t.Context()), &identitypb.RecordAgreementRequest{
 			Agreements: []identitypb.Agreement{
@@ -184,8 +199,13 @@ func users(t *testing.T, s *conformance.Session) {
 		must.Error(t, err)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
-		test.Nil(t, self(t, caller).GetLastAcceptedTermsOfService(),
+		after := self(t, caller).GetLastAcceptedTermsOfService()
+		test.EqOp(t, before == nil, after == nil,
 			test.Sprint("a refused list stamped the entries it had read before the bad one"))
+		if before != nil && after != nil {
+			test.EqOp(t, before.AsTime(), after.AsTime(),
+				test.Sprint("a refused list restamped the entries it had read before the bad one"))
+		}
 	})
 
 	t.Run("a search by username prefix is confined to the caller's directory", func(t *testing.T) {
