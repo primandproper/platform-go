@@ -37,6 +37,22 @@ type Store interface {
 	// not, so a person who asks twice and enters the second code succeeds and
 	// one who enters the first fails. The replaced code comes back as
 	// Issuance.Previous.
+	//
+	// # Two issues racing for one number may deadlock on MySQL
+	//
+	// The replacement is an upsert onto (scope, phone_number), and InnoDB
+	// breaks two of those racing for a number that holds no row yet by killing
+	// one transaction with 1213. Postgres and SQLite serialize them instead.
+	// The store cannot start over itself, because the transaction is the
+	// caller's, so a caller whose number can be asked for twice at once runs
+	// the issue under database.WithTransaction with database.RetryOnConflict.
+	// Starting over is safe as long as the callback acts only through its Tx
+	// and texts nothing, since the code is texted after the commit:
+	//
+	//	err := database.WithTransaction(ctx, client, func(tx database.Tx) error {
+	//		issuance, err = store.Issue(ctx, tx, scope, request)
+	//		return err
+	//	}, database.RetryOnConflict(3))
 	Issue(ctx context.Context, tx database.Tx, scope tenancy.Scope, request *IssueRequest) (*Issuance, error)
 
 	// Redeem spends the code a phone number holds, if code is it, and answers

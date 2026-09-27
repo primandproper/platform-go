@@ -179,6 +179,10 @@ func withTx(tb testing.TB, store *SQLStore, fn func(tx database.Tx) error) error
 	return store.db.WithTransaction(tb.Context(), fn)
 }
 
+// issueConflictAttempts is how many times issueFor runs its transaction when
+// the engine kills it to break a deadlock, counting the first.
+const issueConflictAttempts = 3
+
 // issue texts one code to the usual person, failing the test if it cannot.
 func issue(tb testing.TB, store *SQLStore) *Issuance {
 	tb.Helper()
@@ -197,12 +201,15 @@ func issueFor(tb testing.TB, store *SQLStore, scope tenancy.Scope, request *Issu
 
 	var issuance *Issuance
 
-	err := withTx(tb, store, func(tx database.Tx) error {
+	// The shape Store.Issue asks of a caller whose number can be asked for
+	// twice at once: MySQL may kill one of two racing issues to break a
+	// deadlock, and the issue acts only through its Tx, so it starts over.
+	err := database.WithTransaction(tb.Context(), store.db, func(tx database.Tx) error {
 		var issueErr error
 		issuance, issueErr = store.Issue(tb.Context(), tx, scope, request)
 
 		return issueErr
-	})
+	}, database.RetryOnConflict(issueConflictAttempts))
 
 	return issuance, err
 }

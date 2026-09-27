@@ -218,7 +218,9 @@ func (s *SQLStore) digest(id, code string) string {
 // replaced, for Issuance.Previous, and an upsert onto (scope, phone_number).
 // The upsert, not the read, is what keeps one code per number — two issues
 // racing both read the same previous code, and the second's write waits for
-// the first's and replaces it.
+// the first's and replaces it. On MySQL, InnoDB may break that race by killing
+// one of the two with a deadlock instead, which the caller starts over from;
+// see Store.Issue.
 func (s *SQLStore) Issue(
 	ctx context.Context,
 	tx database.Tx,
