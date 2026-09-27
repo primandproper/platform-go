@@ -102,7 +102,7 @@ func runDirect(t *testing.T, edge ...grpc.ServerOption) {
 	srv, err := auditgrpc.NewServer(reader, db, auditgrpc.WithScopeResolver(scopeFromMetadata))
 	must.NoError(t, err)
 
-	client := serve(t, srv, edge...)
+	conn := serve(t, srv, edge...)
 
 	conformance.Run(t, conformance.Seams{
 		NewSubject: func(_ context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
@@ -124,7 +124,8 @@ func runDirect(t *testing.T, edge ...grpc.ServerOption) {
 
 			return &conformance.Subject{
 				Scope:    scope,
-				Surfaces: conformance.Surfaces{Audit: client},
+				Conn:     conn,
+				Surfaces: conformance.Surfaces{Audit: auditclient.Wrap(conn)},
 				Decorate: func(ctx context.Context) context.Context {
 					return metadata.NewOutgoingContext(ctx,
 						metadata.Pairs(mdScope, scope.String()))
@@ -193,7 +194,7 @@ func scopeFromMetadata(ctx context.Context) (tenancy.Scope, error) {
 
 var errNoScope = platformerrors.New("conformance harness: the connection names no scope")
 
-func serve(t *testing.T, srv *auditgrpc.Server, edge ...grpc.ServerOption) *auditclient.Client {
+func serve(t *testing.T, srv *auditgrpc.Server, edge ...grpc.ServerOption) *grpc.ClientConn {
 	t.Helper()
 
 	grpcServer := grpc.NewServer(append(edge,
@@ -214,7 +215,7 @@ func serve(t *testing.T, srv *auditgrpc.Server, edge ...grpc.ServerOption) *audi
 	must.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return auditclient.Wrap(conn)
+	return conn
 }
 
 func newDatabase(t *testing.T) database.Client {

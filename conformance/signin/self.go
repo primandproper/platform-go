@@ -20,7 +20,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a client with nobody signed in is told so rather than refused", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, getAuthStatus)
 
 		nobody, err := anon.GetAuthStatus(t.Context(), &signinpb.GetAuthStatusRequest{})
 		must.NoError(t, err, must.Sprint("asking whether anybody is signed in was refused"))
@@ -29,7 +29,7 @@ func self(t *testing.T, s *conformance.Session) {
 
 		// The control: the same question from a caller is answered yes, so the
 		// no above was about the request rather than about the surface.
-		sub := member(t, s)
+		sub := member(t, s, getAuthStatus)
 
 		somebody, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
 		must.NoError(t, err)
@@ -39,7 +39,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a caller's status names them, the account they are in, and their credentials", func(t *testing.T) {
 		t.Parallel()
 
-		sub := member(t, s)
+		sub := member(t, s, getAuthStatus, getSelf)
 
 		before, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
 		must.NoError(t, err)
@@ -73,7 +73,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a caller's status says whether they hold a password", func(t *testing.T) {
 		t.Parallel()
 
-		sub, _ := passworded(t, s)
+		sub, _ := passworded(t, s, getAuthStatus)
 
 		response, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
 		must.NoError(t, err)
@@ -83,7 +83,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a caller reads themselves", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := passworded(t, s)
+		sub, user := passworded(t, s, getSelf)
 
 		response, err := sub.Surfaces.SignIn.GetSelf(sub.Context(t.Context()), &signinpb.GetSelfRequest{})
 		must.NoError(t, err)
@@ -98,8 +98,8 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a password change needs the current password and then takes effect", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
-		sub, user := passworded(t, s)
+		anon := anonymous(t, s, loginForToken)
+		sub, user := passworded(t, s, updatePassword)
 
 		_, err := sub.Surfaces.SignIn.UpdatePassword(sub.Context(t.Context()), &signinpb.UpdatePasswordRequest{
 			CurrentPassword: wrongPassword,
@@ -126,7 +126,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("a second factor is a secret and then a proof of it", func(t *testing.T) {
 		t.Parallel()
 
-		sub, _ := passworded(t, s)
+		sub, _ := passworded(t, s, refreshTOTPSecret, getAuthStatus, verifyTOTPSecret)
 
 		refreshed, err := sub.Surfaces.SignIn.RefreshTOTPSecret(sub.Context(t.Context()),
 			&signinpb.RefreshTOTPSecretRequest{CurrentPassword: password})
@@ -153,7 +153,7 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("proving a second factor nobody issued is refused as a precondition", func(t *testing.T) {
 		t.Parallel()
 
-		sub, _ := passworded(t, s)
+		sub, _ := passworded(t, s, verifyTOTPSecret, refreshTOTPSecret)
 
 		_, err := sub.Surfaces.SignIn.VerifyTOTPSecret(sub.Context(t.Context()),
 			&signinpb.VerifyTOTPSecretRequest{TotpCode: "000000"})

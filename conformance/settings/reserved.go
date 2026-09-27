@@ -27,10 +27,10 @@ func reserved(t *testing.T, s *conformance.Session) {
 	t.Run("an ordinary caller may neither set nor clear a reserved setting, and the refusal stores nothing", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(setValue, clearValue, resolve), conformance.AsMember())
 		needsUser(t, caller)
 
-		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface)))
 		reservedName, openName := "conformance.reserved."+identifiers.New(), "conformance.open."+identifiers.New()
 
 		define(t, op, &settingspb.SettingDefinitionInput{
@@ -82,7 +82,7 @@ func reserved(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator may set and clear a reserved setting", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(createDefinition, setValue, clearValue))
 		needsUser(t, admin)
 
 		name := "conformance.reserved." + identifiers.New()

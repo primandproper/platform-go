@@ -52,7 +52,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, account.ID, read.BelongsToAccount)
 		test.EqOp(t, owner.ID, read.FromUser)
 		test.EqOp(t, InvitationPending, read.Status)
-		test.Eq(t, []string{"account_member"}, read.Roles)
+		test.Eq(t, []string{"viewer"}, read.Roles)
 		test.Nil(t, read.ToUser)
 		test.EqOp(t, time.UTC, read.ExpiresAt.Location())
 
@@ -84,7 +84,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		test.False(t, created.CreatedAt.IsZero())
 		test.EqOp(t, InvitationPending, created.Status)
 		test.EqOp(t, testScope, created.Scope)
-		test.Eq(t, []string{"account_member"}, created.Roles)
+		test.Eq(t, []string{"viewer"}, created.Roles)
 
 		// The one read-back in this package that is a secret, and the column is
 		// not where it comes from: the row carries what the invitation exists to
@@ -210,7 +210,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 
 		// The roles come off the invitation. A parameter here is where an
 		// escalation goes in.
-		test.Eq(t, []string{"account_member"}, membership.Roles)
+		test.Eq(t, []string{"viewer"}, membership.Roles)
 
 		// Their first account, so it is where they land.
 		test.True(t, membership.DefaultAccount)
@@ -230,7 +230,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 
 		stored, err := store.GetMembership(t.Context(), env.reader(), testScope, recipient.ID, account.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"account_member"}, stored.Roles)
+		test.Eq(t, []string{"viewer"}, stored.Roles)
 	})
 
 	t.Run("accepts once, however many times the link is clicked", func(t *testing.T) {
@@ -374,7 +374,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		// sender's own list would otherwise hand every recipient's link back to
 		// the sender's browser.
 		test.EqOp(t, "", sent.Data[0].Token)
-		test.Eq(t, []string{"account_member"}, sent.Data[0].Roles)
+		test.Eq(t, []string{"viewer"}, sent.Data[0].Roles)
 
 		// Both notes are in the projection, so a roster built from a page
 		// renders the message it was sent with rather than reading it back one

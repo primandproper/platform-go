@@ -4,11 +4,29 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/settings/settingspb"
 )
 
 // surface is this suite's name, and the key a subject's per-surface scope is
 // read by.
 const surface = "settings"
+
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	archiveDefinition       = settingspb.SettingsService_ArchiveDefinition_FullMethodName
+	clearValue              = settingspb.SettingsService_ClearValue_FullMethodName
+	createDefinition        = settingspb.SettingsService_CreateDefinition_FullMethodName
+	getDefinition           = settingspb.SettingsService_GetDefinition_FullMethodName
+	getDefinitionByName     = settingspb.SettingsService_GetDefinitionByName_FullMethodName
+	getValue                = settingspb.SettingsService_GetValue_FullMethodName
+	listDefinitions         = settingspb.SettingsService_ListDefinitions_FullMethodName
+	listValuesForDefinition = settingspb.SettingsService_ListValuesForDefinition_FullMethodName
+	listValuesForSubject    = settingspb.SettingsService_ListValuesForSubject_FullMethodName
+	resolve                 = settingspb.SettingsService_Resolve_FullMethodName
+	resolveAll              = settingspb.SettingsService_ResolveAll_FullMethodName
+	setValue                = settingspb.SettingsService_SetValue_FullMethodName
+	updateDefinition        = settingspb.SettingsService_UpdateDefinition_FullMethodName
+)
 
 // Suite is the settings surface's behavioral assertions.
 func Suite() conformance.Suite {

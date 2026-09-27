@@ -26,7 +26,7 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registrant signs in once the mailed link proves their address", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
 		who, registered := register(t, s, withPassword(registrationRequest(s)))
 
 		test.EqOp(t, who.username, registered.GetUser().GetUsername())
@@ -48,7 +48,7 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registrant with no password attaches one through the mailed link", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
 		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 		link := mailedVerification(t, s, who.email)
 
@@ -68,7 +68,7 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a mailed link cannot replace a password somebody already holds", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
 
 		without, _ := register(t, s, withNoPassword(registrationRequest(s)))
 		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
@@ -103,7 +103,7 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a verification link nobody was mailed is refused as a wrong password is", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress)
 
 		_, err := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: identifiers.New()})
 		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)

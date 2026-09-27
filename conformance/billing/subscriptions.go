@@ -27,7 +27,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("an account's subscriptions are its own, with the status the provider reported", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(listSubscriptionsForAccount))
 		other := colleague(t, s, mine)
 		own, theirs := subscribed(t, s, mine), subscribed(t, s, other)
 
@@ -53,7 +53,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("a subscription whose paid period covers now is current", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(listCurrentSubscriptions))
 		other := colleague(t, s, mine)
 		own, theirs := subscribed(t, s, mine), subscribed(t, s, other)
 
@@ -71,11 +71,12 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	// already been read before its account is asked about, and answering
 	// PermissionDenied would tell a caller walking identifiers exactly which of
 	// them are real. So another account's row and a row nobody holds are one
-	// answer.
+	// answer. Asked of a member, since whose rows an operator may read is the
+	// deployment's rule.
 	t.Run("another account's subscription is absent, exactly as an unknown one is", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(getSubscription), conformance.AsMember())
 		other := colleague(t, s, mine)
 		own, theirs := subscribed(t, s, mine), subscribed(t, s, other)
 		ctx := mine.Context(t.Context())
@@ -103,7 +104,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("a neighboring tenant's subscription is absent", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(getSubscription))
 		own, foreign := subscribed(t, s, mine), subscribed(t, s, theirs)
 
 		read, err := mine.Surfaces.Billing.GetSubscription(mine.Context(t.Context()),
@@ -127,9 +128,9 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 		other := colleague(t, s, mine)
 		own, shared, foreign := subscribed(t, s, mine), subscribed(t, s, other), subscribed(t, s, theirs)
 
-		// The scope-wide listing is an operator's; this one holds none of the
-		// three subscriptions it is asked about.
-		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), billingpb.BillingService_ListSubscriptions_FullMethodName)
+		// The scope-wide listing is minted a caller of its own, which holds none
+		// of the three subscriptions it is asked about.
+		operator := s.Subject(t, conformance.Making(listSubscriptions), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		page, err := operator.Surfaces.Billing.ListSubscriptions(operator.Context(t.Context()),
 			&billingpb.ListSubscriptionsRequest{})
@@ -150,8 +151,8 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a subscription asks about no account, and withdraws it", func(t *testing.T) {
 		t.Parallel()
 
-		holder := s.Subject(t)
-		operator := s.OperatorIn(t, surface, holder.ScopeFor(surface), billingpb.BillingService_ArchiveSubscription_FullMethodName)
+		holder := s.Subject(t, conformance.Making(getSubscription))
+		operator := s.Subject(t, conformance.Making(archiveSubscription), conformance.InTenant(surface, holder.ScopeFor(surface)))
 		theirs := subscribed(t, s, holder)
 		holderCtx := holder.Context(t.Context())
 
@@ -170,12 +171,11 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a neighboring tenant's subscription is absent and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(getSubscription))
 		own := subscribed(t, s, mine)
 
-		// Archiving is an operator's, so it is the neighboring tenant's
-		// operator who is refused.
-		neighbor := s.OperatorIn(t, surface, theirs.ScopeFor(surface), billingpb.BillingService_ArchiveSubscription_FullMethodName)
+		// Whoever archives in the neighboring tenant is refused.
+		neighbor := s.Subject(t, conformance.Making(archiveSubscription), conformance.InTenant(surface, theirs.ScopeFor(surface)))
 
 		_, err := neighbor.Surfaces.Billing.ArchiveSubscription(neighbor.Context(t.Context()),
 			&billingpb.ArchiveSubscriptionRequest{SubscriptionId: own})

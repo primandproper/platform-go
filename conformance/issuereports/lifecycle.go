@@ -34,7 +34,7 @@ func revisions(t *testing.T, s *conformance.Session) {
 	t.Run("a revision changes what a report says and leaves where it stands alone", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, transitionReport, updateReport))
 		needsUser(t, mine)
 
 		filed := fileOne(t, mine)
@@ -73,7 +73,7 @@ func revisions(t *testing.T, s *conformance.Session) {
 	t.Run("a revision that names no input is malformed and writes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, updateReport, getReport))
 		filed := fileOne(t, mine)
 
 		_, err := mine.Surfaces.IssueReports.UpdateReport(mine.Context(t.Context()),
@@ -88,7 +88,7 @@ func revisions(t *testing.T, s *conformance.Session) {
 	t.Run("a report in another tenant cannot be revised from here", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(createReport, updateReport, getReport))
 
 		own := fileOne(t, mine)
 		neighbor := fileOne(t, theirs)
@@ -115,7 +115,7 @@ func transitions(t *testing.T, s *conformance.Session) {
 	t.Run("a move changes the status, keeps the note and stamps the close", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, transitionReport))
 		filed := fileOne(t, mine)
 
 		moved := move(t, mine, filed.GetId(), statusOpen, statusResolved, "fixed in the next release")
@@ -131,7 +131,7 @@ func transitions(t *testing.T, s *conformance.Session) {
 	t.Run("the second of two people deciding from the same read is refused rather than overwriting the first", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, transitionReport, getReport))
 		filed := fileOne(t, mine)
 
 		move(t, mine, filed.GetId(), statusOpen, statusResolved, "the first note")
@@ -159,7 +159,7 @@ func transitions(t *testing.T, s *conformance.Session) {
 	t.Run("a move the lifecycle does not admit is refused as malformed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, transitionReport, getReport))
 		filed := fileOne(t, mine)
 		move(t, mine, filed.GetId(), statusOpen, statusAcknowledged, "")
 
@@ -187,7 +187,7 @@ func transitions(t *testing.T, s *conformance.Session) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(createReport, transitionReport))
 			filed := fileOne(t, mine)
 
 			_, err := mine.Surfaces.IssueReports.TransitionReport(mine.Context(t.Context()),
@@ -204,7 +204,7 @@ func transitions(t *testing.T, s *conformance.Session) {
 	t.Run("reopening clears the note and the close", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, transitionReport))
 		filed := fileOne(t, mine)
 		move(t, mine, filed.GetId(), statusOpen, statusResolved, "it was fixed")
 
@@ -220,7 +220,7 @@ func transitions(t *testing.T, s *conformance.Session) {
 	t.Run("a report in another tenant cannot be moved from here", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(createReport, transitionReport, getReport))
 
 		own := fileOne(t, mine)
 		neighbor := fileOne(t, theirs)
@@ -248,7 +248,7 @@ func archival(t *testing.T, s *conformance.Session) {
 	t.Run("an archived report leaves the queue, and archiving it again is an absence", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, getReport, archiveReport))
 		filed := fileOne(t, mine)
 
 		// The positive control: it is readable before it is archived, so the
@@ -273,7 +273,7 @@ func archival(t *testing.T, s *conformance.Session) {
 	t.Run("a report in another tenant cannot be archived from here", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(createReport, archiveReport, getReport))
 
 		own := fileOne(t, mine)
 		neighbor := fileOne(t, theirs)

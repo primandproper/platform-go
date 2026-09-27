@@ -100,14 +100,10 @@ const (
 	mdAdmin   = "conformance-admin"
 
 	// mdReserving says which of the harness's two runs a caller was minted in:
-	// the one reserving operator calls, or the one whose members make every
-	// call. The server is one server either way, so the reservation rides on
-	// the credential, the way a role claim would.
+	// the one reserving staffOnly, or the one whose members make every call.
+	// The server is one server either way, so the reservation rides on the
+	// credential, the way a role claim would.
 	mdReserving = "conformance-reserving"
-
-	// mdMethods are the reserved calls an operator was minted to make, and
-	// in the reserving run the only ones it may.
-	mdMethods = "conformance-methods"
 )
 
 // auditedResourceType is what this harness's auditable action touches.
@@ -229,7 +225,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
-		reserveOperatorCalls,
+		reserveStaffCalls,
 	})
 	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
 	// The HTTP half of the stand-in credential, on the router before anything
@@ -314,7 +310,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						LastAcceptedPrivacyPolicy:  &agreedAt,
 					},
 					&identity.Account{Name: "conf_" + identifiers.New()},
-					[]string{"account_admin"})
+					[]string{"owner"})
 				if registerErr != nil {
 					return nil, registerErr
 				}
@@ -354,7 +350,6 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 							mdAdmin, admin,
 							mdReserving, reserving,
 						)
-						md.Append(mdMethods, req.Methods...)
 
 						return metadata.NewOutgoingContext(ctx, md)
 					},
@@ -441,20 +436,21 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// deployment's to decide, and the suites have to be right either way.
 	//
 	// The first run is this module's own answer, where a member holds every
-	// grant but the archive ones and so makes every call the suites route: it is
-	// what keeps each of them asserted as an ordinary caller. The second
-	// reserves every one of conformance.ReservableMethods, which
-	// reserveOperatorCalls then refuses to anybody else: it is what keeps the
-	// suites honest about naming each call they route, since one made without
-	// being named reaches the interceptor as an ordinary caller and fails here
-	// rather than in a consumer's deployment. Sequential rather than parallel,
-	// because each claims the database as its own.
+	// grant but the archive ones and so makes every call: it is what keeps each
+	// promise asserted of a member. The second reserves staffOnly, which
+	// reserveStaffCalls refuses to anybody but an administrator: it is what
+	// keeps the path a consumer's reservation takes exercised, each reserved
+	// call made by an administrator minted for it and each assertion about a
+	// member of a reserved call skipping rather than failing. That every call a
+	// caller makes is one it declared is checked in both, on the caller's own
+	// connection. Sequential rather than parallel, because each claims the
+	// database as its own.
 	t.Run("members make every call", func(t *testing.T) {
 		conformanceall.Run(t, seams(nil))
 	})
 
-	t.Run("operator calls reserved", func(t *testing.T) {
-		conformanceall.Run(t, seams(conformance.ReservableMethods()))
+	t.Run("staff calls reserved", func(t *testing.T) {
+		conformanceall.Run(t, seams(staffOnly))
 	})
 }
 
@@ -642,8 +638,6 @@ func authenticate(
 		principal.reserving = reserving[0] == "true"
 	}
 
-	principal.methods = md.Get(mdMethods)
-
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
@@ -709,7 +703,6 @@ type testPrincipal struct {
 	userID          string
 	activeAccountID string
 	scope           tenancy.Scope
-	methods         []string
 	admin           bool
 	reserving       bool
 }

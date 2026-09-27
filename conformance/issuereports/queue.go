@@ -93,7 +93,7 @@ func everyListing(t *testing.T, s *conformance.Session) {
 		t.Run(name+" pages the caller's tenant and no other", func(t *testing.T) {
 			t.Parallel()
 
-			mine, theirs := twoTenants(t, s)
+			mine, theirs := twoTenants(t, s, conformance.Making(createReport, method(name)))
 			needsUser(t, theirs)
 
 			// Both filed about one subject, so the listings keyed on a subject
@@ -117,7 +117,7 @@ func everyListing(t *testing.T, s *conformance.Session) {
 		t.Run(name+" leaves an archived report out when the archive was not asked for", func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(createReport, archiveReport, method(name)))
 			needsUser(t, mine)
 
 			subjectType, subjectID := subjectOfItsOwn(), identifiers.New()
@@ -144,7 +144,7 @@ func everyListing(t *testing.T, s *conformance.Session) {
 		t.Run(name+" answers a request for the archive rather than refusing it", func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(createReport, method(name)))
 			needsUser(t, mine)
 
 			live := fileOne(t, mine)
@@ -161,7 +161,7 @@ func everyListing(t *testing.T, s *conformance.Session) {
 		t.Run(name+" gives an administrator the archive it asked for", func(t *testing.T) {
 			t.Parallel()
 
-			admin := s.Subject(t, conformance.AsAdmin())
+			admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(createReport, archiveReport, method(name)))
 			needsUser(t, admin)
 
 			subjectType, subjectID := subjectOfItsOwn(), identifiers.New()
@@ -193,7 +193,7 @@ func byStatus(t *testing.T, s *conformance.Session) {
 	t.Run("a queue by status holds the reports in that status and no others", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, transitionReport, listReportsByStatus))
 
 		open := fileOne(t, mine)
 		resolved := fileOne(t, mine)
@@ -214,7 +214,7 @@ func byStatus(t *testing.T, s *conformance.Session) {
 	t.Run("a queue by status that names no status is refused as malformed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, listReportsByStatus))
 		fileOne(t, mine)
 
 		_, err := mine.Surfaces.IssueReports.ListReportsByStatus(mine.Context(t.Context()),
@@ -230,8 +230,8 @@ func byReporter(t *testing.T, s *conformance.Session) {
 	t.Run("a person pages what they filed and not what a colleague filed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(createReport, listReportsByReporter))
+		other := colleague(t, s, mine, conformance.Making(createReport))
 
 		own := fileOne(t, mine)
 		theirs := fileOne(t, other)
@@ -250,8 +250,8 @@ func byReporter(t *testing.T, s *conformance.Session) {
 	t.Run("a request that names no reporter pages the caller's own", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(createReport, listReportsByReporter))
+		other := colleague(t, s, mine, conformance.Making(createReport))
 
 		own := fileOne(t, mine)
 		theirs := fileOne(t, other)
@@ -272,8 +272,8 @@ func byReporter(t *testing.T, s *conformance.Session) {
 	t.Run("naming somebody else is refused before anything is read", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(listReportsByReporter), conformance.AsMember())
+		other := colleague(t, s, mine, conformance.Making(createReport))
 		fileOne(t, other)
 
 		// The positive control: naming oneself is answered.
@@ -300,7 +300,7 @@ func byReporter(t *testing.T, s *conformance.Session) {
 	t.Run("a malformed page is answered as malformed before the reporter is gated", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(listReportsByReporter))
 		other := colleague(t, s, mine)
 
 		_, err := mine.Surfaces.IssueReports.ListReportsByReporter(mine.Context(t.Context()),
@@ -316,7 +316,7 @@ func bySubject(t *testing.T, s *conformance.Session) {
 	t.Run("a listing by subject type holds reports about that kind of thing and no other", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, listReportsBySubjectType))
 
 		wanted, unwanted := subjectOfItsOwn(), subjectOfItsOwn()
 		about := file(t, mine, wanted, identifiers.New())
@@ -336,7 +336,7 @@ func bySubject(t *testing.T, s *conformance.Session) {
 	t.Run("a listing by a subject type nobody has used is answered rather than refused", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, listReportsBySubjectType))
 		filed := fileOne(t, mine)
 
 		page, err := mine.Surfaces.IssueReports.ListReportsBySubjectType(mine.Context(t.Context()),
@@ -348,7 +348,7 @@ func bySubject(t *testing.T, s *conformance.Session) {
 	t.Run("a listing for one subject holds reports about it and not about its siblings", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport, listReportsForSubject))
 
 		subjectType := subjectOfItsOwn()
 		first := file(t, mine, subjectType, "first")

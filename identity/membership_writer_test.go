@@ -69,20 +69,20 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		owner := seedUser(t, env, store, newUser("ada"))
 		account := seedAccountFor(t, env, store, owner, "Acme")
-		member := seedUserInto(t, env, store, newUser("brian"), account.ID, "account_member", "billing_admin")
+		member := seedUserInto(t, env, store, newUser("brian"), account.ID, "viewer", "billing_admin")
 
 		before, err := store.GetMembership(t.Context(), env.reader(), testScope, member.ID, account.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"account_member", "billing_admin"}, before.Roles)
+		test.Eq(t, []string{"billing_admin", "viewer"}, before.Roles)
 
 		// Revocation is the operation that matters, and a merging setter cannot
 		// express it.
 		must.NoError(t, env.setMembershipRoles(t, store, testScope, member.ID, account.ID,
-			[]string{"account_member"}))
+			[]string{"viewer"}))
 
 		after, err := store.GetMembership(t.Context(), env.reader(), testScope, member.ID, account.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"account_member"}, after.Roles)
+		test.Eq(t, []string{"viewer"}, after.Roles)
 
 		must.ErrorIs(t,
 			env.setMembershipRoles(t, store, testScope, member.ID, account.ID, nil),
@@ -100,7 +100,7 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		owner := seedUser(t, env, store, newUser("ada"))
-		account := seedAccountFor(t, env, store, owner, "Acme", "account_admin", "billing_admin")
+		account := seedAccountFor(t, env, store, owner, "Acme", "admin", "billing_admin")
 		member := seedUserInto(t, env, store, newUser("brian"), account.ID)
 
 		// The owner's standing is the ownership, so stripping their roles
@@ -122,7 +122,7 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 
 		unchanged, err := store.GetMembership(t.Context(), env.reader(), testScope, member.ID, account.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"account_member"}, unchanged.Roles)
+		test.Eq(t, []string{"viewer"}, unchanged.Roles)
 
 		// The exception is decided by an account read, so an account that is
 		// not there reports as much rather than as an empty slice somebody
@@ -167,7 +167,7 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 				if _, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 					BelongsToUser:    member.ID,
 					BelongsToAccount: accountID,
-					Roles:            []string{"account_member"},
+					Roles:            []string{"viewer"},
 				}); err != nil {
 					return err
 				}
@@ -228,7 +228,7 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 			_, createErr := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: account.ID,
-				Roles:            []string{"account_member"},
+				Roles:            []string{"viewer"},
 			})
 
 			return createErr

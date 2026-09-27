@@ -25,8 +25,8 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("a registered handset is the caller's and nobody else's", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(registerDevice, listDevices))
+		other := colleague(t, s, mine, conformance.Making(listDevices))
 
 		device := register(t, mine, freshToken())
 
@@ -52,8 +52,8 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("registering a token again converges on one handset under its new owner", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(registerDevice, listDevices))
+		other := colleague(t, s, mine, conformance.Making(registerDevice, listDevices))
 		token := freshToken()
 
 		first := register(t, mine, token)
@@ -80,7 +80,7 @@ func registrations(t *testing.T, s *conformance.Session) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(registerDevice))
 
 			_, err := mine.Surfaces.Notifications.RegisterDevice(mine.Context(t.Context()),
 				registration(platform, freshToken()))
@@ -92,7 +92,7 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("a handset with no token is refused as malformed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(registerDevice))
 
 		_, err := mine.Surfaces.Notifications.RegisterDevice(mine.Context(t.Context()),
 			registration(notificationspb.DevicePlatform_DEVICE_PLATFORM_IOS, ""))
@@ -103,7 +103,7 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("a registration that names no input is refused as malformed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(registerDevice))
 
 		_, err := mine.Surfaces.Notifications.RegisterDevice(mine.Context(t.Context()),
 			&notificationspb.RegisterDeviceRequest{})
@@ -114,8 +114,8 @@ func registrations(t *testing.T, s *conformance.Session) {
 	t.Run("a device listing holds the caller's own handsets and nothing from a colleague or another tenant", func(t *testing.T) {
 		t.Parallel()
 
-		mine, neighbor := twoTenants(t, s)
-		other := colleague(t, s, mine)
+		mine, neighbor := twoTenants(t, s, conformance.Making(registerDevice, listDevices))
+		other := colleague(t, s, mine, conformance.Making(registerDevice))
 
 		own := register(t, mine, freshToken())
 		colleagues := register(t, other, freshToken())
@@ -139,7 +139,7 @@ func revocations(t *testing.T, s *conformance.Session) {
 	t.Run("a revoked handset leaves the caller's devices, and revoking it again is an absence", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(registerDevice, listDevices, revokeDevice))
 		device := register(t, mine, freshToken())
 
 		must.SliceContains(t, devicesOf(t, mine), device.GetId())
@@ -163,8 +163,8 @@ func revocations(t *testing.T, s *conformance.Session) {
 	t.Run("revoking a colleague's handset is an absence and leaves it theirs", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(registerDevice, revokeDevice))
+		other := colleague(t, s, mine, conformance.Making(registerDevice, listDevices))
 
 		own := register(t, mine, freshToken())
 		theirs := register(t, other, freshToken())

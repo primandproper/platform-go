@@ -395,7 +395,7 @@ func registerAda(t *testing.T, service *Service, username string) *Registration 
 	t.Helper()
 
 	registration, err := service.Register(t.Context(), testScope,
-		newUser(username), newAccount(username+"'s account", ""), []string{"account_admin"})
+		newUser(username), newAccount(username+"'s account", ""), []string{"admin"})
 	must.NoError(t, err)
 
 	return registration
@@ -429,7 +429,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, registration.User.ID, registration.Account.OwnerUserID)
 		test.EqOp(t, registration.Account.ID, registration.Membership.BelongsToAccount)
 		test.True(t, registration.Membership.DefaultAccount)
-		test.Eq(t, []string{"account_admin"}, registration.Membership.Roles)
+		test.Eq(t, []string{"admin"}, registration.Membership.Roles)
 
 		// All three committed, read outside the transaction that wrote them.
 		user, err := store.GetUser(t.Context(), env.reader(), testScope, registration.User.ID)
@@ -466,7 +466,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		account := newAccount("Ada's account", "")
 		account.ID = ""
 
-		registration, err := service.Register(t.Context(), testScope, user, account, []string{"account_admin"})
+		registration, err := service.Register(t.Context(), testScope, user, account, []string{"admin"})
 		must.NoError(t, err)
 
 		test.NotEq(t, "", registration.User.ID)
@@ -512,7 +512,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		user, account := newUser("ada"), newAccount("ada's account", "")
 
-		_, err := service.Register(t.Context(), testScope, user, account, []string{"account_admin"})
+		_, err := service.Register(t.Context(), testScope, user, account, []string{"admin"})
 		must.ErrorIs(t, err, errHookRefused)
 
 		// The user's ID was written back onto the caller's value before the
@@ -532,7 +532,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		_, err := service.Register(t.Context(), testScope,
-			newUser("ada"), newAccount("ada's account", "somebody-else"), []string{"account_admin"})
+			newUser("ada"), newAccount("ada's account", "somebody-else"), []string{"admin"})
 		must.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
 
 		test.EqOp(t, 0, hooks.ran("register"))
@@ -594,7 +594,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		// is the only membership this user holds — so it is where they land.
 		test.EqOp(t, sender.Account.ID, registration.Membership.BelongsToAccount)
 		test.EqOp(t, registration.User.ID, registration.Membership.BelongsToUser)
-		test.Eq(t, []string{"account_member"}, registration.Membership.Roles)
+		test.Eq(t, []string{"viewer"}, registration.Membership.Roles)
 		test.True(t, registration.Membership.DefaultAccount)
 
 		// All of it committed, read outside the transaction that wrote it.
@@ -985,7 +985,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "", acceptance.Invitation.Token)
 
 		// The roles come off the invitation rather than from a parameter.
-		test.Eq(t, []string{"account_member"}, acceptance.Membership.Roles)
+		test.Eq(t, []string{"viewer"}, acceptance.Membership.Roles)
 		test.EqOp(t, sender.Account.ID, acceptance.Membership.BelongsToAccount)
 
 		// The recipient belonged to nothing, so this is where they land.
@@ -1350,7 +1350,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 				if _, err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 					BelongsToUser:    member.ID,
 					BelongsToAccount: owner.Account.ID,
-					Roles:            []string{"account_member"},
+					Roles:            []string{"viewer"},
 				}); err != nil {
 					return err
 				}
@@ -1468,23 +1468,23 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		user := newUser("ada")
-		user.ServiceRoles = []string{"service_user"}
+		user.ServiceRoles = []string{"user"}
 
 		registration, err := service.Register(t.Context(), testScope,
-			user, newAccount("ada's account", ""), []string{"account_admin"})
+			user, newAccount("ada's account", ""), []string{"admin"})
 		must.NoError(t, err)
 
 		updated, err := service.SetUserServiceRoles(t.Context(), testScope,
-			registration.User.ID, []string{"service_admin"})
+			registration.User.ID, []string{"operator"})
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_admin"}, updated.ServiceRoles)
+		test.Eq(t, []string{"operator"}, updated.ServiceRoles)
 
 		test.EqOp(t, 1, hooks.ran("roles"))
-		test.Eq(t, []string{"service_user"}, hooks.previousRoles)
+		test.Eq(t, []string{"user"}, hooks.previousRoles)
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, registration.User.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_admin"}, read.ServiceRoles)
+		test.Eq(t, []string{"operator"}, read.ServiceRoles)
 	})
 
 	t.Run("answers for a user in another directory as absent", func(t *testing.T) {
@@ -1724,13 +1724,13 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		registration := registerAda(t, service, "ada")
 
 		updated, err := service.SetMembershipRoles(t.Context(), testScope,
-			registration.User.ID, registration.Account.ID, []string{"account_admin", "billing"})
+			registration.User.ID, registration.Account.ID, []string{"admin", "billing"})
 		must.NoError(t, err)
 
-		test.Eq(t, []string{"account_admin", "billing"}, updated.Roles)
+		test.Eq(t, []string{"admin", "billing"}, updated.Roles)
 
 		test.EqOp(t, 1, hooks.ran("membership_roles"))
-		test.Eq(t, []string{"account_admin"}, hooks.previousRoles)
+		test.Eq(t, []string{"admin"}, hooks.previousRoles)
 
 		saved, err := store.GetMembership(t.Context(), env.reader(),
 			testScope, registration.User.ID, registration.Account.ID)
@@ -1896,7 +1896,7 @@ func TestNewService(T *testing.T) {
 		// The whole point of the default: an operation runs with no hooks
 		// configured at all.
 		_, err = service.Register(t.Context(), testScope,
-			newUser("ada"), newAccount("ada's account", ""), []string{"account_admin"})
+			newUser("ada"), newAccount("ada's account", ""), []string{"admin"})
 		must.NoError(t, err)
 	})
 }

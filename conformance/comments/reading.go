@@ -22,7 +22,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a target's discussion lists its roots without their replies", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, listRootComments))
 		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
@@ -38,7 +38,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a root's replies are listed without the root", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, listReplies))
 		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
@@ -53,7 +53,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a replies listing naming no parent is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listReplies))
 
 		_, err := caller.Surfaces.Comments.ListReplies(caller.Context(t.Context()),
 			&commentspb.ListRepliesRequest{Target: target(t, s, caller)})
@@ -63,7 +63,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("the moderation read reaches roots and replies on every target of a type", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 		first, second := target(t, s, caller), target(t, s, caller)
 		must.EqOp(t, first.GetType(), second.GetType(),
 			must.Sprint("the comment target action reported two target types; the moderation read is asserted across one"))
@@ -72,9 +72,7 @@ func reading(t *testing.T, s *conformance.Session) {
 		answer := reply(t, caller, root.GetId(), bodyReply)
 		elsewhere := say(t, caller, second, "about the other one")
 
-		got := byTargetType(t, s.OperatorIn(t, surface, caller.ScopeFor(surface),
-			commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
-		), first.GetType())
+		got := byTargetType(t, s.Subject(t, conformance.Making(listCommentsByTargetType), conformance.InTenant(surface, caller.ScopeFor(surface))), first.GetType())
 		test.SliceContains(t, got, root.GetId(), test.Sprint("a root was missing from the moderation read"))
 		test.SliceContains(t, got, answer.GetId(), test.Sprint("a reply was missing from the moderation read"))
 		test.SliceContains(t, got, elsewhere.GetId(),
@@ -89,7 +87,7 @@ func reading(t *testing.T, s *conformance.Session) {
 
 		needsTarget(t, s)
 
-		byTargetType(t, s.Operator(t, commentspb.CommentsService_ListCommentsByTargetType_FullMethodName), "conformance_withdrawn_"+identifiers.New())
+		byTargetType(t, s.Subject(t, conformance.Making(listCommentsByTargetType)), "conformance_withdrawn_"+identifiers.New())
 	})
 
 	// An empty author is the caller's own, which is what a "your comments" page
@@ -98,8 +96,8 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a caller's own comments are listed when the request names nobody", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
-		other := colleague(t, s, caller)
+		caller := s.Subject(t, conformance.Making(createComment, listCommentsByAuthor))
+		other := colleague(t, s, caller, conformance.Making(createComment))
 		about := target(t, s, caller)
 
 		mine := say(t, caller, about, bodyRoot)
@@ -114,7 +112,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a caller's own comments are listed when the request names them", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, listCommentsByAuthor))
 		needsUser(t, caller)
 
 		mine := say(t, caller, target(t, s, caller), bodyRoot)

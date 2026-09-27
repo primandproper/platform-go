@@ -34,13 +34,15 @@ also what a deployment that resolves every caller to the wrong registry answers.
 
 # Who a call is made as
 
-All four RPCs may be reserved to an operator — CreateOAuth2Client,
-GetOAuth2Client, ListOAuth2Clients and ArchiveOAuth2Client — because the
-registry is the deployment's list of who may ask it for tokens. Each is made by
-an operator where the subject reserves it and by an ordinary caller where it
-does not, as conformance.ReservableMethods describes; a registry's confinement
-is asserted between two such callers in two tenants, and its being the
-tenant's rather than the registrar's between two in one, which a subject
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+The registry is the deployment's list of who may ask it for tokens, so a
+deployment plausibly reserves all four RPCs. A registry's confinement is
+asserted between two callers in two tenants, whoever they are, and its being
+the tenant's rather than the registrar's between two in one, which a subject
 minting a single administrator per tenant cannot show and skips.
 */
 package oauth2clients

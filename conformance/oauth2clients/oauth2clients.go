@@ -13,6 +13,14 @@ import (
 // read by.
 const surface = "oauth2clients"
 
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	archiveOAuth2Client = oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName
+	createOAuth2Client  = oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName
+	getOAuth2Client     = oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName
+	listOAuth2Clients   = oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName
+)
+
 // Suite is the OAuth2 client registry surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
@@ -39,21 +47,16 @@ func run(t *testing.T, s *conformance.Session) {
 // the registry is not also an assertion about URI validation.
 const redirect = "https://example.test/callback"
 
-// twoRegistries mints an operator in each of two tenants, and refuses to
-// proceed if the subject put them in one, which would make every confinement
-// assertion here compare a registry with itself.
-//
-// Operators, because every call on this surface is one: the registry is the
-// deployment's list of who may ask it for tokens.
+// twoRegistries mints a caller making methods in each of two tenants, and
+// refuses to proceed if the subject put them in one, which would make every
+// confinement assertion here compare a registry with itself.
 func twoRegistries(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
-
-	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
+	return s.TwoTenants(t, surface, conformance.Making(methods...))
 }
 
-// colleague mints a second operator in of's registry. A subject that cannot
+// colleague mints a second caller making methods in of's registry. A subject that cannot
 // put two callers in one tenant declines, and one that answers the same
 // administrator for every request in a tenant cannot show a registry being the
 // tenant's rather than the registrar's; the assertion that asked skips either
@@ -61,7 +64,7 @@ func twoRegistries(t *testing.T, s *conformance.Session, methods ...string) (min
 func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	other := s.OperatorIn(t, surface, of.ScopeFor(surface), methods...)
+	other := s.Subject(t, conformance.Making(methods...), conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	if of.UserID == other.UserID {
 		t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a colleague's registration cannot be told from the caller's own")

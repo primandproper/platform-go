@@ -44,24 +44,24 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.ServiceRoles = []string{"service_user", "service_admin"}
+		user.ServiceRoles = []string{"user", "operator"}
 		seedUser(t, env, store, user)
 
 		byID, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_admin", "service_user"}, byID.ServiceRoles)
+		test.Eq(t, []string{"operator", "user"}, byID.ServiceRoles)
 
 		// The same set on the sign-in read, so an admin check does not need a
 		// second query and cannot be skipped by forgetting one.
 		byName, err := store.GetUserByUsername(t.Context(), env.reader(), testScope, "ada")
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_admin", "service_user"}, byName.ServiceRoles)
+		test.Eq(t, []string{"operator", "user"}, byName.ServiceRoles)
 
-		must.NoError(t, env.setUserServiceRoles(t, store, testScope, user.ID, []string{"service_user"}))
+		must.NoError(t, env.setUserServiceRoles(t, store, testScope, user.ID, []string{"user"}))
 
 		revoked, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_user"}, revoked.ServiceRoles)
+		test.Eq(t, []string{"user"}, revoked.ServiceRoles)
 
 		// Replacing with nothing is how operator access is withdrawn.
 		must.NoError(t, env.setUserServiceRoles(t, store, testScope, user.ID, nil))
@@ -77,7 +77,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		user := seedUser(t, env, store, newUser("ada"))
 
-		err := env.setUserServiceRoles(t, store, otherScope, user.ID, []string{"service_admin"})
+		err := env.setUserServiceRoles(t, store, otherScope, user.ID, []string{"operator"})
 		must.ErrorIs(t, err, ErrUserNotFound)
 	})
 
@@ -87,20 +87,20 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.ServiceRoles = []string{"service_admin"}
+		user.ServiceRoles = []string{"operator"}
 		seedUser(t, env, store, user)
 
 		// An empty role name is a row nothing matches on, so the grant reads as
 		// applied and resolves to nothing at the next permission check.
 		must.ErrorIs(t,
-			env.setUserServiceRoles(t, store, testScope, user.ID, []string{"service_user", ""}),
+			env.setUserServiceRoles(t, store, testScope, user.ID, []string{"user", ""}),
 			platformerrors.ErrEmptyInputParameter,
 		)
 
 		// The refusal is ahead of the write, so the roles they had are intact.
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
-		test.Eq(t, []string{"service_admin"}, read.ServiceRoles)
+		test.Eq(t, []string{"operator"}, read.ServiceRoles)
 	})
 
 	t.Run("each archival answers with the row it hid", func(t *testing.T) {
@@ -199,7 +199,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    leaving.ID,
 				BelongsToAccount: second.ID,
-				Roles:            []string{"account_member"},
+				Roles:            []string{"viewer"},
 			})
 
 			return err
@@ -456,7 +456,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: surviving.ID,
-				Roles:            []string{"account_member"},
+				Roles:            []string{"viewer"},
 			})
 
 			return err

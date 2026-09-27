@@ -26,6 +26,14 @@ everybody. A subject that has no callers there declines and the assertions skip;
 one whose connection resolves a tenant of its own mints the caller wherever its
 connection would place a request.
 
+# A door a deployment keeps
+
+That every RPC here is reachable without a caller is this module's declaration,
+not a promise every deployment makes. A deployment may keep resets to its
+support staff, reserving the doors in Seams.OperatorMethods, and an assertion
+that knocks on a reserved one skips with the reservation named rather than
+reading the deployment's refusal as a broken reset.
+
 # What is here and what stayed behind
 
 authentication/passwordreset/grpc keeps its construction and contract tests —

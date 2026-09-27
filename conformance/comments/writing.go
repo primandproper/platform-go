@@ -27,7 +27,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a comment is answered as it was stored and reads back the same", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, getComment))
 		about := target(t, s, caller)
 
 		stored := say(t, caller, about, bodyRoot)
@@ -52,7 +52,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a comment is attributed to the caller who wrote it", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, getComment))
 		needsUser(t, caller)
 
 		stored := say(t, caller, target(t, s, caller), bodyRoot)
@@ -63,7 +63,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a reply adopts its parent's target", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 
@@ -81,7 +81,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a reply to a reply is refused, and the client is told why", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 		root := say(t, caller, target(t, s, caller), bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)
 
@@ -95,7 +95,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a target type the deployment takes no comments on is refused, and the client is told why", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 		needsTarget(t, s)
 
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{
@@ -111,7 +111,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a reply naming a different target than its parent is refused, and the client is told why", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 		root := say(t, caller, target(t, s, caller), bodyRoot)
 
 		// Another thing of the same type, which is the mismatch a client can
@@ -127,7 +127,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("an empty comment is refused, and the client is told why", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{Target: target(t, s, caller)},
@@ -139,7 +139,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("a request carrying no comment at all is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment))
 
 		_, err := caller.Surfaces.Comments.CreateComment(caller.Context(t.Context()), &commentspb.CreateCommentRequest{})
 		refused(t, err, codes.InvalidArgument, "a request with no comment in it")
@@ -148,7 +148,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("an edit revises the caller's own comment and marks it edited", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, updateComment, getComment))
 		stored := say(t, caller, target(t, s, caller), "frist")
 
 		edited, err := caller.Surfaces.Comments.UpdateComment(caller.Context(t.Context()),
@@ -170,7 +170,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("an edit emptying a comment is refused and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, updateComment, getComment))
 		stored := say(t, caller, target(t, s, caller), bodyRoot)
 
 		_, err := caller.Surfaces.Comments.UpdateComment(caller.Context(t.Context()),
@@ -186,7 +186,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("an archived comment is gone from its discussion", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, listRootComments, archiveComment, getComment))
 		about := target(t, s, caller)
 		stored := say(t, caller, about, bodyRoot)
 
@@ -213,7 +213,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator asking for archived comments receives them", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(createComment, archiveComment, listRootComments))
 		about := target(t, s, admin)
 		live := say(t, admin, about, bodyRoot)
 		removed := say(t, admin, about, bodyReply)
@@ -244,7 +244,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a comment already archived is answered as absent", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, archiveComment))
 		stored := say(t, caller, target(t, s, caller), bodyRoot)
 
 		_, err := caller.Surfaces.Comments.ArchiveComment(caller.Context(t.Context()),
@@ -261,7 +261,7 @@ func writing(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a root leaves its replies readable", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(createComment, archiveComment, getComment, listReplies))
 		about := target(t, s, caller)
 		root := say(t, caller, about, bodyRoot)
 		answer := reply(t, caller, root.GetId(), bodyReply)

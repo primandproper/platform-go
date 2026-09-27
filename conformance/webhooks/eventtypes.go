@@ -21,7 +21,7 @@ func eventTypes(t *testing.T, s *conformance.Session) {
 	t.Run("every event type offered is one an endpoint may subscribe to", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint))
 		offered := catalog(t, caller, 1)
 
 		saved := registered(t, s, caller, offered...)
@@ -36,7 +36,7 @@ func eventTypes(t *testing.T, s *conformance.Session) {
 	t.Run("the catalog is offered in a stable order", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes))
 		offered := catalog(t, caller, 1)
 
 		for i := 1; i < len(offered); i++ {

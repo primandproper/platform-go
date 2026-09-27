@@ -21,7 +21,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("an entry read by id renders what the action recorded", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
+		mine, act := subject(t, s, listEntries, getEntry)
 		did := act(t, mine)
 
 		listed := findEntry(t, mine, did)
@@ -57,7 +57,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor's entry reads exactly as an identifier nobody wrote", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs, act := twoChains(t, s)
+		mine, theirs, act := twoChains(t, s, listEntries, getEntry)
 
 		neighbor := findEntry(t, theirs, act(t, theirs))
 		must.NotNil(t, neighbor, must.Sprint("the neighbor's own action recorded nothing to hide"))
@@ -91,7 +91,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a read naming no entry is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(getEntry))
 
 		_, err := mine.Surfaces.Audit.GetEntry(mine.Context(t.Context()), &auditpb.GetEntryRequest{})
 		must.Error(t, err)
@@ -104,7 +104,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a query narrows within the caller's chain and never reaches past it", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs, act := twoChains(t, s)
+		mine, theirs, act := twoChains(t, s, listEntries)
 
 		wanted, other, neighbor := act(t, mine), act(t, mine), act(t, theirs)
 

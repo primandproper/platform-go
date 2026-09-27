@@ -3,12 +3,25 @@ package comments
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/conformance"
 )
 
 // surface is this suite's name, and the key a subject's per-surface scope is
 // read by.
 const surface = "comments"
+
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	archiveComment           = commentspb.CommentsService_ArchiveComment_FullMethodName
+	createComment            = commentspb.CommentsService_CreateComment_FullMethodName
+	getComment               = commentspb.CommentsService_GetComment_FullMethodName
+	listCommentsByAuthor     = commentspb.CommentsService_ListCommentsByAuthor_FullMethodName
+	listCommentsByTargetType = commentspb.CommentsService_ListCommentsByTargetType_FullMethodName
+	listReplies              = commentspb.CommentsService_ListReplies_FullMethodName
+	listRootComments         = commentspb.CommentsService_ListRootComments_FullMethodName
+	updateComment            = commentspb.CommentsService_UpdateComment_FullMethodName
+)
 
 // Suite is the discussion surface's behavioral assertions.
 func Suite() conformance.Suite {

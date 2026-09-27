@@ -48,12 +48,18 @@ nothing, would otherwise pass every one of them.
 
 # Who a call is made as
 
-CreateDefinition, UpdateDefinition, ArchiveDefinition and
-ListValuesForDefinition may be reserved to an operator, the last because it
-answers every subject's value for one setting across the tenant. Each is made
-by an operator where the subject reserves it and by an ordinary caller where it
-does not, as conformance.ReservableMethods describes. Reading the catalog and reading,
-writing and resolving a subject's own values are made as an ordinary caller,
-and each is a promise: the settings screen is a person acting on themselves.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+The catalog's writes and ListValuesForDefinition, which answers every subject's
+value for one setting across the tenant, are the calls a deployment most
+plausibly keeps to its staff; a subject's own values are the settings screen,
+but a deployment may reserve those too. The refusals of a colleague's settings
+and of a setting reserved to administrators turn on standing within a tenant,
+and are asked of a caller minted with conformance.AsMember. A neighboring
+directory's account is behind the tenant wall, which holds for whoever calls,
+and is refused to whatever caller the declaration implies.
 */
 package settings

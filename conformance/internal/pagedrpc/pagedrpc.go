@@ -118,25 +118,21 @@ func All() []RPC {
 	return out
 }
 
-// Caller is who makes this read: an operator where the subject reserves it,
-// and ordinary otherwise.
+// Caller is who makes this read: a caller minted declaring it, which is an
+// operator where the subject reserves it and a member otherwise.
 //
 // Both suites reading this package assert what the handler answers, and a
 // read made by a caller the deployment's interceptor refuses is answered by
 // the interceptor instead.
-func (r RPC) Caller(t *testing.T, s *conformance.Session, ordinary *conformance.Subject) *conformance.Subject {
+func (r RPC) Caller(t *testing.T, s *conformance.Session) *conformance.Subject {
 	t.Helper()
 
-	if !s.Reserves(r.FullName) {
-		return ordinary
+	caller := s.Subject(t, conformance.Making(r.FullName))
+	if caller.Conn == nil {
+		t.Skip("conformance: this subject's caller has no connection to invoke a read by name through")
 	}
 
-	operator := s.Operator(t, r.FullName)
-	if operator.Conn == nil {
-		t.Skip("conformance: this subject's operator has no connection to invoke a read by name through")
-	}
-
-	return operator
+	return caller
 }
 
 func (r RPC) mounted(surfaces *conformance.Surfaces) bool {

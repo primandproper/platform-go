@@ -207,31 +207,31 @@ func eraseSubject(t *testing.T, operator, of *conformance.Subject) int64 {
 
 // twoTenants mints two callers and refuses to proceed if the subject put them in
 // one tenant, since every confinement assertion here would then compare a
-// tenant with itself and pass.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+// tenant with itself and pass. opts are applied to both, and name the calls
+// each makes.
+func twoTenants(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	return mine, theirs
 }
 
-// twoOperators mints an operator in each of two tenants, for the confinement
-// assertions whose every call is the console's.
+// twoOperators mints a caller making methods in each of two tenants, for the
+// confinement assertions whose every call is the console's.
 func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = twoTenants(t, s)
-
-	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
+	return twoTenants(t, s, conformance.Making(methods...))
 }
 
-// colleague mints a second caller in of's tenant. A subject that cannot put two
-// callers in one tenant declines, and the assertion that asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+// colleague mints a second caller in of's tenant, minted with opts. A subject
+// that cannot put two callers in one tenant declines, and the assertion that
+// asked skips.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, opts ...conformance.SubjectOption) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, append(opts, conformance.InTenant(surface, of.ScopeFor(surface)))...)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
@@ -243,10 +243,13 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 // on a connection carrying nobody — and an operator in the tenant that visitor
 // lands in, to open lists there and read back what the visitor did.
 //
-// It skips, with the reason, where the subject supplies no anonymous connection,
-// does not say where its visitors land, or cannot mint a caller there.
-func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlistspb.WaitlistsServiceClient, *conformance.Subject) {
+// It skips, with the reason, where the subject reserves any of doors — the calls
+// the visitor goes on to make — supplies no anonymous connection, does not say
+// where its visitors land, or cannot mint a caller there.
+func visitor(t *testing.T, s *conformance.Session, doors []string, methods ...string) (waitlistspb.WaitlistsServiceClient, *conformance.Subject) {
 	t.Helper()
+
+	s.NeedsPublic(t, doors...)
 
 	seams := s.Seams()
 
@@ -261,7 +264,7 @@ func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlists
 	conn, err := seams.Anonymous(t.Context())
 	must.NoError(t, err, must.Sprint("opening a connection with nobody on it"))
 
-	operator := s.OperatorIn(t, surface, *seams.VisitorScope, methods...)
+	operator := s.Subject(t, conformance.Making(methods...), conformance.InTenant(surface, *seams.VisitorScope))
 
 	return waitlistspb.NewWaitlistsServiceClient(conn), operator
 }
@@ -284,7 +287,7 @@ func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlists
 func elsewhere(t *testing.T, s *conformance.Session, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	operator := s.Operator(t, methods...)
+	operator := s.Subject(t, conformance.Making(methods...))
 
 	lands := *s.Seams().VisitorScope
 	if operator.ScopeFor(surface) != lands {

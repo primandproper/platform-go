@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -95,6 +96,7 @@ func TestSuite_RefusalChild(T *testing.T) {
 		NewSubject: func(context.Context, ...conformance.SubjectOption) (*conformance.Subject, error) {
 			return &conformance.Subject{
 				Scope:    tenancy.Of(identifiers.New()),
+				Conn:     allowlistConn{client: client},
 				Surfaces: conformance.Surfaces{Webhooks: client},
 			}, nil
 		},
@@ -104,14 +106,54 @@ func TestSuite_RefusalChild(T *testing.T) {
 
 // allowlistClient is a webhooks surface whose URL check accepts one address,
 // implementing only what registering an endpoint and reading it back reach.
-// Anything else panics on the nil embedded client, which the narrowed child run
-// never calls.
+// The suite reaches it through allowlistConn, which answers anything else as
+// unimplemented.
 type allowlistClient struct {
 	webhookspb.WebhooksServiceClient
 
 	endpoints map[string]*webhookspb.WebhookEndpoint
 	allowed   string
 	mu        sync.Mutex
+}
+
+// allowlistConn is the connection allowlistClient is reached through: every
+// suite's surfaces are rebuilt over their subject's connection, so that each
+// caller makes only the calls it declared, and this is that connection for a
+// surface with no server behind it.
+type allowlistConn struct {
+	client *allowlistClient
+}
+
+func (c allowlistConn) Invoke(ctx context.Context, method string, args, reply any, _ ...grpc.CallOption) error {
+	var (
+		answer proto.Message
+		err    error
+	)
+
+	switch method {
+	case webhookspb.WebhooksService_ListEventTypes_FullMethodName:
+		answer, err = c.client.ListEventTypes(ctx, args.(*webhookspb.ListEventTypesRequest))
+	case webhookspb.WebhooksService_SaveEndpoint_FullMethodName:
+		answer, err = c.client.SaveEndpoint(ctx, args.(*webhookspb.SaveEndpointRequest))
+	case webhookspb.WebhooksService_GetEndpoint_FullMethodName:
+		answer, err = c.client.GetEndpoint(ctx, args.(*webhookspb.GetEndpointRequest))
+	case webhookspb.WebhooksService_ArchiveEndpoint_FullMethodName:
+		answer, err = c.client.ArchiveEndpoint(ctx, args.(*webhookspb.ArchiveEndpointRequest))
+	default:
+		return status.Errorf(codes.Unimplemented, "%s is not part of the narrowed child run", method)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	proto.Merge(reply.(proto.Message), answer)
+
+	return nil
+}
+
+func (allowlistConn) NewStream(context.Context, *grpc.StreamDesc, string, ...grpc.CallOption) (grpc.ClientStream, error) {
+	return nil, status.Error(codes.Unimplemented, "the narrowed child run streams nothing")
 }
 
 func (c *allowlistClient) ListEventTypes(

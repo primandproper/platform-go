@@ -23,17 +23,36 @@ func membershipRoles(s *conformance.Session) (first, second string) {
 	return roles[0], roles[1]
 }
 
-// colleague mints a second caller in of's directory. A subject that cannot put
-// two callers in one tenant declines, and the assertion that asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+// colleague mints a second caller in of's directory, minted with opts. A
+// subject that cannot put two callers in one tenant declines, and the
+// assertion that asked skips.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, opts ...conformance.SubjectOption) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, append(opts, conformance.InTenant(surface, of.ScopeFor(surface)))...)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user"))
 
 	return other
+}
+
+// notYours asserts err refuses what a caller named in another tenant as a
+// thing that is not theirs: absent or forbidden.
+//
+// A tenant wall holds for whoever calls, an operator as much as a member, so
+// this is asserted of whatever caller the subject mints for the call. Either
+// code is an honest answer, and which one a deployment gives depends on
+// whether its rule refuses before it reads or reads and finds nothing; what no
+// deployment may answer is the row.
+func notYours(t *testing.T, err error, what string) {
+	t.Helper()
+
+	must.Error(t, err, must.Sprintf("%s was answered", what))
+
+	code := status.Code(err)
+	test.True(t, code == codes.NotFound || code == codes.PermissionDenied,
+		test.Sprintf("%s was refused as %s rather than as absent or forbidden", what, code))
 }
 
 // needsAccount skips unless the subject surfaced the caller's account, which
@@ -49,15 +68,15 @@ func needsAccount(t *testing.T, sub *conformance.Subject) {
 // self reads a caller's own user, which is how a suite learns the parts of it
 // the subject did not report — an email address, a username.
 //
-// Through GetPrincipal rather than GetUser. GetUser is the directory's read, a
-// deployment reserves it to an operator, and a caller reading themselves
-// through it was a caller asserting that every user may read the directory.
-// GetPrincipal is the self-service read every signed-in caller is promised.
+// Through GetPrincipal rather than GetUser. GetUser is the directory's read,
+// and a caller reading themselves through it would be asserting that whoever
+// reads their own user may read the directory. GetPrincipal is the self-service
+// read, and sub names it among the calls it was minted to make.
 func self(t *testing.T, sub *conformance.Subject) *identitypb.User {
 	t.Helper()
 
 	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
-	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal"))
 
 	return found.GetPrincipal().GetUser()
 }
@@ -66,8 +85,8 @@ func self(t *testing.T, sub *conformance.Subject) *identitypb.User {
 // the invitation rather than about who receives it.
 func freshEmail() string { return identifiers.New() + "@conformance.invalid" }
 
-// invite sends an invitation into sender's account.
-func invite(t *testing.T, sender *conformance.Subject, toEmail string, roles ...string) *identitypb.Invitation {
+// sendInvitation sends an invitation into sender's account.
+func sendInvitation(t *testing.T, sender *conformance.Subject, toEmail string, roles ...string) *identitypb.Invitation {
 	t.Helper()
 
 	needsAccount(t, sender)
@@ -106,7 +125,7 @@ func tokenFor(t *testing.T, s *conformance.Session, sender *conformance.Subject,
 func join(t *testing.T, s *conformance.Session, owner, member *conformance.Subject, roles ...string) *identitypb.Membership {
 	t.Helper()
 
-	invitation := invite(t, owner, self(t, member).GetEmailAddress(), roles...)
+	invitation := sendInvitation(t, owner, self(t, member).GetEmailAddress(), roles...)
 
 	accepted, err := member.Surfaces.Identity.AcceptInvitation(member.Context(t.Context()),
 		&identitypb.AcceptInvitationRequest{
@@ -160,12 +179,9 @@ func accountIDs(accounts []*identitypb.Account) []string {
 func archiveOwner(t *testing.T, s *conformance.Session, owner *conformance.Subject) {
 	t.Helper()
 
-	operator := s.OperatorIn(t, surface, owner.ScopeFor(surface),
-		identitypb.IdentityService_ArchiveUser_FullMethodName,
-		identitypb.IdentityService_ListAccounts_FullMethodName,
-	)
+	operator := s.Subject(t, conformance.Making(archiveUser, listAccounts), conformance.InTenant(surface, owner.ScopeFor(surface)))
 
-	owned := ownedBy(listAccounts(t, operator), owner.UserID)
+	owned := ownedBy(directoryAccounts(t, operator), owner.UserID)
 	must.SliceContains(t, owned, owner.AccountID,
 		must.Sprint("the directory listing does not show the owner owning their account; the assertion below proves nothing"))
 
@@ -174,7 +190,7 @@ func archiveOwner(t *testing.T, s *conformance.Session, owner *conformance.Subje
 	if err != nil {
 		test.EqOp(t, codes.FailedPrecondition, status.Code(err),
 			test.Sprint("an owner's archival was refused, but not as an unmet precondition"))
-		test.Eq(t, owned, ownedBy(listAccounts(t, operator), owner.UserID),
+		test.Eq(t, owned, ownedBy(directoryAccounts(t, operator), owner.UserID),
 			test.Sprint("a refused archival changed what the owner owns"))
 
 		return
@@ -182,16 +198,16 @@ func archiveOwner(t *testing.T, s *conformance.Session, owner *conformance.Subje
 
 	// A listed account is a live one, so an account the archived owner still
 	// owns is one that was neither closed nor handed on.
-	test.SliceEmpty(t, ownedBy(listAccounts(t, operator), owner.UserID),
+	test.SliceEmpty(t, ownedBy(directoryAccounts(t, operator), owner.UserID),
 		test.Sprint("an owner was archived and left accounts that are neither closed nor owned by anybody else"))
 }
 
-// listAccounts is the operator's listing of their directory.
+// directoryAccounts is the operator's listing of their directory.
 //
 // One page, because every subject here is minted in a tenant nothing else in
 // the run shares, and the handful of accounts an assertion creates in it fits
 // in the first.
-func listAccounts(t *testing.T, operator *conformance.Subject) []*identitypb.Account {
+func directoryAccounts(t *testing.T, operator *conformance.Subject) []*identitypb.Account {
 	t.Helper()
 
 	page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()), &identitypb.ListAccountsRequest{})

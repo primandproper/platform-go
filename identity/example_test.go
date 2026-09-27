@@ -53,7 +53,7 @@ func Example_registration() {
 		TwoFactorSecret:               "JBSWY3DPEHPK3PXP",
 		EmailAddressVerificationToken: verificationToken,
 		AccountStatus:                 identity.StatusUnverified,
-		ServiceRoles:                  []string{"service_user"},
+		ServiceRoles:                  []string{"user"},
 
 		// The link's deadline travels with the link, and is required: a
 		// verification token with no expiry is a bearer credential for this
@@ -94,7 +94,7 @@ func Example_registration() {
 		_, err = store.CreateMembership(ctx, tx, scope, &identity.Membership{
 			BelongsToUser:    registered.ID,
 			BelongsToAccount: created.ID,
-			Roles:            []string{"account_admin"},
+			Roles:            []string{"admin"},
 		})
 
 		return err
@@ -177,7 +177,7 @@ func Example_service() {
 			AccountStatus:  identity.StatusUnverified,
 		},
 		&identity.Account{Name: "Ada's account"},
-		[]string{"account_admin"},
+		[]string{"admin"},
 	)
 	if err != nil {
 		panic(err)
@@ -244,7 +244,7 @@ func Example_authenticatedRequest() {
 
 	// Output:
 	// true
-	// [service_user account_admin]
+	// [user admin]
 	// true
 }
 
@@ -342,7 +342,7 @@ func Example_invitation() {
 			// somebody else's account, and one that never expires is still
 			// valid in a mailbox somebody lost control of two years ago.
 			ExpiresAt: time.Now().Add(72 * time.Hour),
-			Roles:     []string{"account_member"},
+			Roles:     []string{"viewer"},
 		})
 		if createErr != nil {
 			return createErr
@@ -407,7 +407,7 @@ func Example_invitation() {
 	fmt.Println(errors.Is(err, identity.ErrInvitationNotFound))
 
 	// Output:
-	// true [account_member]
+	// true [viewer]
 	// true
 }
 
@@ -464,7 +464,7 @@ func exampleRegister(
 		HashedPassword:  "argon2id$v=19$...",
 		TwoFactorSecret: "JBSWY3DPEHPK3PXP",
 		AccountStatus:   identity.StatusGood,
-		ServiceRoles:    []string{"service_user"},
+		ServiceRoles:    []string{"user"},
 	}
 
 	account := &identity.Account{Name: accountName}
@@ -488,7 +488,7 @@ func exampleRegister(
 		_, err = store.CreateMembership(ctx, tx, scope, &identity.Membership{
 			BelongsToUser:    registered.ID,
 			BelongsToAccount: created.ID,
-			Roles:            []string{"account_admin"},
+			Roles:            []string{"admin"},
 		})
 
 		return err

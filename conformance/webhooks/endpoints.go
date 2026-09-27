@@ -21,7 +21,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("an endpoint is answered as it was stored and reads back the same", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, getEndpoint))
 		eventType := catalog(t, caller, 1)[0]
 
 		input := endpointFor(s, eventType)
@@ -61,7 +61,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("the caller is recorded as the endpoint's registrant", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, getEndpoint))
 		needsUser(t, caller)
 
 		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
@@ -74,7 +74,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("a registration naming no signing key is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint))
 
 		_, err := save(t, caller, endpointFor(s, catalog(t, caller, 1)[0]), nil)
 		refused(t, err, codes.InvalidArgument, "a registration with no signing key")
@@ -83,7 +83,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("a registration naming no endpoint is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(saveEndpoint))
 
 		_, err := save(t, caller, nil, keyring())
 		refused(t, err, codes.InvalidArgument, "a registration with no endpoint")
@@ -94,7 +94,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("an endpoint subscribing to an event type outside the catalog is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(saveEndpoint))
 
 		_, err := save(t, caller, endpointFor(s, "conformance.never."+identifiers.New()), keyring())
 		refused(t, err, codes.InvalidArgument, "a subscription to an uncataloged event type")
@@ -103,7 +103,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("an endpoint subscribing to nothing is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(saveEndpoint))
 
 		_, err := save(t, caller, endpointFor(s), keyring())
 		refused(t, err, codes.InvalidArgument, "an endpoint with no subscriptions")
@@ -117,7 +117,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("an endpoint aimed at the cloud instance metadata address is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint))
 		eventType := catalog(t, caller, 1)[0]
 
 		// The positive control: the same registration aimed at the
@@ -138,7 +138,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("saving an endpoint again keeps its identity and reconciles its subscriptions", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, listSubscriptions))
 		offered := catalog(t, caller, 2)
 		dropped, kept := offered[0], offered[1]
 
@@ -167,7 +167,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("an archived endpoint is kept, marked retired, and out of the listing", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, listEndpoints, getEndpoint))
 		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		// The positive control: listed while live, so its absence afterwards is
@@ -190,7 +190,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator asking for retired endpoints receives them", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, listEndpoints))
 		eventType := catalog(t, admin, 1)[0]
 		live := registered(t, s, admin, eventType)
 		retired := registered(t, s, admin, eventType)
@@ -226,7 +226,7 @@ func endpoints(t *testing.T, s *conformance.Session) {
 	t.Run("archiving an identifier that names nothing succeeds", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(archiveEndpoint))
 
 		_, err := caller.Surfaces.Webhooks.ArchiveEndpoint(caller.Context(t.Context()),
 			&webhookspb.ArchiveEndpointRequest{EndpointId: absentID()})

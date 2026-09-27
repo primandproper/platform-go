@@ -869,7 +869,7 @@ func seedAccountFor(t *testing.T, env *storeEnv, store *SQLStore, owner *User, n
 	t.Helper()
 
 	if len(roles) == 0 {
-		roles = []string{"account_admin"}
+		roles = []string{"admin"}
 	}
 
 	var created *Account
@@ -899,7 +899,7 @@ func seedUserInto(t *testing.T, env *storeEnv, store *SQLStore, user *User, acco
 	t.Helper()
 
 	if len(roles) == 0 {
-		roles = []string{"account_member"}
+		roles = []string{"viewer"}
 	}
 
 	var created *User
@@ -942,6 +942,6 @@ func newInvitation(from *User, accountID, toEmail, token string, expires time.Ti
 		// so that any answer written on top of one has something to destroy.
 		Note:      senderNote,
 		ExpiresAt: expires,
-		Roles:     []string{"account_member"},
+		Roles:     []string{"viewer"},
 	}
 }

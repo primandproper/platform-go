@@ -23,14 +23,10 @@ func reach(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's registration is readable and can be withdrawn", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Operator(t,
-			oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
-		)
+		caller := s.Subject(t, conformance.Making(archiveOAuth2Client, getOAuth2Client, listOAuth2Clients))
 		other := colleague(t, s, caller,
-			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+			createOAuth2Client,
+			getOAuth2Client,
 		)
 		theirs := register(t, other).GetClient().GetId()
 		ctx := caller.Context(t.Context())
@@ -59,10 +55,10 @@ func reach(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoRegistries(t, s,
-			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
+			createOAuth2Client,
+			listOAuth2Clients,
 		)
-		other := colleague(t, s, mine, oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName)
+		other := colleague(t, s, mine, createOAuth2Client)
 
 		own := register(t, mine).GetClient().GetId()
 		shared := register(t, other).GetClient().GetId()
@@ -81,10 +77,10 @@ func reach(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoRegistries(t, s,
-			oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
+			archiveOAuth2Client,
+			createOAuth2Client,
+			getOAuth2Client,
+			listOAuth2Clients,
 		)
 		own := register(t, mine).GetClient().GetId()
 
@@ -118,8 +114,8 @@ func reach(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoRegistries(t, s,
-			oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
-			oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+			createOAuth2Client,
+			getOAuth2Client,
 		)
 		own := register(t, mine).GetClient().GetId()
 		ctx := theirs.Context(t.Context())

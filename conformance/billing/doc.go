@@ -13,25 +13,18 @@ answer would tell a caller walking identifiers which of them are real.
 
 # Who a call is made as
 
-The catalog's writes are what a deployment's staff do to what it sells —
-CreateProduct, UpdateProduct and ArchiveProduct — and a deployment may reserve
-them to a service role. It may reserve GetProduct and ListProducts too, though
-billing's own permissions say most let every signed-in caller read the
-catalog. The scope-wide listings and the archivals of the three ledger nouns —
-ListSubscriptions, ListPurchases and ListTransactions, and ArchiveSubscription,
-ArchivePurchase and ArchiveTransaction — may be reserved as well, because a
-read naming no account answers for every account in the tenant, and
-withdrawing a row a provider reported is a correction rather than something an
-account does to its own. Each is made by an operator where the subject
-reserves it and by an ordinary caller where it does not, as
-conformance.ReservableMethods describes, and the catalog's confinement is
-asserted between two such callers in two tenants.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
 
-The account-keyed reads are made as an ordinary caller, and that is a promise:
-a member reads their own account's subscriptions, purchases and transactions.
-The refusals of an account the caller has no standing in are asserted of that
-same ordinary caller, which is what makes them refusals of the rule rather than
-of the role.
+The catalog's writes are what a deployment's staff most often keep to
+themselves, and billing's own permissions say most deployments let every
+signed-in caller read the catalog; neither is assumed. The catalog's
+confinement is asserted between two callers in two tenants, whoever they are.
+The refusals of an account the caller has no standing in are asked of a caller
+minted with conformance.AsMember, which is what makes them refusals of the rule
+rather than of the role, and skip where the read is reserved.
 
 # What is here and what stayed behind
 
@@ -64,8 +57,9 @@ every refusal here on the strength of reaching nothing at all.
 What a caller has standing in is the deployment's rule. The assertions assume
 only the narrowest thing any rule must say: a caller has standing in the account
 they are active on, and none in an account belonging to somebody who shares no
-membership with them. A deployment whose rule is wider than that — an operator
-who may read every ledger — is one these refusals were not written for, and the
-subject says so by minting callers who hold no such role.
+membership with them. A deployment whose rule is wider than that for its
+operators — one who may read every ledger — is right to be, and is not what
+these refusals are about: they are asked of a member, and skip where a
+deployment leaves no member the read.
 */
 package billing

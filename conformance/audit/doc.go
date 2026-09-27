@@ -20,15 +20,17 @@ should be able to do.
 
 # Who a call is made as
 
-VerifyChain may be an operator's: whether a record has been tampered with is a
-question about the deployment, asked by whoever answers for it, and a
-deployment may reserve it to a service role. So the chain an ordinary caller
-appended to is verified by a caller minted into that caller's tenant — an
-operator where the subject reserves VerifyChain — as
-conformance.ReservableMethods describes.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
 
-GetEntry and ListEntries are made as the ordinary caller whose chain it is, and
-that is a promise: a member reads what was recorded in their own tenant.
+VerifyChain is the call a deployment most plausibly keeps to its staff —
+whether a record has been tampered with is a question about the deployment —
+so the chain a caller appended to is verified by a caller minted into that
+caller's tenant declaring VerifyChain. Confinement between two chains holds
+for whoever reads them, so it is asserted of whatever caller the declaration
+implies.
 
 # What is here and what stayed behind
 

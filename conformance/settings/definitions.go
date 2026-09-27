@@ -18,7 +18,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a definition comes back as it was stored", func(t *testing.T) {
 		t.Parallel()
 
-		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(createDefinition))
 		c := names()
 
 		definition := define(t, op, &settingspb.SettingDefinitionInput{
@@ -56,9 +56,9 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a default of no text is a default, and no default is not", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(resolve))
 		needsUser(t, caller)
-		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface)))
 		c := names()
 
 		none := define(t, op, &settingspb.SettingDefinitionInput{
@@ -94,7 +94,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a create naming no definition is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(createDefinition))
 
 		_, err := op.Surfaces.Settings.CreateDefinition(op.Context(t.Context()), &settingspb.CreateDefinitionRequest{})
 		must.Error(t, err)
@@ -106,7 +106,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a create naming no kind is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(createDefinition))
 
 		_, err := op.Surfaces.Settings.CreateDefinition(op.Context(t.Context()), &settingspb.CreateDefinitionRequest{
 			Definition: &settingspb.SettingDefinitionInput{Name: names().digest},
@@ -118,7 +118,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("a name already defined is refused as taken, and says so", func(t *testing.T) {
 		t.Parallel()
 
-		op := s.Operator(t, settingspb.SettingsService_CreateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(createDefinition))
 		c := names()
 		define(t, op, &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
 
@@ -139,7 +139,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		// Reading the catalog is every caller's, so the caller reads it.
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(getDefinitionByName, getDefinition))
 
 		found := byName(t, caller, c.digest)
 
@@ -157,7 +157,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_UpdateDefinition_FullMethodName)
+		op := s.Subject(t, conformance.Making(updateDefinition, getDefinitionByName), conformance.InTenant(surface, caller.ScopeFor(surface)))
 		existing := byName(t, op, c.digest)
 
 		response, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
@@ -188,8 +188,8 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("an edit that would strand a stored value is refused and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
-		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_UpdateDefinition_FullMethodName)
+		caller, c := seeded(t, s, conformance.Making(setValue, getValue))
+		op := s.Subject(t, conformance.Making(updateDefinition, getDefinitionByName), conformance.InTenant(surface, caller.ScopeFor(surface)))
 		set(t, caller, c.digest, stringValue(optionDaily))
 
 		_, err := op.Surfaces.Settings.UpdateDefinition(op.Context(t.Context()), &settingspb.UpdateDefinitionRequest{
@@ -221,11 +221,8 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("archiving retires a setting from every read and keeps its name claimed", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
-		op := s.OperatorIn(t, surface, caller.ScopeFor(surface),
-			settingspb.SettingsService_ArchiveDefinition_FullMethodName,
-			settingspb.SettingsService_CreateDefinition_FullMethodName,
-		)
+		caller, c := seeded(t, s, conformance.Making(setValue))
+		op := s.Subject(t, conformance.Making(archiveDefinition, createDefinition, getDefinition, getDefinitionByName, listDefinitions), conformance.InTenant(surface, caller.ScopeFor(surface)))
 		set(t, caller, c.digest, stringValue(optionDaily))
 
 		ctx := op.Context(t.Context())
@@ -265,7 +262,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("asking for retired settings is never refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(listDefinitions))
 
 		test.SliceContains(t, catalogNames(t, caller, true), c.compact)
 	})
@@ -276,7 +273,7 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator asking for retired settings receives them", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(createDefinition, archiveDefinition, getDefinitionByName, listDefinitions))
 		c := names()
 
 		define(t, admin, &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
@@ -302,9 +299,9 @@ func definitions(t *testing.T, s *conformance.Session) {
 	t.Run("the values for a definition are every subject's answer", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
-		other := colleague(t, s, caller)
-		op := s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_ListValuesForDefinition_FullMethodName)
+		caller, c := seeded(t, s, conformance.Making(setValue))
+		other := colleague(t, s, caller, conformance.Making(setValue))
+		op := s.Subject(t, conformance.Making(listValuesForDefinition), conformance.InTenant(surface, caller.ScopeFor(surface)))
 
 		set(t, caller, c.digest, stringValue(optionDaily))
 		set(t, other, c.digest, stringValue(optionNever))

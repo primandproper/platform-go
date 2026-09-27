@@ -23,8 +23,8 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("an invitation is kept, and its token is not returned to the sender", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
-		invitation := invite(t, sender, freshEmail(), role)
+		sender := s.Subject(t, conformance.Making(invite, getInvitation))
+		invitation := sendInvitation(t, sender, freshEmail(), role)
 		token := tokenFor(t, s, sender, invitation.GetId())
 
 		test.StrNotContains(t, invitation.String(), token,
@@ -41,7 +41,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("an invitation expires when the request says", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
+		sender := s.Subject(t, conformance.Making(invite))
 		needsAccount(t, sender)
 
 		// Whole seconds, because a timestamp is compared exactly here and the
@@ -61,7 +61,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("an expiry in the past is refused", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
+		sender := s.Subject(t, conformance.Making(invite))
 		needsAccount(t, sender)
 
 		_, err := sender.Surfaces.Identity.Invite(sender.Context(t.Context()), &identitypb.InviteRequest{
@@ -77,11 +77,11 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("accepting an invitation mints the membership it promised, once", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
+		sender := s.Subject(t, conformance.Making(invite))
 		needsAccount(t, sender)
-		invitee := colleague(t, s, sender)
+		invitee := colleague(t, s, sender, conformance.Making(getPrincipal, acceptInvitation))
 
-		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), role, otherRole)
+		invitation := sendInvitation(t, sender, self(t, invitee).GetEmailAddress(), role, otherRole)
 		token := tokenFor(t, s, sender, invitation.GetId())
 		ctx := invitee.Context(t.Context())
 
@@ -116,9 +116,9 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("accepting with the wrong token is refused as absent", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
-		invitee := colleague(t, s, sender)
-		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), role)
+		sender := s.Subject(t, conformance.Making(invite))
+		invitee := colleague(t, s, sender, conformance.Making(getPrincipal, acceptInvitation))
+		invitation := sendInvitation(t, sender, self(t, invitee).GetEmailAddress(), role)
 
 		_, err := invitee.Surfaces.Identity.AcceptInvitation(invitee.Context(t.Context()),
 			&identitypb.AcceptInvitationRequest{InvitationId: invitation.GetId(), Token: "not the token"})
@@ -129,9 +129,9 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("a rejection checks the token before it writes", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
-		invitee := colleague(t, s, sender)
-		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), role)
+		sender := s.Subject(t, conformance.Making(invite, getInvitation))
+		invitee := colleague(t, s, sender, conformance.Making(getPrincipal, rejectInvitation))
+		invitation := sendInvitation(t, sender, self(t, invitee).GetEmailAddress(), role)
 		ctx := invitee.Context(t.Context())
 
 		_, err := invitee.Surfaces.Identity.RejectInvitation(ctx,
@@ -159,8 +159,8 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("a cancellation takes no token, and happens once", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
-		invitation := invite(t, sender, freshEmail(), role)
+		sender := s.Subject(t, conformance.Making(invite, cancelInvitation))
+		invitation := sendInvitation(t, sender, freshEmail(), role)
 		ctx := sender.Context(t.Context())
 
 		response, err := sender.Surfaces.Identity.CancelInvitation(ctx,
@@ -177,9 +177,9 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("an invitation read is confined to the sender's directory", func(t *testing.T) {
 		t.Parallel()
 
-		sender, stranger := twoDirectories(t, s)
+		sender, stranger := twoDirectories(t, s, conformance.Making(invite, getInvitation))
 		address := freshEmail()
-		invitation := invite(t, sender, address, role)
+		invitation := sendInvitation(t, sender, address, role)
 
 		read, err := sender.Surfaces.Identity.GetInvitation(sender.Context(t.Context()),
 			&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
@@ -195,13 +195,13 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("a sender's listing is what they sent", func(t *testing.T) {
 		t.Parallel()
 
-		sender := s.Subject(t)
-		other := colleague(t, s, sender)
+		sender := s.Subject(t, conformance.Making(invite, listInvitationsFromUser))
+		other := colleague(t, s, sender, conformance.Making(invite))
 
 		first, second, theirs := freshEmail(), freshEmail(), freshEmail()
-		invite(t, sender, first, role)
-		invite(t, sender, second, role)
-		invite(t, other, theirs, role)
+		sendInvitation(t, sender, first, role)
+		sendInvitation(t, sender, second, role)
+		sendInvitation(t, other, theirs, role)
 
 		page, err := sender.Surfaces.Identity.ListInvitationsFromUser(sender.Context(t.Context()),
 			&identitypb.ListInvitationsFromUserRequest{})
@@ -220,15 +220,15 @@ func invitations(t *testing.T, s *conformance.Session) {
 		verified := s.Seams().Actions.EmailVerified
 		s.NeedsAction(t, verified != nil, "email verified")
 
-		sender := s.Subject(t)
-		invitee := colleague(t, s, sender)
-		bystander := colleague(t, s, sender)
+		sender := s.Subject(t, conformance.Making(invite))
+		invitee := colleague(t, s, sender, conformance.Making(getPrincipal, listInvitationsForEmailAddress))
+		bystander := colleague(t, s, sender, conformance.Making(listInvitationsForEmailAddress))
 
 		must.NoError(t, verified(t.Context(), invitee.ScopeFor(surface), invitee.UserID))
 		must.NoError(t, verified(t.Context(), bystander.ScopeFor(surface), bystander.UserID))
 
 		address := self(t, invitee).GetEmailAddress()
-		invite(t, sender, address, role)
+		sendInvitation(t, sender, address, role)
 
 		received, err := invitee.Surfaces.Identity.ListInvitationsForEmailAddress(invitee.Context(t.Context()),
 			&identitypb.ListInvitationsForEmailAddressRequest{})
@@ -248,16 +248,16 @@ func invitations(t *testing.T, s *conformance.Session) {
 		verified := s.Seams().Actions.EmailVerified
 		s.NeedsAction(t, verified != nil, "email verified")
 
-		sender := s.Subject(t)
-		victim := colleague(t, s, sender)
+		sender := s.Subject(t, conformance.Making(invite))
+		victim := colleague(t, s, sender, conformance.Making(getPrincipal, listInvitationsForEmailAddress))
 		must.NoError(t, verified(t.Context(), victim.ScopeFor(surface), victim.UserID))
 
-		invite(t, sender, self(t, victim).GetEmailAddress(), role)
+		sendInvitation(t, sender, self(t, victim).GetEmailAddress(), role)
 
 		// An attacker who sets their own address to anything is unverified, and
 		// an unverified address is exactly the one a read keyed on it must not
 		// answer for: otherwise claiming somebody's address reads their mail.
-		attacker := colleague(t, s, sender)
+		attacker := colleague(t, s, sender, conformance.Making(updateProfile, listInvitationsForEmailAddress))
 		attackerCtx := attacker.Context(t.Context())
 
 		_, err := attacker.Surfaces.Identity.UpdateProfile(attackerCtx, &identitypb.UpdateProfileRequest{

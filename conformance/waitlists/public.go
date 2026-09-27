@@ -25,7 +25,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor sees the open catalog of the tenant they land in, and only that", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		anonymous, operator := visitor(t, s, []string{listOpenLists}, createList)
 		taking := openList(t, operator, open())
 		stopped := openList(t, operator, closed())
 
@@ -36,7 +36,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		// A list in a tenant of its own, which a visitor landing anywhere but
 		// there must not be offered.
-		other := openList(t, elsewhere(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
+		other := openList(t, elsewhere(t, s, createList), open())
 
 		test.SliceNotContains(t, openListIDs(t, t.Context(), anonymous), other.GetId(),
 			test.Sprint("another tenant's list reached a visitor's catalog"))
@@ -47,9 +47,9 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor's signup is kept as typed and attributed to nobody", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		anonymous, operator := visitor(t, s, []string{joinList, confirmSignup},
+			createList,
+			getSignupByContact,
 		)
 		list := openList(t, operator, open())
 		typed := "Conf." + freshContact()
@@ -99,7 +99,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor cannot be joined to a list outside the tenant they land in", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		anonymous, operator := visitor(t, s, []string{joinList}, createList)
 		home := openList(t, operator, open())
 
 		// The positive control: the same visitor joins a list where they land.
@@ -107,8 +107,8 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err, must.Sprint("a visitor could not join a list where they land; the refusal below proves nothing"))
 
 		owner := elsewhere(t, s,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			createList,
+			getSignupByContact,
 		)
 		other := openList(t, owner, open())
 
@@ -126,12 +126,9 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a signed-in caller's signup is attributed to them", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(joinList, confirmSignup))
 		needsUser(t, caller)
-		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(createList, getSignupByContact), conformance.InTenant(surface, caller.ScopeFor(surface)))
 		list := openList(t, operator, open())
 
 		stored := signedUp(t, s, caller, operator, list.GetId(), freshContact())
@@ -142,11 +139,8 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a signed-in caller cannot join another tenant's list", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
-		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface),
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-		)
+		mine, theirs := twoTenants(t, s, conformance.Making(joinList, confirmSignup))
+		operator := s.Subject(t, conformance.Making(createList, getSignupByContact), conformance.InTenant(surface, mine.ScopeFor(surface)))
 		list := openList(t, operator, open())
 
 		// The positive control: the owner's own join lands.
@@ -168,10 +162,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a list that has stopped taking signups refuses them, in words a person can read", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(createList, getSignupByContact, joinList))
 		list := openList(t, operator, closed())
 		contact := freshContact()
 
@@ -192,11 +183,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join says nothing about an address already on the list, and writes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(createList, getSignupByContact, listSignups, joinList, confirmSignup))
 		list := openList(t, operator, open())
 		contact := freshContact()
 		first := signedUp(t, s, operator, operator, list.GetId(), contact)
@@ -228,13 +215,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join says nothing about an address that withdrew, and re-subscribes nobody", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
-			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
-			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(createList, getSignupByContact, getSignup, listSignups, withdrawSignupsForSubject, joinList, confirmSignup))
 		needsUser(t, operator)
 		list := openList(t, operator, open())
 		contact := freshContact()
@@ -266,10 +247,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join answers a new, an existing and a withdrawn address identically, and with nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(createList, withdrawSignupsForSubject, joinList, confirmSignup))
 		list := openList(t, operator, open())
 
 		existing := freshContact()
@@ -277,7 +255,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		// The withdrawn address is a colleague's, so the erasure that
 		// withdraws it leaves the operator's own signup where it is.
-		leaver := colleague(t, s, operator)
+		leaver := colleague(t, s, operator, conformance.Making(joinList, confirmSignup))
 		needsUser(t, leaver)
 		gone := freshContact()
 		join(t, s, leaver, list.GetId(), gone)
@@ -317,10 +295,12 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a withdrawal nobody can be tied to reads as an identifier nobody minted, and moves nothing", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		anonymous, operator := visitor(t, s, []string{withdraw},
+			createList,
+			joinList,
+			confirmSignup,
+			getSignupByContact,
+			getSignup,
 		)
 		list := openList(t, operator, open())
 		contact := freshContact()
@@ -363,10 +343,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		needsConfirmation(t, s)
 
-		anonymous, operator := visitor(t, s,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-			waitlistspb.WaitlistsService_Invite_FullMethodName,
+		anonymous, operator := visitor(t, s, []string{joinList, confirmSignup},
+			createList,
+			getSignupByContact,
+			invite,
 		)
 		list := openList(t, operator, open())
 		contact := freshContact()
@@ -411,10 +391,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		needsConfirmation(t, s)
 
-		anonymous, operator := visitor(t, s,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		anonymous, operator := visitor(t, s, []string{joinList, unsubscribe, confirmSignup},
+			createList,
+			getSignupByContact,
+			getSignup,
 		)
 		list := openList(t, operator, open())
 		contact := freshContact()

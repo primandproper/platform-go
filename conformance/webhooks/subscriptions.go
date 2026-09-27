@@ -19,7 +19,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("a subscription is added to one of the caller's endpoints", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, addSubscription, listSubscriptions))
 		offered := catalog(t, caller, 2)
 		first, added := offered[0], offered[1]
 
@@ -45,7 +45,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("subscribing twice to one event type answers with the same subscription", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, addSubscription))
 		offered := catalog(t, caller, 2)
 
 		saved := registered(t, s, caller, offered[0])
@@ -64,7 +64,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("a subscription to an event type outside the catalog is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, addSubscription))
 		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		_, err := caller.Surfaces.Webhooks.AddSubscription(caller.Context(t.Context()), &webhookspb.AddSubscriptionRequest{
@@ -77,7 +77,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("a subscription naming no event type is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, addSubscription))
 		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		_, err := caller.Surfaces.Webhooks.AddSubscription(caller.Context(t.Context()),
@@ -88,7 +88,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("a subscription reads back by its identifier", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, getSubscription))
 		eventType := catalog(t, caller, 1)[0]
 		saved := registered(t, s, caller, eventType)
 		sub := subscribedTo(t, saved, eventType)
@@ -102,7 +102,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("an endpoint's live subscriptions are listed", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, listSubscriptions))
 		offered := catalog(t, caller, 2)
 		saved := registered(t, s, caller, offered[0], offered[1])
 
@@ -123,7 +123,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("retiring one subscription leaves the endpoint's others", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, archiveSubscription, listSubscriptions, getSubscription))
 		offered := catalog(t, caller, 2)
 		saved := registered(t, s, caller, offered[0], offered[1])
 
@@ -146,7 +146,7 @@ func subscriptions(t *testing.T, s *conformance.Session) {
 	t.Run("retiring a subscription naming no identifier is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(archiveSubscription))
 
 		_, err := caller.Surfaces.Webhooks.ArchiveSubscription(caller.Context(t.Context()),
 			&webhookspb.ArchiveSubscriptionRequest{})

@@ -18,6 +18,13 @@ import (
 // read by.
 const surface = "audit"
 
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	getEntry    = auditpb.AuditService_GetEntry_FullMethodName
+	listEntries = auditpb.AuditService_ListEntries_FullMethodName
+	verifyChain = auditpb.AuditService_VerifyChain_FullMethodName
+)
+
 // Suite is the audit surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
@@ -42,7 +49,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("an audited action lands in the acting session's chain", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
+		mine, act := subject(t, s, listEntries)
 
 		did := act(t, mine)
 
@@ -57,7 +64,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("an entry in another session's chain is not readable by id", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs, act := twoChains(t, s)
+		mine, theirs, act := twoChains(t, s, listEntries, getEntry)
 
 		// The neighbor learns their own entry's identifier the only way
 		// anybody legitimately can: by reading their own chain. Nothing here
@@ -94,7 +101,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a listing holds this session's entries and not a neighbor's", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs, act := twoChains(t, s)
+		mine, theirs, act := twoChains(t, s, listEntries)
 
 		ours, neighbor := act(t, mine), act(t, theirs)
 
@@ -117,7 +124,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("querying a neighbor's actor searches this session's chain", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs, act := twoChains(t, s)
+		mine, theirs, act := twoChains(t, s, listEntries)
 
 		ours, neighbor := act(t, mine), act(t, theirs)
 
@@ -147,7 +154,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("paging a listing drops nothing and repeats nothing", func(t *testing.T) {
 		t.Parallel()
 
-		mine, act := subject(t, s)
+		mine, act := subject(t, s, listEntries)
 
 		want := make([]*conformance.Audited, 0, 7)
 		for range 7 {
@@ -166,24 +173,24 @@ func run(t *testing.T, s *conformance.Session) {
 	})
 }
 
-// subject mints a caller together with the action it performs, skipping the
-// test where the subject offers none.
-func subject(t *testing.T, s *conformance.Session) (caller *conformance.Subject, act func(*testing.T, *conformance.Subject) *conformance.Audited) {
+// subject mints a caller making methods together with the action it performs,
+// skipping the test where the subject offers none.
+func subject(t *testing.T, s *conformance.Session, methods ...string) (caller *conformance.Subject, act func(*testing.T, *conformance.Subject) *conformance.Audited) {
 	t.Helper()
 
 	act = actor(t, s)
 
-	return s.Subject(t), act
+	return s.Subject(t, conformance.Making(methods...)), act
 }
 
 // twoChains mints two callers in audit tenants of their own together with the
 // action they perform, for the assertions that one chain does not reach the
 // other.
-func twoChains(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject, act func(*testing.T, *conformance.Subject) *conformance.Audited) {
+func twoChains(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject, act func(*testing.T, *conformance.Subject) *conformance.Audited) {
 	t.Helper()
 
 	act = actor(t, s)
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, conformance.Making(methods...))
 
 	return mine, theirs, act
 }

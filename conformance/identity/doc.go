@@ -41,21 +41,21 @@ controls went in.
 
 # Who a call is made as
 
-The directory is administered, and a deployment may reserve administering it
-to a service role. Register, GetUser, ListUsers, SearchUsersByUsername,
-ListAccounts, ArchiveUser, UpdateUserAccountStatus, SetUserServiceRoles and
-SetUserRequiresPasswordChange are therefore each made by an operator where the
-subject reserves it, and by an ordinary caller where it does not, as
-conformance.ReservableMethods describes; the directory's confinement is
-asserted between whoever makes those calls in each of two tenants. Register
-here writes the directory's rows; signin's also names the credential its
-registrant signs in with, and is reservable on the same terms.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
 
-The rest is made as an ordinary caller, and each is a promise: a signed-in
-caller reads their own principal through GetPrincipal — which is how every
-suite here learns a caller's address, rather than through GetUser — saves their
-own profile and agreements, reads the accounts they belong to and their
-rosters, and administers an account they own: its members, its invitations and
-its ownership.
+The directory's administered calls — Register, GetUser, ListUsers,
+SearchUsersByUsername, ListAccounts and the operator writes — are the ones a
+deployment most plausibly keeps to its staff, but a deployment may as well
+reserve opening a second account, or an owner's administration of their own.
+A caller learns its own address through GetPrincipal rather than GetUser, so
+that reading oneself never depends on being allowed the directory. The
+directory's walls hold for whoever calls: a neighboring directory's account,
+user or memberships is refused to whatever caller the declaration implies, as
+absent or forbidden. Refusing to archive an account the caller does not
+belong to turns on membership within a directory, and is asked of a caller
+minted with conformance.AsMember.
 */
 package identity

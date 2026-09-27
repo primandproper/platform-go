@@ -21,7 +21,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor's comment is absent to every call that names it", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(createComment, getComment, updateComment, archiveComment, listRootComments))
 		stored := say(t, mine, target(t, s, mine), bodyRoot)
 
 		// The positive control. Every absence below is also what a surface
@@ -67,7 +67,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("a discussion's listings reach the caller's tenant only", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(createComment, listRootComments, listReplies, listCommentsByAuthor))
 		myTarget, theirTarget := eachTarget(t, s, mine, theirs)
 
 		myRoot := say(t, mine, myTarget, bodyRoot)
@@ -101,9 +101,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 		// Last, because it is the one read a deployment reserves to an
 		// operator, and a subject that mints none may skip it, which would
 		// skip everything after it.
-		got := byTargetType(t, s.OperatorIn(t, surface, mine.ScopeFor(surface),
-			commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
-		), myTarget.GetType())
+		got := byTargetType(t, s.Subject(t, conformance.Making(listCommentsByTargetType), conformance.InTenant(surface, mine.ScopeFor(surface))), myTarget.GetType())
 		test.SliceContains(t, got, myReply.GetId(), test.Sprint("this tenant's own reply was missing from the moderation read"))
 		test.SliceNotContains(t, got, theirRoot.GetId(), test.Sprint("a neighboring tenant's root reached the moderation read"))
 		test.SliceNotContains(t, got, theirReply.GetId(), test.Sprint("a neighboring tenant's reply reached the moderation read"))

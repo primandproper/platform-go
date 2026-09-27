@@ -43,15 +43,15 @@ func Suite() conformance.Suite {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
-	// An ordinary caller for every read the subject leaves to one, and an
-	// operator for each it reserves; see pagedrpc.RPC.Caller.
-	ordinary := s.Subject(t)
+	// A probe for which reads are mounted, making none of them; each read is
+	// made by a caller of its own, see pagedrpc.RPC.Caller.
+	probe := s.Subject(t)
 
-	if ordinary.Conn == nil {
+	if probe.Conn == nil {
 		t.Skip("conformance: this subject supplies no connection to invoke a read by name through")
 	}
 
-	reads := pagedrpc.Mounted(&ordinary.Surfaces)
+	reads := pagedrpc.Mounted(&probe.Surfaces)
 	if len(reads) == 0 {
 		t.Skip("conformance: this subject mounts no surface with a paged read")
 	}
@@ -64,7 +64,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Run(read.Surface+" "+string(read.Method.Name()), func(t *testing.T) {
 			t.Parallel()
 
-			subject := read.Caller(t, s, ordinary)
+			subject := read.Caller(t, s)
 
 			page := func(t *testing.T, filter *filteringpb.QueryFilter) *filteringpb.Pagination {
 				t.Helper()
