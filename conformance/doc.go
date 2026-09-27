@@ -59,8 +59,8 @@ module built.
 Seams is a struct of nilable fields, and absence is absence — the rule
 service.Config states one level up. A nil client in Surfaces is a surface the
 subject did not mount, and its suite skips rather than failing; a nil field in
-Seeds is a row this subject cannot make, and the assertions that need one skip
-with the reason named. Nothing here degrades quietly: a skip prints what was
+Actions is a state this subject cannot bring about, and the assertions that need
+one skip with the reason named. Nothing here degrades quietly: a skip prints what was
 missing, because a suite that silently asserted nothing is worse than no suite.
 
 # Who a call is made as
@@ -111,6 +111,13 @@ back. Every suite here mints a fresh tenant per test for the same reason. This
 is not a style preference: a count assertion in a shared deployment is a test
 whose outcome depends on what else is running, which is a flake that will be
 read as a dialect bug.
+
+There is no seam by which a subject claims a database of its own, and none by
+which it hands over its clock. Nothing here asserts an expiry, a TTL, a pacing
+rule or a sweep: those promises are asserted in process, where a test owns both,
+and a consumer's own test of one is not something these suites replace. A
+time-based promise that later wants a suite comes back as a seam shaped for that
+suite rather than as a general flag every subject is asked to set.
 
 # Dialects
 

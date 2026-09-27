@@ -2,7 +2,7 @@
 Package signin is the credential surface's promises, assertable against any
 subject that mounts it.
 
-Fifteen RPCs, and most of them answer somebody who is not signed in: the doors
+Seventeen RPCs, and most of them answer somebody who is not signed in: the doors
 a person signs in through, the links that finish a registration, the exchange
 that keeps a login alive and the button that ends one. What a consumer is owed
 about them is two things that pull against each other. The first is that the

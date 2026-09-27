@@ -194,10 +194,6 @@ func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy
 		Roles: vocabulary,
 
 		Dialect: d,
-
-		// The tables are this run's own, by prefix, so nothing else is writing
-		// to them even where the server is shared.
-		ExclusiveDatabase: true,
 	})
 }
 
