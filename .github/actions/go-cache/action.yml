@@ -1,0 +1,78 @@
+# Vendored from github.com/cloudx-io/setup-go at
+# 87999fd1dd2296a747db09d0ff1eb294ee05758a (MIT, see LICENSE), so that no
+# third-party action sits in the build path: Go itself is still installed by
+# actions/setup-go and the cache is still actions/cache, both pinned by SHA
+# below, and the only code of its own is trim/, which deletes GOCACHE entries
+# this run did not touch.
+#
+# What it buys over actions/setup-go's own cache, which keys on go.sum alone
+# and saves only on a miss: one entry per job, per branch and per run, so a
+# job restores what that job last compiled rather than whatever the first job
+# to finish on main saved the day go.sum last changed. A branch with no entry
+# of its own falls back to the default branch's.
+#
+# Changed from upstream: the trim step is referenced by its path in this
+# repository, where upstream resolves it relative to its own.
+name: 'Setup Go with Isolated Cache'
+description: 'Install Go and cache GOCACHE/GOMODCACHE with per-job isolation, branch-aware restore, and working-set trimming.'
+
+inputs:
+  cache-key-prefix:
+    description: 'Prefix for the cache key to prevent collisions between jobs that build different things'
+    required: true
+  go-version:
+    description: 'The Go version to download (if necessary) and use.'
+    required: true
+  cache-dependency-path:
+    description: 'Glob hashed into the cache key. Use a single glob; defaults to go.sum files.'
+    required: false
+    default: '**/go.sum'
+  max-staleness-hours:
+    description: 'Whole hours to retain GOCACHE entries before the job start time.'
+    required: false
+    default: '2'
+
+outputs:
+  cache-hit:
+    description: 'True if an exact cache key match was restored'
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: install go binary
+      id: install-go
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+    - name: get cache paths
+      id: get-cache-paths
+      shell: bash
+      run: |
+        echo "gocache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+        echo "gomodcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+    - name: cache
+      id: cache
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          ${{ steps.get-cache-paths.outputs.gocache }}
+          ${{ steps.get-cache-paths.outputs.gomodcache }}
+        key: go-cache-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key-prefix }}-${{ inputs.go-version }}-${{ github.head_ref || github.ref_name }}-${{ hashFiles(inputs.cache-dependency-path) }}-${{ github.run_id }}
+        restore-keys: |
+          go-cache-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key-prefix }}-${{ inputs.go-version }}-${{ github.head_ref || github.ref_name }}-${{ hashFiles(inputs.cache-dependency-path) }}-
+          go-cache-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key-prefix }}-${{ inputs.go-version }}-${{ github.head_ref || github.ref_name }}-
+          go-cache-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key-prefix }}-${{ inputs.go-version }}-${{ github.event.repository.default_branch }}-${{ hashFiles(inputs.cache-dependency-path) }}-
+          go-cache-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key-prefix }}-${{ inputs.go-version }}-${{ github.event.repository.default_branch }}-
+    # Trim GOCACHE to this run's working set. Post-hooks run in reverse
+    # declaration order, so this one runs after the workflow's own steps have
+    # populated the cache and before actions/cache's post-save uploads it.
+    # Go has no size limit on GOCACHE and its own five-day trim never fires in
+    # a CI that compiles daily, so without this every save carries every
+    # previous save's stale compile output with it.
+    - name: trim GOCACHE
+      uses: ./.github/actions/go-cache/trim
+      with:
+        gocache: ${{ steps.get-cache-paths.outputs.gocache }}
+        max-staleness-hours: ${{ inputs.max-staleness-hours }}
