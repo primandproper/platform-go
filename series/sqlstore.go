@@ -380,6 +380,10 @@ func (s *SQLStore) Materialize(
 		return 0, s.failed(ctx, op.Error(ErrNoInstant, "materializing series"))
 	}
 
+	if err := withinWriteAhead(through, s.now()); err != nil {
+		return 0, s.failed(ctx, op.Error(err, "materializing series"))
+	}
+
 	if err := scope.Validate(); err != nil {
 		return 0, s.failed(ctx, op.Error(err, "materializing series"))
 	}
@@ -795,6 +799,10 @@ func (s *SQLStore) SkipWindow(ctx context.Context, tx database.Tx, scope tenancy
 
 	after, through, err := window.bounds()
 	if err != nil {
+		return 0, s.failed(ctx, op.Error(err, "closing window"))
+	}
+
+	if err = withinWriteAhead(window.To, s.now()); err != nil {
 		return 0, s.failed(ctx, op.Error(err, "closing window"))
 	}
 

@@ -63,6 +63,11 @@ on (series_id, slot_at) turns a slot already written into a write that does
 nothing. A consumer that wants a new series' rows at once calls Materialize
 itself, in the transaction that created it.
 
+No write reaches further past now than [MaxWriteAhead] — not a Materialize,
+not a closure, not the worker's Horizon — and a rule's dates fall in [MinYear]
+to [MaxYear]. The bounds are there so a typo'd year is [ErrTooFarAhead] or
+[ErrInvalidRule] rather than one insert per week for every week it names.
+
 # Time
 
 A rule is wall-clock time in its own zone, so a 4pm lesson is at 4pm on both

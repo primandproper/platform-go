@@ -44,7 +44,8 @@ type WorkerConfig struct {
 	// sharing one lock backend and one database would want the same key; two
 	// sharing a lock backend and not a database want different ones.
 	LockKey string `env:"LOCK_KEY" json:"lockKey,omitempty" yaml:"lockKey,omitempty"`
-	// Horizon is how far ahead of now every series is written.
+	// Horizon is how far ahead of now every series is written. It may not
+	// exceed MaxWriteAhead.
 	Horizon time.Duration `env:"HORIZON" json:"horizon,omitempty" yaml:"horizon,omitempty"`
 	// Refill is how far behind the horizon a series may fall before a pass
 	// writes it forward. Zero writes every series forward on every pass. It
@@ -83,7 +84,7 @@ func (cfg *WorkerConfig) EnsureDefaults() {
 func (cfg *WorkerConfig) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.LockKey, validation.Required),
-		validation.Field(&cfg.Horizon, validation.Required, validation.Min(time.Minute)),
+		validation.Field(&cfg.Horizon, validation.Required, validation.Min(time.Minute), validation.Max(MaxWriteAhead)),
 		validation.Field(&cfg.Refill, validation.Min(time.Duration(0)), validation.Max(cfg.Horizon-time.Nanosecond)),
 		validation.Field(&cfg.PollInterval, validation.Required, validation.Min(time.Second)),
 		validation.Field(&cfg.BatchSize, validation.Required, validation.Min(1)),

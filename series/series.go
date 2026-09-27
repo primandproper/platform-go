@@ -103,6 +103,13 @@ const (
 	MaxOccurrencesPerRead = 1000
 	// MaxSeriesPerPage is the largest page ListSeries reads.
 	MaxSeriesPerPage = 250
+	// MaxWriteAhead is the furthest past now a write may reach: the through
+	// Materialize writes before, a SkipWindow's end, and the horizon worker's
+	// Horizon. Two years holds any closure a studio plans and any horizon a
+	// schedule shows, and a bound is what keeps a typo'd year from becoming
+	// one insert per week for every week in it, on one transaction. A write
+	// past it is ErrTooFarAhead.
+	MaxWriteAhead = 104 * 7 * 24 * time.Hour
 
 	// sweepBatch is how many occurrences one pass of a closure or an end
 	// skips. The store repeats the pass on the caller's transaction until one
@@ -132,6 +139,15 @@ func (w Window) bounds() (after, through time.Time, err error) {
 	}
 
 	return ceilSecond(w.From).Add(-time.Second), ceilSecond(w.To).Add(-time.Second), nil
+}
+
+// withinWriteAhead refuses an end further past now than MaxWriteAhead.
+func withinWriteAhead(end, now time.Time) error {
+	if limit := now.Add(MaxWriteAhead); end.After(limit) {
+		return platformerrors.Wrapf(ErrTooFarAhead, "%s is past %s", end.UTC(), limit.UTC())
+	}
+
+	return nil
 }
 
 // ceilSecond rounds t up to the next whole second, in UTC.

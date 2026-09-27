@@ -38,8 +38,9 @@ var (
 
 	// ErrInvalidRule indicates a rule that does not describe a recurrence: a
 	// weekday or time of day that does not exist, an interval outside 1 to
-	// MaxIntervalWeeks, a date that is not one, or an end on or before the
-	// start. The wrapped message says which.
+	// MaxIntervalWeeks, a date that is not one or falls outside MinYear to
+	// MaxYear, or an end on or before the start. The wrapped message says
+	// which.
 	ErrInvalidRule = platformerrors.New("series rule is not a weekly recurrence")
 
 	// ErrUnknownTimeZone indicates a rule naming a zone the zone database does
@@ -49,6 +50,13 @@ var (
 	// ErrInvalidWindow indicates a window whose end is not after its start, or
 	// that leaves either end unset.
 	ErrInvalidWindow = platformerrors.New("series window must end after it starts")
+
+	// ErrTooFarAhead indicates a Materialize or a SkipWindow asked to write
+	// occurrences further past now than MaxWriteAhead, measured by the
+	// database's clock. A worker Horizon past it is refused at construction.
+	// The answer is a nearer date: the rows for a later one are written when
+	// it comes into reach.
+	ErrTooFarAhead = platformerrors.New("series write reaches further ahead than the write-ahead limit")
 
 	// ErrWindowTooLarge indicates a window holding more than
 	// MaxOccurrencesPerRead occurrences. The answer is a narrower window, not

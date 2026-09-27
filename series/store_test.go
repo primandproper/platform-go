@@ -728,6 +728,30 @@ func runRefusalCases(t *testing.T, env *storeEnv) {
 		})
 		test.ErrorIs(t, err, ErrNoInstant)
 	})
+
+	t.Run("a write past the write-ahead limit writes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		created := env.mustCreate(t, store, testScope, weeklyUTC())
+		tooFar := time.Now().Add(MaxWriteAhead + 7*24*time.Hour)
+
+		err := env.inTx(t, func(tx database.Tx) error {
+			_, matErr := store.Materialize(t.Context(), tx, testScope, created.ID, tooFar)
+
+			return matErr
+		})
+		test.ErrorIs(t, err, ErrTooFarAhead)
+
+		err = env.inTx(t, func(tx database.Tx) error {
+			_, skipErr := store.SkipWindow(t.Context(), tx, testScope, Window{From: tuesday(0), To: tooFar}, "forever")
+
+			return skipErr
+		})
+		test.ErrorIs(t, err, ErrTooFarAhead)
+
+		test.SliceEmpty(t, env.occurrences(t, store, testScope, created.ID))
+	})
 }
 
 func countState(states map[string]State, want State) int {

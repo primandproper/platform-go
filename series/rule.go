@@ -15,6 +15,13 @@ const (
 	// MaxTimeZoneLength bounds the IANA zone name, which the MySQL schema
 	// stores as VARCHAR(64). The longest name in the database is 32.
 	MaxTimeZoneLength = 64
+	// MinYear and MaxYear bound the years a rule's dates may fall in. The
+	// floor is where MySQL's DATETIME starts, so a date before it is refused
+	// here rather than on one dialect of three; the ceiling is the last year
+	// YYYY-MM-DD can spell. Both are far wider than a standing appointment
+	// needs, and they are there to turn a typo'd year into ErrInvalidRule.
+	MinYear = 1000
+	MaxYear = 9999
 
 	minutesPerDay = 24 * 60
 	daysPerWeek   = 7
@@ -112,6 +119,11 @@ func (d Date) valid() bool {
 	return DateOf(d.civil()) == d
 }
 
+// inYearRange reports whether d falls in MinYear to MaxYear.
+func (d Date) inYearRange() bool {
+	return d.Year >= MinYear && d.Year <= MaxYear
+}
+
 // civil is d as midnight UTC, which is the one zone where calendar arithmetic
 // never meets a day that is not 24 hours long.
 func (d Date) civil() time.Time {
@@ -139,10 +151,12 @@ type Rule struct {
 	// point: that is the zone database's to know.
 	TimeZone string `json:"timeZone"`
 	// StartsOn is the first date an occurrence may fall on. The first
-	// occurrence is the first Weekday on or after it.
+	// occurrence is the first Weekday on or after it. It must fall in MinYear
+	// to MaxYear.
 	StartsOn Date `json:"startsOn"`
 	// EndsOn is the first date no occurrence falls on: the rule's dates are
-	// [StartsOn, EndsOn). The zero Date is a rule with no end.
+	// [StartsOn, EndsOn). The zero Date is a rule with no end; any other must
+	// fall in MinYear to MaxYear.
 	EndsOn Date `json:"endsOn,omitzero"`
 	// Weekday is the day of the week occurrences fall on.
 	Weekday time.Weekday `json:"weekday"`
@@ -177,9 +191,17 @@ func (r *Rule) validate() (*time.Location, error) {
 		return nil, platformerrors.Wrapf(ErrInvalidRule, "start date %+v is not a date", r.StartsOn)
 	}
 
+	if !r.StartsOn.inYearRange() {
+		return nil, platformerrors.Wrapf(ErrInvalidRule, "start date %s is outside the years %d to %d", r.StartsOn, MinYear, MaxYear)
+	}
+
 	if !r.EndsOn.IsZero() {
 		if !r.EndsOn.valid() {
 			return nil, platformerrors.Wrapf(ErrInvalidRule, "end date %+v is not a date", r.EndsOn)
+		}
+
+		if !r.EndsOn.inYearRange() {
+			return nil, platformerrors.Wrapf(ErrInvalidRule, "end date %s is outside the years %d to %d", r.EndsOn, MinYear, MaxYear)
 		}
 
 		if !r.StartsOn.Before(r.EndsOn) {

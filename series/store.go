@@ -86,6 +86,9 @@ type Store interface {
 	// is the rows the rule implies, and a consumer who did not want the past
 	// ones starts the series today.
 	//
+	// A through further past now than MaxWriteAhead, by the database's clock,
+	// is ErrTooFarAhead; a zero one is ErrNoInstant.
+	//
 	// A series in another scope or absent is ErrSeriesNotFound. A nil tx is an
 	// error wrapping ErrNilExecutor.
 	Materialize(ctx context.Context, tx database.Tx, scope tenancy.Scope, seriesID string, through time.Time) (int64, error)
@@ -140,8 +143,9 @@ type Store interface {
 	// student.
 	//
 	// Occurrences already skipped are left as they are, reason included.
-	// Replacements in the window are skipped like any other occurrence. A nil
-	// tx is an error wrapping ErrNilExecutor.
+	// Replacements in the window are skipped like any other occurrence. A
+	// window ending further past now than MaxWriteAhead is ErrTooFarAhead. A
+	// nil tx is an error wrapping ErrNilExecutor.
 	SkipWindow(ctx context.Context, tx database.Tx, scope tenancy.Scope, window Window, reason string) (int64, error)
 
 	// MoveOccurrence gives one occurrence a new instant and marks it moved,

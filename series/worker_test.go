@@ -68,6 +68,18 @@ func TestWorkerConfig(T *testing.T) {
 		cfg.Refill = time.Hour - time.Minute
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
+
+	T.Run("the horizon may not pass the write-ahead limit", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{Horizon: MaxWriteAhead + time.Hour}
+		cfg.EnsureDefaults()
+
+		test.Error(t, cfg.ValidateWithContext(t.Context()))
+
+		cfg.Horizon = MaxWriteAhead
+		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
 }
 
 func TestNewWorker_Refusals(T *testing.T) {

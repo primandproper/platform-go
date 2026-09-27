@@ -70,6 +70,8 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrValidatingRequestInput, "the date range must end after it starts", true
 	case errors.Is(err, ErrWindowTooLarge):
 		return httperrors.ErrValidatingRequestInput, "the date range holds too many occurrences; ask for a shorter one", true
+	case errors.Is(err, ErrTooFarAhead):
+		return httperrors.ErrValidatingRequestInput, "that date is too far ahead to schedule yet; ask for a nearer one", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -96,7 +98,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrInvalidRule),
 		errors.Is(err, ErrUnknownTimeZone),
 		errors.Is(err, ErrInvalidWindow),
-		errors.Is(err, ErrWindowTooLarge):
+		errors.Is(err, ErrWindowTooLarge),
+		errors.Is(err, ErrTooFarAhead):
 		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false
