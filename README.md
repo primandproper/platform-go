@@ -63,6 +63,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/signin/magiclinks` | The sign-in links the passwordless door mails: digest at rest, single use, and a redemption that proves the address it was sent to | postgres, mysql, sqlite          |
 | `authentication/signin/recoverycodes` | The recovery codes a person keeps on paper for a lost authenticator: digest at rest, single use, spent by the door they prove, and `authentication/signin/recoverycodes/privacy` | postgres, mysql, sqlite          |
+| `authentication/phonecodes`        | Short codes texted to a person who is not a user: digest at rest, single use, dead after too many wrong guesses, one live code per number, and `authentication/phonecodes/privacy` | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
 | `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, and `authentication/passkeys/privacy` | postgres, mysql, sqlite          |
@@ -156,7 +157,7 @@ checking it.
 
 | What it is                                     | Packages                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
+| a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/phonecodes`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -202,10 +203,12 @@ than this paragraph: `callers` imports nothing else in this module, and the only
 gRPC surface here that still reaches `identity` is `authentication/signin/grpc`,
 which renders a signed-in user and says so where the test can read it.
 
-Seven of the paths above sit under a directory this module does not own the root
-of, and every one of them is under `authentication/`. Six are a primitive with a
+Eight of the paths above sit under a directory this module does not own the root
+of, and every one of them is under `authentication/`. Seven are a primitive with a
 store nested inside it — `authentication` hashes passwords and issues tokens in
-primitives-go, and `authentication/passwordreset` owns a table of them;
+primitives-go, and `authentication/passwordreset` owns a table of them, as
+`authentication/phonecodes` owns a table of the codes texted to a person who is
+not a user;
 `authentication/oauth2clients`, `authentication/oauth2serverstore`,
 `authentication/webauthnsessions` and `authentication/passkeys` split the same
 way, the last two against one engine: the ceremony a login runs and the
@@ -213,13 +216,13 @@ credential that ceremony produced are two tables, and the protocol between them
 is a primitive. `authentication/grants` is the same split facing the other way:
 the two OAuth2 packages are this deployment as the authorization server, and it is
 this deployment as the client, holding the tokens somebody else's server issued —
-the protocol is `golang.org/x/oauth2`'s and the table is here. The seventh is
+the protocol is `golang.org/x/oauth2`'s and the table is here. The eighth is
 `authentication/signin`, which is neither: it is a
 domain flow under a primitive's path, there because sign-in is what those engines
 are for and a `signin` at the root would hide that.
 
 `authentication/` is the one straddle parent that groups rather than indirects —
-seven related domain packages under a name a reader wants — which is why it is the
+eight related domain packages under a name a reader wants — which is why it is the
 one that stayed. Go is content with a parent directory holding no `.go` files,
 and six of them were exactly that: `uploads/`, `authorization/`, `cryptography/`
 and `search/` each held one child and no source, as did
@@ -646,6 +649,7 @@ here.
 | `authentication/oauth2serverstore`    | ✓        | ✓     | ✓      |
 | `authentication/passkeys`             | ✓        | ✓     | ✓      |
 | `authentication/passwordreset`        | ✓        | ✓     | ✓      |
+| `authentication/phonecodes`           | ✓        | ✓     | ✓      |
 | `authentication/signin/magiclinks`    | ✓        | ✓     | ✓      |
 | `authentication/signin/recoverycodes` | ✓        | ✓     | ✓      |
 | `authentication/signin/refreshtokens` | ✓        | ✓     | ✓      |

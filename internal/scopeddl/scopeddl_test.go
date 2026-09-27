@@ -51,6 +51,7 @@ var tenancyColumns = map[string][]string{
 	"authentication/oauth2clients": {"oauth2_registered_clients.scope"},
 	"authentication/passkeys":      {"webauthn_credentials.scope"},
 	"authentication/passwordreset": {"password_reset_tokens.scope"},
+	"authentication/phonecodes":    {"phone_codes.scope"},
 	// signin owns no table; the refresh tokens its rotation mints and the links
 	// its passwordless door mails each live in a subpackage of their own, which
 	// is where the columns are.
