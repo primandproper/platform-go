@@ -290,6 +290,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					scope = *req.Scope
 				}
 
+				// An hour back, so a stamp a suite's own call writes is never
+				// mistaken for the one registration wrote — SQLite keeps whole
+				// seconds, and a stamp from this second would be both.
+				agreedAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+
 				// Through the service rather than the surface: every identity RPC
 				// requires a caller, Register included, so there is no client-only
 				// way to mint the first one.
@@ -302,6 +307,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						Username:      "conf_" + identifiers.New(),
 						EmailAddress:  identifiers.New() + "@conformance.invalid",
 						AccountStatus: identity.StatusGood,
+						// And having agreed to both documents, as a registration
+						// that collects acceptance at sign-up writes them, so no
+						// suite can read "nothing changed" as "still unset".
+						LastAcceptedTermsOfService: &agreedAt,
+						LastAcceptedPrivacyPolicy:  &agreedAt,
 					},
 					&identity.Account{Name: "conf_" + identifiers.New()},
 					[]string{"account_admin"})

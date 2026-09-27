@@ -6,8 +6,6 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
-	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
-
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
@@ -235,11 +233,9 @@ func definitions(t *testing.T, s *conformance.Session) {
 
 		// The positive control for the listing below: the setting is there
 		// before it is retired, beside one that stays.
-		before, err := op.Surfaces.Settings.ListDefinitions(ctx, &settingspb.ListDefinitionsRequest{})
-		must.NoError(t, err)
-		must.SliceContains(t, definitionNames(before.GetResults()), c.digest)
+		must.SliceContains(t, catalogNames(t, op, false), c.digest)
 
-		_, err = op.Surfaces.Settings.ArchiveDefinition(ctx,
+		_, err := op.Surfaces.Settings.ArchiveDefinition(ctx,
 			&settingspb.ArchiveDefinitionRequest{DefinitionId: retired.GetId()})
 		must.NoError(t, err)
 
@@ -251,11 +247,10 @@ func definitions(t *testing.T, s *conformance.Session) {
 		must.Error(t, err, must.Sprint("a retired setting was readable by id"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
 
-		after, err := op.Surfaces.Settings.ListDefinitions(ctx, &settingspb.ListDefinitionsRequest{})
-		must.NoError(t, err)
-		test.SliceNotContains(t, definitionNames(after.GetResults()), c.digest,
+		after := catalogNames(t, op, false)
+		test.SliceNotContains(t, after, c.digest,
 			test.Sprint("a retired setting is still in a listing that did not ask for retired rows"))
-		test.SliceContains(t, definitionNames(after.GetResults()), c.compact)
+		test.SliceContains(t, after, c.compact)
 
 		_, err = op.Surfaces.Settings.CreateDefinition(ctx, &settingspb.CreateDefinitionRequest{
 			Definition: &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING},
@@ -271,12 +266,8 @@ func definitions(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		caller, c := seeded(t, s)
-		include := true
 
-		res, err := caller.Surfaces.Settings.ListDefinitions(caller.Context(t.Context()),
-			&settingspb.ListDefinitionsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
-		must.NoError(t, err)
-		test.SliceContains(t, definitionNames(res.GetResults()), c.compact)
+		test.SliceContains(t, catalogNames(t, caller, true), c.compact)
 	})
 
 	// The granted half. An administrator holds the grant that retires a
@@ -297,17 +288,11 @@ func definitions(t *testing.T, s *conformance.Session) {
 			&settingspb.ArchiveDefinitionRequest{DefinitionId: byName(t, admin, c.digest).GetId()})
 		must.NoError(t, err)
 
-		without, err := admin.Surfaces.Settings.ListDefinitions(ctx, &settingspb.ListDefinitionsRequest{})
-		must.NoError(t, err)
-		test.SliceNotContains(t, definitionNames(without.GetResults()), c.digest)
+		test.SliceNotContains(t, catalogNames(t, admin, false), c.digest)
 
-		include := true
-
-		with, err := admin.Surfaces.Settings.ListDefinitions(ctx,
-			&settingspb.ListDefinitionsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
-		must.NoError(t, err)
-		test.SliceContains(t, definitionNames(with.GetResults()), c.compact)
-		test.SliceContains(t, definitionNames(with.GetResults()), c.digest,
+		with := catalogNames(t, admin, true)
+		test.SliceContains(t, with, c.compact)
+		test.SliceContains(t, with, c.digest,
 			test.Sprint("an administrator asked for retired settings and was answered without them"))
 	})
 
