@@ -135,7 +135,9 @@ signup on one list, in one tenant, and redeeming it compares that tenant with
 the connection's rather than binding the one it carries — a link presented on a
 connection placed elsewhere is refused unspent, as is a link presented at the
 wrong door. Every refusal is [ErrInvalidLink] as codes.NotFound, for the reason
-a refused withdrawal reads as an absent signup.
+a refused withdrawal reads as an absent signup. A link is spent only once the
+write it authorized has committed, so a write that fails leaves it to be
+followed again rather than burned.
 
 Both spend on the call rather than on a page load. Mail security fetches every
 URL in a message before its recipient sees it, so the consumer's GET renders a

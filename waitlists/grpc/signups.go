@@ -585,17 +585,16 @@ func (s *Server) Withdraw(
 //
 // The token is the whole request. It names the signup and the list, and the
 // tenant is the connection's, compared against the one the link was minted in
-// rather than read off it — see redeemLink. Every way the link can fail is one
+// rather than read off it — see readLink. Every way the link can fail is one
 // answer, [ErrInvalidLink] as codes.NotFound, including a link whose signup has
-// since been confirmed, withdrawn or archived: the link was spent, and the
-// person holding it has nothing to act on that a more specific refusal would
-// give them.
+// since been confirmed, withdrawn or archived: the person holding it has
+// nothing to act on that a more specific refusal would give them.
 //
-// The link is spent before the move, in a transaction of its own inside the
-// links store, so a move that then fails for a reason that is not a refusal —
-// the database went away — leaves a spent link and a pending signup. The next
-// Join from the address mails a fresh one, which is the recovery the resend
-// exists for.
+// The link is read before the move and spent only once the move has committed,
+// so a move that fails for a reason that is not a refusal — the database went
+// away — leaves the link unspent and the signup pending, and following the same
+// link again confirms. See spendLink for why honoring the link before spending
+// it is sound here.
 func (s *Server) Confirm(
 	ctx context.Context,
 	request *waitlistspb.ConfirmRequest,
@@ -613,7 +612,7 @@ func (s *Server) Confirm(
 		return nil, err
 	}
 
-	linked, err := s.redeemLink(ctx, req, ConfirmAction, request.GetToken())
+	linked, err := s.readLink(ctx, req, ConfirmAction, request.GetToken())
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +622,7 @@ func (s *Server) Confirm(
 
 		return confirmErr
 	}); err != nil {
-		if linkSpentOnAMovedSignup(err) {
+		if linkNamesAMovedSignup(err) {
 			err = s.refuseLink(req, err.Error())
 
 			return nil, err
@@ -634,6 +633,8 @@ func (s *Server) Confirm(
 
 		return nil, err
 	}
+
+	s.spendLink(ctx, req, request.GetToken())
 
 	return &waitlistspb.ConfirmResponse{}, nil
 }
@@ -669,7 +670,7 @@ func (s *Server) Unsubscribe(
 		return nil, err
 	}
 
-	linked, err := s.redeemLink(ctx, req, UnsubscribeAction, request.GetToken())
+	linked, err := s.readLink(ctx, req, UnsubscribeAction, request.GetToken())
 	if err != nil {
 		return nil, err
 	}
@@ -680,15 +681,17 @@ func (s *Server) Unsubscribe(
 		return withdrawErr
 	}); err != nil {
 		// Somebody already off the list — erased, or withdrawn through
-		// another link — asked to be off it and is. The link was theirs and it
-		// is spent, so there is nothing a refusal would tell them.
+		// another link — asked to be off it and is. The link was theirs, so
+		// it is spent like any other that did its job, and there is nothing a
+		// refusal would tell them.
 		if errors.Is(err, waitlists.ErrAlreadyWithdrawn) {
 			err = nil
+			s.spendLink(ctx, req, request.GetToken())
 
 			return &waitlistspb.UnsubscribeResponse{}, nil
 		}
 
-		if linkSpentOnAMovedSignup(err) {
+		if linkNamesAMovedSignup(err) {
 			err = s.refuseLink(req, err.Error())
 
 			return nil, err
@@ -699,6 +702,8 @@ func (s *Server) Unsubscribe(
 
 		return nil, err
 	}
+
+	s.spendLink(ctx, req, request.GetToken())
 
 	return &waitlistspb.UnsubscribeResponse{}, nil
 }

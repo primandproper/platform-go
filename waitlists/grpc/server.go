@@ -51,10 +51,12 @@ const (
 	// The confirmation loop's own, for the same reason joinOutcomeKey is: the
 	// caller is told one thing, and what happened is recorded here. The two
 	// link keys are the links' ids, which are digests and name nobody; the
-	// refusal key is why a presented link was refused. See confirmation.go.
+	// refusal key is why a presented link was refused, and the unspent key why
+	// one whose write committed could not then be spent. See confirmation.go.
 	confirmLinkKey     = "waitlists.confirm_link"
 	unsubscribeLinkKey = "waitlists.unsubscribe_link"
 	linkRefusalKey     = "waitlists.link_refusal"
+	linkUnspentKey     = "waitlists.link_unspent"
 )
 
 // The wiring failures this surface refuses to be built with, and the one refusal

@@ -451,6 +451,48 @@ func TestServer_ConfirmationLoop(T *testing.T) {
 		test.ErrorIs(t, err, waitlistsgrpc.ErrNilLinks)
 	})
 
+	T.Run("a write that fails leaves its link to be followed again", func(t *testing.T) {
+		t.Parallel()
+
+		c := newConfirmingHarness(t)
+		list := c.seedOpenList(t, testScope)
+
+		c.join(t, c.anonCtx(t), list.ID, "retry@example.com")
+		mail := c.mail.last(t)
+
+		// The same links and the same rows, behind a store whose writes fail
+		// the way a database that went away does rather than as a refusal.
+		down, err := waitlistsgrpc.NewServer(&failingWrites{Store: c.store, err: errors.New("the database went away")},
+			c.db, extractPrincipal, refuseEveryWithdrawal(),
+			waitlistsgrpc.WithGrantsExtractor(extractGrants), waitlistsScopeResolver(),
+			waitlistsgrpc.WithConfirmation(c.minter, c.mail))
+		must.NoError(t, err)
+
+		_, err = down.Confirm(c.anonCtx(t), &waitlistspb.ConfirmRequest{Token: string(mail.Confirm.Token)})
+		test.EqOp(t, codes.Internal, status.Code(err))
+
+		_, err = down.Unsubscribe(c.anonCtx(t), &waitlistspb.UnsubscribeRequest{Token: string(mail.Unsubscribe.Token)})
+		test.EqOp(t, codes.Internal, status.Code(err))
+
+		test.EqOp(t, waitlists.StatusPending, c.signupFor(t, list.ID, "retry@example.com").Status)
+
+		// Neither failure spent its link, so both still do their job once the
+		// writes land.
+		_, err = c.server.Confirm(c.anonCtx(t), &waitlistspb.ConfirmRequest{Token: string(mail.Confirm.Token)})
+		must.NoError(t, err, must.Sprint("a confirmation that failed to write burned its link"))
+		test.EqOp(t, waitlists.StatusWaiting, c.signupFor(t, list.ID, "retry@example.com").Status)
+
+		_, err = c.server.Unsubscribe(c.anonCtx(t), &waitlistspb.UnsubscribeRequest{Token: string(mail.Unsubscribe.Token)})
+		must.NoError(t, err, must.Sprint("an unsubscribe that failed to write burned its link"))
+
+		// And having done it, each is spent.
+		_, err = c.server.Confirm(c.anonCtx(t), &waitlistspb.ConfirmRequest{Token: string(mail.Confirm.Token)})
+		test.EqOp(t, codes.NotFound, status.Code(err))
+
+		_, err = c.server.Unsubscribe(c.anonCtx(t), &waitlistspb.UnsubscribeRequest{Token: string(mail.Unsubscribe.Token)})
+		test.EqOp(t, codes.NotFound, status.Code(err))
+	})
+
 	T.Run("a server that mints no links has no such links to redeem", func(t *testing.T) {
 		t.Parallel()
 
@@ -470,4 +512,20 @@ func TestServer_ConfirmationLoop(T *testing.T) {
 		_, err = h.server.Unsubscribe(h.anonCtx(t), &waitlistspb.UnsubscribeRequest{Token: "anything"})
 		test.EqOp(t, codes.Unimplemented, status.Code(err))
 	})
+}
+
+// failingWrites is a store whose two link-driven writes fail as an outage
+// rather than as a refusal, and whose every other method is the real one.
+type failingWrites struct {
+	waitlists.Store
+
+	err error
+}
+
+func (f *failingWrites) Confirm(context.Context, database.Tx, tenancy.Scope, string, string) (*waitlists.Signup, error) {
+	return nil, f.err
+}
+
+func (f *failingWrites) Withdraw(context.Context, database.Tx, tenancy.Scope, string, string) (*waitlists.Signup, error) {
+	return nil, f.err
 }

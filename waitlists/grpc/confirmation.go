@@ -259,25 +259,23 @@ func (s *Server) sendConfirmation(ctx context.Context, req *request, signup *wai
 	return nil
 }
 
-// linkedSignup is the signup a redeemed link named.
+// linkedSignup is the signup a presented link names.
 type linkedSignup struct {
 	listID, signupID string
 }
 
-// redeemLink spends a confirmation-loop link presented at the door for action,
-// and reports the signup it names.
+// readLink reads a confirmation-loop link presented at the door for action,
+// without spending it, and reports the signup it names.
 //
-// It looks before it spends. The action and the tenant a link was minted for
-// never change, so Inspect's answer about them is as good as Redeem's, and
-// checking them first is what keeps a link presented at the wrong door — or on
-// a connection placed in the wrong tenant — from being spent by a request that
-// was always going to be refused. Whether the link can still be used is
-// Redeem's to decide, and it decides again whatever Inspect said.
+// Both link RPCs read, write, and only then spend — see spendLink. The action
+// and the tenant a link was minted for never change, so checking them here is
+// what keeps a link presented at the wrong door, or on a connection placed in
+// the wrong tenant, from doing anything at all.
 //
 // Every refusal is ErrInvalidLink, with what it actually was recorded on the
 // operation and nowhere else. A links store that will not answer is not a
 // refusal and is reported as the outage it is.
-func (s *Server) redeemLink(
+func (s *Server) readLink(
 	ctx context.Context,
 	req *request,
 	action links.Action,
@@ -292,22 +290,33 @@ func (s *Server) redeemLink(
 		return nil, s.refuseLink(req, refusal)
 	}
 
-	claims, err = s.links.Redeem(ctx, links.Token(token))
-	if err != nil {
-		return nil, s.linkFailure(req, err)
-	}
-
-	// Checked again on what was spent, because it is what was spent that
-	// counts. A token cannot change what it was minted for between the two
-	// calls, so this is a belt rather than a race being closed.
-	if refusal := linkMismatch(claims, action, req.scope); refusal != "" {
-		return nil, s.refuseLink(req, refusal)
-	}
-
 	linked := &linkedSignup{listID: claims.Metadata[linkListKey], signupID: string(claims.Subject)}
 	req.op.Set(listKey, linked.listID).Set(signupKey, linked.signupID)
 
 	return linked, nil
+}
+
+// spendLink spends a link once the write it authorized has committed.
+//
+// It comes after the write so that a write failing for a reason that is not a
+// refusal (the database went away) leaves the link as it found it, and
+// following it again finishes the job. Spending first would burn the link on a
+// write that never landed.
+//
+// That honors a link on Inspect's answer, which the links package calls
+// advisory, and it is sound here only because the write carries the single use
+// itself. Confirm is a guarded move out of pending that one request wins, and
+// the loser finds the signup already waiting and is refused. Unsubscribe
+// withdraws, and a second withdrawal changes nothing. So a link that will not
+// spend after its write — a second click that raced this one, an outage —
+// leaves behind a link that can do nothing again. It is recorded on the
+// operation rather than answered, and the caller is told what happened to the
+// signup, which is that it moved.
+func (s *Server) spendLink(ctx context.Context, req *request, token string) {
+	if _, err := s.links.Redeem(ctx, links.Token(token)); err != nil {
+		req.op.Set(linkUnspentKey, err.Error())
+		req.op.Logger().Error("spending a waitlist link after its write", err)
+	}
 }
 
 // linkMismatch reports why a link that exists is still not one this door
@@ -360,10 +369,10 @@ func (s *Server) refuseLink(req *request, reason string) error {
 		codes.NotFound, "redeeming a waitlist link")
 }
 
-// linkSpentOnAMovedSignup reports whether a store refusal after a link was spent
-// means the signup has moved where the link cannot take it — confirmed already,
-// withdrawn, or archived — which the caller is told as ErrInvalidLink.
-func linkSpentOnAMovedSignup(err error) bool {
+// linkNamesAMovedSignup reports whether a store refusal means the signup a link
+// names has moved where the link cannot take it — confirmed already, withdrawn,
+// or archived — which the caller is told as ErrInvalidLink.
+func linkNamesAMovedSignup(err error) bool {
 	return errors.Is(err, waitlists.ErrWrongStatus) ||
 		errors.Is(err, waitlists.ErrAlreadyWithdrawn) ||
 		errors.Is(err, waitlists.ErrSignupNotFound)
