@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
@@ -10,6 +11,8 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
+	"github.com/shoenig/test/must"
+	"google.golang.org/grpc"
 )
 
 // minting is a session whose factory answers every request with a caller that
@@ -144,4 +147,119 @@ func TestIsFullMethodName(t *testing.T) {
 	} {
 		test.False(t, isFullMethodName(spelled), test.Sprintf("%q", spelled))
 	}
+}
+
+// recorder is the half of testing.T a declaredConn reports through, keeping
+// what it was told.
+type recorder struct{ errors []string }
+
+func (r *recorder) Errorf(format string, args ...any) {
+	r.errors = append(r.errors, fmt.Sprintf(format, args...))
+}
+
+// answering is a connection that answers every call, so what a declaredConn in
+// front of it refuses is the declaredConn's doing.
+type answering struct{ calls []string }
+
+func (a *answering) Invoke(_ context.Context, method string, _, _ any, _ ...grpc.CallOption) error {
+	a.calls = append(a.calls, method)
+
+	return nil
+}
+
+func (a *answering) NewStream(_ context.Context, _ *grpc.StreamDesc, method string, _ ...grpc.CallOption) (grpc.ClientStream, error) {
+	a.calls = append(a.calls, method)
+
+	return nil, nil
+}
+
+func TestDeclaredConn(T *testing.T) {
+	T.Parallel()
+
+	create, list := billingpb.BillingService_CreateProduct_FullMethodName, billingpb.BillingService_ListProducts_FullMethodName
+
+	T.Run("a declared call reaches the connection", func(t *testing.T) {
+		t.Parallel()
+
+		inner, told := &answering{}, &recorder{}
+		conn := &declaredConn{ClientConnInterface: inner, t: told, declared: []string{create}}
+
+		test.NoError(t, conn.Invoke(t.Context(), create, nil, nil))
+		test.Eq(t, []string{create}, inner.calls)
+		test.SliceEmpty(t, told.errors)
+	})
+
+	T.Run("an undeclared call fails the test, names the call and the fix, and reaches nothing", func(t *testing.T) {
+		t.Parallel()
+
+		inner, told := &answering{}, &recorder{}
+		conn := &declaredConn{ClientConnInterface: inner, t: told, declared: []string{create}}
+
+		err := conn.Invoke(t.Context(), list, nil, nil)
+		test.Error(t, err)
+		test.SliceEmpty(t, inner.calls)
+		must.SliceLen(t, 1, told.errors)
+		test.StrContains(t, told.errors[0], list)
+		test.StrContains(t, told.errors[0], "conformance.Making")
+	})
+
+	T.Run("a stream is held to the same declaration", func(t *testing.T) {
+		t.Parallel()
+
+		inner, told := &answering{}, &recorder{}
+		conn := &declaredConn{ClientConnInterface: inner, t: told}
+
+		_, err := conn.NewStream(t.Context(), &grpc.StreamDesc{}, list)
+		test.Error(t, err)
+		test.SliceEmpty(t, inner.calls)
+		must.SliceLen(t, 1, told.errors)
+		test.StrContains(t, told.errors[0], "declared nothing")
+	})
+}
+
+func TestDeclare(T *testing.T) {
+	T.Parallel()
+
+	T.Run("the surfaces a subject mounts are rebuilt over its checked connection", func(t *testing.T) {
+		t.Parallel()
+
+		inner := &answering{}
+		sub := &Subject{Conn: inner, Surfaces: Surfaces{Billing: billingpb.NewBillingServiceClient(inner)}}
+
+		checked := declare(t, sub, []string{billingpb.BillingService_ListProducts_FullMethodName})
+
+		_, err := checked.Surfaces.Billing.ListProducts(t.Context(), &billingpb.ListProductsRequest{})
+		test.NoError(t, err)
+		test.Nil(t, checked.Surfaces.Audit, test.Sprint("a surface the subject did not mount was mounted"))
+		test.Eq(t, []string{billingpb.BillingService_ListProducts_FullMethodName}, inner.calls)
+	})
+
+	T.Run("a subject mounting no gRPC surface needs no connection", func(t *testing.T) {
+		t.Parallel()
+
+		sub := &Subject{}
+		test.EqOp(t, sub, declare(t, sub, nil))
+	})
+}
+
+func TestSession_NeedsPublic(T *testing.T) {
+	T.Parallel()
+
+	door := notificationspb.NotificationsService_ListNotifications_FullMethodName
+
+	T.Run("a door the subject leaves open is reached", func(t *testing.T) {
+		t.Parallel()
+
+		minting(true).NeedsPublic(t, door)
+	})
+
+	T.Run("a door the subject reserves skips", func(t *testing.T) {
+		t.Parallel()
+
+		test.True(t, skipped(t, func(t *testing.T) {
+			t.Helper()
+
+			minting(true, door).NeedsPublic(t, door)
+		}))
+	})
 }

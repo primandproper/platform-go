@@ -4,16 +4,20 @@ import (
 	"context"
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
+	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
-	"github.com/primandproper/platform-go/v14/conformance/internal/services"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
@@ -23,8 +27,10 @@ import (
 	"github.com/primandproper/platform-go/v14/service"
 	"github.com/primandproper/platform-go/v14/settings"
 	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
+	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
@@ -37,7 +43,6 @@ import (
 	"github.com/samber/do/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -218,7 +223,7 @@ func (standing) AuthorizeWithdrawal(context.Context, callers.Principal, tenancy.
 // handler: every archive grant, which decides whether include_archived is
 // honored, and settings' reserved-write grant.
 //
-// The harness installs one piece of method enforcement, reserveOperatorCalls,
+// The harness installs one piece of method enforcement, reserveStaffCalls,
 // and it reads the run's reservation rather than these grants — service mounts
 // no authorization interceptor and a consumer's main adds its own — so these
 // are the only grants a request here is ever asked about inside a handler.
@@ -296,114 +301,86 @@ func grantsOf(ctx context.Context) (authorization.Grants, bool) {
 	return authorization.NewGrants(memberRole), true
 }
 
-// everyMethod is every RPC on every service the suites cover, as a set: what
-// this harness's second run reserves, read from the services' own descriptors
-// so that an RPC added later is reserved without an edit here.
-var everyMethod = func() map[string]struct{} {
-	out := map[string]struct{}{}
+// staffOnly is the reservation this harness's second run makes: a deployment
+// that keeps its console to its staff, the way a product with a back office
+// does. The directory's administration, the catalog's writes, the scope-wide
+// ledgers and their corrections, the chain's verification, the moderation read,
+// the settings catalog, the client registry and the waitlist console are an
+// operator's; everything a person does to their own rows, and every door
+// reached with nobody on the call, is left to members.
+//
+// A list rather than a rule, and not the whole surface, because what it
+// exercises is the path a consumer's reservation takes: each call named here
+// is made by an administrator the subject minted for it, and each call not
+// named by a member. Which calls a consumer names is its own to decide.
+var staffOnly = []string{
+	auditpb.AuditService_VerifyChain_FullMethodName,
 
-	for _, svc := range services.All() {
-		descriptor := svc.Descriptor()
-		methods := descriptor.Methods()
+	billingpb.BillingService_CreateProduct_FullMethodName,
+	billingpb.BillingService_UpdateProduct_FullMethodName,
+	billingpb.BillingService_ArchiveProduct_FullMethodName,
+	billingpb.BillingService_ListSubscriptions_FullMethodName,
+	billingpb.BillingService_ArchiveSubscription_FullMethodName,
+	billingpb.BillingService_ListPurchases_FullMethodName,
+	billingpb.BillingService_ArchivePurchase_FullMethodName,
+	billingpb.BillingService_ListTransactions_FullMethodName,
+	billingpb.BillingService_ArchiveTransaction_FullMethodName,
 
-		for i := range methods.Len() {
-			out["/"+string(descriptor.FullName())+"/"+string(methods.Get(i).Name())] = struct{}{}
-		}
-	}
+	commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
 
-	return out
-}()
+	identitypb.IdentityService_GetUser_FullMethodName,
+	identitypb.IdentityService_ListUsers_FullMethodName,
+	identitypb.IdentityService_SearchUsersByUsername_FullMethodName,
+	identitypb.IdentityService_ListAccounts_FullMethodName,
+	identitypb.IdentityService_ArchiveUser_FullMethodName,
+	identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName,
+	identitypb.IdentityService_SetUserServiceRoles_FullMethodName,
+	identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName,
 
-// everyMethodList is everyMethod as the list Seams.OperatorMethods takes.
-func everyMethodList() []string {
-	out := make([]string, 0, len(everyMethod))
-	for method := range everyMethod {
-		out = append(out, method)
-	}
+	oauth2clientspb.OAuth2ClientsService_CreateOAuth2Client_FullMethodName,
+	oauth2clientspb.OAuth2ClientsService_GetOAuth2Client_FullMethodName,
+	oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
+	oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName,
 
-	slices.Sort(out)
+	settingspb.SettingsService_CreateDefinition_FullMethodName,
+	settingspb.SettingsService_UpdateDefinition_FullMethodName,
+	settingspb.SettingsService_ArchiveDefinition_FullMethodName,
+	settingspb.SettingsService_ListValuesForDefinition_FullMethodName,
 
-	return out
+	waitlistspb.WaitlistsService_CreateList_FullMethodName,
+	waitlistspb.WaitlistsService_UpdateList_FullMethodName,
+	waitlistspb.WaitlistsService_ArchiveList_FullMethodName,
+	waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+	waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+	waitlistspb.WaitlistsService_ListSignups_FullMethodName,
+	waitlistspb.WaitlistsService_UpdateSignupNotes_FullMethodName,
+	waitlistspb.WaitlistsService_Invite_FullMethodName,
+	waitlistspb.WaitlistsService_Convert_FullMethodName,
+	waitlistspb.WaitlistsService_ArchiveSignup_FullMethodName,
+	waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
 }
 
-// reserveOperatorCalls refuses every call to anybody but an administrator
-// minted to make it, in the run that reserves every call, the way a consumer's
+// reserveStaffCalls refuses a call staffOnly names to a caller who is not an
+// administrator, in the run that reserves them, the way a consumer's
 // authorization interceptor refuses a call its caller's role does not cover.
 //
-// It is what keeps the suites honest about naming each call they make. A
-// caller minted without naming a call passes in the run whose members make
-// every call and fails in this one, which is where it should fail rather than
-// in a deployment that reserves that call and not the others named beside it.
-// So an administrator is refused every call it was not minted for and an
-// ordinary caller is refused all of them. A request with nobody on it is
-// refused as unauthenticated, which is what a deployment answers a callerless
-// request for a call it keeps to its staff; in the run that reserves nothing
-// it is left to the handler, which refuses it on its own terms.
-func reserveOperatorCalls(
+// What it checks that the suites' own check on each caller cannot is the other
+// half of a reservation: that a caller declaring a reserved call really is one
+// the deployment treats as its staff. The suites decide from Seams which
+// caller to mint, and a caller minted as a member for a reserved call — the
+// subject forgetting a reservation, or a suite asking AsMember and not
+// skipping — is refused here rather than in a consumer's deployment. A request
+// with nobody on it is left to the handler, since no door is reserved.
+func reserveStaffCalls(
 	ctx context.Context,
 	req any,
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (any, error) {
-	if _, covered := everyMethod[info.FullMethod]; !covered {
-		return handler(ctx, req)
-	}
-
 	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
-	if !ok {
-		if reservingRun(ctx) {
-			return nil, status.Errorf(codes.Unauthenticated, "%s is reserved to an administrator", info.FullMethod)
-		}
-
+	if !ok || !principal.reserving || principal.admin || !slices.Contains(staffOnly, info.FullMethod) {
 		return handler(ctx, req)
 	}
 
-	if !principal.reserving {
-		return handler(ctx, req)
-	}
-
-	if !principal.admin {
-		return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
-	}
-
-	if !slices.Contains(principal.methods, info.FullMethod) {
-		return nil, status.Errorf(codes.PermissionDenied,
-			"%s was made by a caller minted for %v; the suite must name it with conformance.Making", info.FullMethod, principal.methods)
-	}
-
-	return handler(ctx, req)
-}
-
-// reservingRun reports whether a request with nobody on it was made in the run
-// that reserves every call, which its connection says in metadata of its own
-// since it carries no credential to say it on.
-func reservingRun(ctx context.Context) bool {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return false
-	}
-
-	reserving := md.Get(mdReserving)
-
-	return len(reserving) > 0 && reserving[0] == "true"
-}
-
-// reservingConn is a connection carrying nobody that says which run it was
-// opened in, for reserveOperatorCalls to read.
-type reservingConn struct {
-	grpc.ClientConnInterface
-	reserving string
-}
-
-func (c reservingConn) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
-	return c.ClientConnInterface.Invoke(metadata.AppendToOutgoingContext(ctx, mdReserving, c.reserving), method, args, reply, opts...)
-}
-
-func (c reservingConn) NewStream(
-	ctx context.Context,
-	desc *grpc.StreamDesc,
-	method string,
-	opts ...grpc.CallOption,
-) (grpc.ClientStream, error) {
-	return c.ClientConnInterface.NewStream(metadata.AppendToOutgoingContext(ctx, mdReserving, c.reserving), desc, method, opts...)
+	return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
 }

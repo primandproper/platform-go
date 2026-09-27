@@ -65,14 +65,16 @@ too, and skip where a deployment leaves no member the calls they make.
 
 # Who a call is made as
 
-Every caller here names the calls it makes, and which of them a deployment
-reserves to an operator is the deployment's to say, as the conformance package
-documentation describes. A deployment where members discuss their own things
-reserves perhaps the moderation read, ListCommentsByTargetType; a dispute desk
-where only staff comment reserves the writes as well. Both are served: a
-member's promise is asserted of a member where the subject leaves the call to
-one, and an operator's where it does not. The refusals of a colleague's words
-are asked of a caller minted with conformance.AsMember, and skip where the
-subject reserves the calls they make.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+A deployment where members discuss their own things reserves perhaps the
+moderation read, ListCommentsByTargetType; a dispute desk where only staff
+comment reserves the writes as well. Both are served. The refusals of a
+colleague's words turn on authorship within a tenant, so they are asked of a
+caller minted with conformance.AsMember and skip where the subject reserves the
+calls they make; confinement between tenants is asserted of whoever calls.
 */
 package comments

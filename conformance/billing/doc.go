@@ -13,18 +13,18 @@ answer would tell a caller walking identifiers which of them are real.
 
 # Who a call is made as
 
-Every caller here names the calls it makes, and which of them a deployment
-reserves to an operator is the deployment's to say, as the conformance package
-documentation describes. The catalog's writes are what a deployment's staff
-most often keep to themselves, and billing's own permissions say most
-deployments let every signed-in caller read the catalog; neither is assumed.
-The catalog's confinement is asserted between two callers in two tenants,
-whoever the subject mints for the calls they make.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
 
+The catalog's writes are what a deployment's staff most often keep to
+themselves, and billing's own permissions say most deployments let every
+signed-in caller read the catalog; neither is assumed. The catalog's
+confinement is asserted between two callers in two tenants, whoever they are.
 The refusals of an account the caller has no standing in are asked of a caller
 minted with conformance.AsMember, which is what makes them refusals of the rule
-rather than of the role; where the subject reserves the read, no member makes
-it and the refusal skips with the reservation named.
+rather than of the role, and skip where the read is reserved.
 
 # What is here and what stayed behind
 

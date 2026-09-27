@@ -73,21 +73,24 @@ next.
 
 # Who a call is made as
 
-Every caller here names the calls it makes, and which of them a deployment
-reserves to an operator is the deployment's to say, as the conformance package
-documentation describes. The console is the part a deployment most plausibly
-keeps to its staff — CreateList, UpdateList and ArchiveList decide which
-launches exist; GetSignup, GetSignupByContact and ListSignups read who is on
-them, the second being the membership oracle this surface is otherwise careful
-never to be; UpdateSignupNotes, Invite, Convert and ArchiveSignup decide whose
-turn it is; and WithdrawSignupsForSubject is the erasure path — but a
-deployment may reserve the catalog reads or a person's own signups too, and
-each is asserted of whoever the subject mints for it. The public half is this
-module's declaration of what is reachable without a caller, and a deployment
-may keep any of it to its staff as well: an assertion a visitor makes skips,
-with the reservation named, where the subject reserves a call the visitor
-makes. The refusal of a person's signups to a colleague who names them is
-asked of a caller minted with conformance.AsMember.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+The console is the part a deployment most plausibly keeps to its staff —
+CreateList, UpdateList and ArchiveList decide which launches exist; GetSignup,
+GetSignupByContact and ListSignups read who is on them, the second being the
+membership oracle this surface is otherwise careful never to be;
+UpdateSignupNotes, Invite, Convert and ArchiveSignup decide whose turn it is;
+and WithdrawSignupsForSubject is the erasure path — but a deployment may
+reserve the catalog reads or a person's own signups too. The public half is
+this module's declaration of what is reachable without a caller, and a
+deployment may keep any of it to its staff as well: an assertion a visitor
+makes skips, with the reservation named, where the subject reserves a call the
+visitor makes. The refusal of a person's signups to a colleague who names them
+turns on standing within a tenant, and is asked of a caller minted with
+conformance.AsMember.
 
 # Both directions, deliberately
 

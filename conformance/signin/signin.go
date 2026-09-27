@@ -349,7 +349,7 @@ func passworded(t *testing.T, s *conformance.Session, methods ...string) (*confo
 
 	s.NeedsPublic(t, requestPasswordReset, completePasswordReset)
 
-	sub := member(t, s, append([]string{getPrincipal}, methods...)...)
+	sub := member(t, s, append([]string{getPrincipal, requestPasswordReset, completePasswordReset}, methods...)...)
 
 	if sub.Surfaces.Identity == nil || sub.Surfaces.PasswordReset == nil {
 		t.Skip("conformance: this subject mounts no identity or password reset surface, so a caller cannot be given a password the suite knows")

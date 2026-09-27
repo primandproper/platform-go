@@ -37,6 +37,24 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, op
 	return other
 }
 
+// notYours asserts err refuses what a caller named in another tenant as a
+// thing that is not theirs: absent or forbidden.
+//
+// A tenant wall holds for whoever calls, an operator as much as a member, so
+// this is asserted of whatever caller the subject mints for the call. Either
+// code is an honest answer, and which one a deployment gives depends on
+// whether its rule refuses before it reads or reads and finds nothing; what no
+// deployment may answer is the row.
+func notYours(t *testing.T, err error, what string) {
+	t.Helper()
+
+	must.Error(t, err, must.Sprintf("%s was answered", what))
+
+	code := status.Code(err)
+	test.True(t, code == codes.NotFound || code == codes.PermissionDenied,
+		test.Sprintf("%s was refused as %s rather than as absent or forbidden", what, code))
+}
+
 // needsAccount skips unless the subject surfaced the caller's account, which
 // every account-shaped assertion here names.
 func needsAccount(t *testing.T, sub *conformance.Subject) {

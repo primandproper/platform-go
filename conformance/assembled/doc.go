@@ -51,12 +51,15 @@ it would be proving a service nobody could run.
     those two questions; service mounts no method enforcement, and a
     consumer's main adds its own.
   - One piece of method enforcement of the harness's own, because every suite
-    runs twice: once with members making every call, and once with every call
-    on every covered service reserved to an operator, where reserveOperatorCalls
-    refuses each to anybody but an administrator minted to make it. The second
-    run is what proves each suite names the calls its callers make, and that an
-    assertion about a member skips rather than fails where a deployment keeps
-    the call from its members.
+    runs twice: once with members making every call, and once reserving a
+    back office's worth of calls — the directory's administration, the
+    catalog's writes, the scope-wide ledgers, the settings catalog, the client
+    registry and the waitlist console, and never a door reached without a
+    caller — where reserveStaffCalls refuses each to anybody but an
+    administrator. The second run is what keeps the path a consumer's
+    reservation takes exercised; that each caller makes only the calls it
+    declared is checked by the suites themselves, on its own connection, in
+    both.
   - The schema. Nothing in service runs migrations; a consumer renders each
     package's migrations.Statements with the prefix they configured, and so does
     this.

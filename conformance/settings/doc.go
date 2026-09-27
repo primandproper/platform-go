@@ -48,15 +48,18 @@ nothing, would otherwise pass every one of them.
 
 # Who a call is made as
 
-Every caller here names the calls it makes, and which of them a deployment
-reserves to an operator is the deployment's to say, as the conformance package
-documentation describes. The catalog's writes and ListValuesForDefinition, which
-answers every subject's value for one setting across the tenant, are the ones a
-deployment most plausibly keeps to its staff; a subject's own values are the
-settings screen, but a deployment may reserve those too, and each is asserted
-of whoever the subject mints for it. The refusals of a colleague's settings, of
-an account the caller is not in, and of a setting reserved to administrators
-are asked of a caller minted with conformance.AsMember, and skip where the
-subject reserves the calls they make.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+The catalog's writes and ListValuesForDefinition, which answers every subject's
+value for one setting across the tenant, are the calls a deployment most
+plausibly keeps to its staff; a subject's own values are the settings screen,
+but a deployment may reserve those too. The refusals of a colleague's settings
+and of a setting reserved to administrators turn on standing within a tenant,
+and are asked of a caller minted with conformance.AsMember. A neighboring
+directory's account is behind the tenant wall, which holds for whoever calls,
+and is refused to whatever caller the declaration implies.
 */
 package settings

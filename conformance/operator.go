@@ -24,6 +24,10 @@ import (
 // caller is minted to attempt — a refusal a suite asserts is made by a caller
 // that names the refused call, so that the code asserted is the handler's
 // rather than the reservation's.
+//
+// And it is the whole of what the caller may attempt. Its connection admits
+// only the calls declared here, and a call it did not declare fails the test
+// that minted it, including a call a helper makes on its behalf.
 func Making(methods ...string) SubjectOption {
 	return func(r *SubjectRequest) { r.Methods = append(r.Methods, methods...) }
 }

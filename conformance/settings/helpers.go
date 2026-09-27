@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -135,6 +136,24 @@ func seeded(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOpt
 	defineCatalog(t, s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface))), &c)
 
 	return caller, c
+}
+
+// notYours asserts err refuses what a caller named in another tenant as a
+// thing that is not theirs: absent or forbidden.
+//
+// A tenant wall holds for whoever calls, an operator as much as a member, so
+// this is asserted of whatever caller the subject mints for the call. Either
+// code is an honest answer, and which one a deployment gives depends on
+// whether its rule refuses before it reads or reads and finds nothing; what no
+// deployment may answer is the row.
+func notYours(t *testing.T, err error, what string) {
+	t.Helper()
+
+	must.Error(t, err, must.Sprintf("%s was answered", what))
+
+	code := status.Code(err)
+	test.True(t, code == codes.NotFound || code == codes.PermissionDenied,
+		test.Sprintf("%s was refused as %s rather than as absent or forbidden", what, code))
 }
 
 // needsUser skips unless the subject surfaced the caller's user, which every

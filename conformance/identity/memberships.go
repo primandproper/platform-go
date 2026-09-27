@@ -139,7 +139,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("a user's memberships are refused to a caller from another directory", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s, conformance.Making(listMembershipsForUser), conformance.AsMember())
+		mine, theirs := twoDirectories(t, s, conformance.Making(listMembershipsForUser))
 
 		// The positive control: the caller reads its own.
 		held, err := mine.Surfaces.Identity.ListMembershipsForUser(mine.Context(t.Context()),
@@ -149,8 +149,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 
 		_, err = mine.Surfaces.Identity.ListMembershipsForUser(mine.Context(t.Context()),
 			&identitypb.ListMembershipsForUserRequest{UserId: theirs.UserID})
-		must.Error(t, err)
-		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		notYours(t, err, "a neighboring directory's user's memberships")
 	})
 
 	t.Run("an account's roster joins each membership to its user and renders no credential", func(t *testing.T) {

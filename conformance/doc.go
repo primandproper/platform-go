@@ -67,41 +67,39 @@ missing, because a suite that silently asserted nothing is worse than no suite.
 
 Which calls a deployment keeps from its members is its product's decision, and
 never this module's. A household app may let every member stock the catalog
-and read the directory; a customer dispute desk may reserve commenting to its
+and read the directory; a customer dispute desk may keep commenting to its
 staff and let customers do nothing but file. Both are deployments this module
 serves, and a suite that drew its own line between member-grade and
 operator-grade calls would be asserting one consumer's access scheme against
-every other. So the subject says which calls it reserves, in
-Seams.OperatorMethods, and it may name any of them, on any service — including
-the doors this module declares reachable without a caller, since a deployment
-may keep those to its staff as well.
+every other.
 
-Every caller a suite mints names the calls it goes on to make, with Making, and
-Session.Subject answers an administrator where the subject reserves any of them
-and an ordinary caller where it reserves none. A deployment that lets its
-members make a call therefore has that call asserted as a member's, and one
-that reserves it has it asserted as an operator's. An assertion that a
-malformed request is refused is made by a caller the method admits, so the
-code asserted is the handler's and not the interceptor's.
+So the consumer declares its operator-only calls, in Seams.OperatorMethods, and
+may name any call on any service — the doors this module declares reachable
+without a caller included. The suites make those calls as an operator and every
+other call as a member: every caller a suite mints declares the calls it goes on
+to make, with Making, and Session.Subject answers an administrator where the
+subject reserves any of them and a member where it reserves none.
+
+Each caller is then held to its declaration. Its connection admits only the
+calls it declared, so a call it did not declare fails the test that minted it,
+naming the call and the fix. The check is on the caller rather than in a
+deployment, so it holds for a member as for an operator and in every run,
+including a consumer's own that reserves nothing: a suite cannot make a call as
+the wrong caller and pass because the subject it ran against happened not to
+reserve it.
 
 Two kinds of assertion are about who is refused rather than about what a call
 does, and they skip where the call is reserved rather than asserting against
 somebody the deployment never meant them for. One is a refusal that turns on a
-member's standing — a colleague's report, an account the caller holds no
-membership in, a setting reserved to administrators — which is asked of a caller
-minted with AsMember: what an operator may reach is the deployment's rule, and
-where only operators make the call the deployment has promised its members
-nothing about it. The other is a door reached with nobody on the call, which
-Session.NeedsPublic skips where the subject reserves it. Confinement between
-tenants is neither: it holds for an operator as for anybody, and is asserted
-whoever makes the call.
-
-The assembled subject runs every suite twice, which is what keeps that honest.
-Once its members make every call, and each is asserted as a member's; once it
-reserves every call on every service the suites cover, refusing each to anybody
-but an administrator minted to make it. A suite that makes a call without
-naming it fails there rather than in a consumer's deployment, and an assertion
-about a member that did not skip where the call is reserved fails there too.
+member's standing within a tenant — a colleague's report or words, a setting
+reserved to administrators, an account the caller holds no membership in —
+which is asked of a caller minted with AsMember: what an operator may reach
+within the tenant is the deployment's rule. The other is a door reached with
+nobody on the call, which Session.NeedsPublic skips where the subject reserves
+it. A tenant wall is neither: it holds for whoever calls, so a confinement
+between tenants is asserted of whatever caller the declaration implies, and a
+refusal across one is read as absent or forbidden, whichever the deployment
+answers.
 
 # Isolation, and why no assertion may count
 

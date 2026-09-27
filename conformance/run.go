@@ -125,7 +125,7 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 		return nil
 	}
 
-	return subject
+	return declare(t, subject, req.Methods)
 }
 
 // TwoTenants mints two callers in tenants of their own on surface, for an

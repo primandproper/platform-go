@@ -20,7 +20,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("an account read is confined to the caller's directory", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s, conformance.Making(getAccount), conformance.AsMember())
+		mine, theirs := twoDirectories(t, s, conformance.Making(getAccount))
 		needsAccount(t, mine)
 		needsAccount(t, theirs)
 
@@ -29,13 +29,13 @@ func accounts(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err, must.Sprint("this caller cannot read its own account; the refusal below proves nothing"))
 		test.EqOp(t, mine.UserID, found.GetAccount().GetOwnerUserId())
 
-		// Refused rather than absent: an account is a target the caller named,
-		// and the directory's default rule is that a caller has no standing in
-		// one they do not belong to.
+		// This module's default refuses it as forbidden, since a caller has no
+		// standing in an account they do not belong to; a deployment whose
+		// operators have standing everywhere reads it and finds nothing. Both
+		// are the wall.
 		_, err = mine.Surfaces.Identity.GetAccount(mine.Context(t.Context()),
 			&identitypb.GetAccountRequest{AccountId: theirs.AccountID})
-		must.Error(t, err, must.Sprint("a neighboring directory's account was readable"))
-		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		notYours(t, err, "a neighboring directory's account")
 	})
 
 	t.Run("an account listing pages the caller's directory only", func(t *testing.T) {
@@ -106,13 +106,12 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("a transfer to somebody in another directory is refused", func(t *testing.T) {
 		t.Parallel()
 
-		owner, stranger := twoDirectories(t, s, conformance.Making(transferAccountOwnership, getAccount), conformance.AsMember())
+		owner, stranger := twoDirectories(t, s, conformance.Making(transferAccountOwnership, getAccount))
 		needsAccount(t, owner)
 
 		_, err := owner.Surfaces.Identity.TransferAccountOwnership(owner.Context(t.Context()),
 			&identitypb.TransferAccountOwnershipRequest{AccountId: owner.AccountID, NewOwnerUserId: stranger.UserID})
-		must.Error(t, err)
-		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		notYours(t, err, "a transfer to a user in a neighboring directory")
 
 		// And the account is still the owner's.
 		found, err := owner.Surfaces.Identity.GetAccount(owner.Context(t.Context()),

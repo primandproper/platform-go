@@ -138,15 +138,15 @@ type Seams struct {
 	// members may make every call.
 	//
 	// Any call may be named, on any service. Which calls a deployment keeps
-	// from its members is its product's decision — a dispute desk that reserves
-	// commenting to its staff is as legitimate as a household app that
-	// reserves nothing — and this module draws no line of its own between
-	// member-grade and operator-grade. Every caller a suite mints names the
-	// calls it goes on to make (see Making), and each one that names a
-	// reserved call is minted an administrator. An assertion that is only
-	// about an ordinary member making a call the deployment reserves skips,
-	// with the reservation named, because the deployment has promised its
-	// members nothing about that call.
+	// from its members is its product's decision — a dispute desk that keeps
+	// commenting to its staff is as legitimate as a household app that keeps
+	// nothing — and this module draws no line of its own. The suites make each
+	// call named here as an operator and every other call as a member: each
+	// caller declares the calls it goes on to make (see Making), is minted an
+	// administrator where it declares a reserved one, and is held to its
+	// declaration on its own connection. An assertion that is only about a
+	// member making a call named here skips, with the reservation named,
+	// because the deployment has promised its members nothing about that call.
 	//
 	// A deployment's own list is the one to hand over — the one its
 	// authorization interceptor reads. Run checks only that each entry is
@@ -222,14 +222,16 @@ type Subject struct {
 	// a wire. Nil means the connection carries everything.
 	Decorate func(context.Context) context.Context
 
-	// Conn is this caller's connection, for the assertions that enumerate a
-	// service's RPCs from its descriptor and invoke them dynamically rather
-	// than through a typed client.
+	// Conn is this caller's connection: what its surfaces are reached
+	// through, and what the assertions that enumerate a service's RPCs from its
+	// descriptor invoke them on.
 	//
-	// Optional, and separate from Surfaces because a typed client is not
-	// required to expose the connection underneath it. A subject that supplies
-	// none skips those assertions; everything written against a typed client
-	// runs regardless.
+	// Required of a subject that mounts any gRPC surface. Every caller a suite
+	// mints is held to the calls it declared with Making, and that check is a
+	// connection in front of this one: the surfaces the subject hands over are
+	// read for which of them it mounts, and rebuilt over the checked
+	// connection. A subject whose typed clients were dialed over Conn — every
+	// subject built from this module's client wrappers — loses nothing by it.
 	Conn grpc.ClientConnInterface
 
 	// UserID is the calling user's identifier, where the subject knows it.
@@ -314,7 +316,9 @@ func (s *Subject) Context(ctx context.Context) context.Context {
 // The generated interface rather than this module's <pkg>/grpc/client wrapper,
 // because the wrapper embeds the interface and a subject that dialed its own
 // connection has one of those already. A subject holding a wrapper assigns it
-// directly.
+// directly. What a suite calls through is the generated client over the
+// subject's Conn, rebuilt for each caller so that it makes only the calls it
+// declared; a field here says which surfaces the subject mounts.
 type Surfaces struct {
 	Audit         auditpb.AuditServiceClient
 	Billing       billingpb.BillingServiceClient

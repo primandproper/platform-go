@@ -59,17 +59,20 @@ the sign-in they start from carried no refresh token.
 
 # Who a call is made as
 
-Every caller here names the calls it makes, and which of them a deployment
-reserves to an operator is the deployment's to say, as the conformance package
-documentation describes. Register requires a caller and registers somebody
-else, which is the directory's administered door by another name, so a
-deployment whose public sign-up is a door of its own may keep it to its staff;
-every registration here is made by a caller in the global directory minted
-naming it. The doors reached with nobody on the call — signing in, the links
-that finish a registration, the exchange and the sign-out — are this module's
-declaration of what is reachable without a caller, and a deployment may keep
-any of them to its staff as well: an assertion that knocks on one skips, with
-the reservation named, where the subject reserves it.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+Register requires a caller and registers somebody else, which is the
+directory's administered door by another name, so a deployment whose public
+sign-up is a door of its own may keep it to its staff; every registration here
+is made by a caller in the global directory declaring it. The doors reached
+with nobody on the call — signing in, the links that finish a registration,
+the exchange and the sign-out — are this module's declaration of what is
+reachable without a caller, and a deployment may keep any of them to its staff
+as well: an assertion that knocks on one skips, with the reservation named,
+where the subject reserves it.
 
 # What is here and what stayed behind
 

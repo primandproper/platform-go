@@ -100,15 +100,10 @@ const (
 	mdAdmin   = "conformance-admin"
 
 	// mdReserving says which of the harness's two runs a caller was minted in:
-	// the one reserving every call, or the one whose members make every call.
+	// the one reserving staffOnly, or the one whose members make every call.
 	// The server is one server either way, so the reservation rides on the
-	// credential, the way a role claim would, and on a callerless connection
-	// by itself.
+	// credential, the way a role claim would.
 	mdReserving = "conformance-reserving"
-
-	// mdMethods are the calls a caller was minted to make, and in the
-	// reserving run the only ones it may.
-	mdMethods = "conformance-methods"
 )
 
 // auditedResourceType is what this harness's auditable action touches.
@@ -230,7 +225,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
 		authenticate,
-		reserveOperatorCalls,
+		reserveStaffCalls,
 	})
 	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
 	// The HTTP half of the stand-in credential, on the router before anything
@@ -355,7 +350,6 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 							mdAdmin, admin,
 							mdReserving, reserving,
 						)
-						md.Append(mdMethods, req.Methods...)
 
 						return metadata.NewOutgoingContext(ctx, md)
 					},
@@ -416,7 +410,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 			// This harness's credential is per call, so a caller with none is the
 			// same connection without the metadata.
 			Anonymous: func(context.Context) (grpc.ClientConnInterface, error) {
-				return reservingConn{ClientConnInterface: conn, reserving: reserving}, nil
+				return conn, nil
 			},
 			AnonymousHTTP: func(context.Context) (*http.Client, error) {
 				return http.DefaultClient, nil
@@ -443,20 +437,20 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	//
 	// The first run is this module's own answer, where a member holds every
 	// grant but the archive ones and so makes every call: it is what keeps each
-	// promise asserted of an ordinary caller. The second reserves every call on
-	// every covered service, which reserveOperatorCalls then refuses to anybody
-	// but an administrator minted to make it: it is what keeps the suites honest
-	// about naming each call they make, since a call made by a caller that did
-	// not name it fails here rather than in a consumer's deployment, and what
-	// proves an assertion about an ordinary member skips rather than fails where
-	// a deployment keeps the call from its members. Sequential rather than
-	// parallel, because each claims the database as its own.
+	// promise asserted of a member. The second reserves staffOnly, which
+	// reserveStaffCalls refuses to anybody but an administrator: it is what
+	// keeps the path a consumer's reservation takes exercised, each reserved
+	// call made by an administrator minted for it and each assertion about a
+	// member of a reserved call skipping rather than failing. That every call a
+	// caller makes is one it declared is checked in both, on the caller's own
+	// connection. Sequential rather than parallel, because each claims the
+	// database as its own.
 	t.Run("members make every call", func(t *testing.T) {
 		conformanceall.Run(t, seams(nil))
 	})
 
-	t.Run("every call reserved", func(t *testing.T) {
-		conformanceall.Run(t, seams(everyMethodList()))
+	t.Run("staff calls reserved", func(t *testing.T) {
+		conformanceall.Run(t, seams(staffOnly))
 	})
 }
 
@@ -644,8 +638,6 @@ func authenticate(
 		principal.reserving = reserving[0] == "true"
 	}
 
-	principal.methods = md.Get(mdMethods)
-
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
@@ -711,7 +703,6 @@ type testPrincipal struct {
 	userID          string
 	activeAccountID string
 	scope           tenancy.Scope
-	methods         []string
 	admin           bool
 	reserving       bool
 }

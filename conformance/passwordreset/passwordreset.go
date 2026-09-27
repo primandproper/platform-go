@@ -63,7 +63,8 @@ func resettable(t *testing.T, s *conformance.Session, doors ...string) (*conform
 
 	s.NeedsPublic(t, doors...)
 
-	sub := s.Subject(t, conformance.Making(identitypb.IdentityService_GetPrincipal_FullMethodName),
+	sub := s.Subject(t,
+		conformance.Making(append([]string{identitypb.IdentityService_GetPrincipal_FullMethodName}, doors...)...),
 		conformance.InTenant(surface, tenancy.Global()))
 
 	if sub.Surfaces.Identity == nil {
@@ -84,7 +85,7 @@ func doors(t *testing.T, s *conformance.Session, calls ...string) *conformance.S
 
 	s.NeedsPublic(t, calls...)
 
-	return s.Subject(t)
+	return s.Subject(t, conformance.Making(calls...))
 }
 
 // request asks for a reset link for an address, as the form nobody has signed

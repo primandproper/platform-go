@@ -181,13 +181,14 @@ func confinement(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, optionNever, value.GetResult().GetRaw())
 	})
 
-	// The refusal is decided before anything is read, so a subject nobody has
-	// stored a value for is refused exactly as one who has. A caller cannot
-	// learn which subjects exist by watching the codes.
-	t.Run("an account the caller is not in is refused before anything is read", func(t *testing.T) {
+	// An account in a neighboring directory is behind the tenant wall, and the
+	// wall holds for whoever the subject mints to resolve settings: this
+	// module's rule refuses it before anything is read, and a deployment whose
+	// operators may resolve any account reads the neighbor's directory as empty.
+	t.Run("an account in a neighboring directory is not the caller's to resolve", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s, conformance.Making(resolve), conformance.AsMember())
+		mine, theirs := twoDirectories(t, s, conformance.Making(resolve))
 		needsUser(t, mine)
 		needsAccount(t, theirs)
 
@@ -203,8 +204,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 			Subject: &settingspb.SettingSubject{Type: subjectAccount, Id: theirs.AccountID},
 			Name:    c.digest,
 		})
-		must.Error(t, err)
-		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		notYours(t, err, "a neighboring directory's account's settings")
 	})
 }
 

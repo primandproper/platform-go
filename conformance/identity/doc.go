@@ -41,18 +41,21 @@ controls went in.
 
 # Who a call is made as
 
-Every caller here names the calls it makes, and which of them a deployment
-reserves to an operator is the deployment's to say, as the conformance package
-documentation describes. The directory's administered calls — Register, GetUser,
-ListUsers, SearchUsersByUsername, ListAccounts and the operator writes — are the
-ones a deployment most plausibly keeps to its staff, but a deployment may as
-well reserve opening a second account, or an owner's administration of their
-own, and each is asserted of whoever the subject mints for it. A caller learns
-its own address through GetPrincipal rather than GetUser, so that reading
-oneself never depends on being allowed the directory. The directory's
-confinement is asserted between whoever makes each call in each of two
-tenants; the refusals that turn on a member's standing in an account are asked
-of a caller minted with conformance.AsMember, and skip where the call is
-reserved.
+The consumer declares its operator-only calls in Seams.OperatorMethods, and
+the suite makes those as an operator and every other call as a member, as the
+conformance package documentation describes. Each caller declares the calls it
+makes and is held to them: a call it did not declare fails the test.
+
+The directory's administered calls — Register, GetUser, ListUsers,
+SearchUsersByUsername, ListAccounts and the operator writes — are the ones a
+deployment most plausibly keeps to its staff, but a deployment may as well
+reserve opening a second account, or an owner's administration of their own.
+A caller learns its own address through GetPrincipal rather than GetUser, so
+that reading oneself never depends on being allowed the directory. The
+directory's walls hold for whoever calls: a neighboring directory's account,
+user or memberships is refused to whatever caller the declaration implies, as
+absent or forbidden. Refusing to archive an account the caller does not
+belong to turns on membership within a directory, and is asked of a caller
+minted with conformance.AsMember.
 */
 package identity
