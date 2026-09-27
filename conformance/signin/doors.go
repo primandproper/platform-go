@@ -57,14 +57,14 @@ func doors(t *testing.T, s *conformance.Session) {
 		who := signInAs(t, s, anon)
 
 		_, wrong := login(t.Context(), anon, who.username, wrongPassword, "")
-		refused(t, wrong, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, wrong, codes.Unauthenticated, reasonInvalidCredentials)
 
 		// The sentinel's own words rather than the code's name, which is what a
 		// client with no access to the details reads.
 		test.EqOp(t, domain.ErrInvalidCredentials.Error(), status.Convert(wrong).Message())
 
 		_, unknown := login(t.Context(), anon, "conf_"+identifiers.New(), password, "")
-		indistinguishable(t, wrong, unknown, "an unknown username against a wrong password")
+		indistinguishable(t, s, wrong, unknown, "an unknown username against a wrong password")
 
 		loggedIn(t, anon, who.username, password)
 	})
@@ -95,13 +95,15 @@ func doors(t *testing.T, s *conformance.Session) {
 		secret := enroll(t, sub)
 
 		_, withoutCode := login(t.Context(), anon, user.GetUsername(), password, "")
-		refused(t, withoutCode, codes.Unauthenticated, reasonSecondFactorRequired)
+		refused(t, s, withoutCode, codes.Unauthenticated, reasonSecondFactorRequired)
 		test.EqOp(t, domain.ErrSecondFactorRequired.Error(), status.Convert(withoutCode).Message())
 
 		_, badPassword := login(t.Context(), anon, user.GetUsername(), wrongPassword, "")
 		_, badCode := login(t.Context(), anon, user.GetUsername(), password, wrongCode(t, secret))
-		indistinguishable(t, badPassword, badCode, "a wrong code against a wrong password")
-		test.EqOp(t, reasonInvalidCredentials, reason(badCode))
+		indistinguishable(t, s, badPassword, badCode, "a wrong code against a wrong password")
+		if reasons(t, s) {
+			test.EqOp(t, reasonInvalidCredentials, reason(badCode))
+		}
 
 		issued, err := login(t.Context(), anon, user.GetUsername(), password, code(t, secret))
 		must.NoError(t, err, must.Sprint("the right password and the right code did not sign in"))
@@ -124,8 +126,10 @@ func doors(t *testing.T, s *conformance.Session) {
 		})
 		must.Error(t, err, must.Sprint("somebody nobody made an administrator signed in as one"))
 		test.EqOp(t, codes.PermissionDenied, status.Code(err))
-		test.True(t, slices.Contains([]string{reasonNotAnAdministrator, reasonAdminSignInUnavailable}, reason(err)),
-			test.Sprintf("the administrative refusal carried reason %q", reason(err)))
+		if reasons(t, s) {
+			test.True(t, slices.Contains([]string{reasonNotAnAdministrator, reasonAdminSignInUnavailable}, reason(err)),
+				test.Sprintf("the administrative refusal carried reason %q", reason(err)))
+		}
 
 		// The same credentials through the ordinary door, so the refusal above
 		// was about the door rather than the password.

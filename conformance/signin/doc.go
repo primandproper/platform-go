@@ -29,6 +29,13 @@ something a client in another language can read. The message is checked only
 where the promise is about the message: that two refusals are word for word the
 same.
 
+The reason half is asserted unless the subject's Seams.ErrorReasonsStripped
+says its edge drops reasons. The contract promises that a reason survives an
+edge that strips the encoded chain, so asserting it is the default; a
+deployment that rebuilds a status without its details breaks that promise, and
+says so to have the codes checked and each skipped reason printed rather than a
+suite that fails on a detail it does not send.
+
 # Whose directory, and the three actions
 
 Every request to the anonymous doors arrives with nobody on it, so whose

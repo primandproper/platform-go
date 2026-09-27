@@ -13,6 +13,8 @@ import (
 // It is the assembled subject with no Docker, so it runs wherever the direct
 // subjects do. What it cannot prove is anything the database engine decides; the
 // real servers in containers_test.go are for that.
+//
+//nolint:tparallel // assemble's two runs are sequential against one database, deliberately: each claims it as its own.
 func TestConformance_AssembledSQLite(t *testing.T) {
 	t.Parallel()
 

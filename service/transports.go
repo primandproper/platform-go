@@ -1090,19 +1090,26 @@ func (m *mount) waitlists() {
 		opts = append(opts, waitlistsgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	if mailer, mailing := need[waitlistsgrpc.ConfirmationMailer](m); mailing {
+	// need reports an absence and a failed lookup alike as false, so each is
+	// followed by a check of m.err: only an absence goes on to be judged.
+	mailer, mailing := need[waitlistsgrpc.ConfirmationMailer](m)
+	if m.err != nil {
+		return
+	}
+
+	if mailing {
 		minter, minting := need[*links.Minter](m)
+		if m.err != nil {
+			return
+		}
+
 		if !minting {
-			if m.err == nil {
-				m.fail("waitlists", ErrWaitlistConfirmationNeedsLinks)
-			}
+			m.fail("waitlists", ErrWaitlistConfirmationNeedsLinks)
 
 			return
 		}
 
 		opts = append(opts, waitlistsgrpc.WithConfirmation(minter, mailer))
-	} else if m.err != nil {
-		return
 	}
 
 	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups, opts...)

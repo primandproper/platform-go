@@ -22,10 +22,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "signin"
+
 // Suite is the sign-in surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "signin",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.SignIn != nil },
 		Run:     run,
 	}
@@ -95,19 +99,38 @@ func reason(err error) string {
 	return info.GetReason()
 }
 
+// reasons reports whether s's subject carries reasons to its clients, printing
+// what goes unasserted where it does not. Every reason comparison here goes
+// through it, so a subject that strips them still has every code asserted.
+func reasons(t *testing.T, s *conformance.Session) bool {
+	t.Helper()
+
+	if !s.Seams().ErrorReasonsStripped {
+		return true
+	}
+
+	t.Log("conformance: this subject says its edge strips client-safe reasons (Seams.ErrorReasonsStripped), so the reason half of this refusal is not asserted")
+
+	return false
+}
+
 // refused asserts err is a refusal with the code and reason the contract lists
-// for it.
-func refused(t *testing.T, err error, code codes.Code, want string) {
+// for it. The reason is asserted only where the subject carries one.
+func refused(t *testing.T, s *conformance.Session, err error, code codes.Code, want string) {
 	t.Helper()
 
 	must.Error(t, err, must.Sprintf("expected a refusal answering %s", want))
 	test.EqOp(t, code, status.Code(err))
-	test.EqOp(t, want, reason(err), test.Sprintf("the refusal carried reason %q (%v)", reason(err), err))
+
+	if reasons(t, s) {
+		test.EqOp(t, want, reason(err), test.Sprintf("the refusal carried reason %q (%v)", reason(err), err))
+	}
 }
 
 // indistinguishable asserts two refusals are the same answer on every channel a
-// client reads: the code, the message and the reason.
-func indistinguishable(t *testing.T, want, got error, what string) {
+// client reads: the code, the message and, where the subject carries one, the
+// reason.
+func indistinguishable(t *testing.T, s *conformance.Session, want, got error, what string) {
 	t.Helper()
 
 	must.Error(t, want)
@@ -116,7 +139,10 @@ func indistinguishable(t *testing.T, want, got error, what string) {
 	test.EqOp(t, status.Code(want), status.Code(got), test.Sprintf("%s: the codes differ", what))
 	test.EqOp(t, status.Convert(want).Message(), status.Convert(got).Message(),
 		test.Sprintf("%s: the messages differ", what))
-	test.EqOp(t, reason(want), reason(got), test.Sprintf("%s: the reasons differ", what))
+
+	if reasons(t, s) {
+		test.EqOp(t, reason(want), reason(got), test.Sprintf("%s: the reasons differ", what))
+	}
 }
 
 // anonymous is the sign-in surface as a client with nobody on it reaches it —
@@ -142,7 +168,7 @@ func anonymous(t *testing.T, s *conformance.Session) signinpb.SignInServiceClien
 func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
 	t.Helper()
 
-	return s.Subject(t, conformance.InTenant(tenancy.Global()))
+	return s.Subject(t, conformance.InTenant(surface, tenancy.Global()))
 }
 
 // registrant is somebody registered over the wire: what they would type to sign
@@ -288,11 +314,10 @@ func passworded(t *testing.T, s *conformance.Session) (*conformance.Subject, *id
 		t.Skip("conformance: this subject mounts no identity or password reset surface, so a caller cannot be given a password the suite knows")
 	}
 
-	found, err := sub.Surfaces.Identity.GetUser(sub.Context(t.Context()),
-		&identitypb.GetUserRequest{UserId: sub.UserID})
-	must.NoError(t, err, must.Sprint("a caller could not read its own user"))
+	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
 
-	user := found.GetUser()
+	user := found.GetPrincipal().GetUser()
 	must.NotEqOp(t, "", user.GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
 
 	read := s.Seams().Actions.PasswordResetToken
@@ -302,7 +327,7 @@ func passworded(t *testing.T, s *conformance.Session) (*conformance.Subject, *id
 		&passwordresetpb.RequestPasswordResetRequest{EmailAddress: user.GetEmailAddress()})
 	must.NoError(t, err, must.Sprint("requesting a reset link"))
 
-	secret, err := read(t.Context(), sub.Scope, user.GetEmailAddress())
+	secret, err := read(t.Context(), sub.ScopeFor(surface), user.GetEmailAddress())
 	must.NoError(t, err, must.Sprint("reading the reset link the deployment mailed"))
 
 	_, err = sub.Surfaces.PasswordReset.CompletePasswordReset(t.Context(),

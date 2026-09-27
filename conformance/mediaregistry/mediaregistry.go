@@ -15,10 +15,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "mediaregistry"
+
 // Suite is the guarded object read's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name: "mediaregistry",
+		Name: surface,
 
 		// The HTTP surfaces are not in Surfaces; whether this one is served is
 		// read off the probe caller's HTTP inside, and skipped with the reason.
@@ -87,7 +91,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 		mine := s.Subject(t)
 		object := registered(t, s, mine)
-		colleague := s.Subject(t, conformance.InTenant(mine.Scope))
+		colleague := s.Subject(t, conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		must.StrNotEqFold(t, mine.UserID, colleague.UserID,
 			must.Sprint("the subject minted a colleague as the same user; the entitlement this asserts cannot be observed"))
@@ -128,10 +132,7 @@ func indistinguishable(t *testing.T, refused, unknown *answer) {
 func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
-
-	must.StrNotEqFold(t, mine.Scope.String(), theirs.Scope.String(),
-		must.Sprint("the subject minted two callers in one tenant; the confinement this asserts cannot be observed"))
+	mine, theirs = s.TwoTenants(t, surface)
 
 	return mine, theirs
 }
@@ -148,7 +149,7 @@ func registered(t *testing.T, s *conformance.Session, sub *conformance.Subject) 
 		t.Skip("conformance: this subject does not surface the caller's user identifier, so there is nobody to register an object as")
 	}
 
-	object, err := register(t.Context(), sub.Scope, sub.UserID)
+	object, err := register(t.Context(), sub.ScopeFor(surface), sub.UserID)
 	must.NoError(t, err, must.Sprint("registering an object"))
 	must.NotNil(t, object, must.Sprint("the registration action reported no object and no error"))
 	must.StrNotEqFold(t, "", object.ID, must.Sprint("the registration action reported no identifier"))

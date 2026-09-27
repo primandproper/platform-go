@@ -12,10 +12,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// surface is this suite's name, and the key a subject's per-surface scope is
+// read by.
+const surface = "passwordreset"
+
 // Suite is the password reset surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
-		Name:    "passwordreset",
+		Name:    surface,
 		Mounted: func(s conformance.Surfaces) bool { return s.PasswordReset != nil },
 		Run:     run,
 	}
@@ -45,18 +49,17 @@ const newPassword = "a whole new password, long enough for anybody"
 func resettable(t *testing.T, s *conformance.Session) (*conformance.Subject, *identitypb.User) {
 	t.Helper()
 
-	sub := s.Subject(t, conformance.InTenant(tenancy.Global()))
+	sub := s.Subject(t, conformance.InTenant(surface, tenancy.Global()))
 
 	if sub.Surfaces.Identity == nil {
 		t.Skip("conformance: this subject mounts no identity surface, so a caller's address cannot be read")
 	}
 
-	found, err := sub.Surfaces.Identity.GetUser(sub.Context(t.Context()),
-		&identitypb.GetUserRequest{UserId: sub.UserID})
-	must.NoError(t, err, must.Sprint("a caller could not read its own user"))
-	must.StrNotEqFold(t, "", found.GetUser().GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
+	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
+	must.StrNotEqFold(t, "", found.GetPrincipal().GetUser().GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
 
-	return sub, found.GetUser()
+	return sub, found.GetPrincipal().GetUser()
 }
 
 // request asks for a reset link for an address, as the form nobody has signed
@@ -79,7 +82,7 @@ func mailed(t *testing.T, s *conformance.Session, sub *conformance.Subject, emai
 	read := s.Seams().Actions.PasswordResetToken
 	s.NeedsAction(t, read != nil, "password reset token")
 
-	secret, err := read(t.Context(), sub.Scope, emailAddress)
+	secret, err := read(t.Context(), sub.ScopeFor(surface), emailAddress)
 	must.NoError(t, err, must.Sprint("reading the reset link the deployment mailed"))
 	must.StrNotEqFold(t, "", secret, must.Sprint("the deployment mailed an empty secret"))
 

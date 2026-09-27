@@ -25,13 +25,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor sees the open catalog of the tenant they land in, and only that", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		taking := openList(t, operator, open())
 		stopped := openList(t, operator, closed())
 
 		// A list in a tenant of its own, which a visitor landing anywhere but
 		// there must not be offered.
-		elsewhere := openList(t, s.Subject(t), open())
+		elsewhere := openList(t, s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
 
 		ids := openListIDs(t, t.Context(), anonymous)
 		test.SliceContains(t, ids, taking.GetId(),
@@ -45,7 +45,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor's signup is kept as typed and attributed to nobody", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		typed := "Conf." + freshContact()
 
@@ -80,7 +83,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_PENDING, stored.GetStatus(),
 			test.Sprint("a deployment that confirms counted a signup nobody had confirmed"))
 
-		confirm(t, s, anonymous, t.Context(), operator.Scope, list.GetId(), typed)
+		confirm(t, s, anonymous, t.Context(), operator.ScopeFor(surface), list.GetId(), typed)
 
 		confirmed := byContact(t, operator, list.GetId(), strings.ToLower(typed))
 		must.NotNil(t, confirmed)
@@ -94,10 +97,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a visitor cannot be joined to a list outside the tenant they land in", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
 		home := openList(t, operator, open())
 
-		owner := s.Subject(t)
+		owner := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		elsewhere := openList(t, owner, open())
 
 		// The positive control: the same visitor joins a list where they land.
@@ -120,9 +126,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 		needsUser(t, caller)
-		list := openList(t, caller, open())
+		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface),
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
+		list := openList(t, operator, open())
 
-		stored := signedUp(t, s, caller, caller, list.GetId(), freshContact())
+		stored := signedUp(t, s, caller, operator, list.GetId(), freshContact())
 		test.EqOp(t, string(domain.SubjectUser), stored.GetSubject().GetType())
 		test.EqOp(t, caller.UserID, stored.GetSubject().GetId())
 	})
@@ -131,10 +141,14 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoTenants(t, s)
-		list := openList(t, mine, open())
+		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface),
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
+		list := openList(t, operator, open())
 
 		// The positive control: the owner's own join lands.
-		signedUp(t, s, mine, mine, list.GetId(), freshContact())
+		signedUp(t, s, mine, operator, list.GetId(), freshContact())
 
 		contact := freshContact()
 		_, err := theirs.Surfaces.Waitlists.Join(theirs.Context(t.Context()),
@@ -142,7 +156,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		must.Error(t, err, must.Sprint("a caller was joined to a neighboring tenant's list"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
 
-		test.Nil(t, byContact(t, mine, list.GetId(), contact), test.Sprint("a refused join still wrote a row"))
+		test.Nil(t, byContact(t, operator, list.GetId(), contact), test.Sprint("a refused join still wrote a row"))
 	})
 
 	// The refusal that survives the uniform answer, and the reason it does: a
@@ -152,7 +166,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a list that has stopped taking signups refuses them, in words a person can read", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+		)
 		list := openList(t, operator, closed())
 		contact := freshContact()
 
@@ -173,7 +190,11 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join says nothing about an address already on the list, and writes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 		first := signedUp(t, s, operator, operator, list.GetId(), contact)
@@ -205,7 +226,13 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join says nothing about an address that withdrew, and re-subscribes nobody", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+			waitlistspb.WaitlistsService_ListSignups_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+		)
 		needsUser(t, operator)
 		list := openList(t, operator, open())
 		contact := freshContact()
@@ -237,7 +264,10 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a join answers a new, an existing and a withdrawn address identically, and with nothing", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Subject(t)
+		operator := s.Operator(t,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_WithdrawSignupsForSubject_FullMethodName,
+		)
 		list := openList(t, operator, open())
 
 		existing := freshContact()
@@ -285,7 +315,11 @@ func signupPage(t *testing.T, s *conformance.Session) {
 	t.Run("a withdrawal nobody can be tied to reads as an identifier nobody minted, and moves nothing", func(t *testing.T) {
 		t.Parallel()
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 		signup := signedUp(t, s, operator, operator, list.GetId(), contact)
@@ -327,7 +361,11 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		needsConfirmation(t, s)
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_Invite_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 
@@ -344,7 +382,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		must.Error(t, err, must.Sprint("a signup nobody confirmed was invited"))
 		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
 
-		mailed := linksFor(t, t.Context(), s, operator.Scope, list.GetId(), contact)
+		mailed := linksFor(t, t.Context(), s, operator.ScopeFor(surface), list.GetId(), contact)
 
 		_, err = anonymous.Confirm(t.Context(), &waitlistspb.ConfirmRequest{Token: mailed.Confirm})
 		must.NoError(t, err, must.Sprint("a visitor could not follow their confirmation link"))
@@ -371,7 +409,11 @@ func signupPage(t *testing.T, s *conformance.Session) {
 
 		needsConfirmation(t, s)
 
-		anonymous, operator := visitor(t, s)
+		anonymous, operator := visitor(t, s,
+			waitlistspb.WaitlistsService_CreateList_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
+			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
+		)
 		list := openList(t, operator, open())
 		contact := freshContact()
 
@@ -381,7 +423,7 @@ func signupPage(t *testing.T, s *conformance.Session) {
 		pending := byContact(t, operator, list.GetId(), contact)
 		must.NotNil(t, pending)
 
-		mailed := linksFor(t, t.Context(), s, operator.Scope, list.GetId(), contact)
+		mailed := linksFor(t, t.Context(), s, operator.ScopeFor(surface), list.GetId(), contact)
 
 		// A confirmation link is not an unsubscribe link, and presenting one at
 		// the wrong door must not spend it.
