@@ -89,6 +89,7 @@ var rulings = map[string]ruling{
 	"authentication/grants/internal/grantsdb":                     {tier: unison},
 	"authentication/passkeys/internal/passkeysdb":                 {tier: unison},
 	"authentication/passwordreset/internal/passwordresetdb":       {tier: unison},
+	"authentication/phonecodes/internal/phonecodesdb":             {tier: unison},
 	"authentication/signin/magiclinks/internal/magiclinkdb":       {tier: unison},
 	"authentication/signin/recoverycodes/internal/recoverycodedb": {tier: unison},
 	"authentication/signin/refreshtokens/internal/signindb":       {tier: unison},
