@@ -64,7 +64,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 
 		requestLink(t, anon, who.email)
 
@@ -84,7 +84,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s)
-		who, _ := register(t, s, withPassword(registrationRequest()))
+		who, _ := register(t, s, withPassword(registrationRequest(s)))
 
 		_, err := login(t.Context(), anon, who.username, password, "")
 		refused(t, s, err, codes.FailedPrecondition, reasonUserUnverified)
@@ -106,7 +106,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 
 		known := requestLink(t, anon, who.email)
 		mailedLink(t, s, who.email)
@@ -123,7 +123,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 
 		_, never := redeem(t, anon, identifiers.New())
 		refused(t, s, never, codes.Unauthenticated, reasonInvalidCredentials)
