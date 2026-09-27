@@ -68,10 +68,21 @@ var prefixCounter atomic.Uint64
 func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 	t.Helper()
 
+	runAgainstStore(t, db, d, func(store identity.Store) identity.Store { return store })
+}
+
+// runAgainstStore is runAgainst with the store the service and surface are
+// built on passed through deploy first, which is how a harness stands in for a
+// deployment that wraps this module's store with a rule of its own.
+func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy func(identity.Store) identity.Store) {
+	t.Helper()
+
 	prefix := migrate(t, db, d)
 
-	store, err := identity.NewSQLStore(db, identity.WithTablePrefix(prefix))
+	sqlStore, err := identity.NewSQLStore(db, identity.WithTablePrefix(prefix))
 	must.NoError(t, err)
+
+	store := deploy(sqlStore)
 
 	invites := &invitationTokens{}
 

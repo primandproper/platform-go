@@ -8,7 +8,10 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // roleSupport is the membership role these assertions grant. Role names are
@@ -131,6 +134,76 @@ func accountIDs(accounts []*identitypb.Account) []string {
 	out := make([]string, 0, len(accounts))
 	for _, a := range accounts {
 		out = append(out, a.GetId())
+	}
+
+	return out
+}
+
+// archiveOwner archives an account owner as an operator and asserts the
+// invariant the archival is answerable to: no account is left answering to a
+// user every scoped read now reports as absent.
+//
+// The invariant rather than the mechanism, because the mechanism is the
+// deployment's. This module's store refuses the archival with
+// FailedPrecondition and leaves the owner to transfer or close what they hold
+// first; a deployment may instead settle it on the owner's behalf — hand each
+// account to a remaining member, close the ones nobody else is in — and archive
+// the owner in the same transaction. Both leave every account owned by somebody
+// who exists or closed, and an assertion that demanded the refusal was
+// asserting this module's default against a deployment that had deliberately
+// chosen a different one. What still fails is the archival that neither refused
+// nor settled.
+func archiveOwner(t *testing.T, s *conformance.Session, owner *conformance.Subject) {
+	t.Helper()
+
+	operator := s.OperatorIn(t, surface, owner.ScopeFor(surface),
+		identitypb.IdentityService_ArchiveUser_FullMethodName,
+		identitypb.IdentityService_ListAccounts_FullMethodName,
+	)
+
+	owned := ownedBy(listAccounts(t, operator), owner.UserID)
+	must.SliceContains(t, owned, owner.AccountID,
+		must.Sprint("the directory listing does not show the owner owning their account; the assertion below proves nothing"))
+
+	_, err := operator.Surfaces.Identity.ArchiveUser(operator.Context(t.Context()),
+		&identitypb.ArchiveUserRequest{UserId: owner.UserID})
+	if err != nil {
+		test.EqOp(t, codes.FailedPrecondition, status.Code(err),
+			test.Sprint("an owner's archival was refused, but not as an unmet precondition"))
+		test.Eq(t, owned, ownedBy(listAccounts(t, operator), owner.UserID),
+			test.Sprint("a refused archival changed what the owner owns"))
+
+		return
+	}
+
+	// A listed account is a live one, so an account the archived owner still
+	// owns is one that was neither closed nor handed on.
+	test.SliceEmpty(t, ownedBy(listAccounts(t, operator), owner.UserID),
+		test.Sprint("an owner was archived and left accounts that are neither closed nor owned by anybody else"))
+}
+
+// listAccounts is the operator's listing of their directory.
+//
+// One page, because every subject here is minted in a tenant nothing else in
+// the run shares, and the handful of accounts an assertion creates in it fits
+// in the first.
+func listAccounts(t *testing.T, operator *conformance.Subject) []*identitypb.Account {
+	t.Helper()
+
+	page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()), &identitypb.ListAccountsRequest{})
+	must.NoError(t, err)
+
+	return page.GetResults()
+}
+
+// ownedBy are the identifiers of the listed accounts userID owns.
+func ownedBy(listed []*identitypb.Account, userID string) []string {
+	var out []string
+
+	for _, a := range listed {
+		if a.GetOwnerUserId() == userID {
+			out = append(out, a.GetId())
+		}
 	}
 
 	return out
