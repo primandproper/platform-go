@@ -47,8 +47,9 @@ ListAccounts, ArchiveUser, UpdateUserAccountStatus, SetUserServiceRoles and
 SetUserRequiresPasswordChange are therefore each made by an operator where the
 subject reserves it, and by an ordinary caller where it does not, as
 conformance.ReservableMethods describes; the directory's confinement is
-asserted between whoever makes those calls in each of two tenants. Register here is the
-administered door; the one a person registers themselves through is signin's.
+asserted between whoever makes those calls in each of two tenants. Register
+here writes the directory's rows; signin's also names the credential its
+registrant signs in with, and is reservable on the same terms.
 
 The rest is made as an ordinary caller, and each is a promise: a signed-in
 caller reads their own principal through GetPrincipal — which is how every

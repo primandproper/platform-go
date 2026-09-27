@@ -81,6 +81,8 @@ func ReservableMethods() []string {
 		oauth2clientspb.OAuth2ClientsService_ListOAuth2Clients_FullMethodName,
 		oauth2clientspb.OAuth2ClientsService_ArchiveOAuth2Client_FullMethodName,
 
+		signinpb.SignInService_Register_FullMethodName,
+
 		settingspb.SettingsService_CreateDefinition_FullMethodName,
 		settingspb.SettingsService_UpdateDefinition_FullMethodName,
 		settingspb.SettingsService_ArchiveDefinition_FullMethodName,
