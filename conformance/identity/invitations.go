@@ -18,11 +18,13 @@ import (
 func invitations(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	role, otherRole := membershipRoles(s)
+
 	t.Run("an invitation is kept, and its token is not returned to the sender", func(t *testing.T) {
 		t.Parallel()
 
 		sender := s.Subject(t)
-		invitation := invite(t, sender, freshEmail(), roleSupport)
+		invitation := invite(t, sender, freshEmail(), role)
 		token := tokenFor(t, s, sender, invitation.GetId())
 
 		test.StrNotContains(t, invitation.String(), token,
@@ -49,7 +51,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 		response, err := sender.Surfaces.Identity.Invite(sender.Context(t.Context()), &identitypb.InviteRequest{
 			AccountId: sender.AccountID,
 			ToEmail:   freshEmail(),
-			Roles:     []string{roleSupport},
+			Roles:     []string{role},
 			ExpiresAt: timestamppb.New(asked),
 		})
 		must.NoError(t, err)
@@ -65,7 +67,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 		_, err := sender.Surfaces.Identity.Invite(sender.Context(t.Context()), &identitypb.InviteRequest{
 			AccountId: sender.AccountID,
 			ToEmail:   freshEmail(),
-			Roles:     []string{roleSupport},
+			Roles:     []string{role},
 			ExpiresAt: timestamppb.New(time.Now().UTC().Add(-time.Minute)),
 		})
 		must.Error(t, err)
@@ -79,7 +81,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 		needsAccount(t, sender)
 		invitee := colleague(t, s, sender)
 
-		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), roleSupport, "billing")
+		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), role, otherRole)
 		token := tokenFor(t, s, sender, invitation.GetId())
 		ctx := invitee.Context(t.Context())
 
@@ -97,7 +99,8 @@ func invitations(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, invitee.UserID, acceptance.GetInvitation().GetToUser())
 		test.EqOp(t, invitee.UserID, acceptance.GetMembership().GetBelongsToUser())
 		test.EqOp(t, sender.AccountID, acceptance.GetMembership().GetBelongsToAccount())
-		test.Eq(t, []string{"billing", roleSupport}, slices.Sorted(slices.Values(acceptance.GetMembership().GetRoles())))
+		test.Eq(t, slices.Sorted(slices.Values([]string{role, otherRole})),
+			slices.Sorted(slices.Values(acceptance.GetMembership().GetRoles())))
 		test.StrNotContains(t, acceptance.GetInvitation().String(), token)
 
 		// Accepted once. The token has been spent, and a second acceptance
@@ -115,7 +118,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 
 		sender := s.Subject(t)
 		invitee := colleague(t, s, sender)
-		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), roleSupport)
+		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), role)
 
 		_, err := invitee.Surfaces.Identity.AcceptInvitation(invitee.Context(t.Context()),
 			&identitypb.AcceptInvitationRequest{InvitationId: invitation.GetId(), Token: "not the token"})
@@ -128,7 +131,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 
 		sender := s.Subject(t)
 		invitee := colleague(t, s, sender)
-		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), roleSupport)
+		invitation := invite(t, sender, self(t, invitee).GetEmailAddress(), role)
 		ctx := invitee.Context(t.Context())
 
 		_, err := invitee.Surfaces.Identity.RejectInvitation(ctx,
@@ -157,7 +160,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		sender := s.Subject(t)
-		invitation := invite(t, sender, freshEmail(), roleSupport)
+		invitation := invite(t, sender, freshEmail(), role)
 		ctx := sender.Context(t.Context())
 
 		response, err := sender.Surfaces.Identity.CancelInvitation(ctx,
@@ -176,7 +179,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 
 		sender, stranger := twoDirectories(t, s)
 		address := freshEmail()
-		invitation := invite(t, sender, address, roleSupport)
+		invitation := invite(t, sender, address, role)
 
 		read, err := sender.Surfaces.Identity.GetInvitation(sender.Context(t.Context()),
 			&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
@@ -196,9 +199,9 @@ func invitations(t *testing.T, s *conformance.Session) {
 		other := colleague(t, s, sender)
 
 		first, second, theirs := freshEmail(), freshEmail(), freshEmail()
-		invite(t, sender, first, roleSupport)
-		invite(t, sender, second, roleSupport)
-		invite(t, other, theirs, roleSupport)
+		invite(t, sender, first, role)
+		invite(t, sender, second, role)
+		invite(t, other, theirs, role)
 
 		page, err := sender.Surfaces.Identity.ListInvitationsFromUser(sender.Context(t.Context()),
 			&identitypb.ListInvitationsFromUserRequest{})
@@ -225,7 +228,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 		must.NoError(t, verified(t.Context(), bystander.ScopeFor(surface), bystander.UserID))
 
 		address := self(t, invitee).GetEmailAddress()
-		invite(t, sender, address, roleSupport)
+		invite(t, sender, address, role)
 
 		received, err := invitee.Surfaces.Identity.ListInvitationsForEmailAddress(invitee.Context(t.Context()),
 			&identitypb.ListInvitationsForEmailAddressRequest{})
@@ -249,7 +252,7 @@ func invitations(t *testing.T, s *conformance.Session) {
 		victim := colleague(t, s, sender)
 		must.NoError(t, verified(t.Context(), victim.ScopeFor(surface), victim.UserID))
 
-		invite(t, sender, self(t, victim).GetEmailAddress(), roleSupport)
+		invite(t, sender, self(t, victim).GetEmailAddress(), role)
 
 		// An attacker who sets their own address to anything is unverified, and
 		// an unverified address is exactly the one a read keyed on it must not

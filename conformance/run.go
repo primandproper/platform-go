@@ -201,6 +201,7 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 	}
 
 	checkOperatorMethods(t, seams.OperatorMethods)
+	checkRoles(t, seams.Roles)
 
 	session := &Session{seams: seams}
 

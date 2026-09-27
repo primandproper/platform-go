@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test/must"
@@ -27,6 +28,13 @@ const (
 	subjectUser    = "user"
 	subjectAccount = "account"
 )
+
+// maxPages bounds a walk through a catalog this suite does not own. A
+// deployment may serve settings from one tenant every caller shares, so the
+// definition an assertion is looking for may not be on the first page — and a
+// walk with no bound is a test that never ends against a cursor that never
+// does.
+const maxPages = 100
 
 // catalog is one setting of each shape these assertions need, named for the
 // test that defines them.
@@ -206,6 +214,47 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *c
 		must.Sprint("the subject minted a colleague as the same user"))
 
 	return other
+}
+
+// catalogNames walks every page of the catalog caller reaches, asking for
+// retired settings as well when includeArchived is set, and returns the names
+// it saw.
+//
+// Every page rather than the first, because a catalog may be shared with the
+// rest of the run: once more definitions exist than one page holds, the one an
+// assertion just made need not be on page one, and "absent from page one" is
+// not "absent" either — which is the half that would pass a retired setting
+// still being listed.
+func catalogNames(t *testing.T, caller *conformance.Subject, includeArchived bool) []string {
+	t.Helper()
+
+	var seen []string
+
+	filter := &filteringpb.QueryFilter{}
+	if includeArchived {
+		filter.IncludeArchived = &includeArchived
+	}
+
+	for range maxPages {
+		page, err := caller.Surfaces.Settings.ListDefinitions(caller.Context(t.Context()),
+			&settingspb.ListDefinitionsRequest{Filter: filter})
+		must.NoError(t, err, must.Sprint("reading the catalog"))
+
+		seen = append(seen, definitionNames(page.GetResults())...)
+
+		next := page.GetPagination().GetCursor()
+		if next == "" || len(page.GetResults()) == 0 {
+			return seen
+		}
+
+		// Cursor has explicit presence, so it is set only once there is one:
+		// an empty cursor is a cursor, not the absence of one.
+		filter = &filteringpb.QueryFilter{Cursor: &next, IncludeArchived: filter.IncludeArchived}
+	}
+
+	t.Fatalf("conformance: the settings catalog was still paging after %d pages", maxPages)
+
+	return nil
 }
 
 func definitionNames(results []*settingspb.SettingDefinition) []string {

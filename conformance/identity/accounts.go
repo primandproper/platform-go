@@ -15,6 +15,8 @@ import (
 func accounts(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	role, _ := membershipRoles(s)
+
 	t.Run("an account read is confined to the caller's directory", func(t *testing.T) {
 		t.Parallel()
 
@@ -89,7 +91,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 		// account: the owner joins the successor's. They are not yet on the
 		// roster of the account being handed over, which is what gives the
 		// roster assertion below something to prove.
-		join(t, s, successor, owner, "member")
+		join(t, s, successor, owner, role)
 
 		response, err := owner.Surfaces.Identity.TransferAccountOwnership(owner.Context(t.Context()),
 			&identitypb.TransferAccountOwnershipRequest{AccountId: owner.AccountID, NewOwnerUserId: successor.UserID})
@@ -124,7 +126,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 		owner := s.Subject(t)
 		needsAccount(t, owner)
 		member := colleague(t, s, owner)
-		join(t, s, owner, member, "member")
+		join(t, s, owner, member, role)
 
 		response, err := owner.Surfaces.Identity.ArchiveAccount(owner.Context(t.Context()),
 			&identitypb.ArchiveAccountRequest{AccountId: owner.AccountID})

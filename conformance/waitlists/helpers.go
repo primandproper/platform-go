@@ -266,6 +266,40 @@ func visitor(t *testing.T, s *conformance.Session, methods ...string) (waitlists
 	return waitlistspb.NewWaitlistsServiceClient(conn), operator
 }
 
+// elsewhere mints an operator in a tenant of its own, for a list a visitor must
+// not reach, once visitor has established where one lands.
+//
+// A fresh tenant is somewhere else only if the deployment has somewhere else,
+// and it refuses to proceed where it does not, in TwoTenants' two strengths. A
+// deployment that serves waitlists from the global scope and lands its visitors
+// there has one directory, and a fresh operator's list is in it: there is no
+// confinement to observe, and the assertion skips. An operator minted into the
+// one tenant visitors land in, where that is not the global scope, is a factory
+// that ignored its request for a tenant of its own — which would make the
+// assertion that a visitor cannot reach the list assert the opposite of what
+// the deployment promises — and that fails.
+//
+// Callers make their positive controls before asking for it, so the skip leaves
+// those asserted.
+func elsewhere(t *testing.T, s *conformance.Session, methods ...string) *conformance.Subject {
+	t.Helper()
+
+	operator := s.Operator(t, methods...)
+
+	lands := *s.Seams().VisitorScope
+	if operator.ScopeFor(surface) != lands {
+		return operator
+	}
+
+	if lands.IsGlobal() {
+		t.Skipf("conformance: this subject serves %s from the global scope, so no caller's rows there are confined from another's", surface)
+	}
+
+	t.Fatalf("conformance: the subject minted an operator in a %s tenant of its own that is the one a visitor lands in; the confinement this asserts cannot be observed", surface)
+
+	return nil
+}
+
 // openListIDs walks every page of the open catalog a client reaches from ctx.
 //
 // Every page rather than the first, because a visitor's catalog is shared with

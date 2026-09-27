@@ -14,10 +14,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// roleSupport is the membership role these assertions grant. Role names are
-// the consumer's, and nothing here asserts what one permits — only that the
-// name granted is the name held.
-const roleSupport = "support"
+// membershipRoles are the two account roles these assertions grant, from the
+// subject's vocabulary. Role names are the consumer's, and nothing here asserts
+// what one permits — only that the name granted is the name held.
+func membershipRoles(s *conformance.Session) (first, second string) {
+	roles := s.Roles().Membership
+
+	return roles[0], roles[1]
+}
 
 // colleague mints a second caller in of's directory. A subject that cannot put
 // two callers in one tenant declines, and the assertion that asked skips.

@@ -58,7 +58,13 @@ func self(t *testing.T, s *conformance.Session) {
 				test.Sprint("the caller's active account is not among the accounts it is a member of"))
 		}
 
-		test.False(t, standing.GetTwoFactorEnrolled())
+		// A registration policy may enroll a second factor, so a fresh caller's
+		// enrollment is whatever the deployment's own record of them says: the
+		// status agrees with the proof the self read carries.
+		me, err := sub.Surfaces.SignIn.GetSelf(sub.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		test.EqOp(t, me.GetUser().GetTwoFactorSecretVerifiedAt() != nil, standing.GetTwoFactorEnrolled(),
+			test.Sprint("the status's second factor disagrees with the caller's own record of one"))
 	})
 
 	// has_password is a fact a client renders a door from — "set a password"
