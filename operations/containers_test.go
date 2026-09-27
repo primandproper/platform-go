@@ -289,6 +289,19 @@ func runOperationsSuiteOn(t *testing.T, d dialect.Dialect) {
 	})
 }
 
+// testLease is the lease the tests that watch one lapse take, and
+// testLeaseMargin how long past it they wait before calling it lapsed.
+//
+// Both are seconds rather than milliseconds because each such test also
+// asserts the lease is still held a statement or two after taking it, and
+// under -race on a loaded runner a few statements can take longer than a
+// lease of tens of milliseconds: the lease lapsed before it was asked about,
+// and the test read a correct store as broken.
+const (
+	testLease       = 2 * time.Second
+	testLeaseMargin = 500 * time.Millisecond
+)
+
 //nolint:maintidx // one behavioral contract per subtest; splitting it would only hide the list.
 func runOperationsSuite(t *testing.T, client database.Client) {
 	t.Helper()
@@ -713,13 +726,13 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "lapsing", exportRequest{})
 		must.NoError(t, err)
 
-		_, err = h.store.Begin(t.Context(), started.ID, 1, 50*time.Millisecond)
+		_, err = h.store.Begin(t.Context(), started.ID, 1, testLease)
 		must.NoError(t, err)
 
 		_, err = h.store.Begin(t.Context(), started.ID, 2, time.Minute)
 		test.ErrorIs(t, err, ErrOperationNotFound)
 
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(testLease + testLeaseMargin)
 
 		reclaimed, err := h.store.Begin(t.Context(), started.ID, 2, time.Minute)
 		must.NoError(t, err)
@@ -742,17 +755,15 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "extending", exportRequest{})
 		must.NoError(t, err)
 
-		_, err = h.store.Begin(t.Context(), started.ID, 1, 300*time.Millisecond)
+		_, err = h.store.Begin(t.Context(), started.ID, 1, testLease)
 		must.NoError(t, err)
 
-		time.Sleep(150 * time.Millisecond)
-
-		ack, err := h.store.Progress(t.Context(), started.ID, Progress{Count: 10}, 10*time.Second)
+		ack, err := h.store.Progress(t.Context(), started.ID, Progress{Count: 10}, time.Minute)
 		must.NoError(t, err)
 		test.True(t, ack.Held)
 
 		// Past the original lease, but inside the extended one.
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(testLease + testLeaseMargin)
 
 		_, err = h.store.Begin(t.Context(), started.ID, 2, time.Minute)
 		test.ErrorIs(t, err, ErrOperationNotFound)
