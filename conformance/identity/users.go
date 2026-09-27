@@ -175,6 +175,10 @@ func users(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t)
 
+		// A deployment's registration may already have stamped the terms, so
+		// "stamps nothing" is the stamp being what it was, not being absent.
+		before := self(t, caller).GetLastAcceptedTermsOfService()
+
 		_, err := caller.Surfaces.Identity.RecordAgreement(caller.Context(t.Context()), &identitypb.RecordAgreementRequest{
 			Agreements: []identitypb.Agreement{
 				identitypb.Agreement_AGREEMENT_TERMS_OF_SERVICE,
@@ -184,8 +188,13 @@ func users(t *testing.T, s *conformance.Session) {
 		must.Error(t, err)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
-		test.Nil(t, self(t, caller).GetLastAcceptedTermsOfService(),
+		after := self(t, caller).GetLastAcceptedTermsOfService()
+		test.EqOp(t, before == nil, after == nil,
 			test.Sprint("a refused list stamped the entries it had read before the bad one"))
+		if before != nil && after != nil {
+			test.EqOp(t, before.AsTime(), after.AsTime(),
+				test.Sprint("a refused list restamped the entries it had read before the bad one"))
+		}
 	})
 
 	t.Run("a search by username prefix is confined to the caller's directory", func(t *testing.T) {
