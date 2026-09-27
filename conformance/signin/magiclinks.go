@@ -63,7 +63,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 	t.Run("somebody with no password signs in on one mailed link", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, requestMagicLink, redeemMagicLink)
 		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 
 		requestLink(t, anon, who.email)
@@ -83,7 +83,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 	t.Run("a sign-in link finishes a registration", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, loginForToken, requestMagicLink, redeemMagicLink)
 		who, _ := register(t, s, withPassword(registrationRequest(s)))
 
 		_, err := login(t.Context(), anon, who.username, password, "")
@@ -105,7 +105,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 	t.Run("a request for an unknown address is answered as one for a known address", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, requestMagicLink)
 		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 
 		known := requestLink(t, anon, who.email)
@@ -122,7 +122,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 	t.Run("a dead sign-in link is refused as a wrong password is", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, requestMagicLink, redeemMagicLink)
 		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
 
 		_, never := redeem(t, anon, identifiers.New())

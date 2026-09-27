@@ -134,7 +134,7 @@ func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy
 				// The role names are the consumer's, which identity says of
 				// them explicitly — so this harness picks one rather than
 				// finding a canonical one, and nothing here asserts against it.
-				[]string{"account_admin"})
+				[]string{"proprietor"})
 			if registerErr != nil {
 				return nil, registerErr
 			}
@@ -242,9 +242,9 @@ func authenticate(
 // as a deployment that foreign-keys its roles spells them, and none of them the
 // conformance package's own literals.
 var vocabulary = conformance.Roles{
-	Owner:      "account_admin",
-	Service:    "service_admin",
-	Membership: [2]string{"account_admin", "account_member"},
+	Owner:      "proprietor",
+	Service:    "steward",
+	Membership: [2]string{"proprietor", "patron"},
 }
 
 // closedVocabulary refuses a request naming a role outside vocabulary, which

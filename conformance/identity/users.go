@@ -21,7 +21,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("registration writes the user, the account and the membership", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Operator(t, identitypb.IdentityService_Register_FullMethodName)
+		caller := s.Subject(t, conformance.Making(register))
 		username := "conf_" + identifiers.New()
 
 		response, err := caller.Surfaces.Identity.Register(caller.Context(t.Context()), &identitypb.RegisterRequest{
@@ -49,7 +49,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a username collision is AlreadyExists, in the sentinel's own words", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Operator(t, identitypb.IdentityService_Register_FullMethodName)
+		caller := s.Subject(t, conformance.Making(register))
 		username := "conf_" + identifiers.New()
 
 		register := func(email, account string) error {
@@ -77,7 +77,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("registration with no user or no account is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Operator(t, identitypb.IdentityService_Register_FullMethodName)
+		caller := s.Subject(t, conformance.Making(register))
 		ctx := caller.Context(t.Context())
 
 		_, err := caller.Surfaces.Identity.Register(ctx, &identitypb.RegisterRequest{
@@ -96,7 +96,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("an absent user is reported as absent", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Operator(t, identitypb.IdentityService_GetUser_FullMethodName)
+		caller := s.Subject(t, conformance.Making(getUser))
 
 		_, err := caller.Surfaces.Identity.GetUser(caller.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: identifiers.New()})
@@ -107,7 +107,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a profile update saves the caller's own row, and leaves the rest", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(getPrincipal, updateProfile))
 		before := self(t, caller)
 
 		response, err := caller.Surfaces.Identity.UpdateProfile(caller.Context(t.Context()), &identitypb.UpdateProfileRequest{
@@ -123,7 +123,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a profile update clears what it names empty", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(updateProfile))
 		ctx := caller.Context(t.Context())
 
 		named, err := caller.Surfaces.Identity.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{
@@ -144,7 +144,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a profile update with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(updateProfile))
 
 		_, err := caller.Surfaces.Identity.UpdateProfile(caller.Context(t.Context()), &identitypb.UpdateProfileRequest{})
 		must.Error(t, err)
@@ -154,7 +154,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("recording agreement stamps every document named, at one moment", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(recordAgreement))
 
 		// A deployment's registration may already have stamped both documents,
 		// at one moment, so a present pair proves nothing about this call: the
@@ -184,7 +184,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("recording agreement to an unset document is refused, and stamps nothing", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(getPrincipal, recordAgreement))
 
 		// A deployment's registration may already have stamped the terms, so
 		// "stamps nothing" is the stamp being what it was, not being absent.
@@ -211,7 +211,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a search by username prefix is confined to the caller's directory", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s)
+		mine, theirs := twoDirectories(t, s, conformance.Making(getPrincipal))
 		myName, theirName := self(t, mine).GetUsername(), self(t, theirs).GetUsername()
 
 		search := func(caller *conformance.Subject, prefix string) []string {
@@ -230,8 +230,8 @@ func users(t *testing.T, s *conformance.Session) {
 
 		// Each finds itself by its own name, which is the control for each
 		// failing to find the other by theirs.
-		myOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_SearchUsersByUsername_FullMethodName)
-		theirOperator := s.OperatorIn(t, surface, theirs.ScopeFor(surface), identitypb.IdentityService_SearchUsersByUsername_FullMethodName)
+		myOperator := s.Subject(t, conformance.Making(searchUsersByUsername), conformance.InTenant(surface, mine.ScopeFor(surface)))
+		theirOperator := s.Subject(t, conformance.Making(searchUsersByUsername), conformance.InTenant(surface, theirs.ScopeFor(surface)))
 		test.SliceContains(t, search(myOperator, myName), mine.UserID)
 		test.SliceContains(t, search(theirOperator, theirName), theirs.UserID)
 		test.SliceNotContains(t, search(myOperator, theirName), theirs.UserID,
@@ -242,7 +242,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_SetUserServiceRoles_FullMethodName)
+		operator := s.Subject(t, conformance.Making(setUserServiceRoles), conformance.InTenant(surface, user.ScopeFor(surface)))
 		ctx := operator.Context(t.Context())
 
 		granted, err := operator.Surfaces.Identity.SetUserServiceRoles(ctx,
@@ -260,8 +260,8 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a forced password change can be imposed and released", func(t *testing.T) {
 		t.Parallel()
 
-		user := s.Subject(t)
-		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
+		user := s.Subject(t, conformance.Making(getPrincipal))
+		operator := s.Subject(t, conformance.Making(setUserRequiresPasswordChange), conformance.InTenant(surface, user.ScopeFor(surface)))
 		ctx := operator.Context(t.Context())
 
 		test.False(t, self(t, user).GetRequiresPasswordChange(),
@@ -282,8 +282,8 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("a forced password change with no instruction is refused, and releases nothing", func(t *testing.T) {
 		t.Parallel()
 
-		user := s.Subject(t)
-		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName)
+		user := s.Subject(t, conformance.Making(getPrincipal))
+		operator := s.Subject(t, conformance.Making(setUserRequiresPasswordChange), conformance.InTenant(surface, user.ScopeFor(surface)))
 		ctx := operator.Context(t.Context())
 
 		_, err := operator.Surfaces.Identity.SetUserRequiresPasswordChange(ctx,
@@ -303,7 +303,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
+		operator := s.Subject(t, conformance.Making(updateUserAccountStatus), conformance.InTenant(surface, user.ScopeFor(surface)))
 
 		response, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
 			&identitypb.UpdateUserAccountStatusRequest{
@@ -320,7 +320,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		user := s.Subject(t)
-		operator := s.OperatorIn(t, surface, user.ScopeFor(surface), identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
+		operator := s.Subject(t, conformance.Making(updateUserAccountStatus), conformance.InTenant(surface, user.ScopeFor(surface)))
 
 		_, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
 			&identitypb.UpdateUserAccountStatusRequest{
@@ -343,9 +343,9 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("archiving an owner whose account has members leaves no account ownerless", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(invite))
 		needsAccount(t, owner)
-		member := colleague(t, s, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation))
 		role, _ := membershipRoles(s)
 		join(t, s, owner, member, role)
 
@@ -355,7 +355,7 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("the principal read answers for the caller", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(getPrincipal))
 		needsAccount(t, caller)
 
 		response, err := caller.Surfaces.Identity.GetPrincipal(caller.Context(t.Context()), &identitypb.GetPrincipalRequest{})
@@ -371,8 +371,8 @@ func users(t *testing.T, s *conformance.Session) {
 	t.Run("the principal read refuses a caller who has been banned", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
-		operator := s.OperatorIn(t, surface, caller.ScopeFor(surface), identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName)
+		caller := s.Subject(t, conformance.Making(getPrincipal))
+		operator := s.Subject(t, conformance.Making(updateUserAccountStatus), conformance.InTenant(surface, caller.ScopeFor(surface)))
 
 		// The control: admitted before.
 		_, err := caller.Surfaces.Identity.GetPrincipal(caller.Context(t.Context()), &identitypb.GetPrincipalRequest{})

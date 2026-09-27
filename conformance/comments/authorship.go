@@ -27,8 +27,8 @@ func authorship(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's comment cannot be edited, and the refusal reads as absence", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
-		other := colleague(t, s, caller)
+		caller := s.Subject(t, conformance.Making(createComment, updateComment, getComment), conformance.AsMember())
+		other := colleague(t, s, caller, conformance.Making(createComment))
 		about := target(t, s, caller)
 
 		mine := say(t, caller, about, bodyRoot)
@@ -55,8 +55,8 @@ func authorship(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's comment cannot be archived, and the refusal reads as absence", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
-		other := colleague(t, s, caller)
+		caller := s.Subject(t, conformance.Making(createComment, archiveComment), conformance.AsMember())
+		other := colleague(t, s, caller, conformance.Making(createComment, listRootComments))
 		about := target(t, s, caller)
 
 		mine := say(t, caller, about, bodyRoot)
@@ -82,8 +82,8 @@ func authorship(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's comments cannot be listed by naming them", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
-		other := colleague(t, s, caller)
+		caller := s.Subject(t, conformance.Making(listCommentsByAuthor), conformance.AsMember())
+		other := colleague(t, s, caller, conformance.Making(createComment))
 		say(t, other, target(t, s, other), bodyRoot)
 
 		// The positive control: naming themselves is answered.
@@ -97,7 +97,7 @@ func authorship(t *testing.T, s *conformance.Session) {
 	t.Run("an author nobody has heard of is refused exactly as a colleague is", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listCommentsByAuthor), conformance.AsMember())
 		needsUser(t, caller)
 
 		_, err := byAuthor(t, caller, caller.UserID)

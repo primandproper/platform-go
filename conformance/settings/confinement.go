@@ -22,9 +22,11 @@ func confinement(t *testing.T, s *conformance.Session) {
 		ours, neighbor := names(), names()
 
 		making := []string{
-			settingspb.SettingsService_CreateDefinition_FullMethodName,
+			createDefinition,
+			listDefinitions,
 		}
-		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
+		myOperator := s.Subject(t, conformance.Making(making...), conformance.InTenant(surface, mine.ScopeFor(surface)))
+		theirOperator := s.Subject(t, conformance.Making(making...), conformance.InTenant(surface, theirs.ScopeFor(surface)))
 		define(t, myOperator, &settingspb.SettingDefinitionInput{Name: ours.compact, Kind: settingspb.SettingKind_SETTING_KIND_BOOLEAN})
 		define(t, theirOperator, &settingspb.SettingDefinitionInput{Name: neighbor.compact, Kind: settingspb.SettingKind_SETTING_KIND_BOOLEAN})
 
@@ -61,11 +63,14 @@ func confinement(t *testing.T, s *conformance.Session) {
 		c := names()
 
 		making := []string{
-			settingspb.SettingsService_CreateDefinition_FullMethodName,
-			settingspb.SettingsService_ListValuesForDefinition_FullMethodName,
-			settingspb.SettingsService_UpdateDefinition_FullMethodName,
+			createDefinition,
+			getDefinition,
+			getDefinitionByName,
+			listValuesForDefinition,
+			updateDefinition,
 		}
-		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
+		myOperator := s.Subject(t, conformance.Making(making...), conformance.InTenant(surface, mine.ScopeFor(surface)))
+		theirOperator := s.Subject(t, conformance.Making(making...), conformance.InTenant(surface, theirs.ScopeFor(surface)))
 		define(t, myOperator, &settingspb.SettingDefinitionInput{Name: c.digest, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
 		id := byName(t, myOperator, c.digest).GetId()
 
@@ -112,12 +117,12 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor resolving the caller's setting finds no such setting", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s)
+		mine, theirs := twoDirectories(t, s, conformance.Making(setValue, resolve, resolveAll))
 		needsUser(t, mine)
 		needsUser(t, theirs)
 
 		c := names()
-		defineCatalog(t, s.OperatorIn(t, surface, mine.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
+		defineCatalog(t, s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, mine.ScopeFor(surface))), &c)
 		set(t, mine, c.digest, stringValue(optionDaily))
 
 		// The positive control: the caller reaches its own setting and its
@@ -150,8 +155,8 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("every value call naming somebody else's settings is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
-		other := colleague(t, s, caller)
+		caller, c := seeded(t, s, conformance.Making(setValue, getValue, listValuesForSubject, resolve, resolveAll, clearValue), conformance.AsMember())
+		other := colleague(t, s, caller, conformance.Making(setValue, getValue))
 		set(t, other, c.digest, stringValue(optionNever))
 
 		for _, gated := range subjectCalls(c.digest) {
@@ -182,12 +187,12 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("an account the caller is not in is refused before anything is read", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s)
+		mine, theirs := twoDirectories(t, s, conformance.Making(resolve), conformance.AsMember())
 		needsUser(t, mine)
 		needsAccount(t, theirs)
 
 		c := names()
-		defineCatalog(t, s.OperatorIn(t, surface, mine.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
+		defineCatalog(t, s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, mine.ScopeFor(surface))), &c)
 
 		// The positive control: this caller's own resolution is answered.
 		_, err := mine.Surfaces.Settings.Resolve(mine.Context(t.Context()),

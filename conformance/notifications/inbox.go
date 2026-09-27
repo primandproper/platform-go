@@ -29,8 +29,8 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("an inbox holds the caller's own notifications and not a colleague's", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(listNotifications))
+		other := colleague(t, s, mine, conformance.Making(listNotifications))
 
 		own := notified(t, s, mine)
 		theirs := notified(t, s, other)
@@ -51,7 +51,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("an inbox holds nothing from another tenant", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(listNotifications))
 
 		own := notified(t, s, mine)
 		neighbor := notified(t, s, theirs)
@@ -65,7 +65,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a notification reads back as the caller's own, and unread", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(getNotification))
 		id := notified(t, s, mine)
 
 		found := get(t, mine, id)
@@ -84,7 +84,7 @@ func reads(t *testing.T, s *conformance.Session) {
 	t.Run("a colleague's notification reads as one that is not there", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(getNotification))
 		other := colleague(t, s, mine)
 
 		own := notified(t, s, mine)
@@ -112,7 +112,7 @@ func marking(t *testing.T, s *conformance.Session) {
 	t.Run("reading one notification takes it off the unread list and leaves the others there", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(listUnreadNotifications, markNotificationRead, getNotification))
 
 		first := notified(t, s, mine)
 		second := notified(t, s, mine)
@@ -140,7 +140,7 @@ func marking(t *testing.T, s *conformance.Session) {
 	t.Run("marking a notification read twice does not move when it was read", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(markNotificationRead, getNotification))
 		id := notified(t, s, mine)
 
 		_, err := mine.Surfaces.Notifications.MarkNotificationRead(mine.Context(t.Context()),
@@ -163,8 +163,8 @@ func marking(t *testing.T, s *conformance.Session) {
 	t.Run("marking a colleague's notification read is an absence and leaves it unread", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(markNotificationRead))
+		other := colleague(t, s, mine, conformance.Making(listUnreadNotifications))
 
 		own := notified(t, s, mine)
 		theirs := notified(t, s, other)
@@ -186,8 +186,8 @@ func marking(t *testing.T, s *conformance.Session) {
 	t.Run("marking everything read marks the caller's own and leaves a colleague's alone", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(markAllNotificationsRead, listUnreadNotifications, getNotification))
+		other := colleague(t, s, mine, conformance.Making(listUnreadNotifications))
 
 		first := notified(t, s, mine)
 		second := notified(t, s, mine)
@@ -222,7 +222,7 @@ func archiving(t *testing.T, s *conformance.Session) {
 	t.Run("an archived notification leaves the inbox, and archiving it again is an absence", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(listNotifications, archiveNotification, getNotification))
 		id := notified(t, s, mine)
 
 		// The positive control: it is in the inbox before it is archived, so
@@ -255,7 +255,7 @@ func archiving(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator asking for dismissed notifications receives them", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(archiveNotification, listNotifications))
 		live := notified(t, s, admin)
 		dismissed := notified(t, s, admin)
 
@@ -283,8 +283,8 @@ func archiving(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a colleague's notification is an absence and leaves it in their inbox", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(archiveNotification))
+		other := colleague(t, s, mine, conformance.Making(listNotifications))
 
 		own := notified(t, s, mine)
 		theirs := notified(t, s, other)

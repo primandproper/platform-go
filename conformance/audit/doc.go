@@ -20,15 +20,15 @@ should be able to do.
 
 # Who a call is made as
 
-VerifyChain may be an operator's: whether a record has been tampered with is a
-question about the deployment, asked by whoever answers for it, and a
-deployment may reserve it to a service role. So the chain an ordinary caller
-appended to is verified by a caller minted into that caller's tenant — an
-operator where the subject reserves VerifyChain — as
-conformance.ReservableMethods describes.
-
-GetEntry and ListEntries are made as the ordinary caller whose chain it is, and
-that is a promise: a member reads what was recorded in their own tenant.
+Every caller here names the calls it makes, and which of them a deployment
+reserves to an operator is the deployment's to say, as the conformance package
+documentation describes. VerifyChain is the one a deployment most plausibly
+keeps to its staff — whether a record has been tampered with is a question
+about the deployment, asked by whoever answers for it — so the chain an
+ordinary caller appended to is verified by a caller minted into that caller's
+tenant, naming VerifyChain. GetEntry and ListEntries are made by the caller
+whose chain it is; confinement between two chains holds whoever makes them, so
+it is asserted either way.
 
 # What is here and what stayed behind
 

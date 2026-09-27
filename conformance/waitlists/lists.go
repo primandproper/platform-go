@@ -22,7 +22,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a new list answers with the row as stored", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		operator := s.Subject(t, conformance.Making(createList))
 
 		// Whole seconds, because the closing time is compared exactly and the
 		// weakest dialect keeps no more than that.
@@ -60,7 +60,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a creation that names no list is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		operator := s.Subject(t, conformance.Making(createList))
 
 		_, err := operator.Surfaces.Waitlists.CreateList(operator.Context(t.Context()), &waitlistspb.CreateListRequest{})
 		must.Error(t, err)
@@ -73,7 +73,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a list with no closing time is refused as a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		operator := s.Subject(t, conformance.Making(createList))
 
 		_, err := operator.Surfaces.Waitlists.CreateList(operator.Context(t.Context()), &waitlistspb.CreateListRequest{
 			List: &waitlistspb.WaitlistInput{Name: "Launch"},
@@ -85,8 +85,8 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("a list read by id is scoped to the caller's tenant", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
-		list := openList(t, s.OperatorIn(t, surface, mine.ScopeFor(surface), waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
+		mine, theirs := twoTenants(t, s, conformance.Making(getList))
+		list := openList(t, s.Subject(t, conformance.Making(createList), conformance.InTenant(surface, mine.ScopeFor(surface))), open())
 
 		// The positive control: without it, "the neighbor cannot read it" is
 		// also true of a read that reaches nothing at all.
@@ -108,13 +108,11 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("the console's catalog is the caller's, open and closed alike", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
-		myOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		mine, theirs := twoTenants(t, s, conformance.Making(listLists))
+		myOperator := s.Subject(t, conformance.Making(createList), conformance.InTenant(surface, mine.ScopeFor(surface)))
 		taking := openList(t, myOperator, open())
 		stopped := openList(t, myOperator, closed())
-		neighbors := openList(t, s.OperatorIn(t, surface, theirs.ScopeFor(surface),
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-		), open())
+		neighbors := openList(t, s.Subject(t, conformance.Making(createList), conformance.InTenant(surface, theirs.ScopeFor(surface))), open())
 
 		page, err := mine.Surfaces.Waitlists.ListLists(mine.Context(t.Context()), &waitlistspb.ListListsRequest{})
 		must.NoError(t, err)
@@ -129,7 +127,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("the open catalog omits the lists that have stopped taking signups", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+		operator := s.Subject(t, conformance.Making(createList, listOpenLists))
 		taking := openList(t, operator, open())
 		stopped := openList(t, operator, closed())
 
@@ -144,8 +142,8 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("the open catalog places a signed-in caller by their principal", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
-		list := openList(t, s.OperatorIn(t, surface, mine.ScopeFor(surface), waitlistspb.WaitlistsService_CreateList_FullMethodName), open())
+		mine, theirs := twoTenants(t, s, conformance.Making(listOpenLists))
+		list := openList(t, s.Subject(t, conformance.Making(createList), conformance.InTenant(surface, mine.ScopeFor(surface))), open())
 
 		test.SliceContains(t, openListIDs(t, mine.Context(t.Context()), mine.Surfaces.Waitlists), list.GetId(),
 			test.Sprint("this caller's own open list was missing from its catalog; the absence below proves nothing"))
@@ -158,10 +156,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("an update answers with the row as stored rather than as sent", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_UpdateList_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(createList, updateList))
 		list := openList(t, operator, open())
 		moved := open().Add(24 * time.Hour)
 
@@ -185,8 +180,9 @@ func lists(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoOperators(t, s,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_UpdateList_FullMethodName,
+			createList,
+			updateList,
+			getList,
 		)
 		list := openList(t, mine, open())
 
@@ -215,7 +211,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator asking for retired lists receives them", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(createList, archiveList, listLists))
 		live := openList(t, admin, open())
 		retired := openList(t, admin, open())
 
@@ -247,12 +243,7 @@ func lists(t *testing.T, s *conformance.Session) {
 	t.Run("an archived list takes no more signups and keeps the ones it has", func(t *testing.T) {
 		t.Parallel()
 
-		operator := s.Operator(t,
-			waitlistspb.WaitlistsService_ArchiveList_FullMethodName,
-			waitlistspb.WaitlistsService_CreateList_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignup_FullMethodName,
-			waitlistspb.WaitlistsService_GetSignupByContact_FullMethodName,
-		)
+		operator := s.Subject(t, conformance.Making(archiveList, createList, getSignup, getSignupByContact, joinList, confirmSignup))
 		list := openList(t, operator, open())
 		kept := signedUp(t, s, operator, operator, list.GetId(), freshContact())
 		ctx := operator.Context(t.Context())

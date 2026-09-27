@@ -49,7 +49,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		user := newUser("ada")
 		user.ID = ""
 		user.AccountStatus = ""
-		user.ServiceRoles = []string{"service_user"}
+		user.ServiceRoles = []string{"user"}
 
 		registered, err := env.createUser(t, store, testScope, user)
 		must.NoError(t, err)
@@ -57,7 +57,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		test.NotEq(t, "", registered.ID)
 		test.False(t, registered.CreatedAt.IsZero())
 		test.EqOp(t, StatusUnverified, registered.AccountStatus)
-		test.Eq(t, []string{"service_user"}, registered.ServiceRoles)
+		test.Eq(t, []string{"user"}, registered.ServiceRoles)
 
 		// And none of it landed on the caller's value.
 		test.EqOp(t, "", user.ID)
@@ -80,7 +80,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		membership := &Membership{
 			BelongsToUser:    registered.ID,
 			BelongsToAccount: created.ID,
-			Roles:            []string{"account_admin"},
+			Roles:            []string{"admin"},
 		}
 
 		joined, err := env.createMembership(t, store, testScope, membership)
@@ -88,7 +88,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 
 		test.NotEq(t, "", joined.ID)
 		test.False(t, joined.CreatedAt.IsZero())
-		test.Eq(t, []string{"account_admin"}, joined.Roles)
+		test.Eq(t, []string{"admin"}, joined.Roles)
 
 		// The first membership a user holds anywhere is their default whatever
 		// the value said, and the row is where that shows.
@@ -129,7 +129,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		orphan, err := env.createMembership(t, store, testScope, &Membership{
 			BelongsToUser:    identifiers.New(),
 			BelongsToAccount: identifiers.New(),
-			Roles:            []string{"account_member"},
+			Roles:            []string{"viewer"},
 		})
 		must.ErrorIs(t, err, ErrUserNotFound)
 		test.Nil(t, orphan)
@@ -351,7 +351,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		// The caller said nothing about the default, and a user with
 		// memberships and none is a user with nowhere to land.
 		test.True(t, membership.DefaultAccount)
-		test.Eq(t, []string{"account_admin"}, membership.Roles)
+		test.Eq(t, []string{"admin"}, membership.Roles)
 
 		second := seedAccountFor(t, env, store, owner, "Second")
 
@@ -372,7 +372,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			Scope:            testScope,
 			BelongsToUser:    member.ID,
 			BelongsToAccount: account.ID,
-			Roles:            []string{"account_member"},
+			Roles:            []string{"viewer"},
 		}
 
 		written, err := env.createMembership(t, store, membership.Scope, membership)
@@ -410,7 +410,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			Scope:            testScope,
 			BelongsToUser:    member.ID,
 			BelongsToAccount: account.ID,
-			Roles:            []string{"account_admin"},
+			Roles:            []string{"admin"},
 		}
 
 		written, err := env.createMembership(t, store, rejoined.Scope, rejoined)
@@ -427,7 +427,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.EqOp(t, original.ID, revived.ID)
 		test.EqOp(t, original.CreatedAt, revived.CreatedAt)
-		test.Eq(t, []string{"account_admin"}, revived.Roles)
+		test.Eq(t, []string{"admin"}, revived.Roles)
 
 		roster, err := store.ListAccountMembers(t.Context(), env.reader(), testScope, account.ID, nil)
 		must.NoError(t, err)
@@ -452,7 +452,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    neighbor.ID,
 				BelongsToAccount: account.ID,
-				Roles:            []string{"account_member"},
+				Roles:            []string{"viewer"},
 			})
 
 			return err
@@ -474,7 +474,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			_, createErr := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    owner.ID,
 				BelongsToAccount: neighborAccount.ID,
-				Roles:            []string{"account_member"},
+				Roles:            []string{"viewer"},
 			})
 
 			return createErr
@@ -487,7 +487,7 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			_, err = store.CreateMembership(t.Context(), tx, otherScope, &Membership{
 				BelongsToUser:    neighbor.ID,
 				BelongsToAccount: neighborAccount.ID,
-				Roles:            []string{"account_admin"},
+				Roles:            []string{"admin"},
 			})
 
 			return err

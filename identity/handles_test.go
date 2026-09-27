@@ -355,7 +355,7 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		padded.Username = "ada "
 
 		_, err := service.Register(t.Context(), testScope, padded, newAccount("Ada's account", ""),
-			[]string{"account_admin"})
+			[]string{"admin"})
 		must.ErrorIs(t, err, ErrUsernameWhitespace)
 
 		registration := registerAda(t, service, "ada")
@@ -476,7 +476,7 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		owner := seedUser(t, env, store, newUser("ada"))
-		account := seedAccountFor(t, env, store, owner, "Acme", "account_admin")
+		account := seedAccountFor(t, env, store, owner, "Acme", "admin")
 
 		sent, err := env.createInvitation(t, store, testScope,
 			newInvitation(owner, account.ID, "Brian@Example.com", "tok-fold", baseTime.Add(time.Hour)))

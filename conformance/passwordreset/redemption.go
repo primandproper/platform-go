@@ -20,7 +20,7 @@ func redemption(t *testing.T, s *conformance.Session) {
 	t.Run("a mailed link is verified, then redeemed", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := resettable(t, s)
+		sub, user := resettable(t, s, requestReset, verifyReset, completeReset)
 		request(t, sub, user.GetEmailAddress())
 		secret := mailed(t, s, sub, user.GetEmailAddress())
 
@@ -45,7 +45,7 @@ func redemption(t *testing.T, s *conformance.Session) {
 	t.Run("the password a reset sets is the one that signs in", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := resettable(t, s)
+		sub, user := resettable(t, s, requestReset, completeReset, signinpb.SignInService_LoginForToken_FullMethodName)
 
 		if sub.Surfaces.SignIn == nil {
 			t.Skip("conformance: this subject mounts no sign-in surface, so a reset's effect cannot be observed")
@@ -80,7 +80,7 @@ func redemption(t *testing.T, s *conformance.Session) {
 	t.Run("a spent link cannot be spent again, and says so", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := resettable(t, s)
+		sub, user := resettable(t, s, requestReset, completeReset, verifyReset)
 		request(t, sub, user.GetEmailAddress())
 		secret := mailed(t, s, sub, user.GetEmailAddress())
 
@@ -106,7 +106,7 @@ func redemption(t *testing.T, s *conformance.Session) {
 	t.Run("redeeming one link withdraws the others", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := resettable(t, s)
+		sub, user := resettable(t, s, requestReset, verifyReset, completeReset)
 
 		request(t, sub, user.GetEmailAddress())
 		first := mailed(t, s, sub, user.GetEmailAddress())

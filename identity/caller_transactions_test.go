@@ -61,7 +61,7 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			if _, err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    user.ID,
 				BelongsToAccount: account.ID,
-				Roles:            []string{"account_admin"},
+				Roles:            []string{"admin"},
 			}); err != nil {
 				return err
 			}
@@ -136,7 +136,7 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			if _, txErr = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    user.ID,
 				BelongsToAccount: account.ID,
-				Roles:            []string{"account_admin"},
+				Roles:            []string{"admin"},
 			}); txErr != nil {
 				return txErr
 			}

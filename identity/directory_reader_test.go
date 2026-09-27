@@ -480,7 +480,7 @@ func runDirectoryReaderSuite(t *testing.T, env *storeEnv) {
 			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: second.ID,
-				Roles:            []string{"account_member"},
+				Roles:            []string{"viewer"},
 			})
 
 			return err

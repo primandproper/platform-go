@@ -23,7 +23,7 @@ func refusals(t *testing.T, s *conformance.Session) {
 	t.Run("an unknown address is answered exactly as a known one", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := resettable(t, s)
+		sub, user := resettable(t, s, requestReset)
 
 		known := request(t, sub, user.GetEmailAddress())
 
@@ -43,7 +43,7 @@ func refusals(t *testing.T, s *conformance.Session) {
 	t.Run("an empty address is refused", func(t *testing.T) {
 		t.Parallel()
 
-		sub := s.Subject(t)
+		sub := doors(t, s, requestReset)
 
 		_, err := sub.Surfaces.PasswordReset.RequestPasswordReset(t.Context(),
 			&passwordresetpb.RequestPasswordResetRequest{})
@@ -54,7 +54,7 @@ func refusals(t *testing.T, s *conformance.Session) {
 	t.Run("a link nobody was issued is told apart from one that was", func(t *testing.T) {
 		t.Parallel()
 
-		sub := s.Subject(t)
+		sub := doors(t, s, verifyReset)
 
 		_, err := sub.Surfaces.PasswordReset.VerifyPasswordResetToken(t.Context(),
 			&passwordresetpb.VerifyPasswordResetTokenRequest{Token: identifiers.New()})
@@ -71,7 +71,7 @@ func refusals(t *testing.T, s *conformance.Session) {
 	t.Run("an empty password is refused and the link survives it", func(t *testing.T) {
 		t.Parallel()
 
-		sub, user := resettable(t, s)
+		sub, user := resettable(t, s, requestReset, completeReset, verifyReset)
 		request(t, sub, user.GetEmailAddress())
 		secret := mailed(t, s, sub, user.GetEmailAddress())
 

@@ -134,17 +134,23 @@ type Seams struct {
 	Dialect dialect.Dialect
 
 	// OperatorMethods are the calls the deployment reserves to an operator, as
-	// full method names, and the suites make each one it names as an
-	// administrator and every other as an ordinary caller. Nil reserves
-	// nothing, which is a deployment whose members may make every call.
+	// full method names. Nil reserves nothing, which is a deployment whose
+	// members may make every call.
+	//
+	// Any call may be named, on any service. Which calls a deployment keeps
+	// from its members is its product's decision — a dispute desk that reserves
+	// commenting to its staff is as legitimate as a household app that
+	// reserves nothing — and this module draws no line of its own between
+	// member-grade and operator-grade. Every caller a suite mints names the
+	// calls it goes on to make (see Making), and each one that names a
+	// reserved call is minted an administrator. An assertion that is only
+	// about an ordinary member making a call the deployment reserves skips,
+	// with the reservation named, because the deployment has promised its
+	// members nothing about that call.
 	//
 	// A deployment's own list is the one to hand over — the one its
-	// authorization interceptor reads — and it may name methods on services no
-	// suite covers. What it may not name is a covered call outside
-	// ReservableMethods: the suites make those as an ordinary caller because
-	// every signed-in caller is promised them, and Run fails a reservation of
-	// one rather than letting it surface as some other assertion's refused
-	// setup.
+	// authorization interceptor reads. Run checks only that each entry is
+	// spelled as a full method name.
 	OperatorMethods []string
 
 	// ErrorReasonsStripped says the deployment's edge drops a refusal's
@@ -586,16 +592,23 @@ type SubjectRequest struct {
 	// account of their own.
 	Surface string
 
-	// Methods, on an administrator Session.Operator asks for, are the
-	// reserved calls it was asked for to make. A factory may ignore them; they
-	// are there for a harness that wants to refuse that administrator every
-	// other reserved call, which is how this module's own keeps each suite
-	// honest about naming every call it routes. Empty on every other request.
+	// Methods are the calls the caller goes on to make, as full method names,
+	// which a suite names on every caller it mints with Making. A factory may
+	// ignore them: Session.Subject has already read them against
+	// Seams.OperatorMethods and asked for an administrator where the subject
+	// reserves one. They are there for a harness that wants to refuse a caller
+	// every reserved call it was not minted for, which is how this module's own
+	// keeps each suite honest about naming every call it makes.
 	Methods []string
 
 	// Admin asks for a caller holding whatever service role the deployment
 	// treats as administrative.
 	Admin bool
+
+	// member is AsMember: the suite asked for a caller with no administrative
+	// standing, and has already skipped where Methods names a reserved call.
+	// A factory has nothing to do with it, so it is not exported.
+	member bool
 }
 
 // InTenant asks for a caller in an existing tenant rather than a fresh one: the

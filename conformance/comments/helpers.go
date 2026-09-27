@@ -131,13 +131,12 @@ func replies(t *testing.T, caller *conformance.Subject, about *commentspb.Commen
 // byTargetType lists everything said about things of one type, skipping where
 // the caller may not.
 //
-// It is the moderation read and carries a grant of its own, so it is one of
-// conformance.ReservableMethods and caller is minted by Session.Operator or
-// Session.OperatorIn. Where the subject does not reserve it those answer an
-// ordinary caller, which a deployment enforcing a grant inside the handler may
-// still refuse; that refusal is the deployment being right rather than the surface
-// being wrong, so the assertion that needed the read skips rather than
-// failing.
+// It is the moderation read and carries a grant of its own, so a deployment
+// may well reserve it, and caller is minted naming it. Where the subject does
+// not reserve it that is an ordinary caller, which a deployment enforcing a
+// grant inside the handler may still refuse; that refusal is the deployment
+// being right rather than the surface being wrong, so the assertion that
+// needed the read skips rather than failing.
 func byTargetType(t *testing.T, caller *conformance.Subject, targetType string) []string {
 	t.Helper()
 
@@ -199,22 +198,25 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 // twoTenants mints two callers and refuses to proceed if the subject put them in
 // one tenant, since every confinement assertion here would then compare a
 // tenant with itself and pass.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoTenants(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	return mine, theirs
 }
 
-// colleague mints a second caller in of's tenant. A subject that cannot put two
-// callers in one tenant declines, and the assertion that asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+// colleague mints a second caller in of's tenant, minted with opts. A subject
+// that cannot put two callers in one tenant declines, and the assertion that
+// asked skips.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, opts ...conformance.SubjectOption) *conformance.Subject {
 	t.Helper()
 
 	needsUser(t, of)
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, append(opts, conformance.InTenant(surface, of.ScopeFor(surface)))...)
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,

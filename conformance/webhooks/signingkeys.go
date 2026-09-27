@@ -26,7 +26,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 	t.Run("no answer renders the signing keys an endpoint was registered with", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, listEndpoints, getEndpoint))
 		keys := keyring()
 
 		saved := register(t, caller, endpointFor(s, catalog(t, caller, 1)[0]), keys)
@@ -54,7 +54,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 	t.Run("a rotation answers with neither the key it installed nor the one it replaced", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, rotateSecret, getEndpoint))
 		keys := keyring()
 		saved := register(t, caller, endpointFor(s, catalog(t, caller, 1)[0]), keys)
 
@@ -76,7 +76,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 	t.Run("a rotation naming no key is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, rotateSecret))
 		saved := registered(t, s, caller, catalog(t, caller, 1)[0])
 
 		// The positive control: the same endpoint rotates when a key is named,
@@ -98,7 +98,7 @@ func signingKeys(t *testing.T, s *conformance.Session) {
 	t.Run("rotating an identifier that names nothing is answered as absent", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(rotateSecret))
 
 		_, err := caller.Surfaces.Webhooks.RotateSecret(caller.Context(t.Context()), &webhookspb.RotateSecretRequest{
 			EndpointId: absentID(),

@@ -21,9 +21,9 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("setting a default account moves where the caller lands, and only there", func(t *testing.T) {
 		t.Parallel()
 
-		first := s.Subject(t)
+		first := s.Subject(t, conformance.Making(getPrincipal, acceptInvitation, setDefaultAccount, listMembershipsForUser))
 		needsAccount(t, first)
-		second := colleague(t, s, first)
+		second := colleague(t, s, first, conformance.Making(invite))
 		needsAccount(t, second)
 		join(t, s, second, first, role)
 
@@ -53,7 +53,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("a default account the caller is not in is refused as absent", func(t *testing.T) {
 		t.Parallel()
 
-		member := s.Subject(t)
+		member := s.Subject(t, conformance.Making(setDefaultAccount))
 		stranger := colleague(t, s, member)
 		needsAccount(t, stranger)
 
@@ -66,9 +66,9 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("setting membership roles replaces them rather than merging", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(invite, setMembershipRoles, getMembership))
 		needsAccount(t, owner)
-		member := colleague(t, s, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation))
 		join(t, s, owner, member, otherRole, role)
 
 		ctx := owner.Context(t.Context())
@@ -93,9 +93,9 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("removing a membership ends it", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(invite, listAccountMembers, removeMembership))
 		needsAccount(t, owner)
-		member := colleague(t, s, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation))
 		join(t, s, owner, member, role)
 
 		// The positive control: the member is on the roster before removal.
@@ -114,7 +114,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("the last owner cannot be removed", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(removeMembership))
 		needsAccount(t, owner)
 
 		_, err := owner.Surfaces.Identity.RemoveMembership(owner.Context(t.Context()),
@@ -126,7 +126,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("an absent membership is reported as absent", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(getMembership))
 		needsAccount(t, owner)
 		outsider := colleague(t, s, owner)
 
@@ -139,7 +139,7 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("a user's memberships are refused to a caller from another directory", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s)
+		mine, theirs := twoDirectories(t, s, conformance.Making(listMembershipsForUser), conformance.AsMember())
 
 		// The positive control: the caller reads its own.
 		held, err := mine.Surfaces.Identity.ListMembershipsForUser(mine.Context(t.Context()),
@@ -156,9 +156,9 @@ func memberships(t *testing.T, s *conformance.Session) {
 	t.Run("an account's roster joins each membership to its user and renders no credential", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(invite, listAccountMembers))
 		needsAccount(t, owner)
-		member := colleague(t, s, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation))
 		join(t, s, owner, member, role)
 
 		roster, err := owner.Surfaces.Identity.ListAccountMembers(owner.Context(t.Context()),

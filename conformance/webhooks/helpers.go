@@ -273,10 +273,12 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 // twoTenants mints two callers and refuses to proceed if the subject put them in
 // one tenant, since every confinement assertion here would then compare a
 // tenant with itself and pass.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoTenants(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	return mine, theirs
 }

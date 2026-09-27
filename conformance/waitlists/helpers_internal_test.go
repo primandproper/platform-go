@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -67,7 +66,7 @@ func TestElsewhere(t *testing.T) {
 		inner := inSuite(t, perAccount, func(t *testing.T, s *conformance.Session) {
 			t.Helper()
 
-			got = elsewhere(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+			got = elsewhere(t, s, createList)
 		})
 
 		must.NotNil(t, inner)
@@ -86,7 +85,7 @@ func TestElsewhere(t *testing.T) {
 		inner := inSuite(t, global, func(t *testing.T, s *conformance.Session) {
 			t.Helper()
 
-			elsewhere(t, s, waitlistspb.WaitlistsService_CreateList_FullMethodName)
+			elsewhere(t, s, createList)
 			reached = true
 		})
 

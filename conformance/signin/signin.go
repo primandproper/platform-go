@@ -26,6 +26,28 @@ import (
 // read by.
 const surface = "signin"
 
+// The calls this suite makes, as the names a caller is minted to make them by,
+// or that a door is reached by with nobody on it.
+const (
+	adminLoginForToken    = signinpb.SignInService_AdminLoginForToken_FullMethodName
+	attachPassword        = signinpb.SignInService_AttachPassword_FullMethodName
+	exchangeRefreshToken  = signinpb.SignInService_ExchangeRefreshToken_FullMethodName
+	getAuthStatus         = signinpb.SignInService_GetAuthStatus_FullMethodName
+	getSelf               = signinpb.SignInService_GetSelf_FullMethodName
+	loginForToken         = signinpb.SignInService_LoginForToken_FullMethodName
+	redeemMagicLink       = signinpb.SignInService_RedeemMagicLink_FullMethodName
+	refreshTOTPSecret     = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
+	requestMagicLink      = signinpb.SignInService_RequestMagicLink_FullMethodName
+	signOut               = signinpb.SignInService_SignOut_FullMethodName
+	signOutEverywhere     = signinpb.SignInService_SignOutEverywhere_FullMethodName
+	updatePassword        = signinpb.SignInService_UpdatePassword_FullMethodName
+	verifyEmailAddress    = signinpb.SignInService_VerifyEmailAddress_FullMethodName
+	verifyTOTPSecret      = signinpb.SignInService_VerifyTOTPSecret_FullMethodName
+	completePasswordReset = passwordresetpb.PasswordResetService_CompletePasswordReset_FullMethodName
+	requestPasswordReset  = passwordresetpb.PasswordResetService_RequestPasswordReset_FullMethodName
+	getPrincipal          = identitypb.IdentityService_GetPrincipal_FullMethodName
+)
+
 // Suite is the sign-in surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
@@ -148,8 +170,14 @@ func indistinguishable(t *testing.T, s *conformance.Session, want, got error, wh
 // anonymous is the sign-in surface as a client with nobody on it reaches it —
 // which is how every door here is reached, since the person on the other end
 // has not signed in yet.
-func anonymous(t *testing.T, s *conformance.Session) signinpb.SignInServiceClient {
+//
+// calls are the doors the test goes on to knock on, and it skips where the
+// subject reserves any of them to an operator: a door a deployment keeps to its
+// staff is one nobody reaches without signing in.
+func anonymous(t *testing.T, s *conformance.Session, calls ...string) signinpb.SignInServiceClient {
 	t.Helper()
+
+	s.NeedsPublic(t, calls...)
 
 	open := s.Seams().Anonymous
 	if open == nil {
@@ -162,13 +190,13 @@ func anonymous(t *testing.T, s *conformance.Session) signinpb.SignInServiceClien
 	return signinpb.NewSignInServiceClient(conn)
 }
 
-// member is an ordinary caller in the directory the anonymous doors place a
-// request in. See the package documentation for why that directory is the
-// global one.
-func member(t *testing.T, s *conformance.Session) *conformance.Subject {
+// member is a caller in the directory the anonymous doors place a request in,
+// making methods — an ordinary one unless the subject reserves any of them. See
+// the package documentation for why that directory is the global one.
+func member(t *testing.T, s *conformance.Session, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	return s.Subject(t, conformance.InTenant(surface, tenancy.Global()))
+	return s.Subject(t, conformance.Making(methods...), conformance.InTenant(surface, tenancy.Global()))
 }
 
 // registrar is who registers somebody for the anonymous doors to sign in: a
@@ -177,7 +205,7 @@ func member(t *testing.T, s *conformance.Session) *conformance.Subject {
 func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
 	t.Helper()
 
-	return s.OperatorIn(t, surface, tenancy.Global(), signinpb.SignInService_Register_FullMethodName)
+	return s.Subject(t, conformance.Making(signinpb.SignInService_Register_FullMethodName), conformance.InTenant(surface, tenancy.Global()))
 }
 
 // registrant is somebody registered over the wire: what they would type to sign
@@ -313,18 +341,22 @@ func loggedIn(t *testing.T, client signinpb.SignInServiceClient, username, secre
 // The password is set through the reset flow rather than written, because a
 // seam is an action rather than a row: the caller forgot a password they never
 // had, was mailed a link, and chose one. It therefore needs the password reset
-// surface and its action, and skips without either.
-func passworded(t *testing.T, s *conformance.Session) (*conformance.Subject, *identitypb.User) {
+// surface and its action, and skips without either, or where the subject
+// reserves either door the flow knocks on. methods are what the caller goes on
+// to make.
+func passworded(t *testing.T, s *conformance.Session, methods ...string) (*conformance.Subject, *identitypb.User) {
 	t.Helper()
 
-	sub := member(t, s)
+	s.NeedsPublic(t, requestPasswordReset, completePasswordReset)
+
+	sub := member(t, s, append([]string{getPrincipal}, methods...)...)
 
 	if sub.Surfaces.Identity == nil || sub.Surfaces.PasswordReset == nil {
 		t.Skip("conformance: this subject mounts no identity or password reset surface, so a caller cannot be given a password the suite knows")
 	}
 
 	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
-	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal"))
 
 	user := found.GetPrincipal().GetUser()
 	must.NotEqOp(t, "", user.GetEmailAddress(), must.Sprint("the caller has no address to reset through"))

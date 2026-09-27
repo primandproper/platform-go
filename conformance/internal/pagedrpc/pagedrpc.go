@@ -131,7 +131,7 @@ func (r RPC) Caller(t *testing.T, s *conformance.Session, ordinary *conformance.
 		return ordinary
 	}
 
-	operator := s.Operator(t, r.FullName)
+	operator := s.Subject(t, conformance.Making(r.FullName))
 	if operator.Conn == nil {
 		t.Skip("conformance: this subject's operator has no connection to invoke a read by name through")
 	}

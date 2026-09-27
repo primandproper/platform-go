@@ -16,6 +16,15 @@ import (
 // read by.
 const surface = "passwordreset"
 
+// The doors this suite knocks on, as the names a deployment would reserve them
+// by. Every one is made with nobody on it, since the person on the other end has
+// lost the password they would have signed in with.
+const (
+	completeReset = passwordresetpb.PasswordResetService_CompletePasswordReset_FullMethodName
+	requestReset  = passwordresetpb.PasswordResetService_RequestPasswordReset_FullMethodName
+	verifyReset   = passwordresetpb.PasswordResetService_VerifyPasswordResetToken_FullMethodName
+)
+
 // Suite is the password reset surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
@@ -46,20 +55,36 @@ const newPassword = "a whole new password, long enough for anybody"
 // resettable mints a caller in the directory a reset request is placed in,
 // and reads the address a reset is requested for. See the package
 // documentation for why that directory is the global one.
-func resettable(t *testing.T, s *conformance.Session) (*conformance.Subject, *identitypb.User) {
+//
+// doors are the calls the test goes on to make with nobody on them, and it
+// skips where the subject reserves any of them.
+func resettable(t *testing.T, s *conformance.Session, doors ...string) (*conformance.Subject, *identitypb.User) {
 	t.Helper()
 
-	sub := s.Subject(t, conformance.InTenant(surface, tenancy.Global()))
+	s.NeedsPublic(t, doors...)
+
+	sub := s.Subject(t, conformance.Making(identitypb.IdentityService_GetPrincipal_FullMethodName),
+		conformance.InTenant(surface, tenancy.Global()))
 
 	if sub.Surfaces.Identity == nil {
 		t.Skip("conformance: this subject mounts no identity surface, so a caller's address cannot be read")
 	}
 
 	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
-	must.NoError(t, err, must.Sprint("a caller could not read its own principal, which every signed-in caller is promised"))
+	must.NoError(t, err, must.Sprint("a caller could not read its own principal"))
 	must.StrNotEqFold(t, "", found.GetPrincipal().GetUser().GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
 
 	return sub, found.GetPrincipal().GetUser()
+}
+
+// doors mints a caller whose connection the doors are knocked on through, with
+// nobody on the call, skipping where the subject reserves any of them.
+func doors(t *testing.T, s *conformance.Session, calls ...string) *conformance.Subject {
+	t.Helper()
+
+	s.NeedsPublic(t, calls...)
+
+	return s.Subject(t)
 }
 
 // request asks for a reset link for an address, as the form nobody has signed

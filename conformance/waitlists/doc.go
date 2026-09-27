@@ -73,23 +73,21 @@ next.
 
 # Who a call is made as
 
-The console is an operator's, and a deployment may reserve nearly all of it to
-a service role. CreateList, UpdateList and ArchiveList decide which launches exist;
-GetSignup, GetSignupByContact and ListSignups read who is on them, the second
-being the membership oracle this surface is otherwise careful never to be;
-UpdateSignupNotes, Invite, Convert and ArchiveSignup decide whose turn it is;
-and WithdrawSignupsForSubject is the erasure path. Each is made by an operator
-where the subject reserves it and by an ordinary caller where it does not, as
-conformance.ReservableMethods describes, minted into the tenant whose lists
-they are.
-
-The rest is made as an ordinary caller, and each is a promise. A signed-in
-caller reads their tenant's catalog through GetList and ListLists, reaches the
-public half — ListOpenLists, Join and Withdraw — as any visitor does, and reads
-their own signups through ListSignupsForSubject, which is the export a person
-asks for. The confinement of the console is asserted between an operator in
-each of two tenants, and the confinement of the catalog between two ordinary
-callers.
+Every caller here names the calls it makes, and which of them a deployment
+reserves to an operator is the deployment's to say, as the conformance package
+documentation describes. The console is the part a deployment most plausibly
+keeps to its staff — CreateList, UpdateList and ArchiveList decide which
+launches exist; GetSignup, GetSignupByContact and ListSignups read who is on
+them, the second being the membership oracle this surface is otherwise careful
+never to be; UpdateSignupNotes, Invite, Convert and ArchiveSignup decide whose
+turn it is; and WithdrawSignupsForSubject is the erasure path — but a
+deployment may reserve the catalog reads or a person's own signups too, and
+each is asserted of whoever the subject mints for it. The public half is this
+module's declaration of what is reachable without a caller, and a deployment
+may keep any of it to its staff as well: an assertion a visitor makes skips,
+with the reservation named, where the subject reserves a call the visitor
+makes. The refusal of a person's signups to a colleague who names them is
+asked of a caller minted with conformance.AsMember.
 
 # Both directions, deliberately
 

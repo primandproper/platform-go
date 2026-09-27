@@ -10,6 +10,12 @@ package — waitlists as PublicMethods, signin and passwordreset as
 AnonymousMethods — so this suite reads those declarations rather than carrying a
 list that could disagree with them.
 
+Those declarations are this module's, and a deployment may keep any declared
+method to its staff anyway, by naming it in Seams.OperatorMethods. A reserved
+method is then not reachable without a caller, and the assertion that it is
+skips with the reservation named; that every other method refuses a request
+with nobody on it holds either way.
+
 # Why it enumerates rather than names
 
 The methods come from each service's protobuf descriptor, so an RPC added after

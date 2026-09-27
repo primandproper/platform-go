@@ -134,6 +134,13 @@ func run(t *testing.T, s *conformance.Session) {
 				t.Run(string(method.Name()), func(t *testing.T) {
 					t.Parallel()
 
+					// A call declared reachable without a caller is still one a
+					// deployment may keep to its staff, and one that does has
+					// taken it off the public list.
+					if open {
+						s.NeedsPublic(t, full)
+					}
+
 					callErr := conn.Invoke(t.Context(), full,
 						dynamicpb.NewMessage(method.Input()),
 						dynamicpb.NewMessage(method.Output()))

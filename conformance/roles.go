@@ -23,7 +23,7 @@ type Roles struct {
 	Owner string
 
 	// Service is a service role an operator may grant a user. Empty is
-	// "service_admin".
+	// "operator".
 	Service string
 
 	// Membership is two account roles an account's owner may assign a member.
@@ -36,7 +36,7 @@ type Roles struct {
 
 const (
 	defaultOwnerRole   = "owner"
-	defaultServiceRole = "service_admin"
+	defaultServiceRole = "operator"
 )
 
 // defaultMembershipRoles is Roles.Membership where the subject named neither.

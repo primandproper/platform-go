@@ -20,7 +20,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("an account read is confined to the caller's directory", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoDirectories(t, s)
+		mine, theirs := twoDirectories(t, s, conformance.Making(getAccount), conformance.AsMember())
 		needsAccount(t, mine)
 		needsAccount(t, theirs)
 
@@ -47,8 +47,9 @@ func accounts(t *testing.T, s *conformance.Session) {
 		other := colleague(t, s, mine)
 		needsAccount(t, other)
 
-		// Every account in the directory is an operator's read.
-		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_ListAccounts_FullMethodName)
+		// Every account in the directory, read by whoever the subject mints for
+		// ListAccounts.
+		operator := s.Subject(t, conformance.Making(listAccounts), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()), &identitypb.ListAccountsRequest{})
 		must.NoError(t, err)
@@ -64,7 +65,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("a user's accounts are the ones they belong to", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(listAccountsForUser))
 		needsAccount(t, mine)
 		other := colleague(t, s, mine)
 		needsAccount(t, other)
@@ -82,9 +83,9 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("a transfer of ownership moves the account and puts the new owner on its roster", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(transferAccountOwnership, listAccountMembers, getPrincipal, acceptInvitation))
 		needsAccount(t, owner)
-		successor := colleague(t, s, owner)
+		successor := colleague(t, s, owner, conformance.Making(invite))
 		needsAccount(t, successor)
 
 		// The successor is somebody the owner may name because they share an
@@ -105,7 +106,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("a transfer to somebody in another directory is refused", func(t *testing.T) {
 		t.Parallel()
 
-		owner, stranger := twoDirectories(t, s)
+		owner, stranger := twoDirectories(t, s, conformance.Making(transferAccountOwnership, getAccount), conformance.AsMember())
 		needsAccount(t, owner)
 
 		_, err := owner.Surfaces.Identity.TransferAccountOwnership(owner.Context(t.Context()),
@@ -123,9 +124,9 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("archiving an account closes it and its roster", func(t *testing.T) {
 		t.Parallel()
 
-		owner := s.Subject(t)
+		owner := s.Subject(t, conformance.Making(invite, archiveAccount, getAccount))
 		needsAccount(t, owner)
-		member := colleague(t, s, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation, listMembershipsForUser))
 		join(t, s, owner, member, role)
 
 		response, err := owner.Surfaces.Identity.ArchiveAccount(owner.Context(t.Context()),
@@ -152,8 +153,8 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("archiving an account the caller is not in is refused and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		theirs := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(archiveAccount), conformance.AsMember())
+		theirs := colleague(t, s, mine, conformance.Making(getAccount))
 		needsAccount(t, theirs)
 
 		_, err := mine.Surfaces.Identity.ArchiveAccount(mine.Context(t.Context()),
@@ -170,7 +171,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("an account update with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(updateAccount))
 		needsAccount(t, mine)
 
 		_, err := mine.Surfaces.Identity.UpdateAccount(mine.Context(t.Context()),
@@ -182,7 +183,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 	t.Run("an account update leaves what the request did not name", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(updateAccount))
 		needsAccount(t, mine)
 		ctx := mine.Context(t.Context())
 

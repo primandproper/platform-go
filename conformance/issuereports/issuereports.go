@@ -15,6 +15,24 @@ import (
 // read by.
 const surface = "issuereports"
 
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	archiveReport            = issuereportspb.IssueReportsService_ArchiveReport_FullMethodName
+	createReport             = issuereportspb.IssueReportsService_CreateReport_FullMethodName
+	getReport                = issuereportspb.IssueReportsService_GetReport_FullMethodName
+	listReportsByReporter    = issuereportspb.IssueReportsService_ListReportsByReporter_FullMethodName
+	listReportsByStatus      = issuereportspb.IssueReportsService_ListReportsByStatus_FullMethodName
+	listReportsBySubjectType = issuereportspb.IssueReportsService_ListReportsBySubjectType_FullMethodName
+	listReportsForSubject    = issuereportspb.IssueReportsService_ListReportsForSubject_FullMethodName
+	transitionReport         = issuereportspb.IssueReportsService_TransitionReport_FullMethodName
+	updateReport             = issuereportspb.IssueReportsService_UpdateReport_FullMethodName
+)
+
+// method is the full name of the report queue's RPC called name.
+func method(name string) string {
+	return "/" + issuereportspb.IssueReportsService_ServiceDesc.ServiceName + "/" + name
+}
+
 // The words every report here is filed with. What a report says is immaterial
 // to every promise below except the revision's, which changes them.
 const (
@@ -59,23 +77,26 @@ func run(t *testing.T, s *conformance.Session) {
 // A subject whose NewSubject ignored its request and handed back one caller
 // twice would make every confinement assertion here compare a queue with
 // itself, and all of them would pass.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoTenants(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 	needsUser(t, mine)
 
 	return mine, theirs
 }
 
-// colleague mints a second person in of's tenant. A subject that cannot put two
-// callers in one tenant declines, and the assertion that asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+// colleague mints a second person in of's tenant, minted with opts. A subject
+// that cannot put two callers in one tenant declines, and the assertion that
+// asked skips.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, opts ...conformance.SubjectOption) *conformance.Subject {
 	t.Helper()
 
 	needsUser(t, of)
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, append(opts, conformance.InTenant(surface, of.ScopeFor(surface)))...)
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,

@@ -18,7 +18,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("the endpoints listing reaches the caller's tenant only", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, listEndpoints))
 		eventType := catalog(t, mine, 1)[0]
 
 		ours := registered(t, s, mine, eventType)
@@ -43,7 +43,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor's endpoint and its subscriptions are absent to every call that names them", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, getEndpoint, getSubscription, listSubscriptions, rotateSecret, addSubscription))
 		offered := catalog(t, mine, 2)
 		held, other := offered[0], offered[1]
 
@@ -94,7 +94,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor's archive touches neither the endpoint nor its subscriptions", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, archiveSubscription, getEndpoint, getSubscription, listEndpoints, listSubscriptions))
 		eventType := catalog(t, mine, 1)[0]
 
 		ours := registered(t, s, mine, eventType)
@@ -125,7 +125,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	t.Run("an endpoint identifier another tenant holds is not available, and the refusal does not say why", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(listEventTypes, saveEndpoint, archiveEndpoint, getEndpoint))
 		eventType := catalog(t, mine, 1)[0]
 
 		neighbor := registered(t, s, theirs, eventType)

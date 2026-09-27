@@ -100,13 +100,14 @@ const (
 	mdAdmin   = "conformance-admin"
 
 	// mdReserving says which of the harness's two runs a caller was minted in:
-	// the one reserving operator calls, or the one whose members make every
-	// call. The server is one server either way, so the reservation rides on
-	// the credential, the way a role claim would.
+	// the one reserving every call, or the one whose members make every call.
+	// The server is one server either way, so the reservation rides on the
+	// credential, the way a role claim would, and on a callerless connection
+	// by itself.
 	mdReserving = "conformance-reserving"
 
-	// mdMethods are the reserved calls an operator was minted to make, and
-	// in the reserving run the only ones it may.
+	// mdMethods are the calls a caller was minted to make, and in the
+	// reserving run the only ones it may.
 	mdMethods = "conformance-methods"
 )
 
@@ -314,7 +315,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						LastAcceptedPrivacyPolicy:  &agreedAt,
 					},
 					&identity.Account{Name: "conf_" + identifiers.New()},
-					[]string{"account_admin"})
+					[]string{"owner"})
 				if registerErr != nil {
 					return nil, registerErr
 				}
@@ -415,7 +416,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 			// This harness's credential is per call, so a caller with none is the
 			// same connection without the metadata.
 			Anonymous: func(context.Context) (grpc.ClientConnInterface, error) {
-				return conn, nil
+				return reservingConn{ClientConnInterface: conn, reserving: reserving}, nil
 			},
 			AnonymousHTTP: func(context.Context) (*http.Client, error) {
 				return http.DefaultClient, nil
@@ -441,20 +442,21 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// deployment's to decide, and the suites have to be right either way.
 	//
 	// The first run is this module's own answer, where a member holds every
-	// grant but the archive ones and so makes every call the suites route: it is
-	// what keeps each of them asserted as an ordinary caller. The second
-	// reserves every one of conformance.ReservableMethods, which
-	// reserveOperatorCalls then refuses to anybody else: it is what keeps the
-	// suites honest about naming each call they route, since one made without
-	// being named reaches the interceptor as an ordinary caller and fails here
-	// rather than in a consumer's deployment. Sequential rather than parallel,
-	// because each claims the database as its own.
+	// grant but the archive ones and so makes every call: it is what keeps each
+	// promise asserted of an ordinary caller. The second reserves every call on
+	// every covered service, which reserveOperatorCalls then refuses to anybody
+	// but an administrator minted to make it: it is what keeps the suites honest
+	// about naming each call they make, since a call made by a caller that did
+	// not name it fails here rather than in a consumer's deployment, and what
+	// proves an assertion about an ordinary member skips rather than fails where
+	// a deployment keeps the call from its members. Sequential rather than
+	// parallel, because each claims the database as its own.
 	t.Run("members make every call", func(t *testing.T) {
 		conformanceall.Run(t, seams(nil))
 	})
 
-	t.Run("operator calls reserved", func(t *testing.T) {
-		conformanceall.Run(t, seams(conformance.ReservableMethods()))
+	t.Run("every call reserved", func(t *testing.T) {
+		conformanceall.Run(t, seams(everyMethodList()))
 	})
 }
 

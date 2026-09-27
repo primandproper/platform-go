@@ -48,12 +48,15 @@ nothing, would otherwise pass every one of them.
 
 # Who a call is made as
 
-CreateDefinition, UpdateDefinition, ArchiveDefinition and
-ListValuesForDefinition may be reserved to an operator, the last because it
-answers every subject's value for one setting across the tenant. Each is made
-by an operator where the subject reserves it and by an ordinary caller where it
-does not, as conformance.ReservableMethods describes. Reading the catalog and reading,
-writing and resolving a subject's own values are made as an ordinary caller,
-and each is a promise: the settings screen is a person acting on themselves.
+Every caller here names the calls it makes, and which of them a deployment
+reserves to an operator is the deployment's to say, as the conformance package
+documentation describes. The catalog's writes and ListValuesForDefinition, which
+answers every subject's value for one setting across the tenant, are the ones a
+deployment most plausibly keeps to its staff; a subject's own values are the
+settings screen, but a deployment may reserve those too, and each is asserted
+of whoever the subject mints for it. The refusals of a colleague's settings, of
+an account the caller is not in, and of a setting reserved to administrators
+are asked of a caller minted with conformance.AsMember, and skip where the
+subject reserves the calls they make.
 */
 package settings

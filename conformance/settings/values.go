@@ -23,7 +23,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a value of each kind is answered back as that kind", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue))
 
 		cases := []struct {
 			sent  *settingspb.TypedValue
@@ -70,7 +70,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a value of the wrong kind is refused and stores nothing", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue, getValue))
 		ctx := caller.Context(t.Context())
 
 		for _, tc := range []struct {
@@ -99,7 +99,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("the empty string is a value and no value is not", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue))
 
 		resolution := set(t, caller, c.channel, stringValue(""))
 		test.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_SUBJECT, resolution.GetSource())
@@ -117,7 +117,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a value the setting does not admit is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue))
 
 		_, err := caller.Surfaces.Settings.SetValue(caller.Context(t.Context()),
 			&settingspb.SetValueRequest{Subject: self(caller), Name: c.digest, Value: stringValue("hourly")})
@@ -131,7 +131,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a value for a setting nobody defined is refused as absent", func(t *testing.T) {
 		t.Parallel()
 
-		caller, _ := seeded(t, s)
+		caller, _ := seeded(t, s, conformance.Making(setValue))
 
 		_, err := caller.Surfaces.Settings.SetValue(caller.Context(t.Context()), &settingspb.SetValueRequest{
 			Subject: self(caller),
@@ -147,7 +147,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a value read is the row and never the default", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(getValue, setValue))
 		ctx := caller.Context(t.Context())
 
 		_, err := caller.Surfaces.Settings.GetValue(ctx, &settingspb.GetValueRequest{Subject: self(caller), Name: c.digest})
@@ -169,7 +169,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("clearing a value answers with what the setting resolves to next", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue, clearValue))
 		ctx := caller.Context(t.Context())
 
 		set(t, caller, c.digest, stringValue(optionDaily))
@@ -201,7 +201,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a resolution answers all three cases", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue, resolve))
 		ctx := caller.Context(t.Context())
 		set(t, caller, c.digest, stringValue(optionNever))
 
@@ -237,7 +237,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("resolving everything answers the untouched settings too, in name order", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue, resolveAll))
 		set(t, caller, c.digest, stringValue(optionDaily))
 
 		response, err := caller.Surfaces.Settings.ResolveAll(caller.Context(t.Context()),
@@ -265,7 +265,7 @@ func values(t *testing.T, s *conformance.Session) {
 	t.Run("a subject's page of values holds their overrides and nothing they left alone", func(t *testing.T) {
 		t.Parallel()
 
-		caller, c := seeded(t, s)
+		caller, c := seeded(t, s, conformance.Making(setValue, listValuesForSubject, getDefinitionByName))
 		set(t, caller, c.digest, stringValue(optionDaily))
 		set(t, caller, c.retention, intValue(30))
 

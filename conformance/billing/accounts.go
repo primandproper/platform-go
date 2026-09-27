@@ -59,10 +59,14 @@ func accounts(t *testing.T, s *conformance.Session) {
 		// that exists and one that does not: the check runs before anything is
 		// read, so the code says nothing about which account identifiers are
 		// real.
+		//
+		// Asked of a member, because who may read an account they hold no
+		// membership in is the deployment's rule, and an operator a
+		// deployment reserves these reads to may well be allowed every one.
 		t.Run(name+" answers the caller's own account and refuses every other", func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(method(name)), conformance.AsMember())
 			needsAccount(t, mine)
 			other := colleague(t, s, mine)
 			ctx := mine.Context(t.Context())
@@ -89,7 +93,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 		t.Run(name+" refuses a request that names no account as malformed", func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(method(name)))
 
 			err := read(mine.Context(t.Context()), mine, "", nil)
 			must.Error(t, err)
@@ -104,7 +108,7 @@ func accounts(t *testing.T, s *conformance.Session) {
 		t.Run(name+" answers a malformed page as malformed before it gates the account", func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(method(name)))
 			needsAccount(t, mine)
 			other := colleague(t, s, mine)
 

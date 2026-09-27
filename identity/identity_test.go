@@ -102,7 +102,7 @@ func TestUser_Redacted(T *testing.T) {
 			HashedPassword:                "argon2$secret",
 			TwoFactorSecret:               "TOTPSECRET",
 			EmailAddressVerificationToken: "tok",
-			ServiceRoles:                  []string{"service_admin"},
+			ServiceRoles:                  []string{"operator"},
 		}
 
 		redacted := user.Redacted()
@@ -117,7 +117,7 @@ func TestUser_Redacted(T *testing.T) {
 
 		// The roles are cloned, so mutating the copy cannot reach through.
 		redacted.ServiceRoles[0] = "root"
-		test.EqOp(t, "service_admin", user.ServiceRoles[0])
+		test.EqOp(t, "operator", user.ServiceRoles[0])
 	})
 
 	T.Run("nil redacts to nil", func(t *testing.T) {
@@ -359,10 +359,10 @@ func TestPrincipal(T *testing.T) {
 
 	build := func() *Principal {
 		return &Principal{
-			User: &User{ID: "u1", ServiceRoles: []string{"service_admin"}},
+			User: &User{ID: "u1", ServiceRoles: []string{"operator"}},
 			Memberships: []*Membership{
-				{BelongsToAccount: "a1", DefaultAccount: true, Roles: []string{"account_admin"}},
-				{BelongsToAccount: "a2", Roles: []string{"account_member"}},
+				{BelongsToAccount: "a1", DefaultAccount: true, Roles: []string{"admin"}},
+				{BelongsToAccount: "a2", Roles: []string{"viewer"}},
 			},
 			ActiveAccountID: "a1",
 		}
@@ -385,11 +385,11 @@ func TestPrincipal(T *testing.T) {
 		// The shape a Store returns for a user who belongs to no account: no
 		// active account to resolve, so no membership to find, and the service
 		// roles are the whole of what they may do.
-		principal := &Principal{User: &User{ID: "u1", ServiceRoles: []string{"service_admin"}}}
+		principal := &Principal{User: &User{ID: "u1", ServiceRoles: []string{"operator"}}}
 		test.Nil(t, principal.ActiveMembership())
 		test.EqOp(t, "", principal.ActiveAccountID)
 		test.Nil(t, principal.AccountRoles())
-		test.Eq(t, []string{"service_admin"}, principal.Roles())
+		test.Eq(t, []string{"operator"}, principal.Roles())
 		test.SliceEmpty(t, principal.AccountIDs())
 	})
 
@@ -397,15 +397,15 @@ func TestPrincipal(T *testing.T) {
 		t.Parallel()
 
 		principal := build()
-		test.Eq(t, []string{"account_admin"}, principal.AccountRoles())
-		test.Eq(t, []string{"service_admin"}, principal.ServiceRoles())
+		test.Eq(t, []string{"admin"}, principal.AccountRoles())
+		test.Eq(t, []string{"operator"}, principal.ServiceRoles())
 
 		// Handing a PolicyResolver half the answer is how an operator's support
 		// access stops working inside a customer's account.
-		test.Eq(t, []string{"service_admin", "account_admin"}, principal.Roles())
+		test.Eq(t, []string{"operator", "admin"}, principal.Roles())
 
 		principal.ActiveAccountID = "a2"
-		test.Eq(t, []string{"service_admin", "account_member"}, principal.Roles())
+		test.Eq(t, []string{"operator", "viewer"}, principal.Roles())
 	})
 
 	T.Run("lists accounts default first", func(t *testing.T) {
@@ -436,7 +436,7 @@ func TestMembership(T *testing.T) {
 			Scope:            tenancy.Global(),
 			BelongsToUser:    "u1",
 			BelongsToAccount: "a1",
-			Roles:            []string{"account_member"},
+			Roles:            []string{"viewer"},
 		}
 		must.NoError(t, valid.ValidateWithContext(t.Context()))
 
@@ -481,7 +481,7 @@ func TestInvitation(T *testing.T) {
 			Token:            "tok",
 			Status:           InvitationPending,
 			ExpiresAt:        baseTime.Add(time.Hour),
-			Roles:            []string{"account_member"},
+			Roles:            []string{"viewer"},
 		}
 	}
 
@@ -509,7 +509,7 @@ func TestInvitation(T *testing.T) {
 		// membership carrying it, and the escalation-shaped failure surfaces at
 		// the recipient's first permission check rather than here.
 		emptyRole := valid()
-		emptyRole.Roles = []string{"account_member", ""}
+		emptyRole.Roles = []string{"viewer", ""}
 		must.ErrorIs(t, emptyRole.ValidateWithContext(t.Context()), platformerrors.ErrEmptyInputParameter)
 
 		badStatus := valid()

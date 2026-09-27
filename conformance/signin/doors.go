@@ -23,7 +23,7 @@ func doors(t *testing.T, s *conformance.Session) {
 	t.Run("the right password signs in, for the registrant's own account", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
 		who := signInAs(t, s, anon)
 
 		issued := loggedIn(t, anon, who.username, password)
@@ -53,7 +53,7 @@ func doors(t *testing.T, s *conformance.Session) {
 	t.Run("a wrong password and an unknown username are one answer", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
 		who := signInAs(t, s, anon)
 
 		_, wrong := login(t.Context(), anon, who.username, wrongPassword, "")
@@ -74,7 +74,7 @@ func doors(t *testing.T, s *conformance.Session) {
 	t.Run("a sign-in naming no credentials is a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
 		who := signInAs(t, s, anon)
 
 		_, err := anon.LoginForToken(t.Context(), &signinpb.LoginForTokenRequest{})
@@ -90,8 +90,8 @@ func doors(t *testing.T, s *conformance.Session) {
 	t.Run("a user with a second factor is told to send a code, by reason", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
-		sub, user := passworded(t, s)
+		anon := anonymous(t, s, loginForToken)
+		sub, user := passworded(t, s, refreshTOTPSecret, verifyTOTPSecret)
 		secret := enroll(t, sub)
 
 		_, withoutCode := login(t.Context(), anon, user.GetUsername(), password, "")
@@ -118,7 +118,7 @@ func doors(t *testing.T, s *conformance.Session) {
 	t.Run("the administrative door refuses somebody never made an administrator", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, adminLoginForToken)
 		who := signInAs(t, s, anon)
 
 		_, err := anon.AdminLoginForToken(t.Context(), &signinpb.AdminLoginForTokenRequest{

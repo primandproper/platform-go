@@ -47,11 +47,11 @@ func runSignInReaderSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.ServiceRoles = []string{"service_admin"}
+		user.ServiceRoles = []string{"operator"}
 		seedUser(t, env, store, user)
 
-		first := seedAccountFor(t, env, store, user, "First", "account_admin")
-		second := seedAccountFor(t, env, store, user, "Second", "account_member")
+		first := seedAccountFor(t, env, store, user, "First", "admin")
+		second := seedAccountFor(t, env, store, user, "Second", "viewer")
 
 		principal, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, "")
 		must.NoError(t, err)
@@ -59,18 +59,18 @@ func runSignInReaderSuite(t *testing.T, env *storeEnv) {
 		// No account named, so the default answers.
 		test.EqOp(t, first.ID, principal.ActiveAccountID)
 		test.EqOp(t, "", principal.User.HashedPassword)
-		test.Eq(t, []string{"account_admin"}, principal.AccountRoles())
-		test.Eq(t, []string{"service_admin"}, principal.ServiceRoles())
+		test.Eq(t, []string{"admin"}, principal.AccountRoles())
+		test.Eq(t, []string{"operator"}, principal.ServiceRoles())
 
 		// Roles is the union, so a PolicyResolver cannot be handed half the
 		// answer.
-		test.Eq(t, []string{"service_admin", "account_admin"}, principal.Roles())
+		test.Eq(t, []string{"operator", "admin"}, principal.Roles())
 		test.Eq(t, []string{first.ID, second.ID}, principal.AccountIDs())
 
 		switched, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, second.ID)
 		must.NoError(t, err)
 		test.EqOp(t, second.ID, switched.ActiveAccountID)
-		test.Eq(t, []string{"account_member"}, switched.AccountRoles())
+		test.Eq(t, []string{"viewer"}, switched.AccountRoles())
 	})
 
 	t.Run("refuses a principal for an account the user is not in", func(t *testing.T) {

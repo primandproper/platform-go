@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -53,6 +54,15 @@ func (s *Session) Dialect() dialect.Dialect { return s.seams.Dialect }
 // Subject mints a caller, failing the test if the subject factory errors, and
 // skipping it if the factory declines.
 //
+// The caller names what it goes on to make with Making, and that decides who it
+// is. Where the subject reserves any of those calls in Seams.OperatorMethods it
+// is an administrator, since nobody else may make them; where it reserves none
+// it is an ordinary caller, so a deployment that lets its members make a call
+// has that promise asserted rather than stepped around. AsAdmin asks for an
+// administrator regardless, for the assertions about what administrative
+// standing buys, and AsMember for an ordinary caller regardless, skipping
+// where the subject reserves a call it names.
+//
 // The skip is the load-bearing half. A deployment with no administrative role
 // is not a deployment that fails this suite; it is one that does not have the
 // idea the assertion was about, and a suite that could not tell the two apart
@@ -78,10 +88,29 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 		t.Fatal("conformance: Seams.NewSubject is required")
 	}
 
+	req := NewSubjectRequest(opts...)
+	if req.member && req.Admin {
+		t.Fatal("conformance: a caller was asked for as both a member and an administrator")
+	}
+
+	reserved := s.reservedAmong(req.Methods)
+
+	switch {
+	case reserved != "" && req.member:
+		t.Skipf("conformance: this subject reserves %s to an operator, so no ordinary member makes it and nothing is promised to one about it; skipping", reserved)
+
+		return nil
+	case reserved != "":
+		opts = append(slices.Clone(opts), AsAdmin())
+	}
+
 	subject, err := s.seams.NewSubject(ctx, opts...)
 	switch {
+	case platformerrors.Is(err, ErrSubjectUnsupported) && reserved != "":
+		t.Skipf("conformance: this subject reserves %s to an operator and mints no administrator to make it; skipping", reserved)
+
+		return nil
 	case platformerrors.Is(err, ErrSubjectUnsupported):
-		req := NewSubjectRequest(opts...)
 		t.Skipf("conformance: the subject cannot mint this caller (admin=%t, tenant named=%t, surface=%q); skipping",
 			req.Admin, req.Scope != nil, req.Surface)
 
@@ -111,10 +140,13 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 // serve its catalog or its settings; there is no confinement there to observe,
 // and the assertion skips with that said rather than failing a deployment for
 // a promise it never made.
-func (s *Session) TwoTenants(t *testing.T, surface string) (mine, theirs *Subject) {
+//
+// opts are applied to both, and name with Making the calls each goes on to
+// make.
+func (s *Session) TwoTenants(t *testing.T, surface string, opts ...SubjectOption) (mine, theirs *Subject) {
 	t.Helper()
 
-	mine, theirs = s.Subject(t), s.Subject(t)
+	mine, theirs = s.Subject(t, opts...), s.Subject(t, opts...)
 
 	switch separation(mine.ScopeFor(surface), theirs.ScopeFor(surface)) {
 	case separate:

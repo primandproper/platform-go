@@ -20,7 +20,7 @@ func filing(t *testing.T, s *conformance.Session) {
 	t.Run("a report is filed in the caller's name and answered as the row that was written", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport))
 		needsUser(t, mine)
 
 		filed := fileOne(t, mine)
@@ -45,7 +45,7 @@ func filing(t *testing.T, s *conformance.Session) {
 	t.Run("a filing that names no input is malformed rather than a report with nothing in it", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(createReport))
 
 		_, err := mine.Surfaces.IssueReports.CreateReport(mine.Context(t.Context()),
 			&issuereportspb.CreateReportRequest{})
@@ -64,7 +64,7 @@ func filing(t *testing.T, s *conformance.Session) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			mine := s.Subject(t)
+			mine := s.Subject(t, conformance.Making(createReport))
 
 			_, err := mine.Surfaces.IssueReports.CreateReport(mine.Context(t.Context()),
 				&issuereportspb.CreateReportRequest{Input: input})
@@ -80,8 +80,8 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a report is readable by the person who filed it and absent to a colleague", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
-		other := colleague(t, s, mine)
+		mine := s.Subject(t, conformance.Making(createReport, getReport))
+		other := colleague(t, s, mine, conformance.Making(createReport, getReport), conformance.AsMember())
 
 		filed := fileOne(t, mine)
 
@@ -92,6 +92,8 @@ func reading(t *testing.T, s *conformance.Session) {
 		// NotFound rather than PermissionDenied, and that is the point: the read
 		// has already happened by the time the rule is asked, so a refusal that
 		// said so would tell a caller walking identifiers which of them are real.
+		// The colleague is a member, since whose reports an operator may read is
+		// the deployment's rule.
 		_, err := other.Surfaces.IssueReports.GetReport(other.Context(t.Context()),
 			&issuereportspb.GetReportRequest{ReportId: filed.GetId()})
 		must.Error(t, err, must.Sprint("a colleague read a report they did not file"))
@@ -107,7 +109,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("a report in another tenant is absent", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := twoTenants(t, s, conformance.Making(createReport, getReport))
 
 		own := fileOne(t, mine)
 		neighbor := fileOne(t, theirs)
@@ -123,7 +125,7 @@ func reading(t *testing.T, s *conformance.Session) {
 	t.Run("an identifier nobody minted is an absence", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(getReport))
 
 		_, err := mine.Surfaces.IssueReports.GetReport(mine.Context(t.Context()),
 			&issuereportspb.GetReportRequest{ReportId: identifiers.New()})

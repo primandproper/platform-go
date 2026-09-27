@@ -15,6 +15,19 @@ import (
 // read by.
 const surface = "notifications"
 
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	archiveNotification      = notificationspb.NotificationsService_ArchiveNotification_FullMethodName
+	getNotification          = notificationspb.NotificationsService_GetNotification_FullMethodName
+	listDevices              = notificationspb.NotificationsService_ListDevices_FullMethodName
+	listNotifications        = notificationspb.NotificationsService_ListNotifications_FullMethodName
+	listUnreadNotifications  = notificationspb.NotificationsService_ListUnreadNotifications_FullMethodName
+	markAllNotificationsRead = notificationspb.NotificationsService_MarkAllNotificationsRead_FullMethodName
+	markNotificationRead     = notificationspb.NotificationsService_MarkNotificationRead_FullMethodName
+	registerDevice           = notificationspb.NotificationsService_RegisterDevice_FullMethodName
+	revokeDevice             = notificationspb.NotificationsService_RevokeDevice_FullMethodName
+)
+
 // noPagination is what every paged read here fails with when it answers
 // without the pagination a client renders "n of m" from.
 const noPagination = "a paged read answered with no pagination"
@@ -44,10 +57,12 @@ func run(t *testing.T, s *conformance.Session) {
 // twoTenants mints two callers and refuses to proceed if the subject put them
 // in one tenant, since every confinement assertion here would then compare a
 // tenant with itself.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoTenants(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	return mine, theirs
 }
@@ -56,10 +71,12 @@ func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance
 // cannot confine, and the one this surface's addressing exists for. A subject
 // that cannot put two callers in one tenant declines, and the assertion that
 // asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+//
+// The colleague is minted with opts.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, opts ...conformance.SubjectOption) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, append(opts, conformance.InTenant(surface, of.ScopeFor(surface)))...)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,
 		must.Sprint("the subject minted a colleague as the same user; the addressing this asserts cannot be observed"))

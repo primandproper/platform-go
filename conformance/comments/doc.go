@@ -59,18 +59,20 @@ otherwise pass every one of them.
 
 The refusals of a colleague's words assume what comments/grpc's own default
 says: an author rewrites and archives only what they wrote. A deployment with
-moderators supplies a wider rule, and is right to, but the callers a subject
-mints are not its moderators — so the assertions hold there too, and a subject
-that minted every caller as a moderator would be describing a deployment these
-refusals were not written for.
+moderators supplies a wider rule, and is right to, but the refusals are asked
+of a caller minted as a member rather than as a moderator — so they hold there
+too, and skip where a deployment leaves no member the calls they make.
 
 # Who a call is made as
 
-Every call here but one is made as an ordinary caller, and each is a promise:
-a member writes, reads, revises and archives their own words. The exception is
-ListCommentsByTargetType, the moderation read, which answers for everything
-said about a kind of thing across the tenant and so may be reserved to an
-operator; it is made by one where the subject reserves it, as
-conformance.ReservableMethods describes.
+Every caller here names the calls it makes, and which of them a deployment
+reserves to an operator is the deployment's to say, as the conformance package
+documentation describes. A deployment where members discuss their own things
+reserves perhaps the moderation read, ListCommentsByTargetType; a dispute desk
+where only staff comment reserves the writes as well. Both are served: a
+member's promise is asserted of a member where the subject leaves the call to
+one, and an operator's where it does not. The refusals of a colleague's words
+are asked of a caller minted with conformance.AsMember, and skip where the
+subject reserves the calls they make.
 */
 package comments

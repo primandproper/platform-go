@@ -10,7 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
-	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/conformance/internal/services"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -37,6 +37,7 @@ import (
 	"github.com/samber/do/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -295,41 +296,69 @@ func grantsOf(ctx context.Context) (authorization.Grants, bool) {
 	return authorization.NewGrants(memberRole), true
 }
 
-// reservableMethods is conformance.ReservableMethods as a set, read once.
-var reservableMethods = func() map[string]struct{} {
+// everyMethod is every RPC on every service the suites cover, as a set: what
+// this harness's second run reserves, read from the services' own descriptors
+// so that an RPC added later is reserved without an edit here.
+var everyMethod = func() map[string]struct{} {
 	out := map[string]struct{}{}
-	for _, method := range conformance.ReservableMethods() {
-		out[method] = struct{}{}
+
+	for _, svc := range services.All() {
+		descriptor := svc.Descriptor()
+		methods := descriptor.Methods()
+
+		for i := range methods.Len() {
+			out["/"+string(descriptor.FullName())+"/"+string(methods.Get(i).Name())] = struct{}{}
+		}
 	}
 
 	return out
 }()
 
-// reserveOperatorCalls refuses a reservable call to a caller who is not an
-// administrator, in the run that reserves them, the way a consumer's
+// everyMethodList is everyMethod as the list Seams.OperatorMethods takes.
+func everyMethodList() []string {
+	out := make([]string, 0, len(everyMethod))
+	for method := range everyMethod {
+		out = append(out, method)
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
+// reserveOperatorCalls refuses every call to anybody but an administrator
+// minted to make it, in the run that reserves every call, the way a consumer's
 // authorization interceptor refuses a call its caller's role does not cover.
 //
-// It is what keeps the suites honest about who they make those calls as. A
-// call a suite makes without naming it to Session.Operator passes in the run
-// whose members make every call and fails in this one, which is where it should
-// fail rather than in a deployment that reserves that call and not the others
-// named beside it. So an administrator Operator minted for some methods is
-// refused every other reservable one, as an ordinary caller is refused all of
-// them; one minted directly, with conformance.AsAdmin, named none and is
-// refused nothing. A request with nobody on it is left to the handler, which
-// refuses it on its own terms and is what the anonymous suite asserts.
+// It is what keeps the suites honest about naming each call they make. A
+// caller minted without naming a call passes in the run whose members make
+// every call and fails in this one, which is where it should fail rather than
+// in a deployment that reserves that call and not the others named beside it.
+// So an administrator is refused every call it was not minted for and an
+// ordinary caller is refused all of them. A request with nobody on it is
+// refused as unauthenticated, which is what a deployment answers a callerless
+// request for a call it keeps to its staff; in the run that reserves nothing
+// it is left to the handler, which refuses it on its own terms.
 func reserveOperatorCalls(
 	ctx context.Context,
 	req any,
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (any, error) {
-	if _, reservable := reservableMethods[info.FullMethod]; !reservable {
+	if _, covered := everyMethod[info.FullMethod]; !covered {
 		return handler(ctx, req)
 	}
 
 	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
-	if !ok || !principal.reserving {
+	if !ok {
+		if reservingRun(ctx) {
+			return nil, status.Errorf(codes.Unauthenticated, "%s is reserved to an administrator", info.FullMethod)
+		}
+
+		return handler(ctx, req)
+	}
+
+	if !principal.reserving {
 		return handler(ctx, req)
 	}
 
@@ -337,10 +366,44 @@ func reserveOperatorCalls(
 		return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
 	}
 
-	if len(principal.methods) > 0 && !slices.Contains(principal.methods, info.FullMethod) {
+	if !slices.Contains(principal.methods, info.FullMethod) {
 		return nil, status.Errorf(codes.PermissionDenied,
-			"%s was made by an operator minted for %v; the suite must name it to Session.Operator", info.FullMethod, principal.methods)
+			"%s was made by a caller minted for %v; the suite must name it with conformance.Making", info.FullMethod, principal.methods)
 	}
 
 	return handler(ctx, req)
+}
+
+// reservingRun reports whether a request with nobody on it was made in the run
+// that reserves every call, which its connection says in metadata of its own
+// since it carries no credential to say it on.
+func reservingRun(ctx context.Context) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
+	}
+
+	reserving := md.Get(mdReserving)
+
+	return len(reserving) > 0 && reserving[0] == "true"
+}
+
+// reservingConn is a connection carrying nobody that says which run it was
+// opened in, for reserveOperatorCalls to read.
+type reservingConn struct {
+	grpc.ClientConnInterface
+	reserving string
+}
+
+func (c reservingConn) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
+	return c.ClientConnInterface.Invoke(metadata.AppendToOutgoingContext(ctx, mdReserving, c.reserving), method, args, reply, opts...)
+}
+
+func (c reservingConn) NewStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	return c.ClientConnInterface.NewStream(metadata.AppendToOutgoingContext(ctx, mdReserving, c.reserving), desc, method, opts...)
 }

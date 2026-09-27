@@ -402,7 +402,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
-		must.NoError(t, env.setUserServiceRoles(t, store, testScope, user.ID, []string{"service_admin"}))
+		must.NoError(t, env.setUserServiceRoles(t, store, testScope, user.ID, []string{"operator"}))
 
 		moved := *user
 		moved.EmailAddress = "moved@example.com"
@@ -421,7 +421,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 
 		// The roles this write did not touch come back with it, so what the
 		// caller holds is a whole user rather than one missing its grants.
-		test.Eq(t, []string{"service_admin"}, updated.ServiceRoles)
+		test.Eq(t, []string{"operator"}, updated.ServiceRoles)
 
 		owner := seedUser(t, env, store, newUser("grace"))
 		account := seedAccountFor(t, env, store, owner, "Acme")

@@ -16,6 +16,25 @@ import (
 // read by.
 const surface = "billing"
 
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	archiveProduct              = billingpb.BillingService_ArchiveProduct_FullMethodName
+	archiveSubscription         = billingpb.BillingService_ArchiveSubscription_FullMethodName
+	createProduct               = billingpb.BillingService_CreateProduct_FullMethodName
+	getProduct                  = billingpb.BillingService_GetProduct_FullMethodName
+	getSubscription             = billingpb.BillingService_GetSubscription_FullMethodName
+	listCurrentSubscriptions    = billingpb.BillingService_ListCurrentSubscriptions_FullMethodName
+	listProducts                = billingpb.BillingService_ListProducts_FullMethodName
+	listSubscriptions           = billingpb.BillingService_ListSubscriptions_FullMethodName
+	listSubscriptionsForAccount = billingpb.BillingService_ListSubscriptionsForAccount_FullMethodName
+	updateProduct               = billingpb.BillingService_UpdateProduct_FullMethodName
+)
+
+// method is the full name of the billing RPC called name.
+func method(name string) string {
+	return "/" + billingpb.BillingService_ServiceDesc.ServiceName + "/" + name
+}
+
 // currencyUSD is the currency every product here is priced in. Which one is
 // immaterial; that it is one the surface accepts is what matters.
 const currencyUSD = "USD"
@@ -52,31 +71,31 @@ func run(t *testing.T, s *conformance.Session) {
 // A subject whose NewSubject ignored its request and handed back one caller
 // twice would make every confinement assertion here compare a catalog with
 // itself, and all of them would pass.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoTenants(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	return mine, theirs
 }
 
-// twoOperators mints an operator in each of two tenants, for the confinement
-// assertions about the catalog, every call on which is an operator's.
+// twoOperators mints a caller making methods in each of two tenants, for the
+// confinement assertions about the catalog.
 func twoOperators(t *testing.T, s *conformance.Session, methods ...string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = twoTenants(t, s)
-
-	return s.OperatorIn(t, surface, mine.ScopeFor(surface), methods...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), methods...)
+	return twoTenants(t, s, conformance.Making(methods...))
 }
 
 // colleague mints a second caller in of's tenant, with an account of their own
-// that of holds no membership in. A subject that cannot put two callers in one
-// tenant declines, and the assertion that asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+// that of holds no membership in, making methods. A subject that cannot put two
+// callers in one tenant declines, and the assertion that asked skips.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, conformance.Making(methods...), conformance.InTenant(surface, of.ScopeFor(surface)))
 	needsAccount(t, other)
 
 	must.StrNotEqFold(t, of.AccountID, other.AccountID,
@@ -125,8 +144,8 @@ func productInput() *billingpb.ProductCreationInput {
 	}
 }
 
-// stock puts a product in sub's catalog through the surface. Stocking is an
-// operator's, so sub is one.
+// stock puts a product in sub's catalog through the surface, so sub names
+// CreateProduct among the calls it was minted to make.
 func stock(t *testing.T, sub *conformance.Subject) *billingpb.Product {
 	t.Helper()
 

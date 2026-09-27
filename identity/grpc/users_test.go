@@ -79,10 +79,10 @@ func TestSetUserServiceRolesReplacesAndCanWithdraw(T *testing.T) {
 
 	granted, err := h.client.SetUserServiceRoles(h.ctx(), &identitypb.SetUserServiceRolesRequest{
 		UserId: user.ID,
-		Roles:  []string{"service_admin"},
+		Roles:  []string{"operator"},
 	})
 	must.NoError(T, err)
-	test.Eq(T, []string{"service_admin"}, granted.GetUser().GetServiceRoles())
+	test.Eq(T, []string{"operator"}, granted.GetUser().GetServiceRoles())
 
 	withdrawn, err := h.client.SetUserServiceRoles(h.ctx(), &identitypb.SetUserServiceRolesRequest{
 		UserId: user.ID,

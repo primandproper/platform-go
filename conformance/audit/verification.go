@@ -19,8 +19,9 @@ import (
 // and no deployment should offer a seam for. audit/grpc keeps that assertion,
 // against a database its own test owns.
 //
-// Verifying is an operator's, so the chain an ordinary caller appended to is
-// verified by an operator in that caller's tenant.
+// The chain an ordinary caller appended to is verified by a caller minted into
+// that caller's tenant naming VerifyChain, which is an operator wherever the
+// subject keeps verifying to its staff.
 func verification(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
@@ -33,7 +34,7 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		verifier := s.OperatorIn(t, surface, mine.ScopeFor(surface), auditpb.AuditService_VerifyChain_FullMethodName)
+		verifier := s.Subject(t, conformance.Making(verifyChain), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		response, err := verifier.Surfaces.Audit.VerifyChain(verifier.Context(t.Context()), &auditpb.VerifyChainRequest{})
 		must.NoError(t, err)
@@ -61,7 +62,7 @@ func verification(t *testing.T, s *conformance.Session) {
 		act(t, mine)
 		act(t, mine)
 
-		verifier := s.OperatorIn(t, surface, mine.ScopeFor(surface), auditpb.AuditService_VerifyChain_FullMethodName)
+		verifier := s.Subject(t, conformance.Making(verifyChain), conformance.InTenant(surface, mine.ScopeFor(surface)))
 		ctx := verifier.Context(t.Context())
 
 		fromStart, err := verifier.Surfaces.Audit.VerifyChain(ctx, &auditpb.VerifyChainRequest{})
@@ -84,7 +85,7 @@ func verification(t *testing.T, s *conformance.Session) {
 	t.Run("verification carries its window back as it was given", func(t *testing.T) {
 		t.Parallel()
 
-		verifier := s.Operator(t, auditpb.AuditService_VerifyChain_FullMethodName)
+		verifier := s.Subject(t, conformance.Making(verifyChain))
 
 		// Whole seconds, so the echo is compared at a precision every dialect
 		// and every encoding keeps.

@@ -57,7 +57,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("an exchange mints a successor in the same login", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
 		first := rotating(t, anon, who.username, password)
 
@@ -78,7 +78,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("a replayed refresh token is one answer with a token never minted", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
 		first := rotating(t, anon, who.username, password)
 
@@ -98,7 +98,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("a replay ends the login, the successor included", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
 		first := rotating(t, anon, who.username, password)
 
@@ -119,7 +119,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("a retry under the same idempotency key survives a lost answer", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
 		first := rotating(t, anon, who.username, password)
 
@@ -148,7 +148,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("a malformed idempotency key is a bad request that spends nothing", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
 		first := rotating(t, anon, who.username, password)
 
@@ -165,7 +165,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("signing out ends the login the refresh token names", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken, signOut)
 		who := signInAs(t, s, anon)
 		ended := rotating(t, anon, who.username, password)
 		kept := loggedIn(t, anon, who.username, password)
@@ -189,7 +189,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("signing out answers a dead token as it answers a live one", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, signOut)
 		who := signInAs(t, s, anon)
 		issued := rotating(t, anon, who.username, password)
 
@@ -212,8 +212,8 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("signing out everywhere ends every login the caller holds", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s)
-		sub, user := passworded(t, s)
+		anon := anonymous(t, s, loginForToken, exchangeRefreshToken)
+		sub, user := passworded(t, s, signOutEverywhere)
 
 		phone := rotating(t, anon, user.GetUsername(), password)
 		laptop := loggedIn(t, anon, user.GetUsername(), password)

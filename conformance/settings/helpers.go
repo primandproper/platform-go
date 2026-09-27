@@ -71,13 +71,12 @@ func names() catalog {
 // define adds a setting to op's catalog through the surface, skipping where the
 // deployment does not let op do that.
 //
-// The catalog half of this surface is an operator's — defining a setting is a
-// deployment's decision in the sense a database column is — so op is minted by
-// Session.Operator or Session.OperatorIn. Where the subject mints no
-// administrator, those answer an ordinary caller, which a subject enforcing no
-// method grants lets define; a deployment that enforces them and mints no
-// administrator is caught here, and skips rather than asserting against a
-// refusal the deployment was right to make.
+// Defining a setting is a deployment's decision in the sense a database column
+// is, so op is minted naming CreateDefinition: an administrator where the
+// subject reserves it, and an ordinary caller where it does not. A deployment
+// that refuses that ordinary caller a grant inside the handler is caught here,
+// and skips rather than asserting against a refusal the deployment was right
+// to make.
 func define(t *testing.T, op *conformance.Subject, input *settingspb.SettingDefinitionInput) *settingspb.SettingDefinition {
 	t.Helper()
 
@@ -125,15 +124,15 @@ func defineCatalog(t *testing.T, op *conformance.Subject, c *catalog) {
 }
 
 // seeded is a fresh caller with the five settings defined in its tenant, which
-// is where most of these assertions start.
-func seeded(t *testing.T, s *conformance.Session) (*conformance.Subject, catalog) {
+// is where most of these assertions start. The caller is minted with opts.
+func seeded(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (*conformance.Subject, catalog) {
 	t.Helper()
 
-	caller := s.Subject(t)
+	caller := s.Subject(t, opts...)
 	needsUser(t, caller)
 
 	c := names()
-	defineCatalog(t, s.OperatorIn(t, surface, caller.ScopeFor(surface), settingspb.SettingsService_CreateDefinition_FullMethodName), &c)
+	defineCatalog(t, s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface))), &c)
 
 	return caller, c
 }
@@ -194,20 +193,23 @@ func byName(t *testing.T, caller *conformance.Subject, name string) *settingspb.
 // twoDirectories mints two callers and refuses to proceed if the subject put
 // them in one tenant, since every confinement assertion here would then
 // compare a catalog with itself and pass.
-func twoDirectories(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoDirectories(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	return mine, theirs
 }
 
-// colleague mints a second caller in of's tenant. A subject that cannot put two
-// callers in one tenant declines, and the assertion that asked skips.
-func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject) *conformance.Subject {
+// colleague mints a second caller in of's tenant, minted with opts. A subject
+// that cannot put two callers in one tenant declines, and the assertion that
+// asked skips.
+func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, opts ...conformance.SubjectOption) *conformance.Subject {
 	t.Helper()
 
-	other := s.Subject(t, conformance.InTenant(surface, of.ScopeFor(surface)))
+	other := s.Subject(t, append(opts, conformance.InTenant(surface, of.ScopeFor(surface)))...)
 	needsUser(t, other)
 
 	must.StrNotEqFold(t, of.UserID, other.UserID,

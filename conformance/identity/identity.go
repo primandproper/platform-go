@@ -16,6 +16,40 @@ import (
 // read by.
 const surface = "identity"
 
+// The calls this suite makes, as the names a caller is minted to make them by.
+const (
+	acceptInvitation               = identitypb.IdentityService_AcceptInvitation_FullMethodName
+	archiveAccount                 = identitypb.IdentityService_ArchiveAccount_FullMethodName
+	archiveUser                    = identitypb.IdentityService_ArchiveUser_FullMethodName
+	cancelInvitation               = identitypb.IdentityService_CancelInvitation_FullMethodName
+	getAccount                     = identitypb.IdentityService_GetAccount_FullMethodName
+	getInvitation                  = identitypb.IdentityService_GetInvitation_FullMethodName
+	getMembership                  = identitypb.IdentityService_GetMembership_FullMethodName
+	getPrincipal                   = identitypb.IdentityService_GetPrincipal_FullMethodName
+	getUser                        = identitypb.IdentityService_GetUser_FullMethodName
+	invite                         = identitypb.IdentityService_Invite_FullMethodName
+	listAccountMembers             = identitypb.IdentityService_ListAccountMembers_FullMethodName
+	listAccounts                   = identitypb.IdentityService_ListAccounts_FullMethodName
+	listAccountsForUser            = identitypb.IdentityService_ListAccountsForUser_FullMethodName
+	listInvitationsForEmailAddress = identitypb.IdentityService_ListInvitationsForEmailAddress_FullMethodName
+	listInvitationsFromUser        = identitypb.IdentityService_ListInvitationsFromUser_FullMethodName
+	listMembershipsForUser         = identitypb.IdentityService_ListMembershipsForUser_FullMethodName
+	listUsers                      = identitypb.IdentityService_ListUsers_FullMethodName
+	recordAgreement                = identitypb.IdentityService_RecordAgreement_FullMethodName
+	register                       = identitypb.IdentityService_Register_FullMethodName
+	rejectInvitation               = identitypb.IdentityService_RejectInvitation_FullMethodName
+	removeMembership               = identitypb.IdentityService_RemoveMembership_FullMethodName
+	searchUsersByUsername          = identitypb.IdentityService_SearchUsersByUsername_FullMethodName
+	setDefaultAccount              = identitypb.IdentityService_SetDefaultAccount_FullMethodName
+	setMembershipRoles             = identitypb.IdentityService_SetMembershipRoles_FullMethodName
+	setUserRequiresPasswordChange  = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
+	setUserServiceRoles            = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
+	transferAccountOwnership       = identitypb.IdentityService_TransferAccountOwnership_FullMethodName
+	updateAccount                  = identitypb.IdentityService_UpdateAccount_FullMethodName
+	updateProfile                  = identitypb.IdentityService_UpdateProfile_FullMethodName
+	updateUserAccountStatus        = identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName
+)
+
 // Suite is the identity surface's behavioral assertions.
 func Suite() conformance.Suite {
 	return conformance.Suite{
@@ -50,11 +84,13 @@ func run(t *testing.T, s *conformance.Session) {
 
 		mine, theirs := twoDirectories(t, s)
 
-		// Reading a user by id is the directory's read, and an operator's.
+		// Reading a user by id is the directory's read, made by whoever the
+		// subject mints for it in each directory.
 		making := []string{
-			identitypb.IdentityService_GetUser_FullMethodName,
+			getUser,
 		}
-		myOperator, theirOperator := s.OperatorIn(t, surface, mine.ScopeFor(surface), making...), s.OperatorIn(t, surface, theirs.ScopeFor(surface), making...)
+		myOperator := s.Subject(t, conformance.Making(making...), conformance.InTenant(surface, mine.ScopeFor(surface)))
+		theirOperator := s.Subject(t, conformance.Making(making...), conformance.InTenant(surface, theirs.ScopeFor(surface)))
 
 		// The positive control. "The neighbor's user is absent" is also true of
 		// a read that reaches no directory at all, so this is what makes the
@@ -85,7 +121,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoDirectories(t, s)
-		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_ListUsers_FullMethodName)
+		operator := s.Subject(t, conformance.Making(listUsers), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		page, err := operator.Surfaces.Identity.ListUsers(operator.Context(t.Context()),
 			&identitypb.ListUsersRequest{})
@@ -124,9 +160,9 @@ func run(t *testing.T, s *conformance.Session) {
 		must.StrNotEqFold(t, "", marker,
 			must.Sprint("the credentialed action reported no fragment to search for, so this assertion would pass against any response"))
 
-		// Through the directory's read, which is an operator's, and the one
-		// most likely to be projected by something in front of this surface.
-		operator := s.OperatorIn(t, surface, mine.ScopeFor(surface), identitypb.IdentityService_GetUser_FullMethodName)
+		// Through the directory's read, the one most likely to be projected by
+		// something in front of this surface.
+		operator := s.Subject(t, conformance.Making(getUser), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		found, err := operator.Surfaces.Identity.GetUser(operator.Context(t.Context()),
 			&identitypb.GetUserRequest{UserId: mine.UserID})
@@ -146,10 +182,12 @@ func run(t *testing.T, s *conformance.Session) {
 // The check is not paranoia about the seam. A subject whose NewSubject ignores
 // its request and hands back one caller twice would make every confinement
 // assertion here compare a directory with itself, and all of them would pass.
-func twoDirectories(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// opts are applied to both, and name the calls each makes.
+func twoDirectories(t *testing.T, s *conformance.Session, opts ...conformance.SubjectOption) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine, theirs = s.TwoTenants(t, surface, opts...)
 
 	must.StrNotEqFold(t, mine.UserID, theirs.UserID,
 		must.Sprint("the subject minted two callers as one user"))

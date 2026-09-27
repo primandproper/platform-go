@@ -23,8 +23,8 @@ func products(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoOperators(t, s,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_GetProduct_FullMethodName,
+			createProduct,
+			getProduct,
 		)
 
 		created := stock(t, mine)
@@ -60,12 +60,12 @@ func products(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoOperators(t, s,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_ListProducts_FullMethodName,
+			createProduct,
+			listProducts,
 		)
 
 		// A second operator in the tenant, stocking under a user of its own.
-		other := s.OperatorIn(t, surface, mine.ScopeFor(surface), billingpb.BillingService_CreateProduct_FullMethodName)
+		other := s.Subject(t, conformance.Making(createProduct), conformance.InTenant(surface, mine.ScopeFor(surface)))
 		if other.UserID == mine.UserID {
 			t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a catalog being the tenant's rather than the stocker's cannot be observed")
 		}
@@ -86,7 +86,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a product with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t, billingpb.BillingService_CreateProduct_FullMethodName)
+		mine := s.Subject(t, conformance.Making(createProduct))
 
 		_, err := mine.Surfaces.Billing.CreateProduct(mine.Context(t.Context()), &billingpb.CreateProductRequest{})
 		must.Error(t, err)
@@ -96,7 +96,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a product that names no kind is refused rather than given one", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t, billingpb.BillingService_CreateProduct_FullMethodName)
+		mine := s.Subject(t, conformance.Making(createProduct))
 
 		// A converter that picked a default kind would have decided what this
 		// deployment sells.
@@ -112,7 +112,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a currency that is not three characters is refused in words the caller can act on", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t, billingpb.BillingService_CreateProduct_FullMethodName)
+		mine := s.Subject(t, conformance.Making(createProduct))
 
 		input := productInput()
 		input.Currency = "dollars"
@@ -130,7 +130,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a provider identifier already claimed is a conflict", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t, billingpb.BillingService_CreateProduct_FullMethodName)
+		mine := s.Subject(t, conformance.Making(createProduct))
 		ctx := mine.Context(t.Context())
 		input := productInput()
 
@@ -148,7 +148,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("an administrator asking for withdrawn products receives them", func(t *testing.T) {
 		t.Parallel()
 
-		admin := s.Subject(t, conformance.AsAdmin())
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(createProduct, archiveProduct, listProducts))
 		live := stock(t, admin)
 		withdrawn := stock(t, admin)
 
@@ -180,7 +180,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("an absent product is reported as absent", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t, billingpb.BillingService_GetProduct_FullMethodName)
+		mine := s.Subject(t, conformance.Making(getProduct))
 
 		_, err := mine.Surfaces.Billing.GetProduct(mine.Context(t.Context()),
 			&billingpb.GetProductRequest{ProductId: identifiers.New()})
@@ -191,11 +191,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a revision answers with the row as stored rather than the request echoed", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_GetProduct_FullMethodName,
-			billingpb.BillingService_UpdateProduct_FullMethodName,
-		)
+		mine := s.Subject(t, conformance.Making(createProduct, getProduct, updateProduct))
 		ctx := mine.Context(t.Context())
 		product := stock(t, mine)
 
@@ -230,10 +226,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("a revision with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_UpdateProduct_FullMethodName,
-		)
+		mine := s.Subject(t, conformance.Making(createProduct, updateProduct))
 		product := stock(t, mine)
 
 		_, err := mine.Surfaces.Billing.UpdateProduct(mine.Context(t.Context()),
@@ -246,9 +239,9 @@ func products(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoOperators(t, s,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_GetProduct_FullMethodName,
-			billingpb.BillingService_UpdateProduct_FullMethodName,
+			createProduct,
+			getProduct,
+			updateProduct,
 		)
 		product := stock(t, mine)
 
@@ -276,12 +269,7 @@ func products(t *testing.T, s *conformance.Session) {
 	t.Run("archiving a product takes it off the shelf", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Operator(t,
-			billingpb.BillingService_ArchiveProduct_FullMethodName,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_GetProduct_FullMethodName,
-			billingpb.BillingService_ListProducts_FullMethodName,
-		)
+		mine := s.Subject(t, conformance.Making(archiveProduct, createProduct, getProduct, listProducts))
 		ctx := mine.Context(t.Context())
 		product := stock(t, mine)
 
@@ -302,9 +290,9 @@ func products(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		mine, theirs := twoOperators(t, s,
-			billingpb.BillingService_ArchiveProduct_FullMethodName,
-			billingpb.BillingService_CreateProduct_FullMethodName,
-			billingpb.BillingService_GetProduct_FullMethodName,
+			archiveProduct,
+			createProduct,
+			getProduct,
 		)
 		product := stock(t, mine)
 
