@@ -290,8 +290,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					scope = *req.Scope
 				}
 
-				// Truncated because SQLite keeps whole seconds.
-				agreedAt := time.Now().UTC().Truncate(time.Second)
+				// An hour back, so a stamp a suite's own call writes is never
+				// mistaken for the one registration wrote — SQLite keeps whole
+				// seconds, and a stamp from this second would be both.
+				agreedAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 
 				// Through the service rather than the surface: every identity RPC
 				// requires a caller, Register included, so there is no client-only
