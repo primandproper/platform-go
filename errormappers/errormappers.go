@@ -19,6 +19,7 @@ import (
 	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v14/series"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/shredding"
@@ -246,4 +247,12 @@ func Register() {
 	// ErrCodeInvalid, is Unauthenticated, and a code that already says the
 	// code was not accepted needs no wording carried beside it; the other
 	// three are InvalidArgument on a form the consumer drew.
+
+	httperrors.RegisterHTTPErrorMapper(series.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(series.GRPCMapper)
+
+	// No client-safe sentinels for series either. Its refusals reach a
+	// consumer's own schedule handlers, which know which button was pressed and
+	// say so in their own words; the HTTP mapper's messages are there for a
+	// consumer that answers with them unchanged.
 }

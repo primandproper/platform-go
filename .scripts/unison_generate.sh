@@ -83,6 +83,7 @@ COMPONENTS=(
   "outbox postgres mysql sqlite"
   "operations postgres mysql sqlite"
   "timers postgres mysql sqlite"
+  "series postgres mysql sqlite"
   "workqueue postgres mysql sqlite"
 )
 

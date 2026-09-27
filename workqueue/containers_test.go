@@ -1139,24 +1139,34 @@ func runRunnerUnderASlowHandler(t *testing.T, client database.Client) {
 	q := newQueue(t, client, nil)
 	must.NoError(t, q.EnqueueKeys(ctx, "slow-work"))
 
-	var handled atomic.Int64
+	var (
+		handled atomic.Int64
+		started = make(chan struct{})
+	)
 
-	// A lease of a second under a handler that takes two and a half, with the
-	// heartbeat at a third of the lease. Every one of those numbers is a real
+	// A lease of two seconds under a handler that takes five, with the
+	// heartbeat at a fifth of the lease. Every one of those numbers is a real
 	// one: without the extension this handler is reclaimed twice over while
 	// it works.
+	//
+	// The lease is two seconds rather than one because this suite shares its
+	// SQLite database with every other suite running beside it, and SQLite has
+	// one writer: an extension has been seen to wait 951ms for the lock, which
+	// against a one-second lease is a lapse the extension could not prevent.
 	cfg := &RunnerConfig{
 		Poll:           50 * time.Millisecond,
-		Lease:          time.Second,
-		ExtendInterval: 300 * time.Millisecond,
+		Lease:          2 * time.Second,
+		ExtendInterval: 400 * time.Millisecond,
 		Batch:          10,
 		Concurrency:    1,
 	}
 
 	runner, err := NewRunner(ctx, cfg, q, func(context.Context, Item[string]) error {
-		handled.Add(1)
+		if handled.Add(1) == 1 {
+			close(started)
+		}
 
-		time.Sleep(2500 * time.Millisecond)
+		time.Sleep(5 * time.Second)
 
 		return nil
 	})
@@ -1167,12 +1177,23 @@ func runRunnerUnderASlowHandler(t *testing.T, client database.Client) {
 	done := make(chan error, 1)
 	go func() { done <- runner.Run(runCtx) }()
 
+	// The competitor starts once the runner holds the item, not after a fixed
+	// pause. A runner whose first claim waits out another suite's write can be
+	// beaten to the item by a competitor that started on a timer, and a
+	// competitor claiming an item nobody held is the queue working, not the
+	// failure this test is after.
+	select {
+	case <-started:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the runner never claimed the item")
+	}
+
 	// A competitor claiming throughout, which is what a second worker in the
 	// fleet is. None of its claims may find the item, because the runner is
-	// still working on it.
+	// still working on it. Twenty claims 200ms apart span two leases.
 	competitor := newQueue(t, client, func(c *Config) { c.Name = q.Name() })
 
-	for range 10 {
+	for range 20 {
 		time.Sleep(200 * time.Millisecond)
 
 		stolen, claimErr := competitor.Claim(ctx, 10, time.Minute)

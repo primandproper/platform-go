@@ -65,6 +65,7 @@ COMPONENTS=(
   "./outbox ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./operations ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./timers ./internal/queriesgen internal/queries postgres mysql sqlite"
+  "./series ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./workqueue ./internal/queriesgen internal/queries postgres mysql sqlite"
 )
 

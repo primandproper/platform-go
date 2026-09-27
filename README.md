@@ -84,6 +84,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `comments`     | Threaded comments on consumer-declared targets                                                   | postgres, mysql, sqlite |
 | `issuereports` | User-submitted issue reports with a triage lifecycle                                             | postgres, mysql, sqlite |
 | `waitlists`    | Pre-launch waitlists: signup lifecycle, and an unsubscribe that outlives the address             | postgres, mysql, sqlite |
+| `series`       | Standing appointments: a weekly rule, its occurrences written ahead, and their skips, moves and make-ups | postgres, mysql, sqlite |
 | `links`        | Opaque, expiring, single-use action links                                                        | postgres, mysql, sqlite |
 
 ### Records, privacy & retention
@@ -157,7 +158,7 @@ checking it.
 
 | What it is                                     | Packages                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/phonecodes`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
+| a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/phonecodes`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `series`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -505,6 +506,12 @@ worker on a timer, or by your own code inside your own transaction, which is the
 same test the carve-outs above are made by. Owning a store is not what puts a
 package on the list; having a caller who is somebody else is.
 
+`series` arrived after that ruling and is on neither list yet. By the same test
+it is owed a surface — skip, close, end, move and make up are pressed by a
+person, not a timer — and only its horizon worker is machinery. It ships
+without one until it has its own ruling, and its first consumer draws its week
+view from the store in-process.
+
 One of the ten is not the house default, and it has a stated reason.
 `dataprivacy` is on HTTP because its flow already is. Progress is answered by
 `operations/http` against `Request.OperationID` and the same event stream every
@@ -667,6 +674,7 @@ here.
 | `outbox`                              | ✓        | ✓     | ✓      |
 | `rbac`                                | ✓        | ✓     | ✓      |
 | `saga`                                | ✓        | ✓     | ✓      |
+| `series`                              | ✓        | ✓     | ✓      |
 | `sessions/database`                   | ✓        | ✓     | ✓      |
 | `settings`                            | ✓        | ✓     | ✓      |
 | `shredding`                           | ✓        | ✓     | ✓      |
