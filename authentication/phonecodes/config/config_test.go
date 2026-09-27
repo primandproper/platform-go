@@ -81,6 +81,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 			"a negative lifetime":         {Lifetime: -time.Second},
 			"a negative retention":        {Retention: -time.Second},
 			"a negative attempt limit":    {MaxAttempts: -1},
+			"an attempt limit too high":   {MaxAttempts: phonecodes.MaxAttemptsCeiling + 1},
 			"a negative sweep interval":   {SweepInterval: pointer.To(-time.Second)},
 		} {
 			test.Error(t, cfg.ValidateWithContext(t.Context()), test.Sprint(name))

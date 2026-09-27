@@ -64,7 +64,9 @@ type Config struct {
 	CodeLength int `env:"CODE_LENGTH" json:"codeLength,omitempty" yaml:"codeLength,omitempty"`
 
 	// MaxAttempts is how many wrong codes a code survives when its request
-	// names no limit of its own. Unset takes phonecodes.DefaultMaxAttempts.
+	// names no limit of its own, and the most one may ask for. Unset takes
+	// phonecodes.DefaultMaxAttempts; above phonecodes.MaxAttemptsCeiling is
+	// refused.
 	MaxAttempts int `env:"MAX_ATTEMPTS" json:"maxAttempts,omitempty" yaml:"maxAttempts,omitempty"`
 }
 
@@ -113,7 +115,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 			validation.Min(phonecodes.MinCodeLength), validation.Max(phonecodes.MaxCodeLength))),
 		validation.Field(&cfg.Lifetime, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.Retention, validation.Min(time.Duration(0))),
-		validation.Field(&cfg.MaxAttempts, validation.Min(0)),
+		validation.Field(&cfg.MaxAttempts, validation.Min(0), validation.Max(phonecodes.MaxAttemptsCeiling)),
 		validation.Field(&cfg.SweepInterval, cfgnorm.SweepIntervalRule),
 	)
 }

@@ -42,9 +42,10 @@ var (
 	// bad request.
 	ErrValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "phone code subject is too long")
 
-	// ErrInvalidMaxAttempts indicates a negative attempt limit on an
-	// IssueRequest. It wraps errors.ErrUnrecognizedInputValue.
-	ErrInvalidMaxAttempts = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "phone code attempt limit is negative")
+	// ErrInvalidMaxAttempts indicates an attempt limit on an IssueRequest
+	// that is negative or above the store's own, which a request may tighten
+	// and never loosen. It wraps errors.ErrUnrecognizedInputValue.
+	ErrInvalidMaxAttempts = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "phone code attempt limit is outside what the store allows")
 
 	// ErrInvalidSetting indicates NewSQLStore was configured with a code
 	// length, lifetime, attempt limit or retention it cannot honor — see the

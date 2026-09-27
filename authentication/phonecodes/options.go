@@ -37,6 +37,15 @@ const DefaultLifetime = 10 * time.Minute
 // store nor the request says otherwise.
 const DefaultMaxAttempts = 5
 
+// MaxAttemptsCeiling bounds WithMaxAttempts.
+//
+// The attempt limit is the whole of what stops a guesser working through a
+// code's values, so it is the one setting that cannot be loosened without
+// bound. At MinCodeLength's ten thousand values, ten attempts leave a guesser
+// one chance in a thousand per code; ten is also more wrong codes than a person
+// mistyping a text makes before asking for another.
+const MaxAttemptsCeiling = 10
+
 // DefaultRetention is how long past its own deadline a row is kept before the
 // sweeper may collect it.
 //
@@ -114,8 +123,12 @@ func WithLifetime(lifetime time.Duration) Option {
 }
 
 // WithMaxAttempts sets how many wrong codes a code survives when its request
-// names no limit of its own. NewSQLStore refuses one below one with
-// ErrInvalidSetting.
+// names no limit of its own. NewSQLStore refuses one outside
+// [1, MaxAttemptsCeiling] with ErrInvalidSetting.
+//
+// It is also the most a request may ask for: an IssueRequest.MaxAttempts above
+// it is refused, so a call site can tighten the deployment's limit and never
+// loosen it.
 func WithMaxAttempts(attempts int) Option {
 	return func(o *options) { o.maxAttempts = attempts }
 }

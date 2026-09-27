@@ -31,7 +31,8 @@ phone number:
 # The attempt limit, and the one thing a caller has to get right
 
 A wrong code against a live one is counted, and a code at its limit is dead
-whatever it is presented with. Every refusal — no code for the number, spent,
+whatever it is presented with. The store's limit is at most MaxAttemptsCeiling,
+and a request may tighten it for one code but never loosen it. Every refusal — no code for the number, spent,
 withdrawn, expired, exhausted, wrong — is ErrCodeInvalid, because telling them
 apart would tell a guesser which half of a guess was right. The span records
 which it was.

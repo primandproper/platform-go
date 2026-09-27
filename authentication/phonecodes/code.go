@@ -39,7 +39,8 @@ type IssueRequest struct {
 
 	// MaxAttempts is how many wrong codes this one survives. Zero takes the
 	// store's, which is DefaultMaxAttempts unless WithMaxAttempts said
-	// otherwise; a negative count is refused.
+	// otherwise. It may tighten the store's limit and never loosen it: a
+	// negative count, or one above the store's, is ErrInvalidMaxAttempts.
 	MaxAttempts int
 }
 

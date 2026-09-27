@@ -68,11 +68,12 @@ func TestNewSQLStore_refusals(T *testing.T) {
 	})
 
 	for name, opt := range map[string]Option{
-		"a code too short":         WithCodeLength(MinCodeLength - 1),
-		"a code too long":          WithCodeLength(MaxCodeLength + 1),
-		"no lifetime":              WithLifetime(0),
-		"an attempt limit of 0":    WithMaxAttempts(0),
-		"a non-positive retention": WithRetention(-time.Second),
+		"a code too short":          WithCodeLength(MinCodeLength - 1),
+		"a code too long":           WithCodeLength(MaxCodeLength + 1),
+		"no lifetime":               WithLifetime(0),
+		"an attempt limit of 0":     WithMaxAttempts(0),
+		"an attempt limit too high": WithMaxAttempts(MaxAttemptsCeiling + 1),
+		"a non-positive retention":  WithRetention(-time.Second),
 	} {
 		T.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -146,11 +147,16 @@ func TestIssue_honorsTheConfiguredSettings(t *testing.T) {
 	test.True(t, c.Now().Add(time.Minute+time.Hour).Equal(issuance.Code.PurgeAfter))
 
 	own, err := issueFor(t, store, testScope(), &IssueRequest{
-		SubjectID: testSubject, PhoneNumber: "+15555550101", MaxAttempts: 9,
+		SubjectID: testSubject, PhoneNumber: "+15555550101", MaxAttempts: 2,
 	})
 	must.NoError(t, err)
-	test.EqOp(t, 9, own.Code.MaxAttempts)
-	test.EqOp(t, 9, readRow(t, store, testScope(), "+15555550101").MaxAttempts)
+	test.EqOp(t, 2, own.Code.MaxAttempts)
+	test.EqOp(t, 2, readRow(t, store, testScope(), "+15555550101").MaxAttempts)
+
+	_, err = issueFor(t, store, testScope(), &IssueRequest{
+		SubjectID: testSubject, PhoneNumber: "+15555550102", MaxAttempts: 4,
+	})
+	test.ErrorIs(t, err, ErrInvalidMaxAttempts)
 }
 
 func TestIssue_refusals(T *testing.T) {
@@ -163,15 +169,16 @@ func TestIssue_refusals(T *testing.T) {
 		request *IssueRequest
 		scope   tenancy.Scope
 	}{
-		"nil request":           {scope: testScope(), want: ErrNilRequest},
-		"no subject":            {scope: testScope(), request: &IssueRequest{PhoneNumber: testPhone}, want: ErrEmptySubjectID},
-		"a subject too long":    {scope: testScope(), request: &IssueRequest{SubjectID: strings.Repeat("s", MaxSubjectLength+1), PhoneNumber: testPhone}, want: ErrValueTooLong},
-		"no number":             {scope: testScope(), request: &IssueRequest{SubjectID: testSubject}, want: ErrInvalidPhoneNumber},
-		"a number not in E.164": {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: "+1 555 555 0100"}, want: ErrInvalidPhoneNumber},
-		"a number with no plus": {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: "15555550100"}, want: ErrInvalidPhoneNumber},
-		"a number too long":     {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: "+1234567890123456"}, want: ErrInvalidPhoneNumber},
-		"a negative limit":      {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: testPhone, MaxAttempts: -1}, want: ErrInvalidMaxAttempts},
-		"an unset scope":        {request: &IssueRequest{SubjectID: testSubject, PhoneNumber: testPhone}, want: tenancy.ErrNoScope},
+		"nil request":               {scope: testScope(), want: ErrNilRequest},
+		"no subject":                {scope: testScope(), request: &IssueRequest{PhoneNumber: testPhone}, want: ErrEmptySubjectID},
+		"a subject too long":        {scope: testScope(), request: &IssueRequest{SubjectID: strings.Repeat("s", MaxSubjectLength+1), PhoneNumber: testPhone}, want: ErrValueTooLong},
+		"no number":                 {scope: testScope(), request: &IssueRequest{SubjectID: testSubject}, want: ErrInvalidPhoneNumber},
+		"a number not in E.164":     {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: "+1 555 555 0100"}, want: ErrInvalidPhoneNumber},
+		"a number with no plus":     {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: "15555550100"}, want: ErrInvalidPhoneNumber},
+		"a number too long":         {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: "+1234567890123456"}, want: ErrInvalidPhoneNumber},
+		"a negative limit":          {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: testPhone, MaxAttempts: -1}, want: ErrInvalidMaxAttempts},
+		"a limit above the store's": {scope: testScope(), request: &IssueRequest{SubjectID: testSubject, PhoneNumber: testPhone, MaxAttempts: DefaultMaxAttempts + 1}, want: ErrInvalidMaxAttempts},
+		"an unset scope":            {request: &IssueRequest{SubjectID: testSubject, PhoneNumber: testPhone}, want: tenancy.ErrNoScope},
 	} {
 		T.Run(name, func(t *testing.T) {
 			t.Parallel()

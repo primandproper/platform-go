@@ -169,8 +169,9 @@ func (o *options) validate() error {
 			o.codeLength, MinCodeLength, MaxCodeLength)
 	case o.lifetime <= 0:
 		return platformerrors.Wrapf(ErrInvalidSetting, "lifetime %s is not positive", o.lifetime)
-	case o.maxAttempts < 1:
-		return platformerrors.Wrapf(ErrInvalidSetting, "attempt limit %d is below one", o.maxAttempts)
+	case o.maxAttempts < 1 || o.maxAttempts > MaxAttemptsCeiling:
+		return platformerrors.Wrapf(ErrInvalidSetting, "attempt limit %d is outside [1, %d]",
+			o.maxAttempts, MaxAttemptsCeiling)
 	case o.retention <= 0:
 		return platformerrors.Wrapf(ErrInvalidSetting, "retention %s is not positive", o.retention)
 	default:
@@ -311,6 +312,9 @@ func (s *SQLStore) validateIssue(tx database.Tx, scope tenancy.Scope, request *I
 	switch {
 	case request.MaxAttempts < 0:
 		return 0, ErrInvalidMaxAttempts
+	case request.MaxAttempts > s.maxAttempts:
+		return 0, platformerrors.Wrapf(ErrInvalidMaxAttempts, "%d is above the store's %d",
+			request.MaxAttempts, s.maxAttempts)
 	case request.MaxAttempts == 0:
 		return s.maxAttempts, nil
 	default:
