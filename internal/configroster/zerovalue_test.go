@@ -26,6 +26,7 @@ import (
 	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
+	seriescfg "github.com/primandproper/platform-go/v14/series/config"
 	sessionscfg "github.com/primandproper/platform-go/v14/sessions/config"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
@@ -191,6 +192,9 @@ func zeroValueCases() []zeroValueCase {
 		{name: "secrets", cfg: &secretscfg.Config{}, why: "an unset provider reads secrets from the environment"},
 		{name: "sessions", cfg: &sessionscfg.Config{}, needs: "provider"},
 		{name: "settings", cfg: &settingscfg.Config{}, why: "the table prefix is the only field, and which settings exist is rows rather than environment"},
+		// The worker's lock is a dependency rather than a field, and NewWorker
+		// refuses a nil one when it is called rather than here.
+		{name: "series", cfg: &seriescfg.Config{}, why: "the table prefix and every worker knob default"},
 		{name: "timers", cfg: &timerscfg.Config{}, needs: "name"},
 		{name: "waitlists", cfg: &waitlistscfg.Config{}, why: "the table prefix is the only field, and which waitlists exist is rows rather than environment"},
 		{name: "webhooks", cfg: &webhookscfg.Config{}, why: "the sender's worker, client and breaker all have defaults"},

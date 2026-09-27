@@ -18,6 +18,7 @@ import (
 	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v14/series"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/shredding"
@@ -237,4 +238,12 @@ func Register() {
 	// consent callback or sync handler rather than a person, and the one a person
 	// does end up acting on — connect the account again — is the HTTP mapper's
 	// message, which already says so.
+
+	httperrors.RegisterHTTPErrorMapper(series.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(series.GRPCMapper)
+
+	// No client-safe sentinels for series either. Its refusals reach a
+	// consumer's own schedule handlers, which know which button was pressed and
+	// say so in their own words; the HTTP mapper's messages are there for a
+	// consumer that answers with them unchanged.
 }

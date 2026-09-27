@@ -10,6 +10,7 @@ import (
 	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
 	linkscfg "github.com/primandproper/platform-go/v14/links/config"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
+	seriescfg "github.com/primandproper/platform-go/v14/series/config"
 	"github.com/primandproper/platform-go/v14/service"
 	sessionscfg "github.com/primandproper/platform-go/v14/sessions/config"
 	timerscfg "github.com/primandproper/platform-go/v14/timers/config"
@@ -29,8 +30,9 @@ const platformModule = "github.com/primandproper/platform-go/v14/"
 // They are the generic and per-type subsystems its documentation says are
 // deliberately absent — registered by a call that supplies a type argument or an
 // index name no environment can — plus the two stores that hang off a
-// primitives-go engine, and authentication/grants, whose store is built with an
-// encryptor the caller hands it. An operator still sets their variables, so their nesting
+// primitives-go engine, authentication/grants, whose store is built with an
+// encryptor the caller hands it, and series, whose worker runs under a lock the
+// caller hands it. An operator still sets their variables, so their nesting
 // is still subject to the rule, and listing them here is what keeps the walk
 // from being a walk of only half the module.
 var unreachableRoots = []any{
@@ -41,6 +43,7 @@ var unreachableRoots = []any{
 	linkscfg.Config{},
 	mediaregistrycfg.Config{},
 	sessionscfg.Config{},
+	seriescfg.Config{},
 	timerscfg.Config{},
 }
 

@@ -34,6 +34,7 @@ import (
 	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
 	rbacmigrations "github.com/primandproper/platform-go/v14/rbac/migrations"
 	sagamigrations "github.com/primandproper/platform-go/v14/saga/migrations"
+	seriesmigrations "github.com/primandproper/platform-go/v14/series/migrations"
 	sessionsmigrations "github.com/primandproper/platform-go/v14/sessions/database/migrations"
 	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
 	shreddingmigrations "github.com/primandproper/platform-go/v14/shredding/migrations"
@@ -95,6 +96,7 @@ var renderers = map[string]renderer{
 	"saga":                                sagamigrations.Statements,
 	"sessions/database":                   sessionsmigrations.Statements,
 	"settings":                            settingsmigrations.Statements,
+	"series":                              seriesmigrations.Statements,
 	"shredding":                           shreddingmigrations.Statements,
 	"timers":                              timersmigrations.Statements,
 	"waitlists":                           waitlistsmigrations.Statements,
@@ -141,6 +143,8 @@ var conventional = map[string]renderer{
 	"oauth2_registered_clients": oauth2clientsmigrations.Statements,
 	"webauthn_credentials":      passkeysmigrations.Statements,
 	"oauth2_grants":             grantsmigrations.Statements,
+	"series":                    seriesmigrations.Statements,
+	"series_occurrences":        seriesmigrations.Statements,
 }
 
 // exemption is a table that deliberately carries none of the triple, and the

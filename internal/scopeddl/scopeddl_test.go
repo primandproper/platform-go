@@ -75,6 +75,7 @@ var tenancyColumns = map[string][]string{
 	"notifications":     {"notifications_devices.scope", "notifications_inbox.scope"},
 	"operations":        {"operations.scope"},
 	"sessions/database": {"sessions.scope"},
+	"series":            {"series.scope", "series_occurrences.scope"},
 	"settings":          {"settings_definitions.scope", "settings_values.scope"},
 	"mediaregistry":     {"uploads_objects.scope"},
 	"metering":          {"metering_events.scope", "metering_totals.scope"},

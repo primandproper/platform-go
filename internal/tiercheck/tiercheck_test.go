@@ -66,6 +66,7 @@ var roster = map[string]entry{
 	"retention":     {tier: domain},
 	"saga":          {tier: domain},
 	"searchsync":    {tier: domain},
+	"series":        {tier: domain},
 	"sessions":      {tier: domain},
 	"settings":      {tier: domain},
 	"shredding":     {tier: domain},
