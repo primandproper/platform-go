@@ -2,8 +2,8 @@
 Package identity is the directory surface's promises, assertable against any
 subject that mounts it.
 
-Thirty-one RPCs, and what a consumer needs verified about the reads among them
-is one sentence: the directory a request reads is the one its caller is in. The
+What a consumer needs verified about the reads on this surface is one
+sentence: the directory a request reads is the one its caller is in. The
 assertions here are that sentence by identifier, by listing, and in both
 directions — because a scope dropped from a predicate does not error, it widens,
 and a widened answer is indistinguishable from a correct one until a second

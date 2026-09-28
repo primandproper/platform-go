@@ -2,8 +2,8 @@
 Package waitlists is the signup surface's promises, assertable against any
 subject that mounts it.
 
-Nineteen RPCs, and two audiences for them. Fourteen are an operator's console
-and need a caller; five — ListOpenLists, Join, Confirm, Withdraw and
+Two audiences. Most of the surface is an operator's console and needs a
+caller; the rest — ListOpenLists, Join, Confirm, Withdraw and
 Unsubscribe — are a signup page, the form on it, the confirmation link in the
 mail that follows, and the two ways off the list, and are reached by people who
 have not signed in. What a consumer needs verified is

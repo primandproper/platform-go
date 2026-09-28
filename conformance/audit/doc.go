@@ -2,7 +2,7 @@
 Package audit is the audit surface's promises, assertable against any subject
 that mounts it.
 
-Three reads, and what a consumer needs verified about them is one sentence: the
+The surface is reads, and what a consumer needs verified about them is one sentence: the
 chain a request reads is the one its session is in. Every assertion here is that
 sentence from a different angle — by identifier, by listing, by a query that
 names somebody else's actor — because the failure it guards against has no

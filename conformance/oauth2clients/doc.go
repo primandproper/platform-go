@@ -2,7 +2,7 @@
 Package oauth2clients is the administered half of the OAuth2 client registry's
 promises, assertable against any subject that mounts it.
 
-Four RPCs, and the property with the worst failure is the one a request cannot
+The property with the worst failure is the one a request cannot
 express: a registration minted here belongs to nobody. An administered
 registration is one any subject in the registry may authorize through, so its
 owner cannot come off the wire — a request that could name one mints a

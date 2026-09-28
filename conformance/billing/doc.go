@@ -2,7 +2,7 @@
 Package billing is the ledger surface's promises, assertable against any subject
 that mounts it.
 
-Eighteen RPCs over four nouns, and they answer to two different rules. The
+Four nouns, and they answer to two different rules. The
 catalog answers to the scope alone: a product is the tenant's, so what is
 asserted about it is that a request reaches the caller's catalog and never a
 neighbor's. The other three nouns are somebody's own money, and answer to an

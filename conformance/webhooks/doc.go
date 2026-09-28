@@ -2,8 +2,7 @@
 Package webhooks is the outbound webhook surface's promises, assertable against
 any subject that mounts it.
 
-Eleven RPCs, and the consumer's settings page for their integrations is most of
-them: register a URL, choose what it hears about, retire what it no longer
+The consumer's settings page for their integrations is most of this surface: register a URL, choose what it hears about, retire what it no longer
 should, and roll the key it is signed with. What a consumer needs verified is
 that an endpoint is stored as it was registered and comes back that way, that
 a subscription set can be added to and retired from one member at a time, that

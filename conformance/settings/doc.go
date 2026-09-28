@@ -2,7 +2,7 @@
 Package settings is the settings surface's promises, assertable against any
 subject that mounts it.
 
-Thirteen RPCs in two halves. The catalog is an operator's: what settings exist,
+Two halves. The catalog is an operator's: what settings exist,
 of what kind, falling back to what. The values are a person acting on
 themselves, and that half is the settings screen every consumer ships. What a
 consumer needs verified about it is that a value goes in as the kind it was
