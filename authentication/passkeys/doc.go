@@ -1,5 +1,6 @@
 /*
-Package passkeys stores the credentials a WebAuthn registration produces.
+Package passkeys stores the credentials a WebAuthn registration produces, and
+runs the ceremonies that produce and verify them.
 
 A passkey login has three pieces of state and two of them already had a home. The
 protocol — the challenge, the attestation, the assertion — is primitives-go's
@@ -33,6 +34,42 @@ discoverable login arrives holding an opaque handle and nothing else, and the
 directory that can answer is the consumer's — which is exactly why this could not
 be a primitive, and why it is a domain package rather than one. [NewUserSource]
 takes that answer as a function and assembles the rest.
+
+# The ceremonies
+
+[Service] runs them: registration, the named login and the discoverable one,
+and the list and archive a settings page offers. It mints nothing — a finished
+login answers with the credential that proved somebody, and issuing them a
+session is authentication/signin's IssueForPrincipal. What it adds is the order
+the steps run in and four decisions every hand-written copy got wrong.
+
+An unknown username is answered rather than refused. [Service.BeginLogin]
+hands a username nobody holds the same options it hands a known one, and no
+named login lists the user's credentials, so the two answers cannot be told
+apart; [Service.BeginRegistration] registers discoverable credentials only for
+that reason.
+
+Enrollment is gated. Adding a passkey is adding a way into an account, so a
+registration asks an [EnrollmentGate] first and again at the write. There is no
+default: [WithEnrollmentGate] is required, and a deployment that has decided a
+live session is enough says so with [AdmitEveryEnrollment].
+
+The last passkey stays. [Service.ArchiveCredential] refuses to leave a user with
+no passkey and no other way in; [WithAlternativeSignIn] is how it learns about a
+password, and [WithoutLastCredentialGuard] turns it off by name.
+
+And the writes are recorded. [Hooks] run on each write's transaction — a
+registration's, an archive's, and one a refused login opens for itself — and a
+hook that refuses rolls its write back.
+
+The seams are the consumer's two answers about users, both functions so that
+this package never imports identity: a [UserResolver] from a handle to a user,
+and a [UsernameResolver] from what somebody typed to a handle.
+
+A login's sign count commits before [Service.FinishLogin] returns, in a
+transaction the service opens, so the caller minting a token afterwards cannot
+roll it back. A count that advanced for a login the caller then failed to finish
+is harmless: the authenticator had already advanced it.
 
 # The index that is the point
 

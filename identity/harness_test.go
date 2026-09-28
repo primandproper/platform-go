@@ -667,6 +667,26 @@ func (e *storeEnv) archiveAccountErr(t *testing.T, store *SQLStore, scope tenanc
 	return err
 }
 
+func (e *storeEnv) deleteAccount(
+	t *testing.T,
+	store *SQLStore,
+	scope tenancy.Scope,
+	accountID string,
+) (*Account, error) {
+	t.Helper()
+
+	var deleted *Account
+
+	err := e.inTx(t, func(tx database.Tx) error {
+		var txErr error
+		deleted, txErr = store.DeleteAccount(t.Context(), tx, scope, accountID)
+
+		return txErr
+	})
+
+	return deleted, err
+}
+
 func (e *storeEnv) recordAccountSubscription(
 	t *testing.T,
 	store *SQLStore,

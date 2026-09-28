@@ -367,3 +367,71 @@ func (s *SQLStore) ArchiveAccount(
 
 	return archived, nil
 }
+
+// DeleteAccount destroys an account through the caller's transaction, answering
+// with the row it destroyed.
+//
+// The row is read before the delete rather than after, because afterwards
+// nothing describes it. That read decides nothing: the delete's own count is
+// what refuses an account that went between the two, so a pair of deletes
+// racing for one account leaves one of them with ErrAccountNotFound rather than
+// both with the row.
+//
+// The memberships, the roles hanging off them and the invitations into the
+// account go through ON DELETE CASCADE, in the same statement. What the schema
+// cannot do is move a flag it has just destroyed, so the members whose default
+// this was are read first and each lands in another account they still belong
+// to afterwards — ArchiveAccount's move, for the same reason.
+func (s *SQLStore) DeleteAccount(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	accountID string,
+) (*Account, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(accountIDKey, accountID),
+	)
+	defer op.End()
+
+	if err := requireExecutor(tx); err != nil {
+		return nil, op.Error(err, "deleting identity account")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "deleting identity account")
+	}
+
+	row, err := s.q.GetAccountIncludingArchived(ctx, tx, identitydb.GetAccountIncludingArchivedParams{
+		ID:    accountID,
+		Scope: scope,
+	})
+	if err != nil {
+		return nil, op.Error(notFound(err, ErrAccountNotFound), "deleting identity account")
+	}
+
+	stranded, err := s.q.ListDefaultMembershipsForAccount(ctx, tx,
+		identitydb.ListDefaultMembershipsForAccountParams{
+			Scope:            scope,
+			BelongsToAccount: accountID,
+			DefaultAccount:   true,
+		})
+	if err != nil {
+		return nil, op.Error(platformerrors.Wrap(err, "reading identity default memberships"), "deleting identity account")
+	}
+
+	count, err := s.q.DeleteAccount(ctx, tx, identitydb.DeleteAccountParams{ID: accountID, Scope: scope})
+	if err = s.guardCount(ctx, count, err, ErrAccountNotFound, "deleting identity account"); err != nil {
+		return nil, op.Error(err, "deleting identity account")
+	}
+
+	for i := range stranded {
+		if err = s.moveDefaultAccount(ctx, tx, scope, stranded[i].BelongsToUser, accountID); err != nil {
+			return nil, op.Error(err, "deleting identity account")
+		}
+	}
+
+	deleted := identitydb.GetAccountRow(row)
+
+	return accountFromRow(&deleted), nil
+}

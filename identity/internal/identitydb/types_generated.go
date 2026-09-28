@@ -145,6 +145,12 @@ type CreateUserParams struct {
 	LastAcceptedPrivacyPolicy              *time.Time
 }
 
+// DeleteAccountParams are the arguments to DeleteAccount.
+type DeleteAccountParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
 // DeleteInvitationRolesParams are the arguments to DeleteInvitationRoles.
 type DeleteInvitationRolesParams struct {
 	InvitationID string
@@ -186,6 +192,35 @@ type GetAccountParams struct {
 
 // GetAccountRow is one row of GetAccount's result.
 type GetAccountRow struct {
+	ID                          string
+	Scope                       tenancy.Scope
+	Name                        string
+	OwnerUserID                 string
+	BillingStatus               string
+	SubscriptionPlanID          *string
+	PaymentProcessorCustomerID  string
+	LastPaymentProviderSyncedAt *time.Time
+	AddressLine1                string
+	AddressLine2                string
+	AddressCity                 string
+	AddressState                string
+	AddressPostalCode           string
+	AddressCountry              string
+	AddressPhone                string
+	TimeZone                    string
+	CreatedAt                   time.Time
+	LastUpdatedAt               *time.Time
+	ArchivedAt                  *time.Time
+}
+
+// GetAccountIncludingArchivedParams are the arguments to GetAccountIncludingArchived.
+type GetAccountIncludingArchivedParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetAccountIncludingArchivedRow is one row of GetAccountIncludingArchived's result.
+type GetAccountIncludingArchivedRow struct {
 	ID                          string
 	Scope                       tenancy.Scope
 	Name                        string

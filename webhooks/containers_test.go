@@ -49,6 +49,28 @@ func TestSQLStore_RealServers(T *testing.T) {
 			runStoreSuite(t, &storeEnv{client: client, dialect: dialect.MySQL})
 		})
 	})
+
+	// The generated querier offers clientFoundRows=true as a consumer's remedy
+	// for MySQL's changed-row count, so the suite runs again over a connection
+	// that counts rows matched: nothing here, SaveEndpoint's Created included,
+	// may answer differently under the other count.
+	T.Run("mysql with clientFoundRows", func(t *testing.T) {
+		t.Parallel()
+
+		mysqltest.Run(t, func(ctx context.Context, my *mysqltest.Instance) {
+			separator := "?"
+			if strings.Contains(my.ConnectionString, "?") {
+				separator = "&"
+			}
+
+			client, err := mysql.NewDatabaseClient(ctx,
+				&testClientConfig{connectionString: my.ConnectionString + separator + "clientFoundRows=true"})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			runStoreSuite(t, &storeEnv{client: client, dialect: dialect.MySQL})
+		})
+	})
 }
 
 // TestMigrations_RealServers proves the shipped DDL is accepted verbatim by
