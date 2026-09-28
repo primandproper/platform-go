@@ -22,7 +22,10 @@ import (
 // Whether the new password is acceptable is the consumer's rule, and this
 // package holds none — see [PasswordUpdate]. A service built with
 // [WithPasswordPolicy] applies it here, before the current password is checked,
-// and a refusal is [ErrPasswordRefused]. The one rule it applies of its own is
+// and a refusal is [ErrPasswordRefused]. One built with
+// [WithAccountPasswordPolicy] applies that too, after the current password is
+// checked — see [AccountPasswordPolicy] for why the two sit on either side of
+// it — and its refusal is the same sentinel. The one rule it applies of its own is
 // that the new password is not empty, which is not a policy but a write that
 // would lock the user out.
 //
@@ -78,6 +81,13 @@ func (s *Service) UpdatePassword(
 	// second factor itself, and somebody who has lost their authenticator
 	// re-enrolls one first. See WithRecoveryCodeStore.
 	if _, err = s.reauthenticate(ctx, scope, user, update.CurrentPassword, update.TOTPCode, false); err != nil {
+		return op.Error(err, "updating a password")
+	}
+
+	// After reauthentication, where the plain policy is ahead of it: this one
+	// may ask whether a candidate is the current password, and that is a
+	// question only somebody who has just proven the answer may have answered.
+	if err = s.checkAccountPassword(ctx, user, update.NewPassword); err != nil {
 		return op.Error(err, "updating a password")
 	}
 

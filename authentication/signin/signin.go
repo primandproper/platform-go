@@ -353,7 +353,9 @@ type PasswordUpdate struct {
 	// enough, or unlike the last four is the consumer's rule — this package
 	// holds no password policy, and validating one here would be a policy every
 	// consumer then had to work around. The consumer's own is applied here if
-	// the service was built with WithPasswordPolicy.
+	// the service was built with WithPasswordPolicy, and a rule that needs the
+	// account — not the current password, say — if it was built with
+	// WithAccountPasswordPolicy.
 	NewPassword string `json:"-"`
 
 	// TOTPCode is the second-factor code, required from a user who holds a
@@ -443,6 +445,10 @@ type Service struct {
 	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
 	// any password that is not empty.
 	passwordPolicy PasswordPolicy
+
+	// accountPasswordPolicy is nil until WithAccountPasswordPolicy names one,
+	// and nil asks nothing about the account a password is written to.
+	accountPasswordPolicy AccountPasswordPolicy
 
 	// registrationPolicy is nil until WithRegistrationPolicy names one, and nil
 	// registers exactly what the request named.

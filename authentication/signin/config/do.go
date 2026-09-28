@@ -37,8 +37,8 @@ import (
 // invoked, and for a service built through service.New that means at boot, with
 // an error naming what was wanted.
 //
-// signin.Hooks, signin.PasswordPolicy, signin.RegistrationPolicy and
-// signin.ClaimsBuilder are used if the application registered them, and the
+// signin.Hooks, signin.PasswordPolicy, signin.AccountPasswordPolicy,
+// signin.RegistrationPolicy and signin.ClaimsBuilder are used if the application registered them, and the
 // service's own defaults apply otherwise. Only absence is absorbed, as
 // identitycfg absorbs it for identity.Hooks. One that is registered and fails to
 // build is returned.
@@ -148,6 +148,15 @@ func optionalServiceOptions(i do.Injector) ([]signin.ServiceOption, error) {
 
 	if policy != nil {
 		opts = append(opts, signin.WithPasswordPolicy(policy))
+	}
+
+	accountPolicy, err := injection.InvokeOptional[signin.AccountPasswordPolicy](i)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "invoking sign-in account password policy")
+	}
+
+	if accountPolicy != nil {
+		opts = append(opts, signin.WithAccountPasswordPolicy(accountPolicy))
 	}
 
 	registrationPolicy, err := injection.InvokeOptional[signin.RegistrationPolicy](i)

@@ -171,7 +171,8 @@ type Verification struct {
 // attaches a password and stops there still cannot sign in.
 //
 // A service built with [WithPasswordPolicy] applies it to the password being
-// attached, and a refusal is [ErrPasswordRefused] with the link still live.
+// attached, and one built with [WithAccountPasswordPolicy] applies that after
+// it; a refusal from either is [ErrPasswordRefused] with the link still live.
 //
 // It requires [WithVerifications] and refuses with
 // [ErrVerificationsNotConfigured] until it has one.
@@ -214,6 +215,10 @@ func (s *Service) AttachPassword(
 	// After the token is resolved and before anything is hashed, so a refusal
 	// leaves the link exactly as live as it was.
 	if err = s.checkPassword(ctx, attachment.NewPassword); err != nil {
+		return op.Error(err, "attaching a password")
+	}
+
+	if err = s.checkAccountPassword(ctx, user, attachment.NewPassword); err != nil {
 		return op.Error(err, "attaching a password")
 	}
 
