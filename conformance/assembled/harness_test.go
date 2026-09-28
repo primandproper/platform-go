@@ -261,6 +261,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	service.RegisterTransports(i, &service.Transports{
 		Extractor:   extractor.Extract,
+		TenantOf:    service.DirectoryTenant,
 		Grants:      extractor.Grants,
 		Authorizers: authorizers(),
 	})
@@ -356,12 +357,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				// role — and so adminRole, the grants the surfaces ask inside a
 				// handler — rides on: the extractor keeps it off an
 				// ordinary-door token.
-				door := signIn.IssueForPrincipal
+				var issueOpts []signin.IssueOption
 				if req.Admin {
-					door = signIn.AdminIssueForPrincipal
+					issueOpts = append(issueOpts, signin.Administrative())
 				}
 
-				issued, issueErr := door(ctx, scope, reg.User.ID, reg.Account.ID)
+				issued, issueErr := signIn.IssueForPrincipal(ctx, scope, reg.User.ID, reg.Account.ID, issueOpts...)
 				if issueErr != nil {
 					return nil, issueErr
 				}

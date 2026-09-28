@@ -655,18 +655,6 @@ func refreshTable(t *testing.T, e *env) string {
 	return e.refreshPrefix + "_signin_refresh_tokens"
 }
 
-// plainRefreshStore is a RefreshTokenStore and nothing more: the four methods,
-// with the idempotent pair deliberately unreachable.
-//
-// It is what a consumer who implemented the seam themselves has, and it exists
-// so that "a store without the interface behaves exactly as it does today" is a
-// test rather than a sentence. Embedding the interface rather than the SQL store
-// is what makes the assertion true by construction — a method added to
-// IdempotentRefreshTokenStore cannot be promoted onto this by accident.
-type plainRefreshStore struct {
-	signin.RefreshTokenStore
-}
-
 func TestService_ExchangeRefreshToken_Idempotently(T *testing.T) {
 	T.Parallel()
 
@@ -787,35 +775,6 @@ func TestService_ExchangeRefreshToken_Idempotently(T *testing.T) {
 		must.NoError(t, err)
 
 		replayed, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
-		test.Nil(t, replayed)
-		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
-	})
-
-	T.Run("a store that does not implement the interface takes the ordinary path", func(t *testing.T) {
-		t.Parallel()
-
-		e := newRefreshEnv(t)
-
-		// A second service over the same database and the same user, differing
-		// from the suite's in one thing: the store it was handed cannot record a
-		// key.
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
-			signin.WithRefreshTokenStore(plainRefreshStore{RefreshTokenStore: e.refresh}))
-		must.NoError(t, err)
-
-		first, err := svc.LoginForToken(t.Context(), testScope, e.credentials())
-		must.NoError(t, err)
-
-		ctx := idempotency.WithKey(t.Context(), "exchange_01")
-
-		_, err = svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
-		must.NoError(t, err)
-
-		// The key was sent and nothing recorded it, so the retry is the reuse it
-		// has always been. That is the honest answer for a store that cannot do
-		// better, and it is why the key is not a promise the service makes on its
-		// own.
-		replayed, err := svc.ExchangeRefreshToken(ctx, testScope, first.RefreshToken)
 		test.Nil(t, replayed)
 		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
 	})

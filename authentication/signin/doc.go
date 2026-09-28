@@ -81,10 +81,9 @@ consumer's interceptor refuse administrative work under an ordinary login by the
 same person.
 
 A person's live families are what [Service.ListSignIns] answers and what
-[Service.EndSignIn] ends one of, for a "where you're signed in" screen. Both need
-a store that implements [SignInListingStore] as well — the refreshtokens store
-does — and each entry carries the family, so a consumer that records a device
-per login from [Hooks.AfterIssueToken] joins it on that.
+[Service.EndSignIn] ends one of, for a "where you're signed in" screen. Each
+entry carries the family, so a consumer that records a device per login from
+[Hooks.AfterIssueToken] joins it on that.
 
 # A lost authenticator, and the door that is not a support ticket
 
@@ -173,11 +172,11 @@ inferring it from which method was called. The kinds this package stamps are:
     is the event an audit trail most needs to see.
   - [CredentialKindMagicLink] — a redeemed sign-in link.
   - [CredentialKindPrincipal] — a principal the consumer proved, through
-    [Service.IssueForPrincipal] or [Service.AdminIssueForPrincipal].
+    [Service.IssueForPrincipal] on either door.
 
-[Service.IssueForPrincipalVia] and [Service.AdminIssueForPrincipalVia] stamp
-whatever kind their caller names instead, so a consumer that proved a passkey
-records "passkey" rather than "principal". The type is a string for that
+[Service.IssueForPrincipal] given [WithCredentialKind] stamps whatever kind its
+caller names instead, so a consumer that proved a passkey records "passkey"
+rather than "principal". The type is a string for that
 reason: the consumer's credential is spelled without this package having heard
 of it.
 

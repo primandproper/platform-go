@@ -6,20 +6,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 
-	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
-
-// narrowStore is a refresh token store that implements the base interface and
-// nothing else, which is what a consumer's own store written before the listing
-// existed is.
-type narrowStore struct {
-	signin.RefreshTokenStore
-}
 
 // familiesOf is the order a listing named its logins in.
 func familiesOf(signIns []*signin.ActiveSignIn) []string {
@@ -162,28 +154,6 @@ func TestService_ListSignIns(T *testing.T) {
 
 		_, err := e.svc.ListSignIns(t.Context(), testScope, e.user.ID, 0)
 		test.ErrorIs(t, err, signin.ErrRefreshTokensNotConfigured)
-	})
-
-	// A store written against the base interface keeps working for every door
-	// it had, and the two that need more say so rather than answering empty.
-	T.Run("refuses on a store that cannot enumerate", func(t *testing.T) {
-		t.Parallel()
-
-		e := newRefreshEnv(t)
-
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
-			signin.WithRefreshTokenStore(narrowStore{RefreshTokenStore: e.refresh}))
-		must.NoError(t, err)
-
-		signedIn, err := svc.LoginForToken(t.Context(), testScope, e.credentials())
-		must.NoError(t, err)
-		test.NotEqOp(t, "", signedIn.RefreshToken)
-
-		_, err = svc.ListSignIns(t.Context(), testScope, e.user.ID, 0)
-		test.ErrorIs(t, err, signin.ErrSignInListingNotSupported)
-
-		_, err = svc.EndSignIn(t.Context(), testScope, e.user.ID, signedIn.FamilyID)
-		test.ErrorIs(t, err, signin.ErrSignInListingNotSupported)
 	})
 }
 

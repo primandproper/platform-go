@@ -10,6 +10,55 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+// IssueOption adjusts one call to [Service.IssueForPrincipal]: which
+// credential its caller proved, and which door it comes through.
+type IssueOption func(*issueRequest)
+
+// issueRequest is what the options on one principal door resolve to.
+type issueRequest struct {
+	kind           CredentialKind
+	administrative bool
+}
+
+// WithCredentialKind names the credential the caller proved, and the
+// [Authentication] the hooks are handed carries that name as its
+// CredentialKind rather than [CredentialKindPrincipal].
+//
+// The name is the consumer's to choose — a passkey sign-in is
+// CredentialKind("passkey") without this package having heard of passkeys —
+// and it is recorded as given. An empty one is [ErrEmptyCredentialKind], and it
+// is refused rather than read as CredentialKindPrincipal: a caller with no name
+// to give leaves this option off, so an empty kind here is a name that got lost
+// on its way in, and a hook recording it as something else would be recording
+// the loss.
+func WithCredentialKind(kind CredentialKind) IssueOption {
+	return func(r *issueRequest) {
+		r.kind = kind
+	}
+}
+
+// Administrative sends the call through the administrative door, which stands
+// to the ordinary one as [Service.AdminLoginForToken] stands to
+// [Service.LoginForToken]: the subject must hold one of the service roles
+// [WithAdminServiceRoles] named, and the token and any refresh token carry the
+// administrative lifetimes and [ClaimAdministrative].
+//
+// A service that named no administrative roles has no administrative door here
+// either, and every call is [ErrAdminLoginDisabled]. Both refusals are recorded
+// through [Hooks.AfterFailedSignIn] with Administrative set.
+//
+// The second factor [Service.AdminLoginForToken] insists on is not insisted on
+// here, for the reason IssueForPrincipal gives: this door proves nothing, so
+// whether the credential in front of it was strong enough for an operator is
+// the consumer's to have decided before calling it. A consumer admitting
+// operators through a single-factor credential has made that choice at their
+// own door, and this one cannot see it to refuse it.
+func Administrative() IssueOption {
+	return func(r *issueRequest) {
+		r.administrative = true
+	}
+}
+
 // IssueForPrincipal mints a sign-in for a subject another credential has
 // already proven — a passkey assertion, a device grant — and proves nothing
 // itself.
@@ -49,75 +98,28 @@ import (
 // credential's, and a passkey asserted with user verification is two factors
 // already; asking it for a TOTP code as well would be asking the consumer's
 // strongest credential to be the weakest one's companion.
+//
+// # The options
+//
+// [WithCredentialKind] names the credential the caller proved, and
+// [Administrative] sends the call through the administrative door. With
+// neither, the sign-in is an ordinary one stamped [CredentialKindPrincipal].
 func (s *Service) IssueForPrincipal(
 	ctx context.Context,
 	scope tenancy.Scope,
 	userID, activeAccountID string,
+	opts ...IssueOption,
 ) (*SignIn, error) {
-	return s.issueForPrincipal(ctx, scope, CredentialKindPrincipal, userID, activeAccountID, false)
+	request := &issueRequest{kind: CredentialKindPrincipal}
+	for _, opt := range opts {
+		opt(request)
+	}
+
+	return s.issueForPrincipal(ctx, scope, request.kind, userID, activeAccountID, request.administrative)
 }
 
-// IssueForPrincipalVia is IssueForPrincipal for a caller that names the
-// credential it proved, and the [Authentication] its hooks are handed carries
-// that name as its CredentialKind rather than [CredentialKindPrincipal].
-//
-// The name is the consumer's to choose — a passkey sign-in is
-// CredentialKind("passkey") without this package having heard of passkeys —
-// and it is recorded as given. An empty one is [ErrEmptyCredentialKind], and it
-// is refused rather than read as CredentialKindPrincipal: a caller with no name
-// to give has IssueForPrincipal, so an empty kind here is a name that got lost
-// on its way in, and a hook recording it as something else would be recording
-// the loss.
-//
-// It is a second method rather than a parameter on the first because a
-// parameter added to IssueForPrincipal would stop every caller of it compiling.
-func (s *Service) IssueForPrincipalVia(
-	ctx context.Context,
-	scope tenancy.Scope,
-	kind CredentialKind,
-	userID, activeAccountID string,
-) (*SignIn, error) {
-	return s.issueForPrincipal(ctx, scope, kind, userID, activeAccountID, false)
-}
-
-// AdminIssueForPrincipal is IssueForPrincipal through the administrative door,
-// and stands to it as [Service.AdminLoginForToken] stands to
-// [Service.LoginForToken]: the subject must hold one of the service roles
-// [WithAdminServiceRoles] named, and the token and any refresh token carry the
-// administrative lifetimes and [ClaimAdministrative].
-//
-// A service that named no administrative roles has no administrative door here
-// either, and every call is [ErrAdminLoginDisabled]. Both refusals are recorded
-// through [Hooks.AfterFailedSignIn] with Administrative set.
-//
-// The second factor [Service.AdminLoginForToken] insists on is not insisted on
-// here, for the reason IssueForPrincipal gives: this door proves nothing, so
-// whether the credential in front of it was strong enough for an operator is
-// the consumer's to have decided before calling it. A consumer admitting
-// operators through a single-factor credential has made that choice at their
-// own door, and this one cannot see it to refuse it.
-func (s *Service) AdminIssueForPrincipal(
-	ctx context.Context,
-	scope tenancy.Scope,
-	userID, activeAccountID string,
-) (*SignIn, error) {
-	return s.issueForPrincipal(ctx, scope, CredentialKindPrincipal, userID, activeAccountID, true)
-}
-
-// AdminIssueForPrincipalVia is IssueForPrincipalVia through the administrative
-// door, and stands to it as [Service.AdminIssueForPrincipal] stands to
-// [Service.IssueForPrincipal].
-func (s *Service) AdminIssueForPrincipalVia(
-	ctx context.Context,
-	scope tenancy.Scope,
-	kind CredentialKind,
-	userID, activeAccountID string,
-) (*SignIn, error) {
-	return s.issueForPrincipal(ctx, scope, kind, userID, activeAccountID, true)
-}
-
-// issueForPrincipal is every door that mints for a principal somebody else
-// proved, stamping the kind its caller named.
+// issueForPrincipal mints for a principal somebody else proved, stamping the
+// kind its caller named, through whichever door the options chose.
 func (s *Service) issueForPrincipal(
 	ctx context.Context,
 	scope tenancy.Scope,

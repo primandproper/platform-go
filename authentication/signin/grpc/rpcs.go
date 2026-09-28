@@ -121,10 +121,9 @@ func (s *Server) AdminLoginForToken(
 // outside the work's transaction and says what that cannot promise — work that
 // has its effect and then fails — which for a credential rotation is the exact
 // failure the key is here to fix. The key is therefore carried to the service and
-// stored by signin's own transaction; see signin.IdempotentRefreshTokenStore.
+// stored by signin's own transaction; see signin.RefreshTokenStore.RedeemIdempotently.
 //
-// A request that sends none takes the path it takes today, and so does a service
-// whose store does not implement that interface. A key the store rejects as
+// A request that sends none takes the ordinary exchange. A key the store rejects as
 // malformed answers InvalidArgument through the platform mapper, rather than
 // being dropped — a client told its retry was protected when it was not is worse
 // off than one told to fix its header.

@@ -96,7 +96,7 @@ type Authentication struct {
 // stamps [CredentialKindMagicLink], or [CredentialKindRecoveryCode] on the same
 // terms; and the principal doors stamp what their caller names —
 // [CredentialKindPrincipal] through [Service.IssueForPrincipal], and anything at
-// all through [Service.IssueForPrincipalVia].
+// all through it given [WithCredentialKind].
 //
 // A recovery code outranks the credential beside it because it is the event
 // the others are not: somebody signed in without the authenticator that was
@@ -166,6 +166,17 @@ const (
 // It is one interface rather than a function type per operation so that a
 // consumer's audit layer is one type. Embed NoopHooks and override what
 // matters; a method added here later then does not break the embedder.
+//
+// # How it grows
+//
+// A new event is a new method on this interface, with a NoopHooks body beside
+// it, and that is the only way it grows. There is no second, optional hooks
+// interface a consumer may also implement and this package type-asserts for: an
+// event a hook implementation could miss by not having heard of the extra
+// interface is an event recorded by some deployments and silently not by
+// others, and embedding NoopHooks already makes a new method free to an
+// embedder. A consumer implementing this interface without embedding NoopHooks
+// has chosen to hear about every new event at compile time.
 type Hooks interface {
 	// AfterAuthenticate is called with a proven credential, inside the
 	// transaction the operation opened.
@@ -176,9 +187,9 @@ type Hooks interface {
 	// token came out" is a second one, and a log that recorded only the second
 	// would not show the authorization server's login step at all.
 	//
-	// IssueForPrincipal and AdminIssueForPrincipal run it too, for a credential
-	// the consumer proved rather than a password, so a passkey sign-in reaches
-	// the same access log — and their Via twins let the consumer name that
+	// IssueForPrincipal runs it too, on either door, for a credential the
+	// consumer proved rather than a password, so a passkey sign-in reaches the
+	// same access log — and WithCredentialKind lets the consumer name that
 	// credential, so the log says "passkey" rather than "principal".
 	//
 	// It sees no credential, only the kind of one, which is what makes it the
