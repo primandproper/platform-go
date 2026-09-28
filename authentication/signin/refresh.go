@@ -182,9 +182,10 @@ type RefreshTokenIssuance struct {
 }
 
 // SignInSelector names the logins [RefreshTokenStore.EndSignIns] ends: one
-// person's, one family, or one family only if it is that person's.
+// person's, one family, one family only if it is that person's, or all of one
+// person's but one.
 //
-// At least one field is set. Both empty would be every login in the scope,
+// SubjectID or FamilyID is set. Both empty would be every login in the scope,
 // which no door here ends.
 type SignInSelector struct {
 	_ struct{}
@@ -196,6 +197,14 @@ type SignInSelector struct {
 	// FamilyID confines the selection to one login. With SubjectID, a family
 	// that is not that person's selects nothing.
 	FamilyID string
+
+	// ExceptFamilyID spares one login from a selection of every one a person
+	// holds — "sign out my other devices". It is honored only beside SubjectID
+	// and without FamilyID, and a store refuses it anywhere else rather than
+	// guessing which of two contradictory selections was meant. Empty spares
+	// nothing, which is why the door that sets it refuses an empty keep before
+	// it gets here.
+	ExceptFamilyID string
 }
 
 // EndedSignIn is one login a revocation ended: it was live when the store looked
@@ -462,7 +471,8 @@ type RefreshTokenStore interface {
 
 	// EndSignIns ends the live logins selector names and answers with the ones
 	// it ended. It is what every door but SignOut ends a login through:
-	// SignOutEverywhere, EndSignIn and the two operator revocations.
+	// SignOutEverywhere, EndSignIn, EndOtherSignIns and the two operator
+	// revocations.
 	//
 	// Live is the exchange's reading, as ListActiveSignIns's is. The
 	// implementation locks the selected families' live rows first, then revokes
@@ -477,7 +487,9 @@ type RefreshTokenStore interface {
 	// A login already over — ended, revoked, or lapsed — is not selected, and a
 	// selection matching nothing is an empty answer and no error. With both
 	// SubjectID and FamilyID set, a family that is not the subject's matches
-	// nothing, and that is not told apart from one that never existed.
+	// nothing, and that is not told apart from one that never existed. With
+	// SubjectID and ExceptFamilyID set, every login but that one is selected, and
+	// an ExceptFamilyID that is not the subject's spares nothing.
 	EndSignIns(
 		ctx context.Context,
 		tx database.Tx,
@@ -999,25 +1011,43 @@ func (s *Service) endSignIns(
 	selector SignInSelector,
 	reason RevocationReason,
 	actorID string,
-) (revoked int64, err error) {
-	err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		ended, txErr := s.refreshTokens.EndSignIns(ctx, tx, scope, selector)
-		if txErr != nil {
-			return txErr
-		}
+) (int64, error) {
+	ended, err := s.endSignInsReporting(ctx, scope, selector, reason, actorID)
+	if err != nil {
+		return 0, err
+	}
 
-		revoked = 0
-		for _, signIn := range ended {
-			revoked += signIn.Revoked
+	var revoked int64
+	for _, signIn := range ended {
+		revoked += signIn.Revoked
+	}
+
+	return revoked, nil
+}
+
+// endSignInsReporting is endSignIns answering with the logins it ended rather
+// than the tokens it withdrew, for the door that reports families.
+func (s *Service) endSignInsReporting(
+	ctx context.Context,
+	scope tenancy.Scope,
+	selector SignInSelector,
+	reason RevocationReason,
+	actorID string,
+) (ended []*EndedSignIn, err error) {
+	err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		var txErr error
+
+		if ended, txErr = s.refreshTokens.EndSignIns(ctx, tx, scope, selector); txErr != nil {
+			return txErr
 		}
 
 		return s.afterRevoke(ctx, tx, scope, reason, actorID, ended)
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return revoked, nil
+	return ended, nil
 }
 
 // afterRevoke reports ended logins to [Hooks.AfterRevokeSignIns], once per

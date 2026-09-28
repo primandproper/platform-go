@@ -108,8 +108,9 @@ const (
 	// own. Ending one is not folded into revoke_refresh_token_family for the
 	// reason signing out is not: it is a person's decision, and that series is
 	// where a detected reuse's alarm lands.
-	opListSignIns = "list_sign_ins"
-	opEndSignIn   = "end_sign_in"
+	opListSignIns     = "list_sign_ins"
+	opEndSignIn       = "end_sign_in"
+	opEndOtherSignIns = "end_other_sign_ins"
 
 	// Checking a login is a series of its own, and the one a deployment that
 	// makes it on every request will see dwarf the rest: what a dashboard asks

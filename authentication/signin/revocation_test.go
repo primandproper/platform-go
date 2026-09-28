@@ -202,6 +202,43 @@ func TestService_AfterRevokeSignIns(T *testing.T) {
 		test.Eq(t, []string{ended.FamilyID}, revocation.FamilyIDs)
 	})
 
+	T.Run("ending the other logins reports each of them, and not the one asking", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		kept, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		phone, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		laptop, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.EndOtherSignIns(t.Context(), testScope, e.user.ID, kept.FamilyID)
+		must.NoError(t, err)
+
+		revocation := requireRevocation(t, e)
+		test.EqOp(t, signin.RevocationEndOtherSignIns, revocation.Reason)
+		test.EqOp(t, e.user.ID, revocation.SubjectID)
+		test.EqOp(t, e.user.ID, revocation.ActorID)
+		test.SliceContainsAll(t, []string{phone.FamilyID, laptop.FamilyID}, revocation.FamilyIDs)
+	})
+
+	T.Run("ending the other logins when there are none runs no hook", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		kept, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.EndOtherSignIns(t.Context(), testScope, e.user.ID, kept.FamilyID)
+		must.NoError(t, err)
+		test.SliceEmpty(t, e.hooks.revocations)
+	})
+
 	// EndSignIn's answer for somebody else's family is the answer for one that
 	// never existed, and the hook must not be the difference.
 	T.Run("ending a login that is not the caller's runs no hook", func(t *testing.T) {

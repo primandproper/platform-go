@@ -152,6 +152,21 @@ type LockLiveRefreshTokenFamilyForSubjectRow struct {
 	FamilyID  string
 }
 
+// LockOtherLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockOtherLiveRefreshTokenFamiliesForSubject.
+type LockOtherLiveRefreshTokenFamiliesForSubjectParams struct {
+	Scope        tenancy.Scope
+	SubjectID    string
+	KeepFamilyID string
+	Now          time.Time
+	ResultLimit  int64
+}
+
+// LockOtherLiveRefreshTokenFamiliesForSubjectRow is one row of LockOtherLiveRefreshTokenFamiliesForSubject's result.
+type LockOtherLiveRefreshTokenFamiliesForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
 // RecordRefreshTokenSuccessorParams are the arguments to RecordRefreshTokenSuccessor.
 type RecordRefreshTokenSuccessorParams struct {
 	SuccessorHash *string

@@ -142,6 +142,21 @@ ORDER BY signin_refresh_tokens.family_id ASC
 LIMIT ?
 FOR UPDATE;
 
+-- name: LockOtherLiveRefreshTokenFamiliesForSubject :many
+SELECT
+	signin_refresh_tokens.subject_id,
+	signin_refresh_tokens.family_id
+FROM signin_refresh_tokens
+WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
+	AND signin_refresh_tokens.subject_id = sqlc.arg(subject_id)
+	AND signin_refresh_tokens.family_id <> sqlc.arg(keep_family_id)
+	AND signin_refresh_tokens.redeemed_at IS NULL
+	AND signin_refresh_tokens.revoked_at IS NULL
+	AND signin_refresh_tokens.expires_at > sqlc.arg(now)
+ORDER BY signin_refresh_tokens.family_id ASC
+LIMIT ?
+FOR UPDATE;
+
 -- name: ListLiveRefreshTokenFamilies :many
 SELECT
 	signin_refresh_tokens.family_id,

@@ -592,6 +592,10 @@ var Matrix = map[string]map[string]Decision{
 		// a client has to branch on it — send them to the form — rather than
 		// display it.
 		"ErrPasswordChangeRequired": {Err: signin.ErrPasswordChangeRequired, Is: Mapped},
+		// Ending every other login from a token that names none. A state of the
+		// credential rather than of the request, read the way the rows above
+		// are, and refused rather than widened into ending every login.
+		"ErrSignInNotIdentified": {Err: signin.ErrSignInNotIdentified, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Some are wiring failures and the rest

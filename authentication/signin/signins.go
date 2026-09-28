@@ -174,6 +174,78 @@ func (s *Service) EndSignIn(
 	return revoked, nil
 }
 
+// EndOtherSignIns ends every one of a person's logins but keepFamilyID, and
+// reports the families it ended.
+//
+// It is "sign out my other devices", and it is a door of its own rather than
+// [Service.ListSignIns] followed by [Service.EndSignIn] for each entry but one,
+// because that loop decides which logins are "other" before it ends them: a
+// login made between the list and the last end survives a request whose point
+// was that it should not. Here the logins are locked and revoked in one
+// transaction, as every other door's are — see [RefreshTokenStore.EndSignIns] —
+// and the one kept is never locked at all.
+//
+// keepFamilyID is the login the request came through, and an empty one is
+// [ErrSignInNotIdentified] rather than an instruction to keep nothing. A caller
+// who cannot say which login it is has asked for something this door cannot do
+// safely, and the one reading it could give — every login ends — is
+// [Service.SignOutEverywhere], which the caller can ask for by name. A
+// keepFamilyID that is not userID's spares nothing, since there is nothing of
+// theirs it names; that is the direction a sign-out should fail in.
+//
+// It reports families rather than a token count, one per login that was live
+// when it ended, and [Hooks.AfterRevokeSignIns] is told the same families as
+// [RevocationEndOtherSignIns] with the person as the actor, so whatever records
+// a sign-out records one per device. A person with no other login is an empty
+// answer, no error, and no hook. What it does not do on its own is stop an
+// access token already issued to one of those logins — see
+// [Service.RevokeRefreshTokenFamily].
+//
+// A service built without [WithRefreshTokenStore] is
+// [ErrRefreshTokensNotConfigured], as [Service.ListSignIns] is.
+func (s *Service) EndOtherSignIns(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	keepFamilyID string,
+) (ended []string, err error) {
+	ctx, op, done := s.begin(ctx, opEndOtherSignIns,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+		observability.WithValue(familyKey, keepFamilyID),
+	)
+	defer func() { done(err) }()
+
+	if s.refreshTokens == nil {
+		return nil, op.Error(ErrRefreshTokensNotConfigured, "ending a subject's other sign-ins")
+	}
+
+	if err = scope.Validate(); err != nil {
+		return nil, op.Error(err, "checking the scope a subject's other sign-ins were ended in")
+	}
+
+	if userID == "" {
+		return nil, op.Error(ErrEmptyUserID, "reading the subject whose other sign-ins are ended")
+	}
+
+	if keepFamilyID == "" {
+		return nil, op.Error(ErrSignInNotIdentified, "reading the sign-in to keep")
+	}
+
+	endedSignIns, err := s.endSignInsReporting(ctx, scope,
+		SignInSelector{SubjectID: userID, ExceptFamilyID: keepFamilyID}, RevocationEndOtherSignIns, userID)
+	if err != nil {
+		return nil, op.Error(err, "ending a subject's other sign-ins")
+	}
+
+	ended = make([]string, 0, len(endedSignIns))
+	for _, signIn := range endedSignIns {
+		ended = append(ended, signIn.FamilyID)
+	}
+
+	return ended, nil
+}
+
 // CheckSignIn answers whether an access token's login is still going, and is
 // the per-request check a consumer's interceptor may make: nil for a login that
 // is, [ErrSignInEnded] for one that is not, and — on a service built with

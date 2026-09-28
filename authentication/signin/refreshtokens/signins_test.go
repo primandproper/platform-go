@@ -442,3 +442,142 @@ func TestSQLStore_EndSignIns_ByFamily(T *testing.T) {
 		test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
 	})
 }
+
+func TestSQLStore_EndSignIns_AllButOne(T *testing.T) {
+	T.Parallel()
+
+	except := func(keep string) signin.SignInSelector {
+		return signin.SignInSelector{SubjectID: testSubject, ExceptFamilyID: keep}
+	}
+
+	T.Run("ends every other login and reports each one once", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		kept := mintInto(t, store, testScope(), "family_kept", testSubject)
+		phone := mintInto(t, store, testScope(), "family_phone", testSubject)
+		// A login that has refreshed is several rows, and is still one login.
+		phone = rotate(t, store, testScope(), phone.Secret)
+		phone = rotate(t, store, testScope(), phone.Secret)
+		laptop := mintInto(t, store, testScope(), "family_laptop", testSubject)
+		theirs := mintInto(t, store, testScope(), "family_theirs", "user_02")
+
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
+		must.NoError(t, err)
+		test.Eq(t, []string{"family_laptop", "family_phone"}, endedFamilies(ended))
+
+		test.Eq(t, []string{"family_kept"}, familyIDs(listSignIns(t, store, testScope(), testSubject, 10)))
+
+		_, err = redeem(t, store, testScope(), phone.Secret)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		_, err = redeem(t, store, testScope(), laptop.Secret)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		_, err = redeem(t, store, testScope(), kept.Secret)
+		test.NoError(t, err)
+
+		_, err = redeem(t, store, testScope(), theirs.Secret)
+		test.NoError(t, err)
+	})
+
+	// Nobody ended a login that lapsed on its own: a sign-out hook handed it
+	// would record a device leaving that had already gone.
+	T.Run("does not report a login that had already lapsed", func(t *testing.T) {
+		t.Parallel()
+
+		store, c := newTestStore(t)
+
+		mintInto(t, store, testScope(), "family_kept", testSubject)
+
+		_, err := issueFor(t, store, testScope(), &signin.RefreshTokenRequest{
+			TTL:       time.Minute,
+			FamilyID:  "family_lapsed",
+			SubjectID: testSubject,
+		})
+		must.NoError(t, err)
+
+		mintInto(t, store, testScope(), "family_live", testSubject)
+
+		c.advance(time.Hour)
+
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
+		must.NoError(t, err)
+		test.Eq(t, []string{"family_live"}, endedFamilies(ended))
+	})
+
+	T.Run("reports nothing when there is nothing else to end", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		mintInto(t, store, testScope(), "family_kept", testSubject)
+		mintInto(t, store, testScope(), "family_phone", testSubject)
+
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
+		must.NoError(t, err)
+		test.Eq(t, []string{"family_phone"}, endedFamilies(ended))
+
+		ended, err = endSignIns(t, store, testScope(), except("family_kept"))
+		must.NoError(t, err)
+		test.SliceEmpty(t, ended)
+	})
+
+	// The keep names a family and nothing else, so one that is not the
+	// subject's spares nothing of theirs — the direction a sign-out should fail
+	// in — and cannot reach the family's actual owner either.
+	T.Run("spares nothing for a keep that is not the subject's", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		mine := mintInto(t, store, testScope(), "family_mine", testSubject)
+		theirs := mintInto(t, store, testScope(), "family_theirs", "user_02")
+
+		ended, err := endSignIns(t, store, testScope(), except("family_theirs"))
+		must.NoError(t, err)
+		test.Eq(t, []string{"family_mine"}, endedFamilies(ended))
+
+		_, err = redeem(t, store, testScope(), mine.Secret)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		_, err = redeem(t, store, testScope(), theirs.Secret)
+		test.NoError(t, err)
+	})
+
+	T.Run("cannot reach its own logins in another scope", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		elsewhere := mintInto(t, store, tenancy.Of("tenant_b"), "family_elsewhere", testSubject)
+		mintInto(t, store, testScope(), "family_kept", testSubject)
+
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
+		must.NoError(t, err)
+		test.SliceEmpty(t, ended)
+
+		_, err = redeem(t, store, tenancy.Of("tenant_b"), elsewhere.Secret)
+		test.NoError(t, err)
+	})
+
+	// A spared login makes sense only against every login one person holds.
+	T.Run("refuses a selection it cannot spare a login from", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		kept := mintInto(t, store, testScope(), "family_kept", testSubject)
+
+		_, err := endSignIns(t, store, testScope(), signin.SignInSelector{FamilyID: "family_kept", ExceptFamilyID: "family_kept"})
+		test.ErrorIs(t, err, ErrContradictorySelector)
+
+		_, err = endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: testSubject, FamilyID: "family_kept", ExceptFamilyID: "family_other"})
+		test.ErrorIs(t, err, ErrContradictorySelector)
+
+		_, err = redeem(t, store, testScope(), kept.Secret)
+		test.NoError(t, err)
+	})
+}

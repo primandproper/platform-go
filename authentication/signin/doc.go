@@ -83,8 +83,9 @@ lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
 consumer's interceptor refuse administrative work under an ordinary login by the
 same person.
 
-A person's live families are what [Service.ListSignIns] answers and what
-[Service.EndSignIn] ends one of, for a "where you're signed in" screen. Each
+A person's live families are what [Service.ListSignIns] answers, what
+[Service.EndSignIn] ends one of, and what [Service.EndOtherSignIns] ends all but
+one of, for a "where you're signed in" screen. Each
 entry carries the family, so a consumer that records a device per login from
 [Hooks.AfterIssueToken] joins it on that.
 
@@ -92,9 +93,10 @@ entry carries the family, so a consumer that records a device per login from
 
 Every door that ends a login runs [Hooks.AfterRevokeSignIns] in the transaction
 that ended it, with a [Revocation] naming each family it ended, whose they were,
-who asked and which door it was: [Service.SignOut], [Service.SignOutEverywhere]
-and [Service.EndSignIn] for the person themselves, [Service.RevokeRefreshTokenFamily]
-and [Service.RevokeRefreshTokensForSubject] for an operator — with [RevokedBy]
+who asked and which door it was: [Service.SignOut], [Service.SignOutEverywhere],
+[Service.EndSignIn] and [Service.EndOtherSignIns] for the person themselves,
+[Service.RevokeRefreshTokenFamily] and [Service.RevokeRefreshTokensForSubject]
+for an operator — with [RevokedBy]
 naming who — and the family revocation a detected reuse performs, from
 [Service.ExchangeRefreshToken] or from a sign-out presenting a spent token. A
 hook that refuses rolls the revocation back, and with it the sign-out.

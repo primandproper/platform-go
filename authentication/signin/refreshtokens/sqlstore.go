@@ -493,6 +493,13 @@ func (s *SQLStore) EndSignIns(
 		return nil, ErrEmptySelector
 	}
 
+	// A login spared from a selection of one login, or from a selection of
+	// nobody's, is two instructions that disagree; neither reading is safe to
+	// guess.
+	if selector.ExceptFamilyID != "" && (selector.SubjectID == "" || selector.FamilyID != "") {
+		return nil, ErrContradictorySelector
+	}
+
 	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: selector.SubjectID, familyKey: selector.FamilyID})
 
 	var (
@@ -526,7 +533,7 @@ func (s *SQLStore) EndSignIns(
 	return ended, nil
 }
 
-// lockLive runs whichever of the three locking reads selector names, and
+// lockLive runs whichever of the locking reads selector names, and
 // answers with one EndedSignIn per row it locked, its count still to come.
 func (s *SQLStore) lockLive(
 	ctx context.Context,
@@ -539,6 +546,21 @@ func (s *SQLStore) lockLive(
 	var live []*signin.EndedSignIn
 
 	switch {
+	case selector.ExceptFamilyID != "":
+		rows, err := s.q.LockOtherLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.LockOtherLiveRefreshTokenFamiliesForSubjectParams{
+			Scope:        scope,
+			SubjectID:    selector.SubjectID,
+			KeepFamilyID: selector.ExceptFamilyID,
+			Now:          now,
+			ResultLimit:  endBatch,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range rows {
+			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
+		}
 	case selector.SubjectID != "" && selector.FamilyID != "":
 		rows, err := s.q.LockLiveRefreshTokenFamilyForSubject(ctx, tx, signindb.LockLiveRefreshTokenFamilyForSubjectParams{
 			Scope:       scope,

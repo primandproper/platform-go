@@ -29,6 +29,11 @@ var (
 	// login, which would be every login in the scope.
 	ErrEmptySelector = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty sign-in selector for ending refresh token families")
 
+	// ErrContradictorySelector indicates an EndSignIns that spares a login
+	// from a selection it cannot spare one from: one naming a single login, or
+	// one naming nobody's.
+	ErrContradictorySelector = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "contradictory sign-in selector for ending refresh token families")
+
 	// ErrNilExecutor indicates a listing handed no executor to read on.
 	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor for listing refresh token families")
 

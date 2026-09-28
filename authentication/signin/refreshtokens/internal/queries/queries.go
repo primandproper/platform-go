@@ -139,6 +139,15 @@ const (
 	// to already hold — legal SQL that guards nothing. Naming the predicate's
 	// end separately is what makes the claim a claim.
 	ExpectedKeyArg = "expected_key"
+
+	// KeepFamilyIDArg is the one login [lockOtherFamiliesForSubject] leaves
+	// standing, as against the family_id the other locking reads select.
+	//
+	// It is an argument of its own because the predicate it binds is the
+	// inverse of theirs: family_id <> keep, not family_id = the family. Under
+	// the column's name the generated params would carry a FamilyID that meant
+	// "end this one" on two statements and "spare this one" on a third.
+	KeepFamilyIDArg = "keep_family_id"
 )
 
 // Columns is the whole row, in the order the DDL declares it.
@@ -233,7 +242,7 @@ var FamilyColumns = []string{
 	ExpiresAtColumn,
 }
 
-// LockColumns is what the three locking reads project: whose login each
+// LockColumns is what the locking reads project: whose login each
 // locked row is and which one, and nothing a revocation keyed on the family
 // has any use for.
 //
@@ -289,11 +298,12 @@ const (
 	LockFamilyQuery             = "LockLiveRefreshTokenFamily"
 	LockSubjectFamilyQuery      = "LockLiveRefreshTokenFamilyForSubject"
 	LockFamiliesForSubjectQuery = "LockLiveRefreshTokenFamiliesForSubject"
+	LockOtherFamiliesQuery      = "LockOtherLiveRefreshTokenFamiliesForSubject"
 	ListLiveFamiliesQuery       = "ListLiveRefreshTokenFamilies"
 	SweepTokensQuery            = "SweepRefreshTokens"
 )
 
-// exclusiveLock is the clause the three locking reads carry, and it is the same
+// exclusiveLock is the clause the locking reads carry, and it is the same
 // text on both dialects that have row locking at all.
 //
 // It is a constant rather than a literal in the statements for the reason the
@@ -399,6 +409,7 @@ func Render(d dialect.Dialect) string {
 		lockFamily(g),
 		lockSubjectFamily(g),
 		lockFamiliesForSubject(g),
+		lockOtherFamiliesForSubject(g),
 		listLiveFamilies(g),
 		readLive(g),
 		sweep(g),
@@ -678,7 +689,25 @@ func lockFamiliesForSubject(g *querygen.Generator) *querygen.Query {
 	)
 }
 
-// lockLive renders one of the three locking reads: the live rows key matches,
+// lockOtherFamiliesForSubject is [lockFamiliesForSubject] with one family
+// spared: "sign out my other devices".
+//
+// It is a locking read of its own rather than the subject-wide one filtered in
+// Go, so the family it spares is never locked at all: the login the request
+// came through goes on exchanging while its siblings end. The spared family is
+// excluded by its id and nothing else, so one that is not this subject's spares
+// nothing and every login the subject holds is selected — the direction a
+// sign-out should fail in. The door refuses an empty keep before it gets here,
+// so "no family" can never render as "every family".
+func lockOtherFamiliesForSubject(g *querygen.Generator) *querygen.Query {
+	return lockLive(g, LockOtherFamiliesQuery,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectIDColumn},
+		querygen.Match{Column: FamilyIDColumn, Arg: KeepFamilyIDArg, Exclude: true},
+	)
+}
+
+// lockLive renders one of the locking reads: the live rows key matches,
 // under the three guards the exchange carries, projected to [LockColumns] and
 // locked where the dialect locks.
 //

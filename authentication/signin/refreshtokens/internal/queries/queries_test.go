@@ -160,6 +160,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		LockFamilyQuery,
 		LockSubjectFamilyQuery,
 		LockFamiliesForSubjectQuery,
+		LockOtherFamiliesQuery,
 		ListLiveFamiliesQuery,
 		GetLiveTokenQuery,
 		SweepTokensQuery,
@@ -181,7 +182,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 			test.SliceEqFunc(t, want, names, func(a, b string) bool { return a == b })
 
 			// Nothing archives one of these rows, and nothing pages through
-			// them: the listing and the three locking reads are bounded reads
+			// them: the listing and the locking reads are bounded reads
 			// of a person's live logins, so there is no cursor, no filter
 			// window and no descending variant — and the limit is theirs alone.
 			test.StrNotContains(t, rendered, querygen.ArchivedAtColumn)
@@ -300,6 +301,7 @@ var boundedReads = []string{
 	LockFamilyQuery,
 	LockSubjectFamilyQuery,
 	LockFamiliesForSubjectQuery,
+	LockOtherFamiliesQuery,
 	ListLiveFamiliesQuery,
 }
 
@@ -335,7 +337,7 @@ func TestRender_RevocationIsKeyedOnTheFamily(T *testing.T) {
 	}
 }
 
-// TestRender_LocksOnlyWhatAnExchangeWouldAccept pins the three locking reads to
+// TestRender_LocksOnlyWhatAnExchangeWouldAccept pins the locking reads to
 // the exchange's reading of "live", to their keys, and to the lock itself.
 //
 // What they lock is what a revocation reports as ended, so a guard dropped here
@@ -355,6 +357,7 @@ func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 				LockFamilyQuery:             {FamilyIDColumn},
 				LockSubjectFamilyQuery:      {SubjectIDColumn, FamilyIDColumn},
 				LockFamiliesForSubjectQuery: {SubjectIDColumn},
+				LockOtherFamiliesQuery:      {SubjectIDColumn},
 			} {
 				read := statement(t, rendered, name)
 
@@ -372,6 +375,12 @@ func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 				test.StrContains(t, read, RedeemedAtColumn+" IS NULL")
 				test.StrContains(t, read, RevokedAtColumn+" IS NULL")
 				test.StrContains(t, read, ExpiresAtColumn+" > sqlc.arg("+NowArg+")")
+
+				// The one family "sign out my other devices" spares is excluded
+				// by its own argument, and is never locked.
+				if name == LockOtherFamiliesQuery {
+					test.StrContains(t, read, FamilyIDColumn+" <> sqlc.arg("+KeepFamilyIDArg+")")
+				}
 
 				// Locked where the engine locks, and on SQLite — one writer at
 				// a time — not at all.

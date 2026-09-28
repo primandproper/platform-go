@@ -137,6 +137,11 @@ const (
 	// logins by its family, usually from a "where you're signed in" screen.
 	RevocationEndSignIn RevocationReason = "end_sign_in"
 
+	// RevocationEndOtherSignIns is [Service.EndOtherSignIns]: a person ended
+	// every login they hold but the one they asked from — "sign out my other
+	// devices".
+	RevocationEndOtherSignIns RevocationReason = "end_other_sign_ins"
+
 	// RevocationOperator is [Service.RevokeRefreshTokenFamily] or
 	// [Service.RevokeRefreshTokensForSubject]: somebody other than the person,
 	// or something acting for nobody in particular, ended their logins.
@@ -166,9 +171,9 @@ type Revocation struct {
 	SubjectID string `json:"subjectID"`
 
 	// ActorID is who asked. It is SubjectID for the doors a person reaches for
-	// themselves — SignOut, SignOutEverywhere and EndSignIn — whatever an
-	// operator door was handed through [RevokedBy], and empty for a reuse and for
-	// an operator door that was told nobody.
+	// themselves — SignOut, SignOutEverywhere, EndSignIn and EndOtherSignIns —
+	// whatever an operator door was handed through [RevokedBy], and empty for a
+	// reuse and for an operator door that was told nobody.
 	ActorID string `json:"actorID"`
 
 	// FamilyIDs names each login ended, and is never empty: a door that ended
@@ -381,7 +386,7 @@ type Hooks interface {
 	// transaction that ended them.
 	//
 	// It runs for every door that ends a login — SignOut, SignOutEverywhere,
-	// EndSignIn, the two operator revocations, and the family revocation a
+	// EndSignIn, EndOtherSignIns, the two operator revocations, and the family revocation a
 	// detected refresh-token reuse performs — and Revocation.Reason says which.
 	// It is the hook a consumer audits a sign-out from, one entry per ended
 	// login if it wants one, since Revocation.FamilyIDs names each.

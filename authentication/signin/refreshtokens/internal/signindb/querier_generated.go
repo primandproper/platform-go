@@ -48,6 +48,8 @@ type Querier interface {
 	LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyParams) ([]LockLiveRefreshTokenFamilyRow, error)
 	// LockLiveRefreshTokenFamilyForSubject runs the :many query.
 	LockLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyForSubjectParams) ([]LockLiveRefreshTokenFamilyForSubjectRow, error)
+	// LockOtherLiveRefreshTokenFamiliesForSubject runs the :many query.
+	LockOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockOtherLiveRefreshTokenFamiliesForSubjectParams) ([]LockOtherLiveRefreshTokenFamiliesForSubjectRow, error)
 	// RecordRefreshTokenSuccessor runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
