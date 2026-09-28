@@ -41,6 +41,7 @@ func TestService_IssueForPrincipal(T *testing.T) {
 		test.Eq(t, []string{"authenticate", "issue"}, e.hooks.calls)
 		must.SliceLen(t, 1, e.hooks.authentications)
 		test.EqOp(t, e.user.ID, e.hooks.authentications[0].Principal.User.ID)
+		test.EqOp(t, signin.CredentialKindPrincipal, e.hooks.authentications[0].CredentialKind)
 		must.SliceLen(t, 1, e.hooks.signIns)
 		test.EqOp(t, signedIn.FamilyID, e.hooks.signIns[0].FamilyID)
 		test.SliceEmpty(t, e.hooks.failures)
@@ -206,6 +207,7 @@ func TestService_AdminIssueForPrincipal(T *testing.T) {
 
 		must.SliceLen(t, 1, e.hooks.authentications)
 		test.True(t, e.hooks.authentications[0].Administrative)
+		test.EqOp(t, signin.CredentialKindPrincipal, e.hooks.authentications[0].CredentialKind)
 		must.SliceLen(t, 1, e.hooks.signIns)
 		test.True(t, e.hooks.signIns[0].Administrative)
 
@@ -215,5 +217,59 @@ func TestService_AdminIssueForPrincipal(T *testing.T) {
 		must.NoError(t, err)
 		test.True(t, exchanged.Administrative)
 		test.EqOp(t, signin.DefaultAdminTokenTTL, e.issuer.expiry)
+	})
+}
+
+func TestService_IssueForPrincipalVia(T *testing.T) {
+	T.Parallel()
+
+	T.Run("stamps the kind its caller names", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		passkey := signin.CredentialKind("passkey")
+
+		signedIn, err := e.svc.IssueForPrincipalVia(t.Context(), testScope, passkey, e.user.ID, "")
+		must.NoError(t, err)
+		test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
+		test.False(t, signedIn.Administrative)
+
+		test.Eq(t, []string{"authenticate", "issue"}, e.hooks.calls)
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.EqOp(t, passkey, e.hooks.authentications[0].CredentialKind)
+		test.False(t, e.hooks.authentications[0].Administrative)
+	})
+
+	T.Run("the administrative door stamps it too", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"))
+		e.setServiceRoles(t, "service_admin")
+		passkey := signin.CredentialKind("passkey")
+
+		signedIn, err := e.svc.AdminIssueForPrincipalVia(t.Context(), testScope, passkey, e.user.ID, "")
+		must.NoError(t, err)
+		test.True(t, signedIn.Administrative)
+
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.EqOp(t, passkey, e.hooks.authentications[0].CredentialKind)
+		test.True(t, e.hooks.authentications[0].Administrative)
+	})
+
+	// An empty kind is a name that got lost on its way in, not a request for
+	// CredentialKindPrincipal — that caller has IssueForPrincipal.
+	T.Run("refuses a caller who named no kind", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		_, err := e.svc.IssueForPrincipalVia(t.Context(), testScope, "", e.user.ID, "")
+		test.ErrorIs(t, err, signin.ErrEmptyCredentialKind)
+
+		_, err = e.svc.AdminIssueForPrincipalVia(t.Context(), testScope, "", e.user.ID, "")
+		test.ErrorIs(t, err, signin.ErrEmptyCredentialKind)
+
+		test.SliceEmpty(t, e.hooks.authentications)
+		test.SliceEmpty(t, e.hooks.failures)
 	})
 }

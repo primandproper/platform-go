@@ -254,6 +254,9 @@ func TestRedeemMagicLink_signsSomebodyIn(t *testing.T) {
 	// And the family names this login, so a consumer's hook and the refresh
 	// token's row agree about which sign-in they belong to.
 	must.StrNotEqFold(t, "", signedIn.FamilyID)
+
+	must.SliceNotEmpty(t, e.hooks.authentications)
+	test.EqOp(t, signin.CredentialKindMagicLink, e.hooks.authentications[len(e.hooks.authentications)-1].CredentialKind)
 }
 
 // TestRedeemMagicLink_isSingleUse is the guarantee the store's guarded write
@@ -412,6 +415,10 @@ func TestRedeemMagicLink_demandsASecondFactor(t *testing.T) {
 
 	must.NoError(t, err)
 	test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
+
+	// A TOTP code beside the link leaves the link as what proved it.
+	must.SliceNotEmpty(t, e.hooks.authentications)
+	test.EqOp(t, signin.CredentialKindMagicLink, e.hooks.authentications[len(e.hooks.authentications)-1].CredentialKind)
 }
 
 // TestRedeemMagicLink_survivesAWrongSecondFactor is the consequence the door's

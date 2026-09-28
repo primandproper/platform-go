@@ -512,6 +512,7 @@ func TestService_LoginForToken(T *testing.T) {
 
 		must.SliceLen(t, 1, e.hooks.authentications)
 		test.EqOp(t, signedIn.Principal, e.hooks.authentications[0].Principal)
+		test.EqOp(t, signin.CredentialKindPassword, e.hooks.authentications[0].CredentialKind)
 		test.False(t, e.hooks.authentications[0].Administrative)
 	})
 
@@ -697,6 +698,7 @@ func TestService_Authenticate(T *testing.T) {
 
 		must.SliceLen(t, 1, e.hooks.authentications)
 		test.EqOp(t, principal, e.hooks.authentications[0].Principal)
+		test.EqOp(t, signin.CredentialKindPassword, e.hooks.authentications[0].CredentialKind)
 		test.False(t, e.hooks.authentications[0].Administrative)
 		test.SliceEmpty(t, e.hooks.signIns)
 		test.SliceEmpty(t, e.hooks.failures)
@@ -890,6 +892,7 @@ func TestService_AdminAuthenticate(T *testing.T) {
 
 		must.SliceLen(t, 1, e.hooks.authentications)
 		test.True(t, e.hooks.authentications[0].Administrative)
+		test.EqOp(t, signin.CredentialKindPassword, e.hooks.authentications[0].CredentialKind)
 		test.SliceEmpty(t, e.hooks.signIns)
 	})
 

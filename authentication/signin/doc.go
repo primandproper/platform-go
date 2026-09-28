@@ -159,6 +159,28 @@ The credential writes are the same shape in reverse: read, verify and
 hash outside, and a transaction that holds the write and the hook together.
 Nothing here holds a write transaction open across a password hash.
 
+# Which credential it was
+
+Every door stamps what proved the sign-in on [Authentication.CredentialKind],
+so [Hooks.AfterAuthenticate] can tell a password from a passkey without
+inferring it from which method was called. The kinds this package stamps are:
+
+  - [CredentialKindPassword] — a password, with a TOTP code where one was asked
+    for, through Authenticate, LoginForToken and their administrative twins.
+  - [CredentialKindRecoveryCode] — any of those, or a sign-in link, where the
+    second factor was one of the user's recovery codes. It outranks the
+    credential beside it, because signing in without the enrolled authenticator
+    is the event an audit trail most needs to see.
+  - [CredentialKindMagicLink] — a redeemed sign-in link.
+  - [CredentialKindPrincipal] — a principal the consumer proved, through
+    [Service.IssueForPrincipal] or [Service.AdminIssueForPrincipal].
+
+[Service.IssueForPrincipalVia] and [Service.AdminIssueForPrincipalVia] stamp
+whatever kind their caller names instead, so a consumer that proved a passkey
+records "passkey" rather than "principal". The type is a string for that
+reason: the consumer's credential is spelled without this package having heard
+of it.
+
 # What is not here
 
 No session. This package hands back tokens. What a consumer does with them — a

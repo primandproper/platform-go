@@ -54,7 +54,30 @@ func (s *Service) IssueForPrincipal(
 	scope tenancy.Scope,
 	userID, activeAccountID string,
 ) (*SignIn, error) {
-	return s.issueForPrincipal(ctx, scope, userID, activeAccountID, false)
+	return s.issueForPrincipal(ctx, scope, CredentialKindPrincipal, userID, activeAccountID, false)
+}
+
+// IssueForPrincipalVia is IssueForPrincipal for a caller that names the
+// credential it proved, and the [Authentication] its hooks are handed carries
+// that name as its CredentialKind rather than [CredentialKindPrincipal].
+//
+// The name is the consumer's to choose — a passkey sign-in is
+// CredentialKind("passkey") without this package having heard of passkeys —
+// and it is recorded as given. An empty one is [ErrEmptyCredentialKind], and it
+// is refused rather than read as CredentialKindPrincipal: a caller with no name
+// to give has IssueForPrincipal, so an empty kind here is a name that got lost
+// on its way in, and a hook recording it as something else would be recording
+// the loss.
+//
+// It is a second method rather than a parameter on the first because a
+// parameter added to IssueForPrincipal would stop every caller of it compiling.
+func (s *Service) IssueForPrincipalVia(
+	ctx context.Context,
+	scope tenancy.Scope,
+	kind CredentialKind,
+	userID, activeAccountID string,
+) (*SignIn, error) {
+	return s.issueForPrincipal(ctx, scope, kind, userID, activeAccountID, false)
 }
 
 // AdminIssueForPrincipal is IssueForPrincipal through the administrative door,
@@ -78,14 +101,27 @@ func (s *Service) AdminIssueForPrincipal(
 	scope tenancy.Scope,
 	userID, activeAccountID string,
 ) (*SignIn, error) {
-	return s.issueForPrincipal(ctx, scope, userID, activeAccountID, true)
+	return s.issueForPrincipal(ctx, scope, CredentialKindPrincipal, userID, activeAccountID, true)
 }
 
-// issueForPrincipal is both doors that mint for a principal somebody else
-// proved.
+// AdminIssueForPrincipalVia is IssueForPrincipalVia through the administrative
+// door, and stands to it as [Service.AdminIssueForPrincipal] stands to
+// [Service.IssueForPrincipal].
+func (s *Service) AdminIssueForPrincipalVia(
+	ctx context.Context,
+	scope tenancy.Scope,
+	kind CredentialKind,
+	userID, activeAccountID string,
+) (*SignIn, error) {
+	return s.issueForPrincipal(ctx, scope, kind, userID, activeAccountID, true)
+}
+
+// issueForPrincipal is every door that mints for a principal somebody else
+// proved, stamping the kind its caller named.
 func (s *Service) issueForPrincipal(
 	ctx context.Context,
 	scope tenancy.Scope,
+	kind CredentialKind,
 	userID, activeAccountID string,
 	administrative bool,
 ) (signIn *SignIn, err error) {
@@ -106,6 +142,10 @@ func (s *Service) issueForPrincipal(
 
 	if userID == "" {
 		return nil, op.Error(ErrEmptyUserID, "issuing a sign-in for a proven principal")
+	}
+
+	if kind == "" {
+		return nil, op.Error(ErrEmptyCredentialKind, "issuing a sign-in for a proven principal")
 	}
 
 	op.Set(userIDKey, userID)
@@ -146,7 +186,7 @@ func (s *Service) issueForPrincipal(
 		return nil, op.Error(err, "issuing a token")
 	}
 
-	auth := &Authentication{Principal: principal, Administrative: administrative}
+	auth := &Authentication{Principal: principal, CredentialKind: kind, Administrative: administrative}
 
 	// Service.login's transaction, minus the recovery code: nothing was proven
 	// here, so there is nothing of the proof's to spend.

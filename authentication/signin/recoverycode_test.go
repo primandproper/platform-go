@@ -68,6 +68,7 @@ type recoveryHooks struct {
 	issueErr error
 
 	calls     []string
+	kinds     []signin.CredentialKind
 	used      []*identity.User
 	remaining []int
 	failures  []*signin.FailedSignIn
@@ -103,11 +104,12 @@ func (h *recoveryHooks) AfterReplaceRecoveryCodes(context.Context, database.Tx, 
 	return nil
 }
 
-func (h *recoveryHooks) AfterAuthenticate(context.Context, database.Tx, tenancy.Scope, *signin.Authentication) error {
+func (h *recoveryHooks) AfterAuthenticate(_ context.Context, _ database.Tx, _ tenancy.Scope, auth *signin.Authentication) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	h.calls = append(h.calls, "authenticate")
+	h.kinds = append(h.kinds, auth.CredentialKind)
 
 	return nil
 }
@@ -441,6 +443,10 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 		test.Eq(t, []string{"recovery_code_used", "authenticate", "issue"}, r.hooks.calls)
 		test.Eq(t, []int{signin.DefaultRecoveryCodeCount - 1}, r.hooks.remaining)
 
+		// The recovery code outranks the password beside it: somebody signed in
+		// without the authenticator that was enrolled, and the record says so.
+		test.Eq(t, []signin.CredentialKind{signin.CredentialKindRecoveryCode}, r.hooks.kinds)
+
 		// Redacted: the hook that must mail somebody is not the one to hand a
 		// password hash or a TOTP secret to.
 		must.SliceLen(t, 1, r.hooks.used)
@@ -506,6 +512,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 		must.NoError(t, err)
 
 		test.Eq(t, []string{"authenticate", "issue"}, r.hooks.calls)
+		test.Eq(t, []signin.CredentialKind{signin.CredentialKindPassword}, r.hooks.kinds)
 		test.EqOp(t, signin.DefaultRecoveryCodeCount, r.remaining(t))
 	})
 
@@ -675,6 +682,7 @@ func TestRedeemMagicLink_recoveryCode(T *testing.T) {
 		must.NoError(t, err)
 
 		test.Eq(t, []string{"recovery_code_used", "authenticate", "issue"}, r.hooks.calls)
+		test.Eq(t, []signin.CredentialKind{signin.CredentialKindRecoveryCode}, r.hooks.kinds)
 		test.EqOp(t, signin.DefaultRecoveryCodeCount-1, r.remaining(t))
 	})
 
