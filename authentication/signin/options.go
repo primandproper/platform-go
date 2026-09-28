@@ -69,9 +69,12 @@ const (
 	// none.
 	ClaimAccountID = "account_id"
 
-	// ClaimScope is the directory the token was issued in, as
-	// tenancy.Scope.String renders it. It is the empty string for
-	// tenancy.Global, which is what a single-tenant deployment sees.
+	// ClaimScope is the directory the token was issued in, as its owner
+	// identifier — tenancy.Scope.Owner, which tenancy.FromOwner reads back. It
+	// is the empty string for tenancy.Global, which is what a single-tenant
+	// deployment sees. It was once tenancy.Scope.String, which renders Global
+	// as "<global>"; signin/grpc's extractor still reads that spelling as
+	// Global.
 	ClaimScope = "scope"
 
 	// ClaimFamilyID is which continuous login the token belongs to — SignIn's
@@ -226,7 +229,7 @@ func DefaultClaims(_ context.Context, input *ClaimsInput) (map[string]any, error
 
 	return map[string]any{
 		ClaimAccountID:      input.Principal.ActiveAccountID,
-		ClaimScope:          input.Principal.User.Scope.String(),
+		ClaimScope:          input.Principal.User.Scope.Owner(),
 		ClaimFamilyID:       input.FamilyID,
 		ClaimAdministrative: input.Administrative,
 	}, nil

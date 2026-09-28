@@ -13,24 +13,28 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	auditclient "github.com/primandproper/platform-go/v14/audit/grpc/client"
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
 	oauth2clientsclient "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc/client"
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
-	"github.com/primandproper/platform-go/v14/callers"
+	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	commentsclient "github.com/primandproper/platform-go/v14/comments/grpc/client"
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
@@ -41,9 +45,11 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
 	linksmigrations "github.com/primandproper/platform-go/v14/links/database/migrations"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
@@ -53,20 +59,25 @@ import (
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	notificationsclient "github.com/primandproper/platform-go/v14/notifications/grpc/client"
 	notificationsmigrations "github.com/primandproper/platform-go/v14/notifications/migrations"
+	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	operationsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
 	"github.com/primandproper/platform-go/v14/service"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
 	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
+	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	waitlistsclient "github.com/primandproper/platform-go/v14/waitlists/grpc/client"
 	waitlistsmigrations "github.com/primandproper/platform-go/v14/waitlists/migrations"
+	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 	webhooksclient "github.com/primandproper/platform-go/v14/webhooks/grpc/client"
 	webhooksmigrations "github.com/primandproper/platform-go/v14/webhooks/migrations"
+	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 	workqueuemigrations "github.com/primandproper/platform-go/v14/workqueue/migrations"
 
+	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
@@ -88,23 +99,25 @@ import (
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 )
 
-// The metadata this harness's stand-in credential travels in. Metadata rather
-// than a context value, because a context value does not cross a connection.
-const (
-	mdUserID  = "conformance-user-id"
-	mdScope   = "conformance-scope"
-	mdAccount = "conformance-account-id"
-	mdAdmin   = "conformance-admin"
+// mdReserving says which of the harness's two runs a caller was minted in: the
+// one reserving staffOnly, or the one whose members make every call. The server
+// is one server either way, so the reservation rides beside the credential, in
+// metadata, the way a deployment flag a consumer's interceptor reads would.
+//
+// It is the only thing that does. Who a caller is travels as a bearer token the
+// sign-in service minted, read back by signingrpc's extractor — the one a
+// consumer installs — rather than as a stand-in this harness invented.
+const mdReserving = "conformance-reserving"
 
-	// mdReserving says which of the harness's two runs a caller was minted in:
-	// the one reserving staffOnly, or the one whose members make every call.
-	// The server is one server either way, so the reservation rides on the
-	// credential, the way a role claim would.
-	mdReserving = "conformance-reserving"
-)
+// adminServiceRole is the service role an administrator subject holds, and the
+// one the sign-in block's administrative door admits. An administrator's token
+// is minted through that door, which is what makes the role reach grantsOf: the
+// extractor withholds service roles from an ordinary-door token.
+const adminServiceRole = "conformance_admin"
 
 // auditedResourceType is what this harness's auditable action touches.
 const auditedResourceType = "conformance_audited"
@@ -169,10 +182,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		// and registration are on by default. The passwordless door is the
 		// one a block switches on.
 		SignIn: &signincfg.Config{
-			TOTPIssuer:    "conformance",
-			RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: prefix},
-			RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: prefix},
-			MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: prefix},
+			TOTPIssuer:        "conformance",
+			AdminServiceRoles: []string{adminServiceRole},
+			RefreshTokens:     signincfg.RefreshTokensConfig{TablePrefix: prefix},
+			RecoveryCodes:     signincfg.RecoveryCodesConfig{TablePrefix: prefix},
+			MagicLinks:        &signincfg.MagicLinksConfig{TablePrefix: prefix},
 		},
 
 		// And the HTTP surfaces, on every dialect. dataprivacy fulfills its
@@ -222,21 +236,34 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	if waitlists == confirmsWaitlists {
 		do.ProvideValue[waitlistsgrpc.ConfirmationMailer](i, waitlistMail)
 	}
+	// The sign-in extractor, registered under the key service defaults its
+	// extractor from, with this harness's role policy on it. Transports below
+	// names no extractor and no grants, so every surface reads callers and
+	// grants through this one — the path a consumer takes when all it adds to
+	// the default is its policy.
+	do.Provide(i, func(i do.Injector) (*signingrpc.PrincipalExtractor, error) {
+		return signingrpc.NewPrincipalExtractor(
+			do.MustInvoke[tokens.Issuer](i),
+			do.MustInvoke[database.Client](i),
+			do.MustInvoke[identity.Store](i),
+			signingrpc.WithGrants(grantsOf),
+		)
+	})
+	extractor := do.MustInvoke[*signingrpc.PrincipalExtractor](i)
+
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
-		authenticate,
-		reserveStaffCalls,
+		extractor.UnaryServerInterceptor(authenticationRequirements(t)),
+		reserveStaffCalls(extractor),
 	})
 	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
-	// The HTTP half of the stand-in credential, on the router before anything
-	// mounts on it: chi refuses middleware added after the first route, which
-	// is a constraint a consumer's main meets in the same place.
-	do.MustInvoke[*routing.Router](i).Use(authenticateHTTP)
+	// The HTTP half, on the router before anything mounts on it: chi refuses
+	// middleware added after the first route, which is a constraint a
+	// consumer's main meets in the same place.
+	do.MustInvoke[*routing.Router](i).Use(extractor.HTTPMiddleware)
 
 	service.RegisterTransports(i, &service.Transports{
-		Extractor:   extractPrincipal,
 		Authorizers: authorizers(),
-		Grants:      grantsOf,
 	})
 
 	svc, err := service.New(i)
@@ -251,6 +278,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	identitySvc := do.MustInvoke[*identity.Service](i)
 	identityStore := do.MustInvoke[identity.Store](i)
+	signIn := do.MustInvoke[*signin.Service](i)
 	recorder := do.MustInvoke[audit.Recorder](i)
 
 	// Every surface, on the one connection. passwordreset ships no client
@@ -291,6 +319,13 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				// seconds, and a stamp from this second would be both.
 				agreedAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 
+				// An administrator holds the service role the administrative door
+				// admits, and nobody else holds any.
+				var serviceRoles []string
+				if req.Admin {
+					serviceRoles = []string{adminServiceRole}
+				}
+
 				// Through the service rather than the surface: every identity RPC
 				// requires a caller, Register included, so there is no client-only
 				// way to mint the first one.
@@ -308,6 +343,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						// suite can read "nothing changed" as "still unset".
 						LastAcceptedTermsOfService: &agreedAt,
 						LastAcceptedPrivacyPolicy:  &agreedAt,
+						ServiceRoles:               serviceRoles,
 					},
 					&identity.Account{Name: "conf_" + identifiers.New()},
 					[]string{"owner"})
@@ -315,12 +351,21 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					return nil, registerErr
 				}
 
-				// An administrator is a caller whose credential says so, and
-				// what that buys is adminRole — the grants the surfaces ask
-				// inside a handler, read through the extractor service mounted
-				// them with. The credential is this harness's stand-in, so the
-				// flag rides on it the way a role claim rides on a consumer's.
-				admin := strconv.FormatBool(req.Admin)
+				// The subject's credential is a token the sign-in service minted
+				// for them, the way a sign-in would have. An administrator's comes
+				// through the administrative door, which is what their service
+				// role — and so adminRole, the grants the surfaces ask inside a
+				// handler — rides on: the extractor keeps it off an
+				// ordinary-door token.
+				door := signIn.IssueForPrincipal
+				if req.Admin {
+					door = signIn.AdminIssueForPrincipal
+				}
+
+				issued, issueErr := door(ctx, scope, reg.User.ID, reg.Account.ID)
+				if issueErr != nil {
+					return nil, issueErr
+				}
 
 				return &conformance.Subject{
 					Scope:     scope,
@@ -329,25 +374,15 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					Conn:      conn,
 					Surfaces:  surfaces,
 					HTTP: &conformance.HTTPSurfaces{
-						Client: &http.Client{Transport: &credentialTransport{
-							userID: reg.User.ID, scope: scope, accountID: reg.Account.ID, admin: req.Admin,
-						}},
+						Client:        &http.Client{Transport: &credentialTransport{token: issued.Token}},
 						BaseURL:       baseURL,
 						DataPrivacy:   true,
 						MediaRegistry: true,
 						Operations:    true,
 					},
-					// The scope travels as its owner identifier rather than its
-					// String, which is prose: String renders the global scope as a
-					// placeholder, and the interceptor would read that back as a
-					// tenant of that name rather than as the scope belonging to
-					// nobody.
 					Decorate: func(ctx context.Context) context.Context {
 						md := metadata.Pairs(
-							mdUserID, reg.User.ID,
-							mdScope, scope.Owner(),
-							mdAccount, reg.Account.ID,
-							mdAdmin, admin,
+							"authorization", "Bearer "+issued.Token,
 							mdReserving, reserving,
 						)
 
@@ -600,115 +635,48 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string,
 	}
 }
 
-// authenticate is this harness's stand-in for a consumer's authentication
-// interceptor. It leaves an anonymous request alone rather than refusing it,
-// because whether one is refused is each surface's decision, and an interceptor
-// that refused here would make the anonymous suite assert this function.
-func authenticate(
-	ctx context.Context,
-	req any,
-	_ *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (any, error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return handler(ctx, req)
-	}
+// authenticationRequirements is the table this harness's authentication
+// interceptor enforces, composed the way a consumer composes one: sign-in's
+// own declarations, then every other service mounted here.
+//
+// Those are optional rather than required, deliberately. Whether a request
+// with nobody on it is refused is each surface's decision, and the anonymous
+// suite asserts the surfaces make it; a table that refused here would make that
+// suite assert this table instead. Optional still resolves every caller who
+// presents a token, which is all the other suites need.
+func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirements {
+	t.Helper()
 
-	userIDs := md.Get(mdUserID)
-	if len(userIDs) == 0 || userIDs[0] == "" {
-		return handler(ctx, req)
-	}
+	reqs, err := signingrpc.RequireAuthentication(signingrpc.NewAuthenticationRequirements()).
+		DeclareService(signingrpc.AuthenticationOptional,
+			auditpb.AuditService_ServiceDesc.ServiceName,
+			billingpb.BillingService_ServiceDesc.ServiceName,
+			commentspb.CommentsService_ServiceDesc.ServiceName,
+			identitypb.IdentityService_ServiceDesc.ServiceName,
+			issuereportspb.IssueReportsService_ServiceDesc.ServiceName,
+			notificationspb.NotificationsService_ServiceDesc.ServiceName,
+			oauth2clientspb.OAuth2ClientsService_ServiceDesc.ServiceName,
+			passwordresetpb.PasswordResetService_ServiceDesc.ServiceName,
+			settingspb.SettingsService_ServiceDesc.ServiceName,
+			waitlistspb.WaitlistsService_ServiceDesc.ServiceName,
+			webhookspb.WebhooksService_ServiceDesc.ServiceName,
+		).
+		DeclareService(signingrpc.AuthenticationAnonymous, grpc_health_v1.Health_ServiceDesc.ServiceName).
+		Build()
+	must.NoError(t, err)
 
-	principal := &testPrincipal{userID: userIDs[0], scope: tenancy.Global()}
-
-	if owners := md.Get(mdScope); len(owners) > 0 && owners[0] != "" {
-		principal.scope = tenancy.Of(owners[0])
-	}
-
-	if accounts := md.Get(mdAccount); len(accounts) > 0 {
-		principal.activeAccountID = accounts[0]
-	}
-
-	if admins := md.Get(mdAdmin); len(admins) > 0 {
-		principal.admin = admins[0] == "true"
-	}
-
-	if reserving := md.Get(mdReserving); len(reserving) > 0 {
-		principal.reserving = reserving[0] == "true"
-	}
-
-	return handler(context.WithValue(ctx, principalKey{}, principal), req)
+	return reqs
 }
 
-// authenticateHTTP is authenticate's counterpart on the router: the same
-// stand-in credential, read off headers instead of metadata, and the same
-// refusal to refuse — a request with no credential passes through with nobody
-// on it, and each surface decides what that means.
-func authenticateHTTP(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Header.Get(mdUserID)
-		if userID == "" {
-			next.ServeHTTP(w, r)
-
-			return
-		}
-
-		principal := &testPrincipal{
-			userID:          userID,
-			scope:           tenancy.Global(),
-			activeAccountID: r.Header.Get(mdAccount),
-			admin:           r.Header.Get(mdAdmin) == "true",
-		}
-		if owner := r.Header.Get(mdScope); owner != "" {
-			principal.scope = tenancy.Of(owner)
-		}
-
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal)))
-	})
-}
-
-// credentialTransport puts one subject's stand-in credential on every request,
-// which is what a consumer's authenticated HTTP client does with a cookie or a
-// bearer token.
+// credentialTransport puts one subject's bearer token on every request, which
+// is what a consumer's authenticated HTTP client does.
 type credentialTransport struct {
-	userID    string
-	accountID string
-	scope     tenancy.Scope
-	admin     bool
+	token string
 }
 
 func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
-	req.Header.Set(mdUserID, c.userID)
-	req.Header.Set(mdScope, c.scope.Owner())
-	req.Header.Set(mdAccount, c.accountID)
-	req.Header.Set(mdAdmin, strconv.FormatBool(c.admin))
+	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	return http.DefaultTransport.RoundTrip(req)
 }
-
-type principalKey struct{}
-
-func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
-	p, ok := ctx.Value(principalKey{}).(callers.Principal)
-
-	return p, ok
-}
-
-// testPrincipal is the stand-in credential, read back. admin is not one of the
-// three facts callers.Principal names — a role is the deployment's notion, not
-// the platform's — so only grantsOf reads it.
-type testPrincipal struct {
-	userID          string
-	activeAccountID string
-	scope           tenancy.Scope
-	admin           bool
-	reserving       bool
-}
-
-var _ callers.Principal = (*testPrincipal)(nil)
-
-func (p *testPrincipal) UserID() string          { return p.userID }
-func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
-func (p *testPrincipal) ActiveAccountID() string { return p.activeAccountID }

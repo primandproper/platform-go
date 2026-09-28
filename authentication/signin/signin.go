@@ -484,11 +484,11 @@ type Service struct {
 
 // TokenIssuer is the half of tokens.Issuer a sign-in uses.
 //
-// Only IssueToken: parsing a token back into a caller is the consumer's
-// interceptor's job, and a sign-in service holding the parser is a sign-in
-// service that could be asked to authenticate a request. The seam is narrowed
-// here rather than in tokens, whose Issuer is one thing a consumer configures
-// and passes to both halves.
+// Only IssueToken: parsing a token back into a caller is an interceptor's job
+// — signin/grpc's PrincipalExtractor, or the consumer's own — and a sign-in
+// service holding the parser is a sign-in service that could be asked to
+// authenticate a request. The seam is narrowed here rather than in tokens,
+// whose Issuer is one thing a consumer configures and passes to both halves.
 type TokenIssuer interface {
 	IssueToken(
 		ctx context.Context,
