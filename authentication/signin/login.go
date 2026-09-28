@@ -161,7 +161,7 @@ func (s *Service) authenticate(
 		return nil, err
 	}
 
-	auth := &Authentication{Principal: proven.principal, Administrative: administrative}
+	auth := &Authentication{Principal: proven.principal, CredentialKind: proven.kind(), Administrative: administrative}
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		if txErr := s.spendProvenRecoveryCode(ctx, tx, scope, proven); txErr != nil {
@@ -214,7 +214,7 @@ func (s *Service) login(
 		return nil, op.Error(err, "issuing a token")
 	}
 
-	auth := &Authentication{Principal: principal, Administrative: administrative}
+	auth := &Authentication{Principal: principal, CredentialKind: proven.kind(), Administrative: administrative}
 
 	// One transaction for the refresh token and both hooks, in the order the
 	// events happened, so a consumer's token row may reference its
@@ -265,6 +265,16 @@ type proof struct {
 	// yet spent: the door that acts on this proof spends it on its own
 	// transaction, before anything else that transaction writes.
 	recoveryCode string
+}
+
+// kind is the credential a proof rests on: the password, unless a recovery
+// code stood in for the second factor beside it.
+func (p *proof) kind() CredentialKind {
+	if p.recoveryCode != "" {
+		return CredentialKindRecoveryCode
+	}
+
+	return CredentialKindPassword
 }
 
 // spendProvenRecoveryCode spends the recovery code a proof rests on, where it

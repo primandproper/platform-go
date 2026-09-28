@@ -322,6 +322,12 @@ var (
 	// ErrEmptyUserID indicates an operation on nobody.
 	ErrEmptyUserID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID")
 
+	// ErrEmptyCredentialKind indicates a principal door whose caller named no
+	// credential. Service.IssueForPrincipal is the door for a caller with no
+	// name to give; an empty kind through Service.IssueForPrincipalVia is a
+	// caller who meant to give one and did not.
+	ErrEmptyCredentialKind = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty credential kind")
+
 	// ErrEmptyHandle indicates credentials naming neither a username nor an
 	// email address.
 	//

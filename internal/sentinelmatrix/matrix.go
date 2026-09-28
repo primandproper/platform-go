@@ -580,8 +580,9 @@ var Matrix = map[string]map[string]Decision{
 		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
-		// the platform mappers answer them. Four are wiring failures and four are
-		// a request that arrived incomplete.
+		// the platform mappers answer them. Some are wiring failures and the rest
+		// are a request that arrived incomplete.
+		"ErrEmptyCredentialKind":   {Err: signin.ErrEmptyCredentialKind, Is: Platform},
 		"ErrEmptyHandle":           {Err: signin.ErrEmptyHandle, Is: Platform},
 		"ErrEmptyPassword":         {Err: signin.ErrEmptyPassword, Is: Platform},
 		"ErrEmptyUserID":           {Err: signin.ErrEmptyUserID, Is: Platform},

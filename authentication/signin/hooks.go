@@ -73,10 +73,53 @@ type Authentication struct {
 	// again.
 	Principal *identity.Principal `json:"principal"`
 
+	// CredentialKind is what proved it — see [CredentialKind] for the kinds this
+	// package stamps and what each one means.
+	//
+	// It is a field rather than something a hook infers for Administrative's
+	// reason: a password, a recovery code, a mailed link and a credential the
+	// consumer proved all arrive here as the same Principal, and which one it
+	// was is the fact a "where you're signed in" list shows and an audit trail
+	// most wants.
+	CredentialKind CredentialKind `json:"credentialKind"`
+
 	// Administrative reports whether this came through the administrative door —
 	// AdminAuthenticate or AdminLoginForToken — rather than the ordinary one.
 	Administrative bool `json:"administrative"`
 }
+
+// CredentialKind names what proved an [Authentication].
+//
+// Every door stamps one, and a hook never sees it empty. The password doors
+// stamp [CredentialKindPassword], or [CredentialKindRecoveryCode] where the
+// second factor was one of the user's recovery codes; [Service.RedeemMagicLink]
+// stamps [CredentialKindMagicLink], or [CredentialKindRecoveryCode] on the same
+// terms; and the principal doors stamp what their caller names —
+// [CredentialKindPrincipal] through [Service.IssueForPrincipal], and anything at
+// all through [Service.IssueForPrincipalVia].
+//
+// A recovery code outranks the credential beside it because it is the event
+// the others are not: somebody signed in without the authenticator that was
+// enrolled, and a record that said "password" would hide exactly that.
+//
+// It is a string type rather than a closed enumeration so that a consumer
+// naming the credential it proved — "passkey", "device_grant" — spells it as a
+// CredentialKind of its own, without this package having to have heard of it.
+type CredentialKind string
+
+const (
+	// CredentialKindPassword is a password, with a TOTP code where one was
+	// asked for.
+	CredentialKindPassword CredentialKind = "password"
+	// CredentialKindRecoveryCode is a sign-in whose second factor was one of
+	// the user's recovery codes.
+	CredentialKindRecoveryCode CredentialKind = "recovery_code"
+	// CredentialKindMagicLink is a redeemed sign-in link.
+	CredentialKindMagicLink CredentialKind = "magic_link"
+	// CredentialKindPrincipal is a principal the consumer proved and did not
+	// name the credential of — what [Service.IssueForPrincipal] stamps.
+	CredentialKindPrincipal CredentialKind = "principal"
+)
 
 // Hooks is what a consumer commits alongside a sign-in, inside the transaction
 // the operation opens.
@@ -135,9 +178,11 @@ type Hooks interface {
 	//
 	// IssueForPrincipal and AdminIssueForPrincipal run it too, for a credential
 	// the consumer proved rather than a password, so a passkey sign-in reaches
-	// the same access log.
+	// the same access log — and their Via twins let the consumer name that
+	// credential, so the log says "passkey" rather than "principal".
 	//
-	// It sees no credential, which is what makes it the safe one to record from.
+	// It sees no credential, only the kind of one, which is what makes it the
+	// safe one to record from.
 	//
 	// An error rolls back whichever operation called it: an Authenticate caller
 	// is refused, and a LoginForToken caller is given no token.

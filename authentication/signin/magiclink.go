@@ -693,7 +693,12 @@ func (s *Service) redeem(
 		return nil, err
 	}
 
-	auth := &Authentication{Principal: principal, Administrative: false}
+	kind := CredentialKindMagicLink
+	if usedRecoveryCode {
+		kind = CredentialKindRecoveryCode
+	}
+
+	auth := &Authentication{Principal: principal, CredentialKind: kind, Administrative: false}
 
 	if err = s.hooks.AfterAuthenticate(ctx, tx, scope, auth); err != nil {
 		return nil, err
