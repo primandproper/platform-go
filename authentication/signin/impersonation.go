@@ -27,6 +27,15 @@ import (
 // that requires a support ticket reads the ticket from the context here. Each
 // of those is a rule about the deployment's people, and the door below is the
 // same whichever of them it asks.
+//
+// Nor does this package compare the two users' scopes. The operator is read
+// in the scope the caller names for them and the subject in the subject's, so
+// a deployment that keeps its staff in a directory of their own — or in
+// tenancy.Global — can impersonate across that line, and one with several
+// customer scopes can impersonate across those lines too. A deployment for
+// which some of those crossings are wrong — an operator of one tenant acting as
+// a customer of another — refuses them here, by comparing operator.Scope with
+// subject.Scope; the door itself admits any pair the policy does.
 type ImpersonationPolicy func(ctx context.Context, operator, subject *identity.User) error
 
 // IssueImpersonationToken mints a token for subjectID that is really being used
@@ -40,12 +49,27 @@ type ImpersonationPolicy func(ctx context.Context, operator, subject *identity.U
 // directory and against accountID, which the directory resolves exactly as
 // [Service.IssueForPrincipal] resolves one. What it adds is [ClaimActor], naming
 // the operator, which signin/grpc's extractor turns into callers.Delegated and
-// the audit log records beside the subject. The request is the subject's; the
+// the audit log records beside the subject, and [ClaimActorScope], naming the
+// scope the operator is in, so the extractor can look the operator up again on
+// every request where they actually live. The request is the subject's; the
 // act is the operator's; the token says both, because one identity slot forces
 // a deployment to say only one of them and the one it says is the lie.
 //
 // Whether the operator's own grants come with them is not decided here. See
 // [ClaimsInput.ActorID].
+//
+// # Two scopes
+//
+// operatorScope is the operator's and scope is the subject's, and neither is
+// read from the other: a deployment whose operators are staff in a directory of
+// their own, or in tenancy.Global, names that scope for the operator and the
+// customer's for the subject. A deployment whose operators share their
+// customers' scope passes it twice. The caller already has the first, because
+// it authenticated the operator before asking and their token names it. Whether
+// a given pair of scopes may meet at all is [ImpersonationPolicy]'s to say.
+//
+// Everything the impersonation writes is the subject's and is filed in scope:
+// the hooks run there, and the token's own scope claim is the subject's.
 //
 // # What it refuses
 //
@@ -88,16 +112,23 @@ type ImpersonationPolicy func(ctx context.Context, operator, subject *identity.U
 // choosing. That is the reason IssueForPrincipal has no RPC either.
 func (s *Service) IssueImpersonationToken(
 	ctx context.Context,
+	operatorScope tenancy.Scope,
+	operatorID string,
 	scope tenancy.Scope,
-	operatorID, subjectID, accountID string,
+	subjectID, accountID string,
 ) (signIn *SignIn, err error) {
 	ctx, op, done := s.begin(ctx, opIssueImpersonationToken,
 		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(actorScopeKey, operatorScope.String()),
 	)
 	defer func() { done(err) }()
 
 	if err = scope.Validate(); err != nil {
 		return nil, op.Error(err, "checking the scope an impersonation was issued in")
+	}
+
+	if err = operatorScope.Validate(); err != nil {
+		return nil, op.Error(err, "checking the scope an impersonation's operator is in")
 	}
 
 	if operatorID == "" || subjectID == "" {
@@ -107,13 +138,13 @@ func (s *Service) IssueImpersonationToken(
 	op.Set(userIDKey, subjectID)
 	op.Set(actorKey, operatorID)
 
-	attempt := &FailedSignIn{UserID: subjectID, ActorID: operatorID}
+	attempt := &FailedSignIn{UserID: subjectID, ActorID: operatorID, ActorScope: operatorScope}
 
 	if s.impersonationPolicy == nil {
 		return nil, s.refuse(ctx, op, scope, attempt, ErrImpersonationDisabled, "admitting an impersonation")
 	}
 
-	operator, err := s.directory.GetUser(ctx, s.client.Reader(), scope, operatorID)
+	operator, err := s.directory.GetUser(ctx, s.client.Reader(), operatorScope, operatorID)
 	if err != nil {
 		return nil, op.Error(err, "reading the operator of an impersonation")
 	}
@@ -149,9 +180,10 @@ func (s *Service) IssueImpersonationToken(
 	op.Set(familyKey, familyID)
 
 	if signIn, err = s.mint(ctx, &ClaimsInput{
-		Principal: principal,
-		FamilyID:  familyID,
-		ActorID:   operator.ID,
+		Principal:  principal,
+		FamilyID:   familyID,
+		ActorID:    operator.ID,
+		ActorScope: operatorScope,
 	}, s.impersonationTokenTTL); err != nil {
 		return nil, op.Error(err, "issuing an impersonation token")
 	}
@@ -160,6 +192,7 @@ func (s *Service) IssueImpersonationToken(
 		Principal:      principal,
 		CredentialKind: CredentialKindImpersonation,
 		ActorID:        operator.ID,
+		ActorScope:     operatorScope,
 	}
 
 	// Service.issueForPrincipal's transaction, minus the refresh token: there is

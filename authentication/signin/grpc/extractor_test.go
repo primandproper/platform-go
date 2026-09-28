@@ -75,7 +75,14 @@ type extractorHarness struct {
 
 	member *identity.Registration
 	admin  *identity.Registration
+
+	// staff is an operator in staffScope, a directory apart from the
+	// customers in testScope.
+	staff *identity.Registration
 }
+
+// staffScope is where the harness's staff operator lives.
+var staffScope = tenancy.Of("staff_1")
 
 func newExtractorHarness(t *testing.T) *extractorHarness {
 	t.Helper()
@@ -118,16 +125,16 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	directory, err := identity.NewService(db, store)
 	must.NoError(t, err)
 
-	register := func(name string, serviceRoles ...string) *identity.Registration {
-		reg, regErr := directory.Register(t.Context(), testScope,
+	register := func(scope tenancy.Scope, name string, serviceRoles ...string) *identity.Registration {
+		reg, regErr := directory.Register(t.Context(), scope,
 			&identity.User{
 				Username:      name,
 				EmailAddress:  name + "@example.com",
 				AccountStatus: identity.StatusGood,
-				Scope:         testScope,
+				Scope:         scope,
 				ServiceRoles:  serviceRoles,
 			},
-			&identity.Account{Name: name + "'s", Scope: testScope},
+			&identity.Account{Name: name + "'s", Scope: scope},
 			[]string{"owner"},
 		)
 		must.NoError(t, regErr)
@@ -140,8 +147,9 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 		store:  store,
 		signer: signer,
 		svc:    svc,
-		member: register("member"),
-		admin:  register("operator", serviceAdminRole),
+		member: register(testScope, "member"),
+		admin:  register(testScope, "operator", serviceAdminRole),
+		staff:  register(staffScope, "staff"),
 	}
 }
 
@@ -305,7 +313,7 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		t.Parallel()
 
 		issued, err := h.svc.IssueImpersonationToken(t.Context(), testScope,
-			h.admin.User.ID, h.member.User.ID, h.member.Account.ID)
+			h.admin.User.ID, testScope, h.member.User.ID, h.member.Account.ID)
 		must.NoError(t, err)
 
 		caller, err := h.extractor(t).Authenticate(t.Context(), issued.Token)
@@ -339,7 +347,7 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		fresh := newExtractorHarness(t)
 
 		issued, err := fresh.svc.IssueImpersonationToken(t.Context(), testScope,
-			fresh.admin.User.ID, fresh.member.User.ID, fresh.member.Account.ID)
+			fresh.admin.User.ID, testScope, fresh.member.User.ID, fresh.member.Account.ID)
 		must.NoError(t, err)
 
 		must.NoError(t, fresh.db.WithTransaction(t.Context(), func(tx database.Tx) error {
@@ -353,6 +361,54 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		// The subject's own token is untouched by the operator's ban.
 		_, err = fresh.extractor(t).Authenticate(t.Context(), fresh.issue(t, fresh.member, false).Token)
 		test.NoError(t, err)
+	})
+
+	T.Run("an operator from another scope is re-read in their own", func(t *testing.T) {
+		t.Parallel()
+
+		issued, err := h.svc.IssueImpersonationToken(t.Context(), staffScope,
+			h.staff.User.ID, testScope, h.member.User.ID, h.member.Account.ID)
+		must.NoError(t, err)
+
+		caller, err := h.extractor(t).Authenticate(t.Context(), issued.Token)
+		must.NoError(t, err)
+
+		test.EqOp(t, h.member.User.ID, caller.UserID())
+		test.EqOp(t, h.staff.User.ID, caller.ActorID())
+	})
+
+	T.Run("a ban in the operator's own scope ends their impersonation", func(t *testing.T) {
+		t.Parallel()
+
+		fresh := newExtractorHarness(t)
+
+		issued, err := fresh.svc.IssueImpersonationToken(t.Context(), staffScope,
+			fresh.staff.User.ID, testScope, fresh.member.User.ID, fresh.member.Account.ID)
+		must.NoError(t, err)
+
+		must.NoError(t, fresh.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return fresh.store.UpdateUserAccountStatus(t.Context(), tx, staffScope, fresh.staff.User.ID, identity.StatusBanned, "")
+		}))
+
+		_, err = fresh.extractor(t).Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
+	})
+
+	T.Run("an operator with no scope named is a token signin did not mint", func(t *testing.T) {
+		t.Parallel()
+
+		token, _, err := h.signer.IssueToken(t.Context(), h.member.User.ID, time.Minute, map[string]any{
+			signin.ClaimAccountID:      h.member.Account.ID,
+			signin.ClaimScope:          testScope.Owner(),
+			signin.ClaimAdministrative: false,
+			signin.ClaimActor:          h.admin.User.ID,
+		})
+		must.NoError(t, err)
+
+		_, err = h.extractor(t).Authenticate(t.Context(), token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
 	})
 
 	T.Run("a directory that cannot answer is not a refusal of the credential", func(t *testing.T) {

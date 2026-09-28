@@ -47,6 +47,11 @@ type FailedSignIn struct {
 	// under the one person who had nothing to do with it.
 	ActorID string `json:"actorID,omitempty"`
 
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever ActorID
+	// is empty. The hook itself runs in the subject's scope, and an operator
+	// need not share it.
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
+
 	// Administrative reports whether this was AdminLoginForToken rather than
 	// LoginForToken. A failed administrative sign-in is a different event from a
 	// failed ordinary one and usually wants a different alert.
@@ -98,6 +103,12 @@ type Authentication struct {
 	// token is minted in, and an impersonation whose record failed to write is
 	// an impersonation that did not happen.
 	ActorID string `json:"actorID,omitempty"`
+
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever ActorID
+	// is empty. The hook runs in the subject's scope, which an operator need
+	// not share: a deployment whose staff live apart from its customers records
+	// both scopes or loses track of which operator it means.
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
 
 	// Administrative reports whether this came through the administrative door —
 	// AdminAuthenticate or AdminLoginForToken — rather than the ordinary one.

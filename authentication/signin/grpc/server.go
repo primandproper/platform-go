@@ -33,6 +33,9 @@ const (
 
 	// actorIDKey is the operator on an impersonation token, as signin records it.
 	actorIDKey = "signin.actor_id"
+
+	// actorScopeKey is the scope that operator is in, as signin records it.
+	actorScopeKey = "signin.actor_scope"
 )
 
 // The errors this package returns for its own failures, as opposed to the

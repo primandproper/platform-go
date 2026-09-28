@@ -55,11 +55,12 @@ It would also stop agreeing with the count above, which matches the id alone. A
 deployment whose resource ids can collide across types has the same question to
 answer of its erasure outcome, and answers it once for both.
 
-Three reads per scope — by actor, by resource and by impersonator — because
-audit.Query's selectors are conjuncts and there is no "or". An entry in which the
-subject acted on themselves matches two and is exported once. Each scope's
-entries come back in chain order, by Seq, which is the only order the log itself
-vouches for.
+Two reads per scope — by actor and by resource — and one by impersonator
+across every scope, because audit.Query's selectors are conjuncts and there is
+no "or". An entry two reads return is exported once. Each scope's entries come
+back in chain order, by Seq, which is the only order the log itself vouches for;
+impersonated entries in a scope the resolver did not name follow the resolved
+scopes', grouped by scope and in chain order within each.
 
 # Impersonated entries
 
@@ -74,6 +75,16 @@ their name would be the one falsehood the second slot exists to stop telling.
 The operator gets it through the impersonator read. Without that read their
 export would be missing everything they did while acting as a customer, which
 is exactly the part of their record they might have reason to ask about.
+
+That read is the one this collector makes without a scope, and deliberately.
+An impersonated entry is filed in the customer's scope, and the operator's
+[ScopeResolver] names the operator's scopes — for a deployment whose staff live
+in a directory of their own, none of the customers'. A read confined to the
+resolved scopes would find nothing, so this one spans every scope and is
+confined instead by the impersonator column matching the subject's own ID. It
+is subject-access machinery reading one person's acts wherever they were filed,
+not a consumer read that omits the scope. It is also the predicate
+audit.Erasure.CountMentions already counts without one.
 
 The address follows the keyboard. Actor.IP on an impersonated entry is the
 operator's, because the request arrived from the operator, so it is kept in
@@ -247,14 +258,16 @@ func NewCollector(
 //
 // It pages each read to its end through dataprivacy.CollectAll, because an
 // export that stopped after a page would be well-formed and missing everything
-// past it. A subject who appears in no entry in any resolved scope reports the
-// domain as holding nothing.
+// past it. A subject who appears in no entry in any resolved scope, and
+// impersonated nobody anywhere, reports the domain as holding nothing, and a
+// resolver that names no scope for them is read as saying so: nothing is read
+// at all, the impersonator read included.
 func (c *Collector) Collect(
 	ctx context.Context,
 	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (json.RawMessage, error) {
-	var collected []audit.Entry
+	var groups []scopeEntries
 
 	err := dataprivacy.ForEachOwner(ctx, c.resolve, requestScope, subject,
 		func(ctx context.Context, scope tenancy.Scope) error {
@@ -263,7 +276,7 @@ func (c *Collector) Collect(
 				return platformerrors.Wrapf(collectErr, "collecting audit entries in scope %q", scope)
 			}
 
-			collected = append(collected, entries...)
+			groups = append(groups, scopeEntries{scope: scope, entries: entries})
 
 			return nil
 		})
@@ -271,11 +284,87 @@ func (c *Collector) Collect(
 		return nil, err
 	}
 
+	if len(groups) == 0 {
+		return dataprivacy.Fragment(false, []audit.Entry(nil))
+	}
+
+	actedAs, err := c.actedAs(ctx, subject.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Each impersonated entry joins its own scope's chain where the resolver
+	// named that scope. What is left — a customer's scope, for an operator whose
+	// own is a staff directory — follows, a scope at a time and in chain order
+	// within each.
+	var (
+		collected []audit.Entry
+		elsewhere []audit.Entry
+	)
+
+	joined := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		joined[group.scope.Owner()] = true
+	}
+
+	for i := range actedAs {
+		if !joined[actedAs[i].Scope.Owner()] {
+			elsewhere = append(elsewhere, actedAs[i])
+		}
+	}
+
+	for _, group := range groups {
+		entries := group.entries
+
+		for i := range actedAs {
+			if actedAs[i].Scope.Owner() == group.scope.Owner() {
+				entries = append(entries, actedAs[i])
+			}
+		}
+
+		collected = append(collected, redact(inChainOrder(entries), subject.ID)...)
+	}
+
+	slices.SortFunc(elsewhere, func(a, b audit.Entry) int {
+		return cmp.Or(cmp.Compare(a.Scope.Owner(), b.Scope.Owner()), cmp.Compare(a.Seq, b.Seq))
+	})
+
+	collected = append(collected, redact(elsewhere, subject.ID)...)
+
 	return dataprivacy.Fragment(len(collected) > 0, collected)
 }
 
-// collectScope reads one scope's entries naming the subject, as actor, as
-// resource and as impersonator, and returns each entry once, in chain order.
+// scopeEntries is one resolved scope and the entries read in it by actor and
+// by resource.
+type scopeEntries struct {
+	scope   tenancy.Scope
+	entries []audit.Entry
+}
+
+// actedAs reads every entry the subject recorded while acting as somebody
+// else, in every scope.
+//
+// It is the one read here that names no scope, and it is not a consumer read
+// that forgot to. It is subject-access machinery confined by the subject's own
+// ID: an impersonated entry is filed in the scope of the person impersonated,
+// which is by construction a scope the operator's resolver has no reason to
+// name — an operator who is staff in a directory of their own belongs to none
+// of their customers' — and a read confined to the resolved scopes would hand
+// the operator an export missing exactly the acts they did under somebody
+// else's name. What it can return is bounded by the impersonator column
+// matching the subject's ID, which is the predicate audit.Erasure.CountMentions
+// already counts across every scope.
+func (c *Collector) actedAs(ctx context.Context, subjectID string) ([]audit.Entry, error) {
+	entries, err := c.drain(ctx, &audit.Query{ImpersonatorID: subjectID})
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "reading the entries the subject acted in as somebody else")
+	}
+
+	return entries, nil
+}
+
+// collectScope reads one scope's entries naming the subject, as actor and as
+// resource.
 func (c *Collector) collectScope(ctx context.Context, scope tenancy.Scope, subjectID string) ([]audit.Entry, error) {
 	acted, err := c.drain(ctx, &audit.Query{Scope: &scope, ActorID: subjectID})
 	if err != nil {
@@ -287,23 +376,26 @@ func (c *Collector) collectScope(ctx context.Context, scope tenancy.Scope, subje
 		return nil, platformerrors.Wrap(err, "reading the entries the subject was acted on in")
 	}
 
-	actedAs, err := c.drain(ctx, &audit.Query{Scope: &scope, ImpersonatorID: subjectID})
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "reading the entries the subject acted in as somebody else")
-	}
+	return slices.Concat(acted, actedOn), nil
+}
 
-	// Seq is unique within a scope, so after the sort an entry two reads
-	// returned sits beside itself and compacts to one.
-	entries := slices.Concat(acted, actedOn, actedAs)
-
+// inChainOrder sorts one scope's entries by Seq and drops the duplicates two
+// reads returned. Seq is unique within a scope, so after the sort an entry two
+// reads returned sits beside itself and compacts to one.
+func inChainOrder(entries []audit.Entry) []audit.Entry {
 	slices.SortFunc(entries, func(a, b audit.Entry) int {
 		return cmp.Compare(a.Seq, b.Seq)
 	})
 
-	entries = slices.CompactFunc(entries, func(a, b audit.Entry) bool {
+	return slices.CompactFunc(entries, func(a, b audit.Entry) bool {
 		return a.ID == b.ID
 	})
+}
 
+// redact clears what an exported entry carries about somebody other than the
+// subject, in place: the address of a request the subject did not make, and
+// the values of a change to a resource that is not theirs.
+func redact(entries []audit.Entry, subjectID string) []audit.Entry {
 	for i := range entries {
 		if keyboard(entries[i].Actor) != subjectID {
 			entries[i].Actor.IP = ""
@@ -314,7 +406,7 @@ func (c *Collector) collectScope(ctx context.Context, scope tenancy.Scope, subje
 		}
 	}
 
-	return entries, nil
+	return entries
 }
 
 // keyboard is who the request an entry records arrived from: the impersonator

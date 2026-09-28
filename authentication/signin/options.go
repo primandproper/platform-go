@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
 	"github.com/primandproper/primitives-go/v2/random"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // DefaultTokenTTL is how long an ordinary sign-in's token lives.
@@ -132,6 +133,16 @@ const (
 	// "act" would also be entitled to the rest of RFC 8693's semantics, a chain
 	// of nested actors this package does not mint.
 	ClaimActor = "actor_id"
+
+	// ClaimActorScope is the scope the operator [ClaimActor] names is in — its
+	// owner identifier, which is the empty string for tenancy.Global, exactly
+	// as [ClaimScope] spells the subject's. It is stamped and stripped with
+	// ClaimActor and by the same rule, and it exists because an operator need
+	// not live where the subject does: signin/grpc's extractor re-reads the
+	// operator on every request, and reads them here. A token carrying
+	// ClaimActor without it is refused as a credential this service did not
+	// mint.
+	ClaimActorScope = "actor_scope"
 )
 
 // SecondFactorPolicy is what this service does about a user who holds no proven
@@ -224,6 +235,11 @@ type ClaimsInput struct {
 	// expressible; neither is this package's to pick.
 	ActorID string `json:"actorID,omitempty"`
 
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever
+	// ActorID is empty. Like ActorID, the service stamps it as
+	// [ClaimActorScope] itself.
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
+
 	// Administrative is whether the login came through the administrative door.
 	// A sign-in sets it from the door it was called at and an exchange carries
 	// it forward from the spent token's row, so every token in a family agrees.
@@ -279,6 +295,7 @@ func DefaultClaims(_ context.Context, input *ClaimsInput) (map[string]any, error
 
 	if input.ActorID != "" {
 		claims[ClaimActor] = input.ActorID
+		claims[ClaimActorScope] = input.ActorScope.Owner()
 	}
 
 	return claims, nil

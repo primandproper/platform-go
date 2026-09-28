@@ -397,7 +397,18 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 	if actorID != "" {
 		op.Set(actorIDKey, actorID)
 
-		if err = e.operatorStands(ctx, scope, actorID); err != nil {
+		// Present, not merely non-empty: the empty string is tenancy.Global's
+		// owner, which is exactly where a deployment's staff may live. A token
+		// naming an operator and no scope for them is not one signin minted.
+		actorScopeClaim, present := claims.GetString(signin.ClaimActorScope)
+		if !present {
+			return nil, op.Error(platformerrors.Wrapf(ErrNotASignInToken, "a %q claim with no %q claim", signin.ClaimActor, signin.ClaimActorScope), "reading a bearer token")
+		}
+
+		actorScope := tenancy.FromOwner(actorScopeClaim)
+		op.Set(actorScopeKey, actorScope.String())
+
+		if err = e.operatorStands(ctx, actorScope, actorID); err != nil {
 			return nil, op.Error(err, "resolving a bearer token's operator")
 		}
 	}
@@ -424,8 +435,13 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 // to as well: otherwise suspending an operator mid-impersonation would leave
 // them acting as a customer until the token lapsed. It resolves no account —
 // the operator's memberships are not what the request is against.
-func (e *PrincipalExtractor) operatorStands(ctx context.Context, scope tenancy.Scope, actorID string) error {
-	operator, err := e.directory.GetPrincipal(ctx, e.client.Reader(), scope, actorID, "")
+//
+// It reads the operator in actorScope, the token's signin.ClaimActorScope, and
+// not in the subject's scope: an operator who is staff in a directory of their
+// own is nobody in the customer's, and a re-check there would refuse every
+// impersonation that crossed the line on its first request.
+func (e *PrincipalExtractor) operatorStands(ctx context.Context, actorScope tenancy.Scope, actorID string) error {
+	operator, err := e.directory.GetPrincipal(ctx, e.client.Reader(), actorScope, actorID, "")
 	if err != nil {
 		if refusesTheCaller(err) {
 			return platformerrors.Join(ErrUnauthenticated, err)

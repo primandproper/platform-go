@@ -45,6 +45,10 @@ const (
 	// beside userIDKey's subject.
 	actorKey = "signin.actor_id"
 
+	// actorScopeKey is the scope the operator on an impersonation is in, which
+	// need not be the subject's.
+	actorScopeKey = "signin.actor_scope"
+
 	// padKey records whether a timing floor was held to in full. It is false only
 	// where the caller's context ended first, which makes a short answer a fact
 	// about that request rather than a silent hole in the enumeration defense.
@@ -306,6 +310,10 @@ type SignIn struct {
 	// being impersonated — and the token names both, as its subject and as
 	// [ClaimActor].
 	ActorID string `json:"actorID,omitempty"`
+
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever
+	// ActorID is empty. The token names it as [ClaimActorScope].
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
 
 	// Administrative reports whether this token came through
 	// AdminLoginForToken.
