@@ -579,6 +579,13 @@ var Matrix = map[string]map[string]Decision{
 		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
 		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
 
+		// A caller an operator has forced to change their password, refused by
+		// the gate in front of every call but the ones that discharge it.
+		// FailedPrecondition and a 403, and client-safe with a reason, because
+		// a client has to branch on it — send them to the form — rather than
+		// display it.
+		"ErrPasswordChangeRequired": {Err: signin.ErrPasswordChangeRequired, Is: Mapped},
+
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Some are wiring failures and the rest
 		// are a request that arrived incomplete.

@@ -208,6 +208,18 @@ var (
 	// correct, and nothing was hashed, minted or written before it was refused.
 	ErrRegistrationRefused = platformerrors.New("registration does not meet this service's requirements")
 
+	// ErrPasswordChangeRequired indicates a call refused because an operator
+	// has forced the caller to change their password and they have not yet.
+	//
+	// The sign-in doors never answer with it: a user a forced change locked out
+	// of signing in could never reach the form. It is the answer of the gate
+	// signin/grpc's PasswordChangeGate puts in front of everything else, which
+	// lets through the calls a flagged caller needs to discharge the obligation
+	// and refuses the rest. It is a state to fix rather than a request to
+	// correct, and the remedy is the one the words name: change the password,
+	// and the same call then succeeds.
+	ErrPasswordChangeRequired = platformerrors.New("a password change is required")
+
 	// ErrRegistrationNotConfigured indicates Service.Register on a service built
 	// without WithRegistrar.
 	//
