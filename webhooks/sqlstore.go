@@ -176,6 +176,12 @@ var ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParamet
 // insert they are the database's clock. That read is the one statement this
 // method adds; the live subscriptions come out of the reconciliation, which
 // already had to read them.
+//
+// Whether the save created the row or updated one is answered by the scope
+// check in front of the upsert, which already had to look, and lands on the
+// returned Endpoint.Created. It is not inferred from the stamps: on SQLite a
+// re-registration inside the second the row was created leaves LastUpdatedAt
+// and CreatedAt indistinguishable from an insert.
 func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
@@ -211,7 +217,8 @@ func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenan
 
 	events := written.EventTypes()
 
-	if err = s.checkEndpointScope(ctx, tx, scope, written.ID); err != nil {
+	existed, err := s.checkEndpointScope(ctx, tx, scope, written.ID)
+	if err != nil {
 		return nil, op.Error(err, "saving webhook endpoint %q", written.ID)
 	}
 
@@ -260,6 +267,7 @@ func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenan
 	}
 
 	saved.Subscriptions = live
+	saved.Created = !existed
 
 	return saved, nil
 }
@@ -1328,19 +1336,24 @@ func (s *SQLStore) Reap(ctx context.Context, before time.Time, limit int) (int64
 // against a unique index the table actually has, and this schema's is the
 // primary key.
 //
-// An ID that exists nowhere is fine: that is the common case, an insert.
-func (s *SQLStore) checkEndpointScope(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, endpointID string) error {
+// An ID that exists nowhere is fine: that is the common case, an insert. Which
+// of the two it was is the check's other answer, and it is what the save reports
+// as Endpoint.Created — read here rather than off the upsert's affected-row
+// count, which MySQL reports differently depending on the DSN's clientFoundRows.
+// The statement reads archived rows too, so re-registering a retired endpoint is
+// an update, which is what the upsert does to it.
+func (s *SQLStore) checkEndpointScope(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, endpointID string) (exists bool, err error) {
 	row, err := s.q.GetEndpointScope(ctx, q, webhooksdb.GetEndpointScopeParams{ID: endpointID})
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return nil
+		return false, nil
 	case err != nil:
-		return platformerrors.Wrapf(err, "reading scope of webhook endpoint %q", endpointID)
+		return false, platformerrors.Wrapf(err, "reading scope of webhook endpoint %q", endpointID)
 	case row.Scope != scope:
-		return platformerrors.Wrapf(ErrEndpointOutOfScope, "endpoint %q", endpointID)
+		return true, platformerrors.Wrapf(ErrEndpointOutOfScope, "endpoint %q", endpointID)
 	default:
-		return nil
+		return true, nil
 	}
 }
 
