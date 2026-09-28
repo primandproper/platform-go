@@ -270,11 +270,15 @@ proved a phone number, a payment or an operator's approval says so with it. What
 may be proven that way is theirs to decide, which is exactly why there is no RPC:
 the check is one only they can make.
 
-[Service.RequestVerificationEmail] is the resend, for somebody signed in whose
-address is unproven — a link that never arrived, or an address that changed. It
-mints a fresh link, retires the outstanding one, and hands the secret to the
-[VerificationMailer] and nothing else. An address that is already proven is
-refused with [ErrEmailAddressAlreadyVerified] and keeps its proof, so a resend
-can never un-verify anybody.
+Two doors resend a verification link. [Service.RequestVerificationEmailByAddress]
+is anonymous and names an address, for a registrant: an unproven registration is
+refused at the password door with [ErrUserUnverified], so they are never signed
+in to ask, and the door answers the same way whoever holds the address.
+[Service.RequestVerificationEmail] requires a caller, for somebody signed in
+whose address changed. Each mints a fresh link, retires the outstanding one, and
+hands the secret to the [VerificationMailer] and nothing else. An address that is already proven is
+refused with [ErrEmailAddressAlreadyVerified] by the signed-in door and silently
+by the anonymous one, and keeps its proof either way, so a resend can never
+un-verify anybody.
 */
 package signin

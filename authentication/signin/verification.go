@@ -462,12 +462,14 @@ func (f VerificationMailerFunc) SendVerification(ctx context.Context, mail *Veri
 // RequestVerificationEmail mails somebody a fresh link that proves their
 // address, and retires the one they were sent before.
 //
-// It is the "resend" every registration flow needs. The link minted at
-// registration is handed back once, on [Registered], and a person whose mail
-// never arrived, went to spam or sat past its deadline otherwise has no way to
-// get another. It is about the caller and nobody else — userID is the signed-in
-// person's own, taken off their principal by a transport — so there is no
-// enumeration to defend against here, and the answers are specific.
+// It is the signed-in resend: for somebody whose address stopped being proven
+// because it changed, or an unproven user an operator admitted anyway. A
+// registrant cannot use it — an unproven registration is refused at the
+// password door with [ErrUserUnverified], so they are never signed in to ask —
+// and [Service.RequestVerificationEmailByAddress] is their door. This one is
+// about the caller and nobody else — userID is the signed-in person's own,
+// taken off their principal by a transport — so there is no enumeration to
+// defend against here, and the answers are specific.
 //
 // # A proven address is refused
 //
@@ -521,19 +523,140 @@ func (s *Service) RequestVerificationEmail(
 		return op.Error(ErrEmptyUserID, "requesting a verification link")
 	}
 
+	if err = s.resendConfigured(); err != nil {
+		return op.Error(err, "requesting a verification link")
+	}
+
+	if err = s.resendVerification(ctx, scope, userID); err != nil {
+		return op.Error(err, "requesting a verification link")
+	}
+
+	return nil
+}
+
+// RequestVerificationEmailByAddress mails a fresh verification link to an
+// address whose owner has not proven it, and answers the same way whatever it
+// found.
+//
+// It is the resend for somebody who cannot sign in to ask for one, which is
+// every registrant: a user whose registration is unproven is refused at the
+// password door with [ErrUserUnverified], and that refusal is where a client
+// sends them to a "we mailed you a link — send another" page. The refusal is
+// told only to somebody who proved the password, but this door is anonymous
+// and takes the address alone, so a registrant who signed up without a
+// password — a passkey, a federated identity — reaches it too.
+//
+// # The answer is the same either way
+//
+// It returns nil whether the address belongs to nobody, to somebody whose
+// address is already proven, to somebody whose standing admits no mail, or to
+// somebody it mailed, and it is held to [WithMagicLinkRequestFloor]'s floor
+// on every path for [Service.RequestMagicLink]'s reason: an anonymous door that
+// answered or timed those apart would be a directory enumerator, and one that
+// told a proven address from an unproven one would be a way to learn who has
+// finished registering. What it did is on the span and nowhere else. The floor
+// is that door's rather than one of its own because the two doors do the same
+// work — a read, a mint, a commit and a send — and one floor raised for a slow
+// mail server is one that covers both.
+//
+// A banned or terminated user is mailed nothing. Everybody else whose address
+// is unproven — a registrant, or somebody whose address changed — is mailed a
+// link exactly as [Service.RequestVerificationEmail] mails one, retiring the
+// last.
+//
+// # Rate limiting is the deployment's
+//
+// In front of this call, and with more force than in front of the signed-in
+// door: anybody can reach this one, and it mails on every request for an
+// unproven address. A deployment without a limit in front of it lets a
+// stranger fill a registrant's inbox from its domain.
+//
+// It requires [WithVerifications] and [WithVerificationMailer], and refuses
+// with [ErrVerificationsNotConfigured] or [ErrVerificationMailerNotConfigured]
+// until it has both — the one answer that is not uniform, since it is a wiring
+// failure rather than a fact about any address.
+func (s *Service) RequestVerificationEmailByAddress(
+	ctx context.Context,
+	scope tenancy.Scope,
+	emailAddress string,
+) (err error) {
+	ctx, op, done := s.begin(ctx, opRequestVerificationEmailByAddress,
+		observability.WithValue(scopeKey, scope.String()),
+	)
+	defer func() { done(err) }()
+
+	// Deferred before the first refusal, as RequestMagicLink's is, so every
+	// path through this function is padded.
+	defer s.padTo(ctx, op, s.clk.Now().Add(s.magicLinkFloor))
+
+	if err = s.resendConfigured(); err != nil {
+		return op.Error(err, "requesting a verification link by address")
+	}
+
+	if emailAddress == "" {
+		return op.Error(ErrEmptyHandle, "requesting a verification link by address")
+	}
+
+	user, err := s.directory.GetUserByEmailAddress(ctx, s.client.Reader(), scope, identity.FoldHandle(emailAddress))
+	if err != nil {
+		if platformerrors.Is(err, identity.ErrUserNotFound) {
+			op.SpanOnly(reasonKey, identity.ErrUserNotFound.Error())
+
+			return nil
+		}
+
+		// The directory failing rather than a fact about the address, and
+		// collapsing it into the silent answer would hide an outage.
+		return op.Error(err, "reading the user a verification link was asked for")
+	}
+
+	op.Set(userIDKey, user.ID)
+
+	if !admitsMagicLink(user.AccountStatus) {
+		op.SpanOnly(reasonKey, statusRefusal(user).Error())
+
+		return nil
+	}
+
+	if err = s.resendVerification(ctx, scope, user.ID); err != nil {
+		// A proven address is the one refusal the signed-in door names and
+		// this one must not: told to a stranger, it says the address's owner
+		// finished registering.
+		if platformerrors.Is(err, ErrEmailAddressAlreadyVerified) {
+			op.SpanOnly(reasonKey, ErrEmailAddressAlreadyVerified.Error())
+
+			return nil
+		}
+
+		return op.Error(err, "requesting a verification link by address")
+	}
+
+	return nil
+}
+
+// resendConfigured is what both resend doors require before they do anything.
+func (s *Service) resendConfigured() error {
 	if s.verifications == nil {
-		return op.Error(ErrVerificationsNotConfigured, "requesting a verification link")
+		return ErrVerificationsNotConfigured
 	}
 
 	if s.verificationMailer == nil {
-		return op.Error(ErrVerificationMailerNotConfigured, "requesting a verification link")
+		return ErrVerificationMailerNotConfigured
 	}
 
+	return nil
+}
+
+// resendVerification is the body both resend doors share: mint a link for
+// userID, store its digest in place of the outstanding one, run the hook, and
+// mail it once that has committed. A proven address is
+// [ErrEmailAddressAlreadyVerified], and keeps its proof.
+func (s *Service) resendVerification(ctx context.Context, scope tenancy.Scope, userID string) error {
 	// Minted before the transaction opens and outside it, which is the shape
 	// Register's mint has: nothing about drawing a secret needs a row locked.
 	token, err := s.generateSecret(ctx)
 	if err != nil {
-		return op.Error(err, "generating an email verification token")
+		return platformerrors.Wrap(err, "generating an email verification token")
 	}
 
 	expiresAt := s.clk.Now().UTC().Add(s.verificationLinkTTL)
@@ -568,7 +691,7 @@ func (s *Service) RequestVerificationEmail(
 
 		return s.hooks.AfterRequestVerificationEmail(ctx, tx, scope, current.Redacted())
 	}); err != nil {
-		return op.Error(err, "minting a verification link")
+		return platformerrors.Wrap(err, "minting a verification link")
 	}
 
 	if err = s.verificationMailer.SendVerification(ctx, &VerificationMail{
@@ -576,7 +699,7 @@ func (s *Service) RequestVerificationEmail(
 		Token:     token,
 		ExpiresAt: expiresAt,
 	}); err != nil {
-		return op.Error(err, "mailing a verification link")
+		return platformerrors.Wrap(err, "mailing a verification link")
 	}
 
 	return nil

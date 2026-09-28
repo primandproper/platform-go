@@ -244,7 +244,7 @@ revoking a role has no effect until the token expires."*
 
 ## Registration, and the two links
 
-Registration is sign-in's, because sign-in is what hashes a password. Five RPCs matter to a
+Registration is sign-in's, because sign-in is what hashes a password. These RPCs matter to a
 client and their authority differs sharply:
 
 - **`Register` requires a caller**, and a client is not one. *"An open sign-up is a flow with
@@ -260,6 +260,12 @@ client and their authority differs sharply:
   somebody whose address is unproven — the link never arrived, or they changed address — and an
   address already proven is refused (`EMAIL_ADDRESS_ALREADY_VERIFIED`) with its proof intact, so
   pressing it can never un-verify anybody. The link goes to the inbox and not into the response.
+- **`RequestVerificationEmailByAddress`** is the resend for a registrant, who cannot sign in
+  until they answer a link: a `LoginForToken` refused with `USER_UNVERIFIED` is where a client
+  offers it, with the address the person just typed. It is anonymous and answers *identically*
+  whoever holds the address — nobody, a proven address, or one it mailed — under the same timing
+  floor `RequestMagicLink` holds, so a client renders "if that address is waiting on a link, we
+  sent another" and never branches on the answer.
 - **`RequestMagicLink`** is anonymous and answers *identically* whether the address exists or
   not, padding its own timing so the two cannot be told apart by a stopwatch. A client that
   renders "we sent it" on success and "no such account" on failure rebuilds the enumerator that

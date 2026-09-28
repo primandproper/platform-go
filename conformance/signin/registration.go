@@ -163,6 +163,37 @@ func registration(t *testing.T, s *conformance.Session) {
 		must.NoError(t, err, must.Sprint("the link the resend mailed did not verify"))
 	})
 
+	// The registrant's resend: they cannot sign in until they answer a link, so
+	// they ask by address, with nobody on the request. The link it mails is the
+	// one that works afterwards, and an address nobody holds is answered the
+	// same way.
+	t.Run("a resend by address retires the mailed link, and the link it mails verifies", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, requestVerificationEmailByAddress)
+
+		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		first := mailedVerification(t, s, who.email)
+
+		_, err := anon.RequestVerificationEmailByAddress(t.Context(),
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: who.email})
+		must.NoError(t, err, must.Sprint("asking for another verification link by address"))
+
+		fresh := mailedVerification(t, s, who.email)
+		must.NotEqOp(t, first, fresh,
+			must.Sprint("the verification token action answered with the link from before the resend; it must report the newest"))
+
+		_, err = anon.RequestVerificationEmailByAddress(t.Context(),
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: freshEmail()})
+		must.NoError(t, err, must.Sprint("a resend for an address nobody holds was answered differently"))
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: first})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: fresh})
+		must.NoError(t, err, must.Sprint("the link the resend by address mailed did not verify"))
+	})
+
 	// A resend can never un-prove anybody: asking for a link for an address that
 	// is already proven is refused, and the proof is exactly what it was.
 	t.Run("a resend for a proven address is refused and leaves the proof", func(t *testing.T) {

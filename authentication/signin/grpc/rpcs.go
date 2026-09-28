@@ -513,6 +513,34 @@ func (s *Server) RequestVerificationEmail(
 	return &signinpb.RequestVerificationEmailResponse{}, nil
 }
 
+// RequestVerificationEmailByAddress mails a fresh verification link to an
+// address whose owner has not proven it, and answers the same way whatever it
+// found.
+//
+// It is anonymous because the person it is for cannot sign in yet: a registrant
+// is refused at the password door until they answer a link. See
+// [github.com/primandproper/platform-go/v14/authentication/signin.Service.RequestVerificationEmailByAddress]
+// for why every answer is the same and held to the same floor.
+//
+// Rate limiting is the consumer's, in front of it: anybody can reach it.
+func (s *Server) RequestVerificationEmailByAddress(
+	ctx context.Context,
+	request *signinpb.RequestVerificationEmailByAddressRequest,
+) (*signinpb.RequestVerificationEmailByAddressResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.RequestVerificationEmailByAddress(ctx, req.scope, request.GetEmailAddress()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "requesting a verification link by address")
+	}
+
+	return &signinpb.RequestVerificationEmailByAddressResponse{}, nil
+}
+
 // RequestMagicLink mails somebody a link that signs them in, and answers the
 // same way whatever it found.
 //

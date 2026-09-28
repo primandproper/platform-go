@@ -79,6 +79,7 @@ func AnonymousMethods() []string {
 		signinpb.SignInService_VerifyEmailAddress_FullMethodName,
 		signinpb.SignInService_RequestMagicLink_FullMethodName,
 		signinpb.SignInService_RedeemMagicLink_FullMethodName,
+		signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName,
 		signinpb.SignInService_SignOut_FullMethodName,
 	}
 }
@@ -125,7 +126,7 @@ func SelfServiceMethods() []string {
 //
 // Public there means "no authorization check", not "no authentication": the
 // consumer's authentication interceptor still runs, and the self-service
-// methods and Register refuse a request with no principal on them. The nine
+// methods and Register refuse a request with no principal on them. The
 // anonymous ones are the service working as intended.
 //
 // It takes and returns the builder rather than building it, so a consumer

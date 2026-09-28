@@ -82,3 +82,46 @@ func TestServer_RequestVerificationEmail(T *testing.T) {
 		test.EqOp(t, 0, mailbox.count())
 	})
 }
+
+func TestServer_RequestVerificationEmailByAddress(T *testing.T) {
+	T.Parallel()
+
+	// Anonymous: the person it is for cannot sign in yet, so the request
+	// carries no principal and names the address.
+	T.Run("mails an unproven address a link that verifies it", func(t *testing.T) {
+		t.Parallel()
+
+		mailbox := &verificationMailbox{}
+		h := newHarness(t, []signin.ServiceOption{signin.WithVerificationMailer(mailbox)})
+
+		response, err := h.client.RequestVerificationEmailByAddress(h.rootCtx,
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: h.user.EmailAddress})
+		must.NoError(t, err)
+		must.NotNil(t, response)
+
+		must.EqOp(t, 1, mailbox.count())
+		mail := mailbox.sent[0]
+		test.EqOp(t, h.user.ID, mail.User.ID)
+
+		_, err = h.client.VerifyEmailAddress(h.rootCtx, &signinpb.VerifyEmailAddressRequest{Token: mail.Token})
+		must.NoError(t, err)
+
+		// Proven now, and asked again: the same empty answer, and no mail.
+		_, err = h.client.RequestVerificationEmailByAddress(h.rootCtx,
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: h.user.EmailAddress})
+		must.NoError(t, err)
+		test.EqOp(t, 1, mailbox.count())
+	})
+
+	T.Run("answers an address nobody holds the same way", func(t *testing.T) {
+		t.Parallel()
+
+		mailbox := &verificationMailbox{}
+		h := newHarness(t, []signin.ServiceOption{signin.WithVerificationMailer(mailbox)})
+
+		_, err := h.client.RequestVerificationEmailByAddress(h.rootCtx,
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: "nobody@example.com"})
+		must.NoError(t, err)
+		test.EqOp(t, 0, mailbox.count())
+	})
+}

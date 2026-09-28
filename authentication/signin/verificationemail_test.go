@@ -421,3 +421,105 @@ func TestService_RequestVerificationEmail_refusalsFireNoHook(T *testing.T) {
 		test.SliceEmpty(t, e.hooks.resent)
 	})
 }
+
+// The registrant's resend: they cannot sign in until they answer a link, so
+// they ask by address, and the answer is the same whoever holds it.
+func TestService_RequestVerificationEmailByAddress(T *testing.T) {
+	T.Parallel()
+
+	T.Run("mails a registrant a link that verifies them, and retires the first", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		registered, err := e.svc.Register(t.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+		must.NoError(t, err)
+
+		first := registered.EmailAddressVerificationToken
+
+		// Spelled differently from the stored address, which is folded.
+		must.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ADA@example.com"))
+
+		must.EqOp(t, 1, mailbox.count())
+		mail := mailbox.last(t)
+		test.EqOp(t, registered.User.ID, mail.User.ID)
+		test.NotEqOp(t, first, mail.Token)
+
+		test.ErrorIs(t, e.svc.VerifyEmailAddress(t.Context(), testScope, first), signin.ErrInvalidVerificationToken)
+		must.NoError(t, e.svc.VerifyEmailAddress(t.Context(), testScope, mail.Token))
+
+		stored, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)
+		must.NoError(t, err)
+		test.True(t, stored.EmailAddressVerified())
+		test.EqOp(t, identity.StatusGood, stored.AccountStatus)
+	})
+
+	T.Run("answers an address nobody holds the same way, and mails nothing", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		test.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "nobody@example.com"))
+		test.EqOp(t, 0, mailbox.count())
+	})
+
+	T.Run("answers a proven address the same way, and leaves the proof", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		registered, err := e.svc.Register(t.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+		must.NoError(t, err)
+		must.NoError(t, e.svc.VerifyEmailAddress(t.Context(), testScope, registered.EmailAddressVerificationToken))
+
+		proven, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)
+		must.NoError(t, err)
+
+		test.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ada@example.com"))
+		test.EqOp(t, 0, mailbox.count())
+
+		kept, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)
+		must.NoError(t, err)
+		must.NotNil(t, kept.EmailAddressVerifiedAt)
+		test.EqOp(t, *proven.EmailAddressVerifiedAt, *kept.EmailAddressVerifiedAt)
+	})
+
+	T.Run("answers a banned registrant the same way, and mails nothing", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		registered, err := e.svc.Register(t.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+		must.NoError(t, err)
+
+		must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return e.store.UpdateUserAccountStatus(t.Context(), tx, testScope, registered.User.ID, identity.StatusBanned, "for cause")
+		}))
+
+		test.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ada@example.com"))
+		test.EqOp(t, 0, mailbox.count())
+
+		// The link the registration handed out is untouched.
+		stored, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)
+		must.NoError(t, err)
+		test.NotEqOp(t, "", stored.EmailAddressVerificationTokenDigest)
+	})
+
+	T.Run("names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		test.ErrorIs(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, ""), signin.ErrEmptyHandle)
+		test.EqOp(t, 0, mailbox.count())
+	})
+
+	T.Run("without a mailer", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		err := e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ada@example.com")
+		test.ErrorIs(t, err, signin.ErrVerificationMailerNotConfigured)
+	})
+}

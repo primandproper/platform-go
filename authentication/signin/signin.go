@@ -122,6 +122,9 @@ const (
 	// part of registering, because what a dashboard asks of it is how often a
 	// mailed link failed to arrive or to be answered.
 	opRequestVerificationEmail = "request_verification_email"
+	// The anonymous resend, a series apart from the signed-in one because a
+	// dashboard watching for a stranger filling somebody's inbox watches it.
+	opRequestVerificationEmailByAddress = "request_verification_email_by_address"
 	// The passwordless door, both halves. It is a series of its own for the
 	// reason registering is: what a dashboard asks of it is how many people
 	// arrive without a password, which is a different question from how often

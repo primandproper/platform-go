@@ -728,6 +728,27 @@ message RequestVerificationEmailRequest {
 // session prove an inbox they have never seen.
 message RequestVerificationEmailResponse {}
 
+// RequestVerificationEmailByAddressRequest asks for a fresh verification link
+// mailed to an address, from somebody who cannot sign in to ask: a registrant
+// whose first link never arrived, told USER_UNVERIFIED at the password door.
+//
+// It is anonymous, and so it is answered identically whoever holds the address
+// -- nobody, a registrant it mailed, somebody already proven, somebody whose
+// standing admits no mail -- and held to the magic-link door's timing floor, for
+// RequestMagicLinkRequest's reason. A client renders "if that address is waiting
+// on a link, we sent another" and nothing that depends on the answer.
+//
+// Rate limiting is the deployment's, in front of it: anybody can send it.
+message RequestVerificationEmailByAddressRequest {
+  reserved "scope";
+
+  string email_address = 1;
+}
+
+// RequestVerificationEmailByAddressResponse is empty, and the same for every
+// address -- see RequestMagicLinkResponse.
+message RequestVerificationEmailByAddressResponse {}
+
 // RequestMagicLinkRequest asks for a link that signs the holder of an address
 // in, which is the half of passwordless that makes it a product decision rather
 // than an unfinished account.
@@ -818,10 +839,12 @@ service SignInService {
   rpc AttachPassword(AttachPasswordRequest) returns (AttachPasswordResponse);
   rpc VerifyEmailAddress(VerifyEmailAddressRequest) returns (VerifyEmailAddressResponse);
 
-  // Asking for another verification link, which a signed-in person does when
-  // the first never arrived or their address changed. It requires a caller and
-  // names nobody.
+  // Asking for another verification link. The first requires a caller and
+  // names nobody, for somebody signed in whose address changed; the second is
+  // anonymous and names an address, for a registrant who cannot sign in until
+  // they answer one, and is answered the same way whoever holds it.
   rpc RequestVerificationEmail(RequestVerificationEmailRequest) returns (RequestVerificationEmailResponse);
+  rpc RequestVerificationEmailByAddress(RequestVerificationEmailByAddressRequest) returns (RequestVerificationEmailByAddressResponse);
 
   // The passwordless door, both halves anonymous. Requesting a link names an
   // address and is answered the same way whoever holds it; redeeming one carries
