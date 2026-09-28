@@ -246,6 +246,10 @@ func RequireAuthentication(b *AuthenticationRequirementsBuilder) *Authentication
 // refused — and a directory that could not be read is codes.Unavailable, since
 // an outage is not a credential to discard.
 //
+// A caller who owes a forced password change is then refused with
+// signin.ErrPasswordChangeRequired, as codes.FailedPrecondition, on every method
+// the extractor's PasswordChangeGate does not allow; see PrincipalExtractor.
+//
 // A nil table declares nothing, so every method is refused: fail-closed
 // includes the table that was never built.
 func (e *PrincipalExtractor) UnaryServerInterceptor(reqs *AuthenticationRequirements) grpc.UnaryServerInterceptor {
@@ -303,7 +307,15 @@ func (e *PrincipalExtractor) admit(ctx context.Context, reqs *AuthenticationRequ
 		return ctx, status.Error(codes.PermissionDenied, "the caller's account does not admit sign-in")
 	case principal == nil && requirement == AuthenticationRequired:
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
-	default:
-		return withResolved(ctx, principal), nil
 	}
+
+	ctx = withResolved(ctx, principal)
+
+	if e.gate != nil && principal != nil {
+		if err = e.gate.admitRPC(ctx, method); err != nil {
+			return ctx, err
+		}
+	}
+
+	return ctx, nil
 }

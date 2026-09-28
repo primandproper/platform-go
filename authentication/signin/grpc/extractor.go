@@ -56,6 +56,13 @@ var (
 	// produced. It is what sends a request to WithFallback rather than
 	// refusing it, alongside a token that does not verify at all.
 	ErrNotASignInToken = platformerrors.Wrap(ErrUnauthenticated, "a token the sign-in service did not mint")
+
+	// ErrNoPasswordChangeReading indicates an extractor with a fallback, a
+	// directory that cannot read a user by ID, and no reading named through
+	// WithPasswordChangeRequired. The fallback's principals carry no flag of
+	// their own and there is nothing to read one from, so the gate would have
+	// to wave them through; it is refused at construction instead.
+	ErrNoPasswordChangeReading = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "no way to read a fallback principal's forced password change")
 )
 
 // TokenVerifier parses a token this deployment issued back into its claims.
@@ -197,6 +204,19 @@ func (c *Caller) Identity() *identity.Principal { return c.principal }
 // AuthenticationRequirements table, and answer an unusable credential with the
 // honest code — Unavailable for a directory outage rather than
 // codes.Unauthenticated. HTTPMiddleware is the router's counterpart.
+//
+// # The forced password change
+//
+// Both also hold a caller an operator has forced to change their password at
+// the form, through a PasswordChangeGate built over this extractor: every call
+// but PasswordChangeMethods, WithPasswordChangeAllowedMethods and the requests
+// WithPasswordChangeAllowedRequests admits is refused with
+// signin.ErrPasswordChangeRequired until the change is made. It is on by
+// default, because a flag enforced by nobody is an operator control that works
+// only when every client cooperates, and it lives here because this is the one
+// place that has just resolved the caller it reads. WithoutPasswordChangeGate
+// is the deliberate no, for a deployment that enforces the flag somewhere of
+// its own.
 type PrincipalExtractor struct {
 	verifier  TokenVerifier
 	client    database.Client
@@ -207,11 +227,23 @@ type PrincipalExtractor struct {
 	fallback callers.PrincipalExtractor
 	signIns  SignInChecker
 
+	gate *PasswordChangeGate
+
 	o11y observability.Observer
 
-	// What the options wrote, kept only until the observer is built from it.
+	// What the options wrote, kept only until the observer and the gate are
+	// built from it.
 	logger         logging.Logger
 	tracerProvider tracing.Provider
+	passwordChange passwordChangeSettings
+}
+
+// passwordChangeSettings is what the options said about the gate.
+type passwordChangeSettings struct {
+	required PasswordChangeRequired
+	allow    func(*http.Request) bool
+	methods  []string
+	disabled bool
 }
 
 // ExtractorOption configures a PrincipalExtractor.
@@ -293,6 +325,46 @@ func WithSignInCheck(checker SignInChecker) ExtractorOption {
 	}
 }
 
+// WithPasswordChangeAllowedMethods adds gRPC methods, as full method names, that
+// a caller who owes a forced password change may still make, to
+// PasswordChangeMethods — which are always allowed and cannot be removed. It is
+// how a deployment names the calls of its own that a person on their way to
+// the form needs.
+func WithPasswordChangeAllowedMethods(methods ...string) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		e.passwordChange.methods = append(e.passwordChange.methods, methods...)
+	}
+}
+
+// WithPasswordChangeAllowedRequests names the HTTP requests a caller who owes a
+// forced password change may still make. Absent allows none, which is right
+// for a deployment none of whose routes discharge the obligation: this
+// module's sign-in surface is gRPC, so no route of its own needs naming.
+func WithPasswordChangeAllowedRequests(allow func(*http.Request) bool) ExtractorOption {
+	return func(e *PrincipalExtractor) { e.passwordChange.allow = allow }
+}
+
+// WithPasswordChangeRequired names how the gate reads whether a caller owes a
+// forced password change. Absent reads it off the caller this extractor
+// resolved, and through the directory for a principal WithFallback produced —
+// DirectoryPasswordChange. A nil reading is ignored, leaving the default.
+func WithPasswordChangeRequired(required PasswordChangeRequired) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		if required != nil {
+			e.passwordChange.required = required
+		}
+	}
+}
+
+// WithoutPasswordChangeGate builds the extractor with no gate, so a caller who
+// owes a forced password change is resolved and let through like any other.
+// It is for a deployment that enforces the flag somewhere of its own; one
+// that names it and enforces the flag nowhere has a flag an operator can set
+// and nothing obeys.
+func WithoutPasswordChangeGate() ExtractorOption {
+	return func(e *PrincipalExtractor) { e.passwordChange.disabled = true }
+}
+
 // WithExtractorLogger sets the logger. Absent means no logging.
 func WithExtractorLogger(logger logging.Logger) ExtractorOption {
 	return func(e *PrincipalExtractor) { e.logger = logger }
@@ -351,7 +423,61 @@ func NewPrincipalExtractor(
 
 	e.o11y = observability.NewObserver(extractorName, e.logger, e.tracerProvider)
 
+	if !e.passwordChange.disabled {
+		gate, err := e.buildGate()
+		if err != nil {
+			return nil, err
+		}
+
+		e.gate = gate
+	}
+
 	return e, nil
+}
+
+// buildGate is the PasswordChangeGate the interceptors and HTTPMiddleware hold
+// a flagged caller with, reading the caller they resolved through Extract.
+func (e *PrincipalExtractor) buildGate() (*PasswordChangeGate, error) {
+	required := e.passwordChange.required
+	if required == nil {
+		// identity.Store is both directories, so a deployment on this module's
+		// directory reads a fallback principal's flag by its user ID. One whose
+		// directory cannot has a reading only for the callers this extractor
+		// resolved, which is every caller when there is no fallback.
+		directory, ok := e.directory.(PasswordChangeDirectory)
+
+		switch {
+		case ok:
+			read, err := DirectoryPasswordChange(e.client, directory)
+			if err != nil {
+				return nil, err
+			}
+
+			required = read
+		case e.fallback != nil:
+			return nil, ErrNoPasswordChangeReading
+		default:
+			required = carriedPasswordChange
+		}
+	}
+
+	return NewPasswordChangeGate(e.Extract, required,
+		WithAllowedMethods(e.passwordChange.methods...),
+		WithGateLogger(e.logger),
+		WithGateTracerProvider(e.tracerProvider),
+	)
+}
+
+// carriedPasswordChange reads the flag off a *Caller, which carries the user
+// the extractor read to resolve them. It is the default reading for an
+// extractor with no fallback, where every principal is one.
+func carriedPasswordChange(_ context.Context, principal callers.Principal) (bool, error) {
+	caller, ok := principal.(*Caller)
+	if !ok || caller.principal == nil || caller.principal.User == nil {
+		return false, ErrNoPasswordChangeReading
+	}
+
+	return caller.principal.User.RequiresPasswordChange, nil
 }
 
 // keepNoServiceRoles is the default ServiceRolesPolicy: an ordinary-door token
@@ -650,7 +776,15 @@ func (e *PrincipalExtractor) fallBack(ctx context.Context) callers.Principal {
 // proceed as nobody. It answers two failures itself, because proceeding would
 // misreport them: a token naming somebody whose account status admits no
 // sign-in is a 403, and a directory that cannot be read is a 503.
+//
+// A caller who owes a forced password change is then held at the form, save
+// for the requests WithPasswordChangeAllowedRequests admits; see
+// PasswordChangeGate.HTTPMiddleware for the answers.
 func (e *PrincipalExtractor) HTTPMiddleware(next http.Handler) http.Handler {
+	if e.gate != nil {
+		next = e.gate.HTTPMiddleware(e.passwordChange.allow)(next)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 

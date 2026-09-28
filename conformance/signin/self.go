@@ -247,4 +247,46 @@ func self(t *testing.T, s *conformance.Session) {
 		test.False(t, after.GetStatus().GetRequiresPasswordChange(),
 			test.Sprint("a forced password change outlived the change it asked for"))
 	})
+
+	// Reporting the flag is half of it, and the half that works only when every
+	// client cooperates. The other half is that nothing else answers until the
+	// change is made: an ordinary call is refused with the reason a client
+	// branches on, the change itself goes through, and the same call then
+	// succeeds with nothing else to clear.
+	t.Run("a forced password change refuses every other call until it is made", func(t *testing.T) {
+		t.Parallel()
+
+		if s.Seams().PasswordChangeGateDisabled {
+			t.Skip("conformance: this subject says it installs no password change gate (Seams.PasswordChangeGateDisabled), so a forced change is reported and not enforced; skipping")
+		}
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, who := signedIn(t, s, anon, refreshTOTPSecret, updatePassword, getAuthStatus)
+		ctx := sub.Context(t.Context())
+		imposer := directoryCaller(t, s, setUserRequiresPasswordChange)
+
+		_, err := imposer.Surfaces.Identity.SetUserRequiresPasswordChange(imposer.Context(t.Context()),
+			&identitypb.SetUserRequiresPasswordChangeRequest{UserId: who.userID, RequiresPasswordChange: new(true)})
+		must.NoError(t, err, must.Sprint("imposing a forced password change"))
+
+		// On the token the caller already held: the flag is read per request,
+		// so an operator's write reaches a login that began before it.
+		_, err = sub.Surfaces.SignIn.RefreshTOTPSecret(ctx, &signinpb.RefreshTOTPSecretRequest{CurrentPassword: password})
+		refused(t, s, err, codes.FailedPrecondition, reasonPasswordChangeRequired)
+
+		_, err = sub.Surfaces.SignIn.UpdatePassword(ctx, &signinpb.UpdatePasswordRequest{
+			CurrentPassword: password,
+			NewPassword:     newPassword,
+		})
+		must.NoError(t, err, must.Sprint("the gate refused the change it was holding the caller for"))
+
+		after, err := sub.Surfaces.SignIn.GetAuthStatus(ctx, &signinpb.GetAuthStatusRequest{})
+		must.NoError(t, err)
+		test.False(t, after.GetStatus().GetRequiresPasswordChange(),
+			test.Sprint("a forced password change outlived the change it asked for"))
+
+		refreshed, err := sub.Surfaces.SignIn.RefreshTOTPSecret(ctx, &signinpb.RefreshTOTPSecretRequest{CurrentPassword: newPassword})
+		must.NoError(t, err, must.Sprint("the call the gate refused was still refused once the change was made"))
+		test.NotEqOp(t, "", refreshed.GetSecret())
+	})
 }

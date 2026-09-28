@@ -337,8 +337,10 @@ type AuthStatus struct {
 
 	// RequiresPasswordChange reports whether an operator has forced a password
 	// change. This service still signs such a user in — the alternative is a
-	// user who cannot reach the form — so it is the client's job to send them
-	// to it, and this is how they are told.
+	// user who cannot reach the form — and this is how a client is told to
+	// send them to it. What holds them there is signin/grpc's
+	// PasswordChangeGate, which refuses their other calls with
+	// ErrPasswordChangeRequired until the change is made.
 	RequiresPasswordChange bool `json:"requiresPasswordChange"`
 
 	// EmailAddressVerified reports whether their address has been proven
