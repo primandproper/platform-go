@@ -314,6 +314,30 @@ func (s *SQLStore) checkInvitationToken(invitation *Invitation, token string) er
 	return nil
 }
 
+// invitationAddressedTo reports whether an invitation was sent to the address
+// a user holds.
+//
+// The address is what makes an invitation an invitation rather than a bearer
+// pass into somebody's account: the token travels wherever the mail and the
+// events about it travel, and with this check a leaked one admits nobody but
+// the person it was addressed to.
+//
+// Both sides are folded, as the columns that hold them are, so the invitation a
+// sender addressed to Ada@example.com is answered by the user who registered as
+// ada@example.com. Folding again here costs nothing and keeps the comparison
+// from depending on every row having been written through the fold.
+//
+// A mismatch reads as ErrInvitationNotFound, exactly as a wrong token does, and
+// is checked before the expiry that checkInvitationToken distinguishes, so a
+// caller presenting a good token under the wrong address learns nothing about
+// which half was wrong. Whether the address has been verified is deliberately
+// not asked: a registration by invitation holds an unverified address by
+// construction, so requiring verification of an existing user would refuse
+// somebody the registration path admits, and protect nothing it does not.
+func invitationAddressedTo(invitation *Invitation, user *User) bool {
+	return FoldHandle(invitation.ToEmail) == FoldHandle(user.EmailAddress)
+}
+
 // ListInvitationsFromUser pages the invitations a user has sent in one status,
 // in the direction the filter names.
 func (s *SQLStore) ListInvitationsFromUser(
@@ -550,6 +574,19 @@ func (s *SQLStore) AcceptInvitation(
 		return nil, op.Error(err, "accepting identity invitation")
 	}
 
+	// Read before the token is weighed, so the address can be refused ahead of
+	// the expiry check that would otherwise tell a mismatched acceptor the token
+	// was right. A user from another directory is ErrUserNotFound here, as the
+	// membership write would have answered.
+	acceptor, err := s.readUser(ctx, tx, scope, acceptingUserID)
+	if err != nil {
+		return nil, op.Error(err, "accepting identity invitation")
+	}
+
+	if !invitationAddressedTo(invitation, acceptor) {
+		return nil, op.Error(ErrInvitationNotFound, "accepting identity invitation")
+	}
+
 	if err = s.checkInvitationToken(invitation, token); err != nil {
 		return nil, op.Error(err, "accepting identity invitation")
 	}
@@ -660,11 +697,12 @@ func (s *SQLStore) SetInvitationStatus(
 //
 // An invitation addressed to the subject is deleted, whatever its status and
 // whichever of the two ways it names them: the address it was sent to, or the
-// user who accepted it, which is not always the same person the address suggests
-// — accepting requires a live user, not a matching mailbox. Deleting rather than
-// blanking is deliberate. What blanking would leave is a pending offer nobody can
-// be shown, still redeemable by whoever holds the link in a mailbox the subject
-// may no longer control, which is a membership their erasure would have granted.
+// user who accepted it, which is not always the address the subject holds now
+// — accepting requires the invited address, but an address can change after
+// the acceptance. Deleting rather than blanking is deliberate. What blanking
+// would leave is a pending offer nobody can be shown, still redeemable by
+// whoever holds the link in a mailbox the subject may no longer control, which
+// is a membership their erasure would have granted.
 // The roles the invitation promised go with it, through ON DELETE CASCADE.
 //
 // An invitation the subject sent is somebody else's row — the address and the
