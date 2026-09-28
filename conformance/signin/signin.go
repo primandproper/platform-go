@@ -39,6 +39,7 @@ const (
 	redeemMagicLink               = signinpb.SignInService_RedeemMagicLink_FullMethodName
 	refreshTOTPSecret             = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
 	requestMagicLink              = signinpb.SignInService_RequestMagicLink_FullMethodName
+	requestVerificationEmail      = signinpb.SignInService_RequestVerificationEmail_FullMethodName
 	signOut                       = signinpb.SignInService_SignOut_FullMethodName
 	signOutEverywhere             = signinpb.SignInService_SignOutEverywhere_FullMethodName
 	updatePassword                = signinpb.SignInService_UpdatePassword_FullMethodName
@@ -48,6 +49,7 @@ const (
 	invite                        = identitypb.IdentityService_Invite_FullMethodName
 	setUserRequiresPasswordChange = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
 	setUserServiceRoles           = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
+	updateUserAccountStatus       = identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName
 )
 
 // identitySurface is the identity suite's name, for the operators here whose
@@ -99,6 +101,7 @@ const (
 	reasonNotAnAdministrator      = "NOT_AN_ADMINISTRATOR"
 	reasonAdminSignInUnavailable  = "ADMIN_SIGNIN_UNAVAILABLE"
 	reasonPasswordAlreadySet      = "PASSWORD_ALREADY_SET"
+	reasonEmailAlreadyVerified    = "EMAIL_ADDRESS_ALREADY_VERIFIED"
 	reasonNoCredentialNamed       = "NO_CREDENTIAL_NAMED" //nolint:gosec // G101: a refusal's name, not a credential.
 )
 

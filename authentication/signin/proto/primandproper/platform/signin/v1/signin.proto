@@ -709,6 +709,25 @@ message VerifyEmailAddressRequest {
 // VerifyEmailAddressResponse is empty -- see UpdatePasswordResponse.
 message VerifyEmailAddressResponse {}
 
+// RequestVerificationEmailRequest asks for a fresh link proving the calling
+// user's address, mailed to it, and retires the link they were sent before.
+//
+// It requires a caller and names nobody, for SignOutEverywhereRequest's reason:
+// the subject is whoever is calling, and a field naming somebody else would be a
+// way to mail strangers from this deployment's domain. An address that is
+// already proven is refused as EMAIL_ADDRESS_ALREADY_VERIFIED and keeps its
+// proof, so asking again can never un-verify anybody.
+//
+// Rate limiting is the deployment's, in front of it: every request sends mail.
+message RequestVerificationEmailRequest {
+  reserved "scope";
+}
+
+// RequestVerificationEmailResponse is empty. The link goes to the address and
+// never back to the caller -- a response carrying it would let whoever holds a
+// session prove an inbox they have never seen.
+message RequestVerificationEmailResponse {}
+
 // RequestMagicLinkRequest asks for a link that signs the holder of an address
 // in, which is the half of passwordless that makes it a product decision rather
 // than an unfinished account.
@@ -798,6 +817,11 @@ service SignInService {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc AttachPassword(AttachPasswordRequest) returns (AttachPasswordResponse);
   rpc VerifyEmailAddress(VerifyEmailAddressRequest) returns (VerifyEmailAddressResponse);
+
+  // Asking for another verification link, which a signed-in person does when
+  // the first never arrived or their address changed. It requires a caller and
+  // names nobody.
+  rpc RequestVerificationEmail(RequestVerificationEmailRequest) returns (RequestVerificationEmailResponse);
 
   // The passwordless door, both halves anonymous. Requesting a link names an
   // address and is answered the same way whoever holds it; redeeming one carries

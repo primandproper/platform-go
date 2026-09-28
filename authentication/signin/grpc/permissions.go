@@ -104,8 +104,8 @@ func RegistrarMethods() []string {
 // Every one takes its subject from the principal. There is no permission that
 // would make these safer and one would make them wrong: an operator holding a
 // directory-wide grant would not thereby be able to change somebody else's
-// password — or list or end their logins — because the method has no way to
-// name one. EndSignIn names a login, and the service matches it against the
+// password — or list or end their logins, or mail them a verification link —
+// because the method has no way to name one. EndSignIn names a login, and the service matches it against the
 // caller as well, so a family identifier that is somebody else's ends nothing.
 func SelfServiceMethods() []string {
 	return []string{
@@ -116,6 +116,7 @@ func SelfServiceMethods() []string {
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
 		signinpb.SignInService_ListSignIns_FullMethodName,
 		signinpb.SignInService_EndSignIn_FullMethodName,
+		signinpb.SignInService_RequestVerificationEmail_FullMethodName,
 	}
 }
 
@@ -123,7 +124,7 @@ func SelfServiceMethods() []string {
 // builder, all of them as public.
 //
 // Public there means "no authorization check", not "no authentication": the
-// consumer's authentication interceptor still runs, and the seven self-service
+// consumer's authentication interceptor still runs, and the self-service
 // methods and Register refuse a request with no principal on them. The nine
 // anonymous ones are the service working as intended.
 //

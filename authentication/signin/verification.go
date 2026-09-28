@@ -2,10 +2,12 @@ package signin
 
 import (
 	"context"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
@@ -70,6 +72,21 @@ type Verifications interface {
 		tx database.Tx,
 		scope tenancy.Scope,
 		userID string,
+	) error
+
+	// SetUserEmailAddressVerificationToken stores the digest of the token a new
+	// verification link carries, and the deadline it dies at, replacing any
+	// outstanding one — so the link mailed before stops working. It refuses an
+	// address that is already proven with
+	// identity.ErrEmailAddressAlreadyVerified rather than withdrawing the proof
+	// to make room, which is what keeps [Service.RequestVerificationEmail] from
+	// un-verifying anybody even when the read ahead of it has gone stale.
+	SetUserEmailAddressVerificationToken(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID, token string,
+		expiresAt time.Time,
 	) error
 
 	// UpdateUserAccountStatus moves a user between statuses. This package calls
@@ -390,6 +407,175 @@ func (s *Service) CompleteVerification(
 		return s.promote(ctx, tx, scope, userID, false)
 	}); err != nil {
 		return op.Error(err, "completing a verification")
+	}
+
+	return nil
+}
+
+// VerificationMail is what a [VerificationMailer] is handed once a new
+// verification link has been minted and committed.
+type VerificationMail struct {
+	_ struct{} `json:"-"`
+
+	// ExpiresAt is when the link stops being answerable, for a mail that says
+	// so. It is the deadline stored beside the digest, from the same clock read.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// User is who the link is for, redacted, as the row stood when the link was
+	// minted. The address to mail is on it.
+	User *identity.User `json:"user"`
+
+	// Token is the secret to render into the link's URL, and this is the only
+	// place it will ever exist: the column holds its digest. A mailer that drops
+	// it has sent a link nobody can answer.
+	//
+	// It is excluded from JSON for the reason MagicLinkIssuance.Secret is: do
+	// not log it, do not store it, and do not put it anywhere but the one mail.
+	Token string `json:"-"`
+}
+
+// VerificationMailer delivers the link [Service.RequestVerificationEmail]
+// mints.
+//
+// It is a seam rather than a dependency on an email package for the reason
+// [MagicLinkMailer] is: the sender, the template, the wording and the URL the
+// token is rendered into are the consumer's, and what this package decides is
+// when. It is a seam of its own rather than that one because a consumer
+// implements only the mail for the doors they mount.
+//
+// An error from a mailer fails RequestVerificationEmail, and by then the link is
+// committed — so the new link exists, the previous one is retired, and nobody
+// has either. That is the honest reading of a send that failed, and asking again
+// mints another.
+type VerificationMailer interface {
+	SendVerification(ctx context.Context, mail *VerificationMail) error
+}
+
+// VerificationMailerFunc adapts a function to VerificationMailer.
+type VerificationMailerFunc func(ctx context.Context, mail *VerificationMail) error
+
+// SendVerification implements VerificationMailer.
+func (f VerificationMailerFunc) SendVerification(ctx context.Context, mail *VerificationMail) error {
+	return f(ctx, mail)
+}
+
+// RequestVerificationEmail mails somebody a fresh link that proves their
+// address, and retires the one they were sent before.
+//
+// It is the "resend" every registration flow needs. The link minted at
+// registration is handed back once, on [Registered], and a person whose mail
+// never arrived, went to spam or sat past its deadline otherwise has no way to
+// get another. It is about the caller and nobody else — userID is the signed-in
+// person's own, taken off their principal by a transport — so there is no
+// enumeration to defend against here, and the answers are specific.
+//
+// # A proven address is refused
+//
+// With [ErrEmailAddressAlreadyVerified], and the proof is left exactly as it
+// was. A link and a proof may not stand on one row together, and asking for a
+// link is not a statement that a proven address has stopped being the
+// caller's, so this is not a way to un-verify anybody. The refusal is made on
+// the transaction that writes, and identity's store makes it again in the
+// write's own predicate, so a proof that lands in between is refused rather than
+// withdrawn.
+//
+// An address that has stopped being proven — because it changed — is the case
+// this door serves beside a registrant's: the change withdraws the proof, and
+// a flow changing an address calls this afterwards to mail the new one a link.
+//
+// # What it mints
+//
+// A token from the same source and with the same deadline the registration's
+// link has, [WithVerificationLinkTTL]. The digest replaces whatever link was
+// outstanding, so only the newest link verifies. The token reaches the
+// [VerificationMailer] and nothing else: it is not returned, not logged and not
+// handed to a hook.
+//
+// The link is committed before the mail is sent, and the mail is sent after the
+// commit rather than from inside it, for the reason [Service.RequestMagicLink]
+// gives: a link mailed for a transaction that then rolled back is a URL in
+// somebody's inbox that will never answer.
+//
+// # Rate limiting is the deployment's
+//
+// In front of this call. It mails on every request, so a deployment without a
+// limit in front of it lets a signed-in person send an unbounded stream of mail
+// through its domain, and each one retires the last.
+//
+// It requires [WithVerifications] and [WithVerificationMailer], and refuses
+// with [ErrVerificationsNotConfigured] or [ErrVerificationMailerNotConfigured]
+// until it has both.
+func (s *Service) RequestVerificationEmail(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+) (err error) {
+	ctx, op, done := s.begin(ctx, opRequestVerificationEmail,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer func() { done(err) }()
+
+	if userID == "" {
+		return op.Error(ErrEmptyUserID, "requesting a verification link")
+	}
+
+	if s.verifications == nil {
+		return op.Error(ErrVerificationsNotConfigured, "requesting a verification link")
+	}
+
+	if s.verificationMailer == nil {
+		return op.Error(ErrVerificationMailerNotConfigured, "requesting a verification link")
+	}
+
+	// Minted before the transaction opens and outside it, which is the shape
+	// Register's mint has: nothing about drawing a secret needs a row locked.
+	token, err := s.generateSecret(ctx)
+	if err != nil {
+		return op.Error(err, "generating an email verification token")
+	}
+
+	expiresAt := s.clk.Now().UTC().Add(s.verificationLinkTTL)
+
+	var user *identity.User
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		current, txErr := s.directory.GetUser(ctx, tx, scope, userID)
+		if txErr != nil {
+			return txErr
+		}
+
+		if current.EmailAddressVerified() {
+			return ErrEmailAddressAlreadyVerified
+		}
+
+		// The store repeats the test in its own predicate, so a proof landing
+		// between the read above and this write is refused rather than
+		// withdrawn. Its refusal is identity's sentinel, and it is answered as
+		// this package's so the caller sees one refusal whichever check made it.
+		if txErr = s.verifications.SetUserEmailAddressVerificationToken(
+			ctx, tx, scope, userID, token, expiresAt,
+		); txErr != nil {
+			if platformerrors.Is(txErr, identity.ErrEmailAddressAlreadyVerified) {
+				return ErrEmailAddressAlreadyVerified
+			}
+
+			return txErr
+		}
+
+		user = current
+
+		return nil
+	}); err != nil {
+		return op.Error(err, "minting a verification link")
+	}
+
+	if err = s.verificationMailer.SendVerification(ctx, &VerificationMail{
+		User:      user.Redacted(),
+		Token:     token,
+		ExpiresAt: expiresAt,
+	}); err != nil {
+		return op.Error(err, "mailing a verification link")
 	}
 
 	return nil

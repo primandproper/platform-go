@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -267,7 +268,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, *verified.TwoFactorSecretVerifiedAt, *stored.TwoFactorSecretVerifiedAt)
 	})
 
-	t.Run("mints a verification token and reports the proof it dropped", func(t *testing.T) {
+	t.Run("refuses a link for a proven address and leaves the proof", func(t *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
@@ -283,12 +284,36 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		must.NotNil(t, proven.EmailAddressVerifiedAt)
 
+		// Asking for another link is not a statement that a proven address has
+		// stopped being the caller's, so the write refuses rather than making
+		// room for the link by withdrawing the proof.
+		_, err = service.SetUserEmailAddressVerificationToken(
+			t.Context(), testScope, user.ID, "second-link", store.now().Add(time.Hour))
+		must.ErrorIs(t, err, ErrEmailAddressAlreadyVerified)
+
+		test.EqOp(t, 0, hooks.ran("email_token"))
+
+		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		must.NotNil(t, stored.EmailAddressVerifiedAt)
+		test.EqOp(t, *proven.EmailAddressVerifiedAt, *stored.EmailAddressVerifiedAt)
+		test.EqOp(t, "", stored.EmailAddressVerificationTokenDigest)
+	})
+
+	t.Run("mints a link for an address nobody proved, retiring the last one", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		user := newUser("ada")
+		mintVerificationLink(user, "first-link")
+		seedUser(t, env, store, user)
+
 		updated, err := service.SetUserEmailAddressVerificationToken(
 			t.Context(), testScope, user.ID, "second-link", store.now().Add(time.Hour))
 		must.NoError(t, err)
 
-		// The row may not say both "proven" and "a link is outstanding", and
-		// issuing the link is the statement that the address wants proving.
 		must.Nil(t, updated.EmailAddressVerifiedAt)
 		test.EqOp(t, "", updated.EmailAddressVerificationToken)
 		test.EqOp(t, "", updated.EmailAddressVerificationTokenDigest)
@@ -296,28 +321,23 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, 1, hooks.ran("email_token"))
 		test.EqOp(t, updated, hooks.user)
 
-		must.NotNil(t, hooks.previousVerifiedAt)
-		test.EqOp(t, *proven.EmailAddressVerifiedAt, *hooks.previousVerifiedAt)
-
 		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.EqOp(t, tokenDigest("second-link"), stored.EmailAddressVerificationTokenDigest)
 	})
 
-	t.Run("a link for an address nobody proved reports no previous proof", func(t *testing.T) {
+	t.Run("a user nobody holds is not found rather than already verified", func(t *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
 		service, store := env.newService(t, hooks)
 
-		user := seedUser(t, env, store, newUser("ada"))
-
 		_, err := service.SetUserEmailAddressVerificationToken(
-			t.Context(), testScope, user.ID, "first-link", store.now().Add(time.Hour))
-		must.NoError(t, err)
+			t.Context(), testScope, "nobody", "a-link", store.now().Add(time.Hour))
+		must.ErrorIs(t, err, ErrUserNotFound)
+		test.False(t, platformerrors.Is(err, ErrEmailAddressAlreadyVerified))
 
-		test.EqOp(t, 1, hooks.ran("email_token"))
-		must.Nil(t, hooks.previousVerifiedAt)
+		test.EqOp(t, 0, hooks.ran("email_token"))
 	})
 
 	t.Run("refuses an empty token and runs no hook", func(t *testing.T) {
@@ -396,17 +416,14 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		hooks := &recordingHooks{}
 		service, store := env.newService(t, hooks)
 
+		// A proof and an outstanding link at once, which is the state an
+		// administrative unverify has to leave the link alone in. No write
+		// reaches it any more — a link is refused for a proven address — so it
+		// is seeded, as a row written before that refusal existed would hold it.
 		user := newUser("ada")
-		mintVerificationLink(user, "verify-me")
+		mintVerificationLink(user, "third-link")
+		user.EmailAddressVerifiedAt = pointer.To(time.Now().UTC().Truncate(time.Second))
 		seedUser(t, env, store, user)
-
-		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
-
-		// A second link, minted after the proof, which is the state an
-		// administrative unverify has to leave alone.
-		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "next-link"))
-		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "next-link"))
-		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "third-link"))
 
 		unverified, err := service.MarkUserEmailAddressUnverified(t.Context(), testScope, user.ID)
 		must.NoError(t, err)

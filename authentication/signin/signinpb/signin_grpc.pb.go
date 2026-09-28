@@ -136,23 +136,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SignInService_Register_FullMethodName             = "/primandproper.platform.signin.v1.SignInService/Register"
-	SignInService_AttachPassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/AttachPassword"
-	SignInService_VerifyEmailAddress_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/VerifyEmailAddress"
-	SignInService_RequestMagicLink_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/RequestMagicLink"
-	SignInService_RedeemMagicLink_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/RedeemMagicLink"
-	SignInService_LoginForToken_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
-	SignInService_AdminLoginForToken_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
-	SignInService_ExchangeRefreshToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
-	SignInService_SignOut_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/SignOut"
-	SignInService_SignOutEverywhere_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
-	SignInService_ListSignIns_FullMethodName          = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
-	SignInService_EndSignIn_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/EndSignIn"
-	SignInService_GetAuthStatus_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
-	SignInService_GetSelf_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/GetSelf"
-	SignInService_UpdatePassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
-	SignInService_RefreshTOTPSecret_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
-	SignInService_VerifyTOTPSecret_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
+	SignInService_Register_FullMethodName                 = "/primandproper.platform.signin.v1.SignInService/Register"
+	SignInService_AttachPassword_FullMethodName           = "/primandproper.platform.signin.v1.SignInService/AttachPassword"
+	SignInService_VerifyEmailAddress_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/VerifyEmailAddress"
+	SignInService_RequestVerificationEmail_FullMethodName = "/primandproper.platform.signin.v1.SignInService/RequestVerificationEmail"
+	SignInService_RequestMagicLink_FullMethodName         = "/primandproper.platform.signin.v1.SignInService/RequestMagicLink"
+	SignInService_RedeemMagicLink_FullMethodName          = "/primandproper.platform.signin.v1.SignInService/RedeemMagicLink"
+	SignInService_LoginForToken_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
+	SignInService_AdminLoginForToken_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
+	SignInService_ExchangeRefreshToken_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
+	SignInService_SignOut_FullMethodName                  = "/primandproper.platform.signin.v1.SignInService/SignOut"
+	SignInService_SignOutEverywhere_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
+	SignInService_ListSignIns_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
+	SignInService_EndSignIn_FullMethodName                = "/primandproper.platform.signin.v1.SignInService/EndSignIn"
+	SignInService_GetAuthStatus_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
+	SignInService_GetSelf_FullMethodName                  = "/primandproper.platform.signin.v1.SignInService/GetSelf"
+	SignInService_UpdatePassword_FullMethodName           = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
+	SignInService_RefreshTOTPSecret_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
+	SignInService_VerifyTOTPSecret_FullMethodName         = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
 )
 
 // SignInServiceClient is the client API for SignInService service.
@@ -177,6 +178,10 @@ type SignInServiceClient interface {
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	AttachPassword(ctx context.Context, in *AttachPasswordRequest, opts ...grpc.CallOption) (*AttachPasswordResponse, error)
 	VerifyEmailAddress(ctx context.Context, in *VerifyEmailAddressRequest, opts ...grpc.CallOption) (*VerifyEmailAddressResponse, error)
+	// Asking for another verification link, which a signed-in person does when
+	// the first never arrived or their address changed. It requires a caller and
+	// names nobody.
+	RequestVerificationEmail(ctx context.Context, in *RequestVerificationEmailRequest, opts ...grpc.CallOption) (*RequestVerificationEmailResponse, error)
 	// The passwordless door, both halves anonymous. Requesting a link names an
 	// address and is answered the same way whoever holds it; redeeming one carries
 	// the token that was mailed, which is the whole of its authority. Neither can
@@ -246,6 +251,16 @@ func (c *signInServiceClient) VerifyEmailAddress(ctx context.Context, in *Verify
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(VerifyEmailAddressResponse)
 	err := c.cc.Invoke(ctx, SignInService_VerifyEmailAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) RequestVerificationEmail(ctx context.Context, in *RequestVerificationEmailRequest, opts ...grpc.CallOption) (*RequestVerificationEmailResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestVerificationEmailResponse)
+	err := c.cc.Invoke(ctx, SignInService_RequestVerificationEmail_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -414,6 +429,10 @@ type SignInServiceServer interface {
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	AttachPassword(context.Context, *AttachPasswordRequest) (*AttachPasswordResponse, error)
 	VerifyEmailAddress(context.Context, *VerifyEmailAddressRequest) (*VerifyEmailAddressResponse, error)
+	// Asking for another verification link, which a signed-in person does when
+	// the first never arrived or their address changed. It requires a caller and
+	// names nobody.
+	RequestVerificationEmail(context.Context, *RequestVerificationEmailRequest) (*RequestVerificationEmailResponse, error)
 	// The passwordless door, both halves anonymous. Requesting a link names an
 	// address and is answered the same way whoever holds it; redeeming one carries
 	// the token that was mailed, which is the whole of its authority. Neither can
@@ -467,6 +486,9 @@ func (UnimplementedSignInServiceServer) AttachPassword(context.Context, *AttachP
 }
 func (UnimplementedSignInServiceServer) VerifyEmailAddress(context.Context, *VerifyEmailAddressRequest) (*VerifyEmailAddressResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VerifyEmailAddress not implemented")
+}
+func (UnimplementedSignInServiceServer) RequestVerificationEmail(context.Context, *RequestVerificationEmailRequest) (*RequestVerificationEmailResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestVerificationEmail not implemented")
 }
 func (UnimplementedSignInServiceServer) RequestMagicLink(context.Context, *RequestMagicLinkRequest) (*RequestMagicLinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestMagicLink not implemented")
@@ -581,6 +603,24 @@ func _SignInService_VerifyEmailAddress_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SignInServiceServer).VerifyEmailAddress(ctx, req.(*VerifyEmailAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_RequestVerificationEmail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestVerificationEmailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).RequestVerificationEmail(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_RequestVerificationEmail_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).RequestVerificationEmail(ctx, req.(*RequestVerificationEmailRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -855,6 +895,10 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VerifyEmailAddress",
 			Handler:    _SignInService_VerifyEmailAddress_Handler,
+		},
+		{
+			MethodName: "RequestVerificationEmail",
+			Handler:    _SignInService_RequestVerificationEmail_Handler,
 		},
 		{
 			MethodName: "RequestMagicLink",

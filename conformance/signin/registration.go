@@ -6,6 +6,7 @@ import (
 	domain "github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
@@ -118,6 +119,74 @@ func registration(t *testing.T, s *conformance.Session) {
 
 		_, spent := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
 		indistinguishable(t, s, err, spent, "a spent verification link against one never mailed")
+	})
+
+	// The "resend" button: somebody whose link never arrived asks for another
+	// while signed in, and the one they held stops working. A registrant cannot
+	// sign in until their address is proven, so the person here is one an
+	// operator admitted without it — signed in, with an address still unproven,
+	// which is also where an address change leaves somebody.
+	t.Run("a resend retires the mailed link, and the link it mails verifies", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		operator := directoryCaller(t, s, updateUserAccountStatus)
+
+		if s.Seams().SignedIn == nil {
+			t.Skip("conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
+		}
+
+		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		first := mailedVerification(t, s, who.email)
+
+		_, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
+			&identitypb.UpdateUserAccountStatusRequest{
+				UserId: who.userID,
+				Status: identitypb.AccountStatus_ACCOUNT_STATUS_GOOD,
+			})
+		must.NoError(t, err, must.Sprint("admitting a registrant whose address is unproven"))
+
+		sub := caller(t, s, loggedIn(t, anon, who.username, password), requestVerificationEmail)
+
+		_, err = sub.Surfaces.SignIn.RequestVerificationEmail(sub.Context(t.Context()),
+			&signinpb.RequestVerificationEmailRequest{})
+		must.NoError(t, err, must.Sprint("asking for another verification link"))
+
+		fresh := mailedVerification(t, s, who.email)
+		must.NotEqOp(t, first, fresh,
+			must.Sprint("the verification token action answered with the link from before the resend; it must report the newest"))
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: first})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: fresh})
+		must.NoError(t, err, must.Sprint("the link the resend mailed did not verify"))
+	})
+
+	// A resend can never un-prove anybody: asking for a link for an address that
+	// is already proven is refused, and the proof is exactly what it was.
+	t.Run("a resend for a proven address is refused and leaves the proof", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, _ := signedIn(t, s, anon, requestVerificationEmail, getSelf)
+
+		before, err := sub.Surfaces.SignIn.GetSelf(sub.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		must.NotNil(t, before.GetUser().GetEmailAddressVerifiedAt(),
+			must.Sprint("the control: a verified registrant's address reads as unproven"))
+
+		_, err = sub.Surfaces.SignIn.RequestVerificationEmail(sub.Context(t.Context()),
+			&signinpb.RequestVerificationEmailRequest{})
+		refused(t, s, err, codes.FailedPrecondition, reasonEmailAlreadyVerified)
+
+		after, err := sub.Surfaces.SignIn.GetSelf(sub.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		must.NotNil(t, after.GetUser().GetEmailAddressVerifiedAt(),
+			must.Sprint("a refused resend withdrew the proof"))
+		test.True(t, before.GetUser().GetEmailAddressVerifiedAt().AsTime().Equal(
+			after.GetUser().GetEmailAddressVerifiedAt().AsTime()),
+			test.Sprint("a refused resend moved the proof"))
 	})
 
 	// A registration that did not say how the registrant will prove who they are

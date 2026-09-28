@@ -336,12 +336,12 @@ func (h *recordingHooks) AfterMarkUserTwoFactorSecretVerified(
 }
 
 func (h *recordingHooks) AfterSetUserEmailAddressVerificationToken(
-	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User, previousAddressVerifiedAt *time.Time,
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User,
 ) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.user, h.previousVerifiedAt = user, previousAddressVerifiedAt
+	h.user = user
 
 	return h.record(ctx, tx, "email_token")
 }

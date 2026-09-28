@@ -269,5 +269,12 @@ every registration asks for an email address to be proven, and a consumer who
 proved a phone number, a payment or an operator's approval says so with it. What
 may be proven that way is theirs to decide, which is exactly why there is no RPC:
 the check is one only they can make.
+
+[Service.RequestVerificationEmail] is the resend, for somebody signed in whose
+address is unproven — a link that never arrived, or an address that changed. It
+mints a fresh link, retires the outstanding one, and hands the secret to the
+[VerificationMailer] and nothing else. An address that is already proven is
+refused with [ErrEmailAddressAlreadyVerified] and keeps its proof, so a resend
+can never un-verify anybody.
 */
 package signin

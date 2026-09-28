@@ -369,13 +369,14 @@ var Matrix = map[string]map[string]Decision{
 		// the lookup rather than about expiry. See the sentinel's own comment.
 		"ErrEmailVerificationLinkExpired": {Err: identity.ErrEmailVerificationLinkExpired, Is: Mapped},
 
-		// The three states an act is refused from rather than forbidden. Each is
+		// The states an act is refused from rather than forbidden. Each is
 		// fixable by the caller in a specific order, and a 500 would tell them to
 		// do nothing. ErrInvitationExpired is the one row in this file whose two
 		// transports differ on purpose — see identity's own mappers.
-		"ErrInvitationExpired": {Err: identity.ErrInvitationExpired, Is: Mapped},
-		"ErrLastAccountOwner":  {Err: identity.ErrLastAccountOwner, Is: Mapped},
-		"ErrNoDefaultAccount":  {Err: identity.ErrNoDefaultAccount, Is: Mapped},
+		"ErrEmailAddressAlreadyVerified": {Err: identity.ErrEmailAddressAlreadyVerified, Is: Mapped},
+		"ErrInvitationExpired":           {Err: identity.ErrInvitationExpired, Is: Mapped},
+		"ErrLastAccountOwner":            {Err: identity.ErrLastAccountOwner, Is: Mapped},
+		"ErrNoDefaultAccount":            {Err: identity.ErrNoDefaultAccount, Is: Mapped},
 
 		// The three a client sent that the directory will not store as written.
 		// One names a different tenant than the call did, one is longer than the
@@ -570,14 +571,15 @@ var Matrix = map[string]map[string]Decision{
 		"ErrUserBanned":         {Err: signin.ErrUserBanned, Is: Mapped},
 		"ErrUserTerminated":     {Err: signin.ErrUserTerminated, Is: Mapped},
 
-		// The three states an act is refused from rather than forbidden. Each is
+		// The states an act is refused from rather than forbidden. Each is
 		// fixable in a specific order, and these are the rows where the two
 		// transports read differently on purpose — FailedPrecondition on one
 		// side, a conflict with a specific message on the other.
-		"ErrNoPasswordCredential":    {Err: signin.ErrNoPasswordCredential, Is: Mapped},
-		"ErrPasswordAlreadySet":      {Err: signin.ErrPasswordAlreadySet, Is: Mapped},
-		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
-		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
+		"ErrEmailAddressAlreadyVerified": {Err: signin.ErrEmailAddressAlreadyVerified, Is: Mapped},
+		"ErrNoPasswordCredential":        {Err: signin.ErrNoPasswordCredential, Is: Mapped},
+		"ErrPasswordAlreadySet":          {Err: signin.ErrPasswordAlreadySet, Is: Mapped},
+		"ErrSecondFactorNotEnrolled":     {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
+		"ErrUserUnverified":              {Err: signin.ErrUserUnverified, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Some are wiring failures and the rest
@@ -653,12 +655,14 @@ var Matrix = map[string]map[string]Decision{
 		// The listing doors on a service whose store mints refresh tokens and
 		// cannot enumerate them. Wiring again, and nothing a caller sent.
 
-		// The two registration wiring failures: a service that was given nothing
-		// to register through, and one that was given nothing to finish a
-		// registration with. Neither is anything a caller sent.
-		"ErrRegistrationIncomplete":     {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
-		"ErrRegistrationNotConfigured":  {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
-		"ErrVerificationsNotConfigured": {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
+		// The registration wiring failures: a service that was given nothing to
+		// register through, one that was given nothing to finish a registration
+		// with, and one that was given nothing to mail a fresh link through. None
+		// is anything a caller sent.
+		"ErrRegistrationIncomplete":          {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
+		"ErrRegistrationNotConfigured":       {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
+		"ErrVerificationsNotConfigured":      {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
+		"ErrVerificationMailerNotConfigured": {Err: signin.ErrVerificationMailerNotConfigured, Is: Unhandled},
 
 		// A passwordless door on a service that was given no link store — or, for
 		// the request half, no mailer. It is wiring rather than anything a caller
