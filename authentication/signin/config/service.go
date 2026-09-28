@@ -118,6 +118,10 @@ func NewService(
 		signin.WithAdminRefreshTokenTTL(cfg.RefreshTokens.AdminTTL),
 	)
 
+	if cfg.RefreshTokens.RefuseSupersededTokens {
+		serviceOpts = append(serviceOpts, signin.WithSupersededTokenRefusal())
+	}
+
 	if block := cfg.MagicLinks; block != nil {
 		store, storeErr := magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: block.TablePrefix}, client,
 			append([]magiclinks.Option{

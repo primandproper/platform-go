@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
-	"slices"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -88,15 +87,16 @@ type SQLStore struct {
 // NewSQLStore builds a SQLStore over a database client.
 //
 // The client is not what the writes execute on. Issue, Redeem, RevokeFamily and
-// RevokeForSubject take the caller's database.Tx; what this one supplies is the
+// EndSignIns take the caller's database.Tx; what this one supplies is the
 // dialect the generated statements are rendered for and the executor Sweep runs
 // on, which serves the store's own machinery rather than a request.
 //
 // The exchange's read-back runs on the transaction that just wrote — see Redeem
 // — so replica lag cannot turn a freshly minted token into one that is "not
-// found" and then works when retried. The one read a replica may serve is
-// ListActiveSignIns, which takes whatever executor its caller hands it, and
-// nothing in this package reaches for Client.Reader() on its own.
+// found" and then works when retried. The reads a replica may serve are
+// ListActiveSignIns and LiveToken, which take whatever executor their caller
+// hands them, and nothing in this package reaches for Client.Reader() on its
+// own.
 //
 // It does not create the table. Hand migrations.SQL to your own migration run,
 // or migrations.SQLSince if an earlier release already created it.
@@ -237,6 +237,7 @@ func (s *SQLStore) Issue(
 		SignedInAt:      signedInAt,
 		ExpiresAt:       now.Add(request.TTL),
 		PurgeAfter:      now.Add(request.TTL).Add(s.retention),
+		AccessTokenID:   request.AccessTokenID,
 	}
 
 	if err = s.q.InsertRefreshToken(ctx, tx, signindb.InsertRefreshTokenParams{
@@ -250,6 +251,7 @@ func (s *SQLStore) Issue(
 		SignedInAt:      token.SignedInAt,
 		ExpiresAt:       token.ExpiresAt,
 		PurgeAfter:      token.PurgeAfter,
+		AccessTokenID:   optionalString(token.AccessTokenID),
 	}); err != nil {
 		return nil, op.Error(err, "storing refresh token row")
 	}
@@ -378,7 +380,21 @@ func (s *SQLStore) refuse(
 		return signin.ErrInvalidCredentials
 	}
 
-	if _, err := s.RevokeFamily(ctx, tx, token.Scope, token.FamilyID); err != nil {
+	// The family's live row is locked before it is revoked, for the reason
+	// EndSignIns locks first: what the refusal reports as ended has to be what
+	// was live when the revocation ran, and not a successor an exchange racing
+	// this one minted after the read.
+	live, err := s.q.LockLiveRefreshTokenFamily(ctx, tx, signindb.LockLiveRefreshTokenFamilyParams{
+		Scope:       token.Scope,
+		FamilyID:    token.FamilyID,
+		Now:         s.clock.Now().UTC(),
+		ResultLimit: endBatch,
+	})
+	if err != nil {
+		return op.Error(err, "locking a reused refresh token's family")
+	}
+
+	if _, err = s.RevokeFamily(ctx, tx, token.Scope, token.FamilyID); err != nil {
 		// The revocation is the half that matters, so a failure to run it is
 		// reported as itself rather than collapsed into the refusal. Joining the
 		// two would let a caller match ErrRefreshTokenReused and conclude the
@@ -386,7 +402,15 @@ func (s *SQLStore) refuse(
 		return op.Error(err, "revoking a reused refresh token's family")
 	}
 
-	return signin.ErrRefreshTokenReused
+	// The whole family is revoked whether or not it was live — a lapsed
+	// family's spent rows are stamped as withdrawn, which after a detected
+	// reuse is the more useful of the two true sentences — but it is reported
+	// as ended only if it was.
+	return &signin.RefreshTokenReusedError{
+		FamilyID:  token.FamilyID,
+		SubjectID: token.SubjectID,
+		Ended:     len(live) > 0,
+	}
 }
 
 // RevokeFamily ends one login and reports how many tokens it withdrew.
@@ -429,73 +453,35 @@ func (s *SQLStore) RevokeFamily(
 	return revoked, nil
 }
 
-// RevokeForSubject ends every login one person holds and reports how many tokens
-// it withdrew.
+// endBatch is how many families one pass of EndSignIns locks and revokes.
 //
-// It runs in tx, so "disable this account" and the sign-out that goes with it
-// are one fact — and so that an erasure's other writes and this one land
-// together or not at all.
-func (s *SQLStore) RevokeForSubject(
+// It bounds the rows one locking read holds and one round trip carries, not
+// what a call ends: EndSignIns runs passes until one comes back short. It is
+// signin.MaxSignInListLimit, the most logins a person is ever shown, so a
+// person who could see every login they hold on one screen is signed out of
+// all of them in one pass.
+const endBatch = int64(signin.MaxSignInListLimit)
+
+// EndSignIns ends the live logins selector names, and answers with the ones it
+// ended.
+//
+// Each pass locks up to endBatch of the selected families' live rows and then
+// revokes each family by its id, all on tx; a pass that comes back full is
+// followed by another, which finds the families the last one did not reach
+// because a revoked family is no longer live. See internal/queries'
+// lockFamiliesForSubject for why the lock comes first, and why a revocation
+// keyed on the subject cannot be what runs here.
+//
+// A login already over — spent, revoked or lapsed — is not selected and not
+// reported. A lapsed family's rows are left unstamped, where the subject-wide
+// revocation this replaced stamped them: they can no longer be exchanged, and a
+// later replay of one of its spent tokens stamps the family then.
+func (s *SQLStore) EndSignIns(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
-	subjectID string,
-) (int64, error) {
-	ctx, op := s.o11y.Begin(ctx)
-	defer op.End()
-
-	if err := scope.Validate(); err != nil {
-		return 0, err
-	}
-
-	if subjectID == "" {
-		return 0, ErrEmptySubjectID
-	}
-
-	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: subjectID})
-
-	at := s.clock.Now().UTC()
-
-	revoked, err := s.q.RevokeRefreshTokensForSubject(ctx, tx, signindb.RevokeRefreshTokensForSubjectParams{
-		RevokedAt: &at,
-		Scope:     scope,
-		SubjectID: subjectID,
-	})
-	if err != nil {
-		return 0, op.Error(err, "revoking a subject's refresh token rows")
-	}
-
-	op.SpanOnly(revokedKey, revoked)
-
-	return revoked, nil
-}
-
-// RevokeForSubjectExcept ends every login one person holds but keepFamilyID,
-// and reports the families it ended, in family order.
-//
-// The revocation is one statement, so a login made while it ran is either
-// ended by it or made after it, never missed between a read and a write. The
-// families are read back afterwards on the same tx — MySQL has no RETURNING —
-// by the stamp the revocation wrote, confined to the row each login's next
-// exchange would have spent; a login that had already lapsed was not ended by
-// this call and is not reported. The read is bounded by the revocation's own
-// row count, which every family it reports contributed to, so the bound never
-// shortens the answer.
-//
-// The stamp is what ties the read to the write, so it is truncated to the
-// microsecond all three servers store: an instant bound once with a fraction the
-// column cannot hold and compared once against what the column kept would match
-// nothing. SQLite stores whole seconds, and there two revocations of one
-// subject's logins inside the same second are one stamp. The second call's
-// answer then includes families the first ended; each of them is ended, and
-// ended in that second, so the report is still true of every family it names.
-func (s *SQLStore) RevokeForSubjectExcept(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	subjectID string,
-	keepFamilyID string,
-) ([]string, error) {
+	selector signin.SignInSelector,
+) ([]*signin.EndedSignIn, error) {
 	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
 
@@ -503,102 +489,124 @@ func (s *SQLStore) RevokeForSubjectExcept(
 		return nil, err
 	}
 
-	if subjectID == "" {
-		return nil, ErrEmptySubjectID
+	if selector.SubjectID == "" && selector.FamilyID == "" {
+		return nil, ErrEmptySelector
 	}
 
-	if keepFamilyID == "" {
-		return nil, ErrEmptyFamilyID
+	// A login spared from a selection of one login, or from a selection of
+	// nobody's, is two instructions that disagree; neither reading is safe to
+	// guess.
+	if selector.ExceptFamilyID != "" && (selector.SubjectID == "" || selector.FamilyID != "") {
+		return nil, ErrContradictorySelector
 	}
 
-	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: subjectID, familyKey: keepFamilyID})
+	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: selector.SubjectID, familyKey: selector.FamilyID})
 
-	at := s.clock.Now().UTC().Truncate(time.Microsecond)
+	var (
+		ended   []*signin.EndedSignIn
+		revoked int64
+	)
 
-	revoked, err := s.q.RevokeOtherRefreshTokenFamilies(ctx, tx, signindb.RevokeOtherRefreshTokenFamiliesParams{
-		RevokedAt:    &at,
-		Scope:        scope,
-		SubjectID:    subjectID,
-		KeepFamilyID: keepFamilyID,
-	})
-	if err != nil {
-		return nil, op.Error(err, "revoking a subject's other refresh token families")
+	for {
+		live, err := s.lockLive(ctx, tx, scope, selector)
+		if err != nil {
+			return nil, op.Error(err, "locking the live refresh token families a revocation ends")
+		}
+
+		for _, signIn := range live {
+			if signIn.Revoked, err = s.RevokeFamily(ctx, tx, scope, signIn.FamilyID); err != nil {
+				return nil, op.Error(err, "revoking a locked refresh token family")
+			}
+
+			revoked += signIn.Revoked
+		}
+
+		ended = append(ended, live...)
+
+		if int64(len(live)) < endBatch {
+			break
+		}
 	}
 
 	op.SpanOnly(revokedKey, revoked)
 
-	if revoked == 0 {
-		return []string{}, nil
-	}
-
-	rows, err := s.q.ListEndedRefreshTokenFamilies(ctx, tx, signindb.ListEndedRefreshTokenFamiliesParams{
-		Scope:        scope,
-		SubjectID:    subjectID,
-		KeepFamilyID: keepFamilyID,
-		RevokedAt:    &at,
-		Now:          at,
-		ResultLimit:  revoked,
-	})
-	if err != nil {
-		return nil, op.Error(err, "reading back the refresh token families a revocation ended")
-	}
-
-	ended := make([]string, 0, len(rows))
-	for _, row := range rows {
-		ended = append(ended, row.FamilyID)
-	}
-
-	// A family has one unredeemed row that is live, so this compacts nothing on
-	// a table the exchange has kept in shape. It is here so that one that has
-	// not been is reported once rather than once per row.
-	return slices.Compact(ended), nil
+	return ended, nil
 }
 
-// RevokeFamilyForSubject ends one login on behalf of the person it belongs to,
-// and reports how many tokens it withdrew.
-//
-// It is RevokeFamily with the subject in the key, which is the whole of what
-// makes it safe to reach from a self-service door: a family id that is not the
-// subject's matches nothing and is zero, as a family already ended is.
-func (s *SQLStore) RevokeFamilyForSubject(
+// lockLive runs whichever of the locking reads selector names, and
+// answers with one EndedSignIn per row it locked, its count still to come.
+func (s *SQLStore) lockLive(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
-	subjectID string,
-	familyID string,
-) (int64, error) {
-	ctx, op := s.o11y.Begin(ctx)
-	defer op.End()
+	selector signin.SignInSelector,
+) ([]*signin.EndedSignIn, error) {
+	now := s.clock.Now().UTC()
 
-	if err := scope.Validate(); err != nil {
-		return 0, err
+	var live []*signin.EndedSignIn
+
+	switch {
+	case selector.ExceptFamilyID != "":
+		rows, err := s.q.LockOtherLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.LockOtherLiveRefreshTokenFamiliesForSubjectParams{
+			Scope:        scope,
+			SubjectID:    selector.SubjectID,
+			KeepFamilyID: selector.ExceptFamilyID,
+			Now:          now,
+			ResultLimit:  endBatch,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range rows {
+			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
+		}
+	case selector.SubjectID != "" && selector.FamilyID != "":
+		rows, err := s.q.LockLiveRefreshTokenFamilyForSubject(ctx, tx, signindb.LockLiveRefreshTokenFamilyForSubjectParams{
+			Scope:       scope,
+			SubjectID:   selector.SubjectID,
+			FamilyID:    selector.FamilyID,
+			Now:         now,
+			ResultLimit: endBatch,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range rows {
+			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
+		}
+	case selector.FamilyID != "":
+		rows, err := s.q.LockLiveRefreshTokenFamily(ctx, tx, signindb.LockLiveRefreshTokenFamilyParams{
+			Scope:       scope,
+			FamilyID:    selector.FamilyID,
+			Now:         now,
+			ResultLimit: endBatch,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range rows {
+			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
+		}
+	default:
+		rows, err := s.q.LockLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.LockLiveRefreshTokenFamiliesForSubjectParams{
+			Scope:       scope,
+			SubjectID:   selector.SubjectID,
+			Now:         now,
+			ResultLimit: endBatch,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range rows {
+			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
+		}
 	}
 
-	if subjectID == "" {
-		return 0, ErrEmptySubjectID
-	}
-
-	if familyID == "" {
-		return 0, ErrEmptyFamilyID
-	}
-
-	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: subjectID, familyKey: familyID})
-
-	at := s.clock.Now().UTC()
-
-	revoked, err := s.q.RevokeRefreshTokenFamilyForSubject(ctx, tx, signindb.RevokeRefreshTokenFamilyForSubjectParams{
-		RevokedAt: &at,
-		Scope:     scope,
-		SubjectID: subjectID,
-		FamilyID:  familyID,
-	})
-	if err != nil {
-		return 0, op.Error(err, "revoking a subject's refresh token family")
-	}
-
-	op.SpanOnly(revokedKey, revoked)
-
-	return revoked, nil
+	return live, nil
 }
 
 // ListActiveSignIns answers one entry per live login a subject holds, most
@@ -663,6 +671,68 @@ func (s *SQLStore) ListActiveSignIns(
 	return signIns, nil
 }
 
+// LiveToken answers one login's current refresh token, named by its family, or
+// signin.ErrSignInEnded where it has none.
+//
+// It is the listing's three guards read by family rather than by subject, and
+// against this store's own clock for the reason the exchange's deadline is, so
+// the row it answers is the row an exchange would still accept. The family index
+// version 1 created serves it, which matters because a consumer may make this
+// read on every request.
+//
+// A family unknown in scope reads exactly as one that ended, because from here
+// it is one: nothing it could present would be accepted.
+func (s *SQLStore) LiveToken(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	familyID string,
+) (*signin.RefreshToken, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+
+	if q == nil {
+		return nil, ErrNilExecutor
+	}
+
+	if familyID == "" {
+		return nil, ErrEmptyFamilyID
+	}
+
+	op.SetValues(map[string]any{scopeKey: scope.String(), familyKey: familyID})
+
+	row, err := s.q.GetLiveRefreshTokenForFamily(ctx, q, signindb.GetLiveRefreshTokenForFamilyParams{
+		Scope:    scope,
+		FamilyID: familyID,
+		Now:      s.clock.Now().UTC(),
+	})
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, signin.ErrSignInEnded
+		}
+
+		return nil, op.Error(err, "reading a refresh token family's live row")
+	}
+
+	live := signindb.GetRefreshTokenRow(row)
+
+	return tokenFromRow(&live), nil
+}
+
+// optionalString is the bound value of a nullable text column: NULL for the
+// empty string, which is how a caller with nothing to record says so.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+
+	return &value
+}
+
 // tokenFromRow renders one stored row as a signin.RefreshToken.
 //
 // Every instant is converted to UTC here rather than left as the driver chose. A
@@ -681,6 +751,10 @@ func tokenFromRow(row *signindb.GetRefreshTokenRow) *signin.RefreshToken {
 		SignedInAt:      row.SignedInAt.UTC(),
 		ExpiresAt:       row.ExpiresAt.UTC(),
 		PurgeAfter:      row.PurgeAfter.UTC(),
+	}
+
+	if row.AccessTokenID != nil {
+		token.AccessTokenID = *row.AccessTokenID
 	}
 
 	if row.RedeemedAt != nil {

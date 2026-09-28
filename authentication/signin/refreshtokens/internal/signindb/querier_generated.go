@@ -32,16 +32,24 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	ClaimRefreshTokenRemint(ctx context.Context, db DBTX, arg ClaimRefreshTokenRemintParams) (int64, error)
+	// GetLiveRefreshTokenForFamily runs the :one query.
+	GetLiveRefreshTokenForFamily(ctx context.Context, db DBTX, arg GetLiveRefreshTokenForFamilyParams) (GetLiveRefreshTokenForFamilyRow, error)
 	// GetRefreshToken runs the :one query.
 	GetRefreshToken(ctx context.Context, db DBTX, arg GetRefreshTokenParams) (GetRefreshTokenRow, error)
 	// GetRefreshTokenRedemption runs the :one query.
 	GetRefreshTokenRedemption(ctx context.Context, db DBTX, arg GetRefreshTokenRedemptionParams) (GetRefreshTokenRedemptionRow, error)
 	// InsertRefreshToken runs the :exec query.
 	InsertRefreshToken(ctx context.Context, db DBTX, arg InsertRefreshTokenParams) error
-	// ListEndedRefreshTokenFamilies runs the :many query.
-	ListEndedRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListEndedRefreshTokenFamiliesParams) ([]ListEndedRefreshTokenFamiliesRow, error)
 	// ListLiveRefreshTokenFamilies runs the :many query.
 	ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListLiveRefreshTokenFamiliesParams) ([]ListLiveRefreshTokenFamiliesRow, error)
+	// LockLiveRefreshTokenFamiliesForSubject runs the :many query.
+	LockLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamiliesForSubjectParams) ([]LockLiveRefreshTokenFamiliesForSubjectRow, error)
+	// LockLiveRefreshTokenFamily runs the :many query.
+	LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyParams) ([]LockLiveRefreshTokenFamilyRow, error)
+	// LockLiveRefreshTokenFamilyForSubject runs the :many query.
+	LockLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyForSubjectParams) ([]LockLiveRefreshTokenFamilyForSubjectRow, error)
+	// LockOtherLiveRefreshTokenFamiliesForSubject runs the :many query.
+	LockOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockOtherLiveRefreshTokenFamiliesForSubjectParams) ([]LockOtherLiveRefreshTokenFamiliesForSubjectRow, error)
 	// RecordRefreshTokenSuccessor runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -57,11 +65,6 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RedeemRefreshTokenWithKey(ctx context.Context, db DBTX, arg RedeemRefreshTokenWithKeyParams) (int64, error)
-	// RevokeOtherRefreshTokenFamilies runs the :execrows query.
-	//
-	// The count means different things on different engines; see the note
-	// on Querier.
-	RevokeOtherRefreshTokenFamilies(ctx context.Context, db DBTX, arg RevokeOtherRefreshTokenFamiliesParams) (int64, error)
 	// RevokeRefreshToken runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -72,16 +75,6 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RevokeRefreshTokenFamily(ctx context.Context, db DBTX, arg RevokeRefreshTokenFamilyParams) (int64, error)
-	// RevokeRefreshTokenFamilyForSubject runs the :execrows query.
-	//
-	// The count means different things on different engines; see the note
-	// on Querier.
-	RevokeRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenFamilyForSubjectParams) (int64, error)
-	// RevokeRefreshTokensForSubject runs the :execrows query.
-	//
-	// The count means different things on different engines; see the note
-	// on Querier.
-	RevokeRefreshTokensForSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokensForSubjectParams) (int64, error)
 	// SweepRefreshTokens runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

@@ -25,12 +25,15 @@ over SQL nobody executes.
     having passed. Its row count is what decides who owns the token when two
     requests present one at once.
   - RevokeRefreshTokenFamily ends one login, which is what a detected reuse
-    does.
-  - RevokeRefreshTokenFamilyForSubject ends one login on behalf of the person
-    it belongs to: the family revocation with the subject added to its key, so
-    a self-service door handed a family id cannot end anybody else's.
-  - RevokeRefreshTokensForSubject ends every login one person holds. It is not
-    assembled out of family revocations, and [Render] says why it cannot be.
+    does, what a sign-out does, and what every other revocation does to each
+    family it locked.
+  - LockLiveRefreshTokenFamily, LockLiveRefreshTokenFamilyForSubject and
+    LockLiveRefreshTokenFamiliesForSubject lock the live row of one login, of
+    one login only if it is the named person's, and of every login one person
+    holds, under the exchange's own three guards — FOR UPDATE on the two
+    engines that lock rows. A revocation locks first and then revokes by the
+    families it locked, so it can say what it ended; [lockFamiliesForSubject]
+    says why the order matters.
   - ListLiveRefreshTokenFamilies lists one person's live logins, one row per
     family, under the exchange's own three guards, most recently refreshed
     first and bounded by a limit.

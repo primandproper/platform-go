@@ -22,6 +22,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	"github.com/primandproper/primitives-go/v2/authentication/tokens/jwt"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -72,6 +73,10 @@ type extractorHarness struct {
 	store  identity.Store
 	signer *jwt.Signer
 	svc    *signin.Service
+
+	// refresh is the store svc mints refresh tokens into, for the tests that
+	// build a second service over the same logins.
+	refresh *refreshtokens.SQLStore
 
 	member *identity.Registration
 	admin  *identity.Registration
@@ -135,12 +140,13 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	}
 
 	return &extractorHarness{
-		db:     db,
-		store:  store,
-		signer: signer,
-		svc:    svc,
-		member: register("member"),
-		admin:  register("operator", serviceAdminRole),
+		db:      db,
+		store:   store,
+		signer:  signer,
+		svc:     svc,
+		refresh: refreshStore,
+		member:  register("member"),
+		admin:   register("operator", serviceAdminRole),
 	}
 }
 
@@ -310,6 +316,119 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		must.Error(t, err)
 		test.False(t, platformerrors.Is(err, signingrpc.ErrUnauthenticated))
 	})
+}
+
+func TestPrincipalExtractor_WithSignInCheck(T *testing.T) {
+	T.Parallel()
+
+	h := newExtractorHarness(T)
+
+	// The difference the option makes: without it an ended login's token
+	// stands until it expires, and with it the next request is refused.
+	T.Run("an ended login's token names nobody from the next request", func(t *testing.T) {
+		t.Parallel()
+
+		issued := h.issue(t, h.member, false)
+		checked := h.extractor(t, signingrpc.WithSignInCheck(h.svc))
+
+		_, err := checked.Authenticate(t.Context(), issued.Token)
+		must.NoError(t, err, must.Sprint("a live login's token was refused"))
+
+		_, err = h.svc.EndSignIn(t.Context(), testScope, h.member.User.ID, issued.FamilyID)
+		must.NoError(t, err)
+
+		_, err = checked.Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, signin.ErrSignInEnded)
+
+		// The control: the token still verifies, and an extractor that does
+		// not check still accepts it.
+		_, err = h.extractor(t).Authenticate(t.Context(), issued.Token)
+		test.NoError(t, err)
+	})
+
+	T.Run("a token its login has replaced names nobody, where the service refuses them", func(t *testing.T) {
+		t.Parallel()
+
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+			signin.WithRefreshTokenStore(h.refresh),
+			signin.WithSupersededTokenRefusal(),
+		)
+		must.NoError(t, err)
+
+		first := h.issue(t, h.member, false)
+
+		second, err := h.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		checked := h.extractor(t, signingrpc.WithSignInCheck(refusing))
+
+		_, err = checked.Authenticate(t.Context(), first.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, signin.ErrSignInSuperseded)
+
+		_, err = checked.Authenticate(t.Context(), second.Token)
+		test.NoError(t, err, test.Sprint("the token the exchange handed back was refused"))
+	})
+
+	T.Run("a token naming no login is not one a check can admit", func(t *testing.T) {
+		t.Parallel()
+
+		token, _, err := h.signer.IssueToken(t.Context(), h.member.User.ID, time.Minute, map[string]any{
+			signin.ClaimAdministrative: false,
+			signin.ClaimScope:          testScope.String(),
+			signin.ClaimAccountID:      h.member.Account.ID,
+		})
+		must.NoError(t, err)
+
+		_, err = h.extractor(t).Authenticate(t.Context(), token)
+		must.NoError(t, err, must.Sprint("the control: without a check the token is a caller"))
+
+		_, err = h.extractor(t, signingrpc.WithSignInCheck(h.svc)).Authenticate(t.Context(), token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+	})
+
+	T.Run("a check that cannot answer is not a refusal of the credential", func(t *testing.T) {
+		t.Parallel()
+
+		e := h.extractor(t, signingrpc.WithSignInCheck(failingChecker{}))
+
+		_, err := e.Authenticate(t.Context(), h.issue(t, h.member, false).Token)
+		must.Error(t, err)
+		test.False(t, platformerrors.Is(err, signingrpc.ErrUnauthenticated))
+
+		saw := serveThrough(t, e, "Bearer "+h.issue(t, h.member, false).Token)
+		test.EqOp(t, http.StatusServiceUnavailable, saw.code)
+	})
+
+	// A signed-out token is still this module's, so the fallback is not asked
+	// for a second opinion on it.
+	T.Run("an ended login's token does not go to the fallback", func(t *testing.T) {
+		t.Parallel()
+
+		issued := h.issue(t, h.member, false)
+
+		_, err := h.svc.EndSignIn(t.Context(), testScope, h.member.User.ID, issued.FamilyID)
+		must.NoError(t, err)
+
+		e := h.extractor(t,
+			signingrpc.WithSignInCheck(h.svc),
+			signingrpc.WithFallback(func(context.Context) (callers.Principal, bool) {
+				return &signingrpc.Caller{}, true
+			}),
+		)
+
+		saw := serveThrough(t, e, "Bearer "+issued.Token)
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+	})
+}
+
+// failingChecker is a sign-in check whose database is down.
+type failingChecker struct{}
+
+func (failingChecker) CheckSignIn(context.Context, tenancy.Scope, string, string) error {
+	return platformerrors.New("the sign-in check's database is down")
 }
 
 // seen is what a handler behind HTTPMiddleware read off its request.
@@ -682,7 +801,55 @@ func TestPrincipalExtractor_interceptor(T *testing.T) {
 		_, err = dial(t, e, signInReqs).GetSelf(bearer(t.Context(), h.issue(t, h.member, false).Token), &signinpb.GetSelfRequest{})
 		test.EqOp(t, codes.Unavailable, status.Code(err))
 	})
+
+	// A token naming its login and no token ID is one a check that refuses
+	// superseded tokens has nothing to compare against: a bad credential,
+	// never the outage a check that could not answer is.
+	T.Run("a token with no ID, under a check refusing superseded tokens, is unauthenticated, not unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+			signin.WithRefreshTokenStore(h.refresh),
+			signin.WithSupersededTokenRefusal(),
+		)
+		must.NoError(t, err)
+
+		e, err := signingrpc.NewPrincipalExtractor(noTokenIDVerifier{h.signer}, h.db, h.store, signingrpc.WithSignInCheck(refusing))
+		must.NoError(t, err)
+
+		issued := h.issue(t, h.member, false)
+
+		_, err = e.Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+		test.ErrorIs(t, err, signin.ErrEmptyTokenID)
+
+		_, err = dial(t, e, signInReqs).GetSelf(bearer(t.Context(), issued.Token), &signinpb.GetSelfRequest{})
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+
+		saw := serveThrough(t, e, "Bearer "+issued.Token)
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+	})
 }
+
+// noTokenIDVerifier verifies with the harness's signer and hands back claims
+// with no "jti", which is the token a consumer's claims builder mints when it
+// leaves the ID out.
+type noTokenIDVerifier struct{ signingrpc.TokenVerifier }
+
+func (v noTokenIDVerifier) ParseToken(ctx context.Context, token string) (tokens.Claims, error) {
+	claims, err := v.TokenVerifier.ParseToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return noTokenIDClaims{claims}, nil
+}
+
+// noTokenIDClaims is a token's claims with its "jti" left out.
+type noTokenIDClaims struct{ tokens.Claims }
+
+func (noTokenIDClaims) JTI() string { return "" }
 
 // failingDirectory is a directory that cannot be read.
 type failingDirectory struct{}

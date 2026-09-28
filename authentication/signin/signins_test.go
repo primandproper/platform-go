@@ -234,6 +234,198 @@ func TestService_EndSignIn(T *testing.T) {
 	})
 }
 
+func TestService_CheckSignIn(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a login that is still going passes", func(t *testing.T) {
+		t.Parallel()
+
+		for name, opts := range map[string][]signin.ServiceOption{
+			"by default":                 nil,
+			"refusing superseded tokens": {signin.WithSupersededTokenRefusal()},
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				e := newRefreshEnv(t, opts...)
+
+				signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+				must.NoError(t, err)
+
+				test.NoError(t, e.svc.CheckSignIn(t.Context(), testScope, signedIn.FamilyID, signedIn.TokenID))
+			})
+		}
+	})
+
+	// Every way a login ends, each read back by the next request rather than
+	// by the access token's expiry.
+	T.Run("a login that has ended is refused at once", func(t *testing.T) {
+		t.Parallel()
+
+		ends := map[string]func(t *testing.T, e *env, signedIn *signin.SignIn){
+			"ended by name": func(t *testing.T, e *env, signedIn *signin.SignIn) {
+				t.Helper()
+
+				_, err := e.svc.EndSignIn(t.Context(), testScope, e.user.ID, signedIn.FamilyID)
+				must.NoError(t, err)
+			},
+			"signed out": func(t *testing.T, e *env, signedIn *signin.SignIn) {
+				t.Helper()
+
+				must.NoError(t, e.svc.SignOut(t.Context(), testScope, signedIn.RefreshToken))
+			},
+			"signed out everywhere": func(t *testing.T, e *env, _ *signin.SignIn) {
+				t.Helper()
+
+				_, err := e.svc.RevokeRefreshTokensForSubject(t.Context(), testScope, e.user.ID)
+				must.NoError(t, err)
+			},
+			"ended by a replayed refresh token": func(t *testing.T, e *env, signedIn *signin.SignIn) {
+				t.Helper()
+
+				_, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+				must.NoError(t, err)
+
+				_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+				must.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+			},
+		}
+
+		for name, end := range ends {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				e := newRefreshEnv(t)
+
+				signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+				must.NoError(t, err)
+
+				// The control: the same check passes before the login ends.
+				must.NoError(t, e.svc.CheckSignIn(t.Context(), testScope, signedIn.FamilyID, signedIn.TokenID))
+
+				end(t, e, signedIn)
+
+				err = e.svc.CheckSignIn(t.Context(), testScope, signedIn.FamilyID, signedIn.TokenID)
+				test.ErrorIs(t, err, signin.ErrSignInEnded)
+				test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+			})
+		}
+	})
+
+	T.Run("a login in another scope has ended from here", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		err = e.svc.CheckSignIn(t.Context(), tenancy.Of("somebody_else"), signedIn.FamilyID, signedIn.TokenID)
+		test.ErrorIs(t, err, signin.ErrSignInEnded)
+	})
+
+	// The rotated case. Opt-in: by default a refresh withdraws nothing, which
+	// is the family model's premise.
+	T.Run("an access token the login has since replaced", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("passes by default", func(t *testing.T) {
+			t.Parallel()
+
+			e := newRefreshEnv(t)
+
+			first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+			must.NoError(t, err)
+
+			_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+			must.NoError(t, err)
+
+			test.NoError(t, e.svc.CheckSignIn(t.Context(), testScope, first.FamilyID, first.TokenID))
+		})
+
+		t.Run("is refused as superseded when the service refuses them", func(t *testing.T) {
+			t.Parallel()
+
+			e := newRefreshEnv(t, signin.WithSupersededTokenRefusal())
+
+			first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+			must.NoError(t, err)
+
+			second, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+			must.NoError(t, err)
+			must.EqOp(t, first.FamilyID, second.FamilyID)
+			must.NotEqOp(t, first.TokenID, second.TokenID, must.Sprint("the harness issued one access token twice"))
+
+			err = e.svc.CheckSignIn(t.Context(), testScope, first.FamilyID, first.TokenID)
+			test.ErrorIs(t, err, signin.ErrSignInSuperseded)
+			test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+			test.False(t, platformerrors.Is(err, signin.ErrSignInEnded))
+
+			// The control: the token the exchange handed back is the current
+			// one.
+			test.NoError(t, e.svc.CheckSignIn(t.Context(), testScope, second.FamilyID, second.TokenID))
+		})
+
+		// An ended login is ended, whichever of its access tokens asks.
+		t.Run("is refused as ended once the login has ended", func(t *testing.T) {
+			t.Parallel()
+
+			e := newRefreshEnv(t, signin.WithSupersededTokenRefusal())
+
+			first, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+			must.NoError(t, err)
+
+			second, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+			must.NoError(t, err)
+
+			_, err = e.svc.EndSignIn(t.Context(), testScope, e.user.ID, first.FamilyID)
+			must.NoError(t, err)
+
+			for _, token := range []*signin.SignIn{first, second} {
+				err = e.svc.CheckSignIn(t.Context(), testScope, token.FamilyID, token.TokenID)
+				test.ErrorIs(t, err, signin.ErrSignInEnded)
+			}
+		})
+	})
+
+	T.Run("refuses a check that names nothing", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t, signin.WithSupersededTokenRefusal())
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		err = e.svc.CheckSignIn(t.Context(), testScope, "", signedIn.TokenID)
+		test.ErrorIs(t, err, signin.ErrEmptyFamilyID)
+
+		err = e.svc.CheckSignIn(t.Context(), testScope, signedIn.FamilyID, "")
+		test.ErrorIs(t, err, signin.ErrEmptyTokenID)
+		test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+	})
+
+	// A service that does not refuse superseded tokens compares nothing, so it
+	// has nothing to refuse an empty one for.
+	T.Run("reads no access token by default", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		test.NoError(t, e.svc.CheckSignIn(t.Context(), testScope, signedIn.FamilyID, ""))
+	})
+
+	T.Run("refuses without a refresh token store", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		err := e.svc.CheckSignIn(t.Context(), testScope, "family", "jti")
+		test.ErrorIs(t, err, signin.ErrRefreshTokensNotConfigured)
+	})
+}
 func TestService_EndOtherSignIns(T *testing.T) {
 	T.Parallel()
 

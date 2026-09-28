@@ -563,6 +563,13 @@ var Matrix = map[string]map[string]Decision{
 		// own words would say which of the five happened.
 		"ErrInvalidMagicLink": {Err: signin.ErrInvalidMagicLink, Is: Mapped},
 
+		// An access token whose login has ended, or has since replaced it. Same
+		// construction again: each wraps ErrInvalidCredentials and is not
+		// client-safe, because its own words would tell whoever holds a stolen
+		// copy what the person they took it from has done since.
+		"ErrSignInEnded":      {Err: signin.ErrSignInEnded, Is: Mapped},
+		"ErrSignInSuperseded": {Err: signin.ErrSignInSuperseded, Is: Mapped},
+
 		// Proven, and refused anyway. The four PermissionDenials: two statuses
 		// an operator set, and the two halves of the administrative door.
 		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
@@ -579,6 +586,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
 		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
 
+		// A caller an operator has forced to change their password, refused by
+		// the gate in front of every call but the ones that discharge it.
+		// FailedPrecondition and a 403, and client-safe with a reason, because
+		// a client has to branch on it — send them to the form — rather than
+		// display it.
+		"ErrPasswordChangeRequired": {Err: signin.ErrPasswordChangeRequired, Is: Mapped},
 		// Ending every other login from a token that names none. A state of the
 		// credential rather than of the request, read the way the rows above
 		// are, and refused rather than widened into ending every login.
@@ -615,6 +628,10 @@ var Matrix = map[string]map[string]Decision{
 		// guess that missed.
 		"ErrEmptyFamilyID":     {Err: signin.ErrEmptyFamilyID, Is: Platform},
 		"ErrEmptyRefreshToken": {Err: signin.ErrEmptyRefreshToken, Is: Platform},
+
+		// A check that named no access token to compare, which is the same
+		// reading: a caller that did not read the claim, not a token that lost.
+		"ErrEmptyTokenID": {Err: signin.ErrEmptyTokenID, Is: Platform},
 
 		// A door answered with no token at all, which is the same reading again:
 		// an empty request is a client that did not submit.
@@ -654,6 +671,11 @@ var Matrix = map[string]map[string]Decision{
 		// caller sent, so a 500 is the honest answer and no mapper claims them.
 		"ErrRefreshTokenTTLTooShort":    {Err: signin.ErrRefreshTokenTTLTooShort, Is: Unhandled},
 		"ErrRefreshTokensNotConfigured": {Err: signin.ErrRefreshTokensNotConfigured, Is: Unhandled},
+
+		// A refresh token store that reported a reuse without naming the family
+		// it ended. The revocation commits; what fails is the store's contract,
+		// which is wiring rather than anything a caller sent, so a 500.
+		"ErrRefreshTokenStoreContractViolated": {Err: signin.ErrRefreshTokenStoreContractViolated, Is: Unhandled},
 
 		// The listing doors on a service whose store mints refresh tokens and
 		// cannot enumerate them. Wiring again, and nothing a caller sent.

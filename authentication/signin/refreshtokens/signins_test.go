@@ -70,40 +70,6 @@ func listSignIns(tb testing.TB, store *SQLStore, scope tenancy.Scope, subjectID 
 	return signIns
 }
 
-// revokeFamilyForSubject ends one login on its owner's behalf, in a transaction
-// of its own.
-func revokeFamilyForSubject(tb testing.TB, store *SQLStore, scope tenancy.Scope, subjectID, familyID string) (int64, error) {
-	tb.Helper()
-
-	var revoked int64
-
-	err := withTx(tb, store, func(tx database.Tx) error {
-		var revokeErr error
-		revoked, revokeErr = store.RevokeFamilyForSubject(tb.Context(), tx, scope, subjectID, familyID)
-
-		return revokeErr
-	})
-
-	return revoked, err
-}
-
-// revokeForSubjectExcept ends every login but one on its owner's behalf, in a
-// transaction of its own.
-func revokeForSubjectExcept(tb testing.TB, store *SQLStore, scope tenancy.Scope, subjectID, keepFamilyID string) ([]string, error) {
-	tb.Helper()
-
-	var ended []string
-
-	err := withTx(tb, store, func(tx database.Tx) error {
-		var revokeErr error
-		ended, revokeErr = store.RevokeForSubjectExcept(tb.Context(), tx, scope, subjectID, keepFamilyID)
-
-		return revokeErr
-	})
-
-	return ended, err
-}
-
 // familyIDs is the order a listing named its logins in.
 func familyIDs(signIns []*signin.ActiveSignIn) []string {
 	ids := make([]string, 0, len(signIns))
@@ -329,7 +295,7 @@ func TestSQLStore_ListActiveSignIns(T *testing.T) {
 	})
 }
 
-func TestSQLStore_RevokeFamilyForSubject(T *testing.T) {
+func TestSQLStore_EndSignIns_OneOfTheSubjects(T *testing.T) {
 	T.Parallel()
 
 	T.Run("ends the named login and no other", func(t *testing.T) {
@@ -341,12 +307,16 @@ func TestSQLStore_RevokeFamilyForSubject(T *testing.T) {
 		rotate(t, store, testScope(), phone.Secret)
 		laptop := mintInto(t, store, testScope(), "family_laptop", testSubject)
 
-		revoked, err := revokeFamilyForSubject(t, store, testScope(), testSubject, "family_phone")
+		ended, err := endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: testSubject, FamilyID: "family_phone"})
 		must.NoError(t, err)
+
+		test.Eq(t, []string{"family_phone"}, endedFamilies(ended))
+		test.EqOp(t, testSubject, ended[0].SubjectID)
 
 		// Two rows: the spent one and its live successor. Both end, so the
 		// record says when the login stopped rather than when each row did.
-		test.EqOp(t, 2, revoked)
+		test.EqOp(t, 2, endedRevoked(ended))
 
 		test.Eq(t, []string{"family_laptop"}, familyIDs(listSignIns(t, store, testScope(), testSubject, 10)))
 
@@ -363,9 +333,10 @@ func TestSQLStore_RevokeFamilyForSubject(T *testing.T) {
 
 		theirs := mintInto(t, store, testScope(), "family_theirs", "user_02")
 
-		revoked, err := revokeFamilyForSubject(t, store, testScope(), testSubject, "family_theirs")
+		ended, err := endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: testSubject, FamilyID: "family_theirs"})
 		must.NoError(t, err)
-		test.EqOp(t, 0, revoked)
+		test.SliceEmpty(t, ended)
 
 		_, err = redeem(t, store, testScope(), theirs.Secret)
 		test.NoError(t, err)
@@ -378,45 +349,106 @@ func TestSQLStore_RevokeFamilyForSubject(T *testing.T) {
 
 		elsewhere := mintInto(t, store, tenancy.Of("tenant_b"), testFamilyID, testSubject)
 
-		revoked, err := revokeFamilyForSubject(t, store, testScope(), testSubject, testFamilyID)
+		ended, err := endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: testSubject, FamilyID: testFamilyID})
 		must.NoError(t, err)
-		test.EqOp(t, 0, revoked)
+		test.SliceEmpty(t, ended)
 
 		_, err = redeem(t, store, tenancy.Of("tenant_b"), elsewhere.Secret)
 		test.NoError(t, err)
 	})
 
-	T.Run("reports zero for a login already ended", func(t *testing.T) {
+	T.Run("reports nothing for a login already ended", func(t *testing.T) {
 		t.Parallel()
 
 		store, _ := newTestStore(t)
 
 		issue(t, store)
 
-		revoked, err := revokeFamilyForSubject(t, store, testScope(), testSubject, testFamilyID)
-		must.NoError(t, err)
-		test.EqOp(t, 1, revoked)
+		selector := signin.SignInSelector{SubjectID: testSubject, FamilyID: testFamilyID}
 
-		revoked, err = revokeFamilyForSubject(t, store, testScope(), testSubject, testFamilyID)
+		ended, err := endSignIns(t, store, testScope(), selector)
 		must.NoError(t, err)
-		test.EqOp(t, 0, revoked)
+		test.EqOp(t, 1, endedRevoked(ended))
+
+		ended, err = endSignIns(t, store, testScope(), selector)
+		must.NoError(t, err)
+		test.SliceEmpty(t, ended)
 	})
 
-	T.Run("refuses a revocation that names nothing", func(t *testing.T) {
+	// A lapsed login is over already. Reporting it as ended would put a
+	// sign-out in an audit trail for a login nobody could have used.
+	T.Run("reports nothing for a login that lapsed", func(t *testing.T) {
+		t.Parallel()
+
+		store, clk := newTestStore(t)
+
+		issue(t, store)
+		clk.advance(testTTL + time.Second)
+
+		ended, err := endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: testSubject, FamilyID: testFamilyID})
+		must.NoError(t, err)
+		test.SliceEmpty(t, ended)
+	})
+}
+
+func TestSQLStore_EndSignIns_ByFamily(T *testing.T) {
+	T.Parallel()
+
+	// An operator ending a login by its id is not told whose it is, and the
+	// hook it reports to has to be.
+	T.Run("ends the login and says whose it was", func(t *testing.T) {
 		t.Parallel()
 
 		store, _ := newTestStore(t)
 
-		_, err := revokeFamilyForSubject(t, store, testScope(), "", testFamilyID)
-		test.ErrorIs(t, err, ErrEmptySubjectID)
+		ended := issue(t, store)
+		other := mintInto(t, store, testScope(), "family_other", testSubject)
 
-		_, err = revokeFamilyForSubject(t, store, testScope(), testSubject, "")
-		test.ErrorIs(t, err, ErrEmptyFamilyID)
+		got, err := endSignIns(t, store, testScope(), signin.SignInSelector{FamilyID: testFamilyID})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, got)
+		test.EqOp(t, testFamilyID, got[0].FamilyID)
+		test.EqOp(t, testSubject, got[0].SubjectID)
+		test.EqOp(t, 1, got[0].Revoked)
+
+		_, err = redeem(t, store, testScope(), ended.Secret)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		_, err = redeem(t, store, testScope(), other.Secret)
+		test.NoError(t, err)
+	})
+
+	T.Run("stays inside its directory", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		issue(t, store)
+
+		got, err := endSignIns(t, store, tenancy.Of("tenant_b"), signin.SignInSelector{FamilyID: testFamilyID})
+		must.NoError(t, err)
+		test.SliceEmpty(t, got)
+	})
+
+	T.Run("refuses a selection that names nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		_, err := endSignIns(t, store, testScope(), signin.SignInSelector{})
+		test.ErrorIs(t, err, ErrEmptySelector)
+		test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
 	})
 }
 
-func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
+func TestSQLStore_EndSignIns_AllButOne(T *testing.T) {
 	T.Parallel()
+
+	except := func(keep string) signin.SignInSelector {
+		return signin.SignInSelector{SubjectID: testSubject, ExceptFamilyID: keep}
+	}
 
 	T.Run("ends every other login and reports each one once", func(t *testing.T) {
 		t.Parallel()
@@ -431,9 +463,9 @@ func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
 		laptop := mintInto(t, store, testScope(), "family_laptop", testSubject)
 		theirs := mintInto(t, store, testScope(), "family_theirs", "user_02")
 
-		ended, err := revokeForSubjectExcept(t, store, testScope(), testSubject, "family_kept")
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
 		must.NoError(t, err)
-		test.Eq(t, []string{"family_laptop", "family_phone"}, ended)
+		test.Eq(t, []string{"family_laptop", "family_phone"}, endedFamilies(ended))
 
 		test.Eq(t, []string{"family_kept"}, familyIDs(listSignIns(t, store, testScope(), testSubject, 10)))
 
@@ -450,9 +482,8 @@ func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
 		test.NoError(t, err)
 	})
 
-	// A login that lapsed on its own is revoked with the rest, since the
-	// statement carries no liveness predicate, but nobody ended it: a sign-out
-	// hook handed it would record a device leaving that had already gone.
+	// Nobody ended a login that lapsed on its own: a sign-out hook handed it
+	// would record a device leaving that had already gone.
 	T.Run("does not report a login that had already lapsed", func(t *testing.T) {
 		t.Parallel()
 
@@ -471,31 +502,26 @@ func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
 
 		c.advance(time.Hour)
 
-		ended, err := revokeForSubjectExcept(t, store, testScope(), testSubject, "family_kept")
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
 		must.NoError(t, err)
-		test.Eq(t, []string{"family_live"}, ended)
+		test.Eq(t, []string{"family_live"}, endedFamilies(ended))
 	})
 
-	// A second call ends nothing, and the first call's stamp does not leak into
-	// its answer: the read is keyed on a revocation, not on "revoked".
 	T.Run("reports nothing when there is nothing else to end", func(t *testing.T) {
 		t.Parallel()
 
-		store, c := newTestStore(t)
+		store, _ := newTestStore(t)
 
 		mintInto(t, store, testScope(), "family_kept", testSubject)
 		mintInto(t, store, testScope(), "family_phone", testSubject)
 
-		ended, err := revokeForSubjectExcept(t, store, testScope(), testSubject, "family_kept")
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
 		must.NoError(t, err)
-		test.Eq(t, []string{"family_phone"}, ended)
+		test.Eq(t, []string{"family_phone"}, endedFamilies(ended))
 
-		c.advance(time.Minute)
-
-		ended, err = revokeForSubjectExcept(t, store, testScope(), testSubject, "family_kept")
+		ended, err = endSignIns(t, store, testScope(), except("family_kept"))
 		must.NoError(t, err)
 		test.SliceEmpty(t, ended)
-		test.NotNil(t, ended)
 	})
 
 	// The keep names a family and nothing else, so one that is not the
@@ -509,9 +535,9 @@ func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
 		mine := mintInto(t, store, testScope(), "family_mine", testSubject)
 		theirs := mintInto(t, store, testScope(), "family_theirs", "user_02")
 
-		ended, err := revokeForSubjectExcept(t, store, testScope(), testSubject, "family_theirs")
+		ended, err := endSignIns(t, store, testScope(), except("family_theirs"))
 		must.NoError(t, err)
-		test.Eq(t, []string{"family_mine"}, ended)
+		test.Eq(t, []string{"family_mine"}, endedFamilies(ended))
 
 		_, err = redeem(t, store, testScope(), mine.Secret)
 		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
@@ -528,7 +554,7 @@ func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
 		elsewhere := mintInto(t, store, tenancy.Of("tenant_b"), "family_elsewhere", testSubject)
 		mintInto(t, store, testScope(), "family_kept", testSubject)
 
-		ended, err := revokeForSubjectExcept(t, store, testScope(), testSubject, "family_kept")
+		ended, err := endSignIns(t, store, testScope(), except("family_kept"))
 		must.NoError(t, err)
 		test.SliceEmpty(t, ended)
 
@@ -536,20 +562,20 @@ func TestSQLStore_RevokeForSubjectExcept(T *testing.T) {
 		test.NoError(t, err)
 	})
 
-	// An empty keep is the one input that must never reach the statement:
-	// family_id <> '' is every family, which is sign-out-everywhere by accident.
-	T.Run("refuses a revocation that names nothing", func(t *testing.T) {
+	// A spared login makes sense only against every login one person holds.
+	T.Run("refuses a selection it cannot spare a login from", func(t *testing.T) {
 		t.Parallel()
 
 		store, _ := newTestStore(t)
 
 		kept := mintInto(t, store, testScope(), "family_kept", testSubject)
 
-		_, err := revokeForSubjectExcept(t, store, testScope(), "", "family_kept")
-		test.ErrorIs(t, err, ErrEmptySubjectID)
+		_, err := endSignIns(t, store, testScope(), signin.SignInSelector{FamilyID: "family_kept", ExceptFamilyID: "family_kept"})
+		test.ErrorIs(t, err, ErrContradictorySelector)
 
-		_, err = revokeForSubjectExcept(t, store, testScope(), testSubject, "")
-		test.ErrorIs(t, err, ErrEmptyFamilyID)
+		_, err = endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: testSubject, FamilyID: "family_kept", ExceptFamilyID: "family_other"})
+		test.ErrorIs(t, err, ErrContradictorySelector)
 
 		_, err = redeem(t, store, testScope(), kept.Secret)
 		test.NoError(t, err)
