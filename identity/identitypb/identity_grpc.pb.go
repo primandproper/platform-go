@@ -48,10 +48,11 @@
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token
-// on Invitation -- an invitation's token appears only as a request field on the
+// on Invitation -- an invitation's token appears as a request field on the
 // RPCs that answer one, because that is where it arrives from, on a link.
 // A schema with no field for a secret is a stronger guarantee than a converter
-// that remembers to clear one.
+// that remembers to clear one. The one response that has such a field is
+// InviteResponse, and it is empty unless the deployment opted in: see there.
 //
 // No credential RPCs either: setting a password, enrolling a second factor and
 // verifying an email address are the sign-in service's, not the directory's,
