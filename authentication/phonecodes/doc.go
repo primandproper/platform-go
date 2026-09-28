@@ -28,20 +28,20 @@ phone number:
   - A code has a million values where a link secret has 2^256, so a code
     carries an attempt count and a limit, and a link does not need one.
 
-# The attempt limit, and the one thing a caller has to get right
+# The attempt limit
 
 A wrong code against a live one is counted, and a code at its limit is dead
 whatever it is presented with. The store's limit is at most MaxAttemptsCeiling,
-and a request may tighten it for one code but never loosen it. Every refusal — no code for the number, spent,
-withdrawn, expired, exhausted, wrong — is ErrCodeInvalid, because telling them
-apart would tell a guesser which half of a guess was right. The span records
-which it was.
+and a request may tighten it for one code but never loosen it. Every refusal —
+no code for the number, spent, withdrawn, expired, exhausted, wrong — is the
+same answer, because telling them apart would tell a guesser which half of a
+guess was right. The span records which it was.
 
-The count is written in the caller's transaction, before ErrCodeInvalid is
-returned. A caller that returns that error out of its WithTransaction callback
-rolls the count back and has made every guess free. Store.Redeem says what to
-write instead, and it is the one refusal in this package that has to be
-committed rather than propagated.
+The count is written in the caller's transaction, so a refusal is a result
+rather than an error: Redeem answers false with a nil error, and a caller that
+writes the natural `return err` out of its WithTransaction callback commits the
+count. ErrCodeInvalid is the sentinel a caller reports the refusal with, once
+the transaction has committed.
 
 # One live code per number
 

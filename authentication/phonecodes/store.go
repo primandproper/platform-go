@@ -56,42 +56,39 @@ type Store interface {
 	Issue(ctx context.Context, tx database.Tx, scope tenancy.Scope, request *IssueRequest) (*Issuance, error)
 
 	// Redeem spends the code a phone number holds, if code is it, and answers
-	// with the code it spent.
+	// with the code it spent and true. A code it will not spend is false, with
+	// a nil Code and a nil error.
 	//
-	// Every refusal is ErrCodeInvalid: no code for the number, a spent one, a
+	// Every refusal is the same false: no code for the number, a spent one, a
 	// withdrawn one, an expired one, one at its attempt limit, and the wrong
 	// code. Told apart, they would tell a guesser which half of a guess was
-	// right; the difference is recorded on the span instead.
+	// right; the difference is recorded on the span instead. ErrCodeInvalid is
+	// the sentinel a caller reports it with.
 	//
-	// # ErrCodeInvalid for a wrong code carries work — commit it
+	// A refusal is a result rather than an error because a wrong code against
+	// a live one is counted, in tx, and the count is the attempt limit — the
+	// whole of what stops a guesser working through a million codes. As an
+	// error, the natural `return err` out of a WithTransaction callback would
+	// roll the count back. As a result, that same callback commits it:
 	//
-	// A wrong code against a live one is counted, in tx, before
-	// ErrCodeInvalid is returned. The count is the attempt limit, and the
-	// attempt limit is the whole of what stops a guesser working through a
-	// million codes. So a caller that returns ErrCodeInvalid out of its
-	// WithTransaction callback rolls the count back, and has made every guess
-	// free.
-	//
-	// Capture it instead, let the transaction commit, and report it after:
-	//
-	//	var refused error
+	//	var redeemed bool
 	//	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-	//		spent, err := store.Redeem(ctx, tx, scope, phone, entered)
-	//		if errors.Is(err, phonecodes.ErrCodeInvalid) {
-	//			refused = err
-	//			return nil // commit the counted attempt
+	//		spent, ok, err := store.Redeem(ctx, tx, scope, phone, entered)
+	//		if err != nil || !ok {
+	//			return err // nil for a refusal, so the count commits
 	//		}
-	//		if err != nil {
-	//			return err
-	//		}
-	//		// ... the rest of the sign-in, on tx ...
+	//		redeemed = true
+	//		// ... the rest of the sign-in, on tx, with spent ...
 	//	})
+	//	if err == nil && !redeemed {
+	//		err = phonecodes.ErrCodeInvalid
+	//	}
 	//
-	// It is the one refusal in this package that arrives with a write behind
-	// it, and the store cannot commit it for the caller: it holds no
-	// transaction of its own, and a write on another connection would wait
-	// forever for the caller's on SQLite.
-	Redeem(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber, code string) (*Code, error)
+	// ErrCodeInvalid is reported after the transaction, never from inside it.
+	//
+	// An error is a failure to answer — an argument refused, or the database —
+	// and nothing was counted that the caller must keep.
+	Redeem(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber, code string) (*Code, bool, error)
 
 	// RevokeForSubject withdraws every unspent code one person holds in the
 	// scope and reports how many it withdrew. A second revocation withdraws
