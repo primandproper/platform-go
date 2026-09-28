@@ -125,17 +125,37 @@ func run(t *testing.T, s *conformance.Session) {
 		must.EqOp(t, http.StatusOK, status, must.Sprint("a caller could not read the operation fulfilling their own request"))
 		test.StrContains(t, string(body), submitted.Request.OperationID)
 
-		status, _ = call(t, theirs, http.MethodGet, path, nil)
-		test.EqOp(t, http.StatusNotFound, status)
-
-		// A colleague shares the tenant but not the person, and the operation
+		// The neighbor shares the tenant but not the person, and the operation
 		// is the person's: following somebody's export is not something being
 		// in their tenant grants.
-		colleague := s.Subject(t, conformance.InTenant(surface, mine.ScopeFor(surface)))
-
-		status, _ = call(t, colleague, http.MethodGet, path, nil)
+		status, _ = call(t, theirs, http.MethodGet, path, nil)
 		test.EqOp(t, http.StatusNotFound, status,
 			test.Sprint("a colleague in the same tenant could follow somebody's privacy request"))
+	})
+
+	t.Run("a request is absent to a caller in another tenant", func(t *testing.T) {
+		t.Parallel()
+
+		// The per-person assertions above hold inside one directory. This is
+		// the wall between directories, for a deployment that has more than
+		// one: a request's scope is a second confinement beside its subject,
+		// and a caller elsewhere is refused by both.
+		mine, theirs := s.TwoTenants(t, surface)
+		submitted := submit(t, mine, "export")
+
+		test.SliceContains(t, listed(t, mine), submitted.Request.ID,
+			test.Sprint("a caller's own request was missing from their listing; the absence below proves nothing"))
+		test.SliceNotContains(t, listed(t, theirs), submitted.Request.ID,
+			test.Sprint("a privacy request in one tenant reached a listing in another"))
+
+		status, _ := call(t, theirs, http.MethodGet, dataprivacyhttp.BasePath+"/"+submitted.Request.ID, nil)
+		test.EqOp(t, http.StatusNotFound, status)
+
+		if submitted.Request.OperationID != "" && mine.HTTP.Operations {
+			status, _ = call(t, theirs, http.MethodGet, operationshttp.BasePath+"/"+submitted.Request.OperationID, nil)
+			test.EqOp(t, http.StatusNotFound, status,
+				test.Sprint("a caller in another tenant could follow somebody's privacy request"))
+		}
 	})
 
 	t.Run("a request of a kind nobody offers is refused", func(t *testing.T) {
@@ -148,13 +168,25 @@ func run(t *testing.T, s *conformance.Session) {
 	})
 }
 
-// twoPeople mints two callers in two tenants, refusing to proceed if the
-// subject handed back one caller twice — every confinement assertion here
-// would then compare a person with themselves and pass.
+// twoPeople mints two different people in one directory: a caller, and a
+// colleague in the caller's tenant — or beside them in the global scope, where
+// a deployment serves this surface from one.
+//
+// Not two tenants. A privacy request is confined to the person it is about, so
+// the neighbor this surface owes a refusal is the one sharing everything but
+// the person; minting them apart would let a tenant wall answer for a subject
+// check that is missing, and would skip every assertion on a deployment with
+// no tenants at all, which is where two users in one directory are commonest.
+// The wall between tenants is asserted on its own, with TwoTenants.
+//
+// It refuses to proceed if the subject handed back one caller twice — every
+// confinement assertion here would then compare a person with themselves and
+// pass.
 func twoPeople(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine, theirs = s.TwoTenants(t, surface)
+	mine = s.Subject(t)
+	theirs = s.Subject(t, conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, mine.UserID, theirs.UserID, must.Sprint("the subject minted two callers as one user"))
 
