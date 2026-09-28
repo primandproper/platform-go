@@ -59,7 +59,7 @@ selectors are conjuncts and there is no "or". An entry in which the subject acte
 on themselves matches both and is exported once. Each scope's entries come back
 in chain order, by Seq, which is the only order the log itself vouches for.
 
-# Somebody else's address
+# Somebody else's address, and somebody else's values
 
 An entry whose resource is the subject and whose actor is somebody else names
 that somebody, and the subject is entitled to see who acted on their data. What
@@ -67,6 +67,18 @@ the entry also carries is the address the actor arrived from, which is personal
 data about the actor and tells the subject nothing about themselves. So Actor.IP
 is cleared on every exported entry whose actor is not the subject, and kept on
 the entries whose actor is.
+
+The same reasoning runs the other way for what the subject did. An entry whose
+actor is the subject and whose resource is not records the subject's act, and
+the act is theirs to see — but its Changes are the resource's before and after,
+and when the subject is an administrator who changed a colleague's email those
+values are the colleague's data. The collector cannot tell a resource that is a
+person from one that is not, so Changes on every exported entry whose resource
+is not the subject keeps its field names and loses its values: the export says
+the subject changed "email", and does not say from what to what. An entry whose
+resource is the subject keeps its values whoever the actor was, because those
+are the subject's own data. Metadata is exported as recorded; it is the
+context the actor gave for the event, not a record of the resource.
 
 That makes an exported entry one that no longer hashes to its own Hash. An
 export is a copy handed to a person, not evidence to be re-verified — Verify
@@ -268,9 +280,29 @@ func (c *Collector) collectScope(ctx context.Context, scope tenancy.Scope, subje
 		if entries[i].Actor.ID != subjectID {
 			entries[i].Actor.IP = ""
 		}
+
+		if entries[i].ResourceID != subjectID {
+			entries[i].Changes = fieldNamesOnly(entries[i].Changes)
+		}
 	}
 
 	return entries, nil
+}
+
+// fieldNamesOnly keeps which fields an event changed and drops what they
+// changed from and to. It builds a new map rather than clearing the one it was
+// handed, which belongs to whatever the reader returned.
+func fieldNamesOnly(changes map[string]audit.Change) map[string]audit.Change {
+	if changes == nil {
+		return nil
+	}
+
+	names := make(map[string]audit.Change, len(changes))
+	for field := range changes {
+		names[field] = audit.Change{}
+	}
+
+	return names
 }
 
 // drain pages one query to its end.

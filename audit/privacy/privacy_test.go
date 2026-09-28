@@ -244,6 +244,85 @@ func TestCollector_Collect(T *testing.T) {
 		test.EqOp(t, "", collected[1].Actor.IP)
 	})
 
+	T.Run("exports another person's changed fields without their values", func(t *testing.T) {
+		t.Parallel()
+
+		changed := map[string]audit.Change{"email": {Old: "old@example.com", New: "new@example.com"}}
+
+		// The subject changed a colleague's email; somebody changed the subject's.
+		onColleague := entry(firstScope, "on_colleague", 0, subject.ID, "user_2")
+		onColleague.Changes = changed
+		onColleague.Metadata = map[string]string{"reason": "requested by user_2"}
+
+		onSubject := entry(firstScope, "on_subject", 1, "admin_1", subject.ID)
+		onSubject.Changes = map[string]audit.Change{"email": {Old: "me@example.com", New: "me2@example.com"}}
+
+		log := &auditmock.ReaderMock{
+			ListFunc: func(
+				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
+			) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				if query.ActorID != "" {
+					return page(onColleague), nil
+				}
+
+				return page(onSubject), nil
+			},
+		}
+
+		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
+		must.NoError(t, err)
+
+		fragment, err := collector.Collect(t.Context(), tenancy.Scope{}, subject)
+		must.NoError(t, err)
+
+		// The values are in no part of the export, not merely absent from the
+		// field that decoded.
+		test.StrNotContains(t, string(fragment), "old@example.com")
+		test.StrNotContains(t, string(fragment), "new@example.com")
+
+		var collected []audit.Entry
+		must.NoError(t, json.Unmarshal(fragment, &collected))
+		must.SliceLen(t, 2, collected)
+
+		// What the subject did is theirs to see, down to which field it touched.
+		test.EqOp(t, "on_colleague", collected[0].ID)
+		test.Eq(t, map[string]audit.Change{"email": {}}, collected[0].Changes)
+		test.Eq(t, map[string]string{"reason": "requested by user_2"}, collected[0].Metadata)
+
+		// What was done to the subject's own data keeps its values.
+		test.EqOp(t, "on_subject", collected[1].ID)
+		test.Eq(t, map[string]audit.Change{"email": {Old: "me@example.com", New: "me2@example.com"}}, collected[1].Changes)
+
+		// The reader's entry is not rewritten under it.
+		test.Eq(t, audit.Change{Old: "old@example.com", New: "new@example.com"}, changed["email"])
+	})
+
+	T.Run("an entry the subject acted on themselves keeps its values", func(t *testing.T) {
+		t.Parallel()
+
+		self := entry(firstScope, "self", 0, subject.ID, subject.ID)
+		self.Changes = map[string]audit.Change{"name": {Old: "Ann", New: "Anne"}}
+
+		log := &auditmock.ReaderMock{
+			ListFunc: func(
+				context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter,
+			) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				return page(self), nil
+			},
+		}
+
+		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
+		must.NoError(t, err)
+
+		fragment, err := collector.Collect(t.Context(), tenancy.Scope{}, subject)
+		must.NoError(t, err)
+
+		var collected []audit.Entry
+		must.NoError(t, json.Unmarshal(fragment, &collected))
+		must.SliceLen(t, 1, collected)
+		test.Eq(t, map[string]audit.Change{"name": {Old: "Ann", New: "Anne"}}, collected[0].Changes)
+	})
+
 	T.Run("pages each read to its end", func(t *testing.T) {
 		t.Parallel()
 
