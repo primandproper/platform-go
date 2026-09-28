@@ -1368,7 +1368,7 @@ func (s *SQLStore) subscriptionsFor(ctx context.Context, q database.SQLQueryExec
 	return subscriptions, nil
 }
 
-// The three paged reads' params, each built from one reading of the filter.
+// The paged reads' params, each built from one reading of the filter.
 //
 // They are separate functions returning nominal types rather than one returning
 // a shared struct, because sqlc's params types are nominal per statement — see

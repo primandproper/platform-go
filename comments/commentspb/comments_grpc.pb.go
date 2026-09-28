@@ -2,7 +2,7 @@
 // discussion half of a product: what somebody said, about something the
 // application owns, possibly in reply to something else somebody said.
 //
-// Eight of the ten methods on comments.Store are here. The two that are not are
+// Every method on comments.Store is here but two, and those two are
 // bulk erasure — DeleteCommentsForTarget and DeleteCommentsByAuthor — and the
 // service comment at the bottom of this file says why neither has an RPC.
 //
@@ -142,8 +142,8 @@ const (
 // one, page a discussion, page a person's or a target type's, edit a body,
 // archive a row.
 //
-// Eight RPCs over comments.Store's ten methods, each behind a grant and each
-// acting only within the tenant the caller's principal names.
+// Every comments.Store method but the bulk erasures, each behind a grant and
+// each acting only within the tenant the caller's principal names.
 //
 // The two absences are the bulk erasures, and they are one case rather than
 // two. DeleteCommentsForTarget is called from the transaction that removes the
@@ -268,8 +268,8 @@ func (c *commentsServiceClient) ArchiveComment(ctx context.Context, in *ArchiveC
 // one, page a discussion, page a person's or a target type's, edit a body,
 // archive a row.
 //
-// Eight RPCs over comments.Store's ten methods, each behind a grant and each
-// acting only within the tenant the caller's principal names.
+// Every comments.Store method but the bulk erasures, each behind a grant and
+// each acting only within the tenant the caller's principal names.
 //
 // The two absences are the bulk erasures, and they are one case rather than
 // two. DeleteCommentsForTarget is called from the transaction that removes the

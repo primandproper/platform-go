@@ -87,7 +87,7 @@ const (
 	opIssueForPrincipal      = "issue_for_principal"
 	opAdminIssueForPrincipal = "admin_issue_for_principal"
 
-	// The four refresh doors. Exchanging is a series of its own rather than a
+	// The refresh doors. Exchanging is a series of its own rather than a
 	// second kind of login, because the two answer different questions of a
 	// dashboard: how often somebody proves a password, and how long their
 	// sign-ins actually last.
@@ -110,7 +110,7 @@ const (
 	opListSignIns = "list_sign_ins"
 	opEndSignIn   = "end_sign_in"
 
-	// The registration door and the three that finish one. Registering is a
+	// The registration door and the ones that finish it. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
 	// is how many people arrived, which has nothing to do with how often they
 	// come back.
@@ -145,9 +145,9 @@ const (
 //
 // It is the two handle lookups a sign-in form submits, the principal read every
 // authenticated request afterwards makes, the one read that returns a user's
-// credentials, and the three credential writes. identity.Store satisfies it, so
-// a consumer passes theirs; a consumer whose directory is not that schema
-// implements these seven methods.
+// credentials, and the credential writes. identity.Store satisfies it, so a
+// consumer passes theirs; a consumer whose directory is not that schema
+// implements these methods.
 //
 // It is narrow deliberately, and for the reason identity.SignInReader is: this
 // is the interface the component holding everybody's passwords depends on, and
@@ -409,7 +409,7 @@ type Service struct {
 	registrar Registrar
 
 	// verifications is nil until WithVerifications names one, and nil means the
-	// three doors that finish a registration refuse with
+	// doors that finish a registration refuse with
 	// ErrVerificationsNotConfigured.
 	verifications Verifications
 
@@ -419,7 +419,7 @@ type Service struct {
 
 	// refreshTokens is nil until WithRefreshTokenStore names one, and nil is
 	// what "this service issues one token per sign-in" means: the two token
-	// doors mint no refresh token, and the three refresh doors refuse with
+	// doors mint no refresh token, and the refresh doors refuse with
 	// ErrRefreshTokensNotConfigured.
 	refreshTokens RefreshTokenStore
 

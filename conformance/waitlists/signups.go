@@ -179,7 +179,7 @@ func signups(t *testing.T, s *conformance.Session) {
 	// The guard is the affected-row count of one update rather than a decision
 	// made on a read, which is what makes a transition happen exactly once —
 	// and the refusal is a client-safe one, in the sentinel's own words,
-	// because the page rendering it has three FailedPreconditions to tell
+	// because the page rendering it has several FailedPreconditions to tell
 	// apart.
 	t.Run("a second invitation is refused, in words a person can read", func(t *testing.T) {
 		t.Parallel()

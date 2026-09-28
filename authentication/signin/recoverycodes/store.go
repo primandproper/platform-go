@@ -10,12 +10,12 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
-// Store is everything this package's table answers: the four methods the
-// sign-in service calls, and the two a privacy pipeline does.
+// Store is everything this package's table answers: the methods the sign-in
+// service calls, and the ones a privacy pipeline does.
 //
-// The first four are signin.RecoveryCodeStore, embedded rather than restated,
+// The service's are signin.RecoveryCodeStore, embedded rather than restated,
 // because that is the seam and a second spelling of it here would be one that
-// could drift from it. The two beyond it are not on the seam because the service
+// could drift from it. The ones beyond it are not on the seam because the service
 // never calls them: listing a person's codes is an export's question, and
 // deleting them outside a replacement is an erasure's. See the privacy package.
 type Store interface {

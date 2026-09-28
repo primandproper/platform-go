@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The inbox half of the surface: six RPCs over the rows a bell icon reads.
+// The inbox half of the surface: the RPCs over the rows a bell icon reads.
 //
 // Every one of them is addressed to the caller and to nobody else. The
 // recipient is req.principal, resolved from the connection, and it is bound
@@ -20,7 +20,7 @@ import (
 // to somebody else is notifications.ErrNotificationNotFound rather than a
 // refusal that would confirm the row exists.
 //
-// The three writes each open a transaction with Client.WithTransaction and pass
+// The writes each open a transaction with Client.WithTransaction and pass
 // the Tx they are handed. notifications ships no write that opens one of its
 // own, deliberately, because a notification is almost always about something
 // else that was just written; a handler here is the caller that convention
@@ -32,7 +32,7 @@ import (
 // so notifications.GRPCMapper wins over the guess made here and no handler on
 // this surface switches on a sentinel.
 //
-// Two of the three writes discard the row the store answers with, because
+// Two of the writes discard the row the store answers with, because
 // MarkNotificationReadResponse and ArchiveNotificationResponse have no field to
 // carry it. What those RPCs promise is that the row moved, and a client that
 // wants to see it afterwards asks for it — the mark is visible to

@@ -24,8 +24,8 @@ Both idioms work on what comes back:
 That the first works is not automatic — what crosses a connection is the error's
 cockroachdb mark and not the sentinel's identity — and errors/grpc's decoding
 interceptor is what makes it so. It matters more here than on most services,
-because four of this one's refusals share PermissionDenied and three share
-FailedPrecondition, so the code alone frequently does not say what to do next.
+because several of this one's refusals share PermissionDenied and several more
+share FailedPrecondition, so the code alone frequently does not say what to do next.
 
 # A third idiom, for the clients that are not this one
 
@@ -136,8 +136,8 @@ type Option func(*options)
 // credentials, a resolver.
 //
 // Nothing here supplies transport security, and this is the one client in the
-// module where that is not merely a default worth stating: two of these RPCs
-// carry a plaintext password and one answers with a live second-factor secret.
+// module where that is not merely a default worth stating: several of these
+// RPCs carry a plaintext password and one answers with a live second-factor secret.
 // grpc.NewClient refuses a target with no credentials option, which is the right
 // failure, and insecure.NewCredentials is a decision to make deliberately and
 // not one this package will make on your behalf.
@@ -150,10 +150,10 @@ func WithDialOptions(opts ...grpc.DialOption) Option {
 //
 // It costs two things. The first is the one this package's documentation opens
 // with: an errors.Is against a sign-in sentinel then never matches, and the
-// codes alone do not tell four refusals apart. The second is quieter and is why
-// this option is worth reading twice — a key on the context stops reaching
-// ExchangeRefreshToken, so a retry of a lost exchange goes back to being
-// indistinguishable from a replay and ends the login.
+// codes alone do not tell the refusals that share one apart. The second is
+// quieter and is why this option is worth reading twice — a key on the context
+// stops reaching ExchangeRefreshToken, so a retry of a lost exchange goes back
+// to being indistinguishable from a replay and ends the login.
 func WithoutDefaultInterceptors() Option {
 	return func(o *options) { o.skipInterceptors = true }
 }

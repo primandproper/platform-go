@@ -42,18 +42,17 @@ var (
 
 // ClientSafeSentinels are the sentinels whose own text a gRPC server may return
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
-// errormappers.Register alongside the five mappers.
+// errormappers.Register alongside the mappers.
 //
-// They are the thirteen the mappers claim, and the list is the same thirteen on
-// purpose:
-// each was given a status because a client acts on it, and a client acting on
-// it needs to know which one it got. gRPC derives its message from the code,
-// and the codes collide — the two collisions are both AlreadyExists, an
+// They are the sentinels the mappers claim, and the list is the same list on
+// purpose: each was given a status because a client acts on it, and a client
+// acting on it needs to know which one it got. gRPC derives its message from
+// the code, and the codes collide — the collisions are all AlreadyExists, an
 // expired invitation, a last owner and a missing default account are all
-// FailedPrecondition, and the three a write is refused for are all
-// InvalidArgument — so without this a client in a language with no access
-// to the encoded details is told the code's name three times for three
-// different remedies. None of the thirteen names a table, a key or a policy:
+// FailedPrecondition, and the refusals of a write's input are all
+// InvalidArgument — so without this a client in a language with no access to
+// the encoded details is told one code's name over and over for different
+// remedies. None of them names a table, a key or a policy:
 // what each says is the whole of what the caller needs and the whole of what
 // this package knows.
 //
@@ -109,7 +108,7 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrInvitationExpired):
 		return httperrors.ErrDataNotFound, "invitation has expired", true
 
-	// The four absences share a code and a message that names what was not
+	// The absences share a code and a message that names what was not
 	// found. A user in another directory reads as absent, which is what it is
 	// from here, and is the answer that does not turn a read into an oracle for
 	// which usernames exist in somebody else's tenant.

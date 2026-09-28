@@ -90,7 +90,7 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrValidatingRequestInput, "the endpoint or event does not belong to that scope", true
 
 	// The two conflicts with state that already exists. Neither is corrected by
-	// re-sending the same request, which is what separates them from the six
+	// re-sending the same request, which is what separates them from the ones
 	// above.
 	//
 	// The out-of-scope message deliberately does not say that the identifier

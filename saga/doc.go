@@ -280,8 +280,8 @@ The package ships a SQL Store (NewSQLStore) and the DDL it needs
 because the state machine and its storage are genuinely separable; nothing about
 adopting this package requires implementing it.
 
-Two of its methods take the caller's transaction and the other six take nothing
-at all, which is a deviation from what every other store in this module does and
+Two of its methods take the caller's transaction and the rest take nothing at
+all, which is a deviation from what every other store in this module does and
 is a ruling rather than an oversight — the interface's own documentation carries
 the argument, method by method. What an implementor owes is worth stating from
 this side too: no scope, because a saga belongs to no tenant, and no

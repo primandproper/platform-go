@@ -17,8 +17,8 @@ import (
 //
 // # Why it exists
 //
-// Six of this service's thirteen RPCs take a [settings.Subject] from the
-// request body — set, get, clear, list, resolve and resolve-all — and the
+// Some of this service's RPCs take a [settings.Subject] from the request
+// body — set, get, clear, list, resolve and resolve-all — and the
 // permission fragment in front of them is a grant on the method. A holder of
 // settings.values.write may call SetValue, and nothing in a per-method check
 // says whose settings. Within one tenant that would make "may change their own
@@ -109,7 +109,7 @@ func (f SubjectAuthorizerFunc) AuthorizeSubject(
 // authorizeSubject asks the consumer's rule and turns what it said into the
 // status a client sees.
 //
-// It is a helper rather than five lines in each of six methods because the code
+// It is a helper rather than five lines in each subject method because the code
 // is the part that can be got wrong quietly, and there are two of them. A
 // refusal is codes.PermissionDenied. Anything else is an authorizer that could
 // not decide, and it is codes.Internal, because a refusal is a sentence about

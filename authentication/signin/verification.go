@@ -10,15 +10,15 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
-// Verifications is what the three link-answered and standing-changing
+// Verifications is what the link-answered and standing-changing
 // operations need from identity, and it is optional: a service built without
 // [WithVerifications] refuses each of them with
 // [ErrVerificationsNotConfigured].
 //
-// It is separate from [Directory] rather than three more methods on it, and
+// It is separate from [Directory] rather than more methods on it, and
 // that is deliberate. Directory is the interface the component holding
 // everybody's passwords depends on, kept to what a sign-in needs so that it
-// cannot be made to do more; these three are a different job, wanted by a
+// cannot be made to do more; these are a different job, wanted by a
 // different set of consumers, and adding them would break every implementer of
 // an interface a consumer is expected to satisfy themselves.
 //

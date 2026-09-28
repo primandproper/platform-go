@@ -174,9 +174,9 @@ type RefreshTokenIssuance struct {
 // [WithRefreshTokenStore] rather than a fifth constructor parameter, so a
 // consumer using [Service.Authenticate] as a credential check owes no table.
 //
-// What an implementation owes its callers is not "these four methods". It is
-// the four properties the methods exist to hold, none of which the signatures
-// can state:
+// What an implementation owes its callers is not "these methods". It is the
+// four properties the methods exist to hold, none of which the signatures can
+// state:
 //
 // The secret is never stored. Issue mints it, returns it once, and persists
 // something a reader cannot reverse into it.
@@ -201,7 +201,7 @@ type RefreshTokenIssuance struct {
 //
 // # The transaction is the caller's
 //
-// All four are writes and all four take a database.Tx, which is the module's
+// Every method is a write and every one takes a database.Tx, which is the module's
 // store convention — and here the reason is a correctness property rather than a
 // bookkeeping one. An exchange spends one token and mints its successor, and a
 // window in which one of those has landed and the other has not is a window

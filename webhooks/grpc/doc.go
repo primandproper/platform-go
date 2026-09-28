@@ -33,7 +33,7 @@ identifier is what SaveEndpoint writes into Endpoint.CreatedBy, so that "who
 registered this endpoint" is answered by the connection rather than by a request
 field somebody could put anything in.
 
-# Eleven RPCs, and nine absences
+# The RPCs, and the absences
 
 Endpoint CRUD, the signing-key rotation, subscription CRUD, the catalog a
 subscription is judged against, and the delivery log. That is the half of
@@ -42,7 +42,7 @@ picks event types from what ListEventTypes offers, rotates a secret, and then
 asks whether it got through and what came back. It is the only half a person
 ever touches.
 
-The other nine methods of webhooks.Store are absent, and each says so on itself
+The other methods of webhooks.Store are absent, and each says so on itself
 rather than only here, so that a reader of the Store finds the answer where they
 are standing. Seven are the delivery machinery the Store already grouped under
 "The delivery machinery takes neither" — Claim, MarkDelivered, RecordFailure,
@@ -109,7 +109,7 @@ mapper case would decide what a keyring with no key means for every other caller
 of requestsigning in the process, where it is a wiring failure and a 500 is
 honest.
 
-# Three writes go through the dispatcher and one goes through the store
+# Most writes go through the dispatcher and one goes through the store
 
 Register and Subscribe are gates, not wrappers. Register validates the URL an
 authenticated request from inside the deployment is about to be made to — SSRF
@@ -139,7 +139,7 @@ stamped rather than the epoch.
 
 # Authorization has one half here, not two
 
-identity/grpc has a TargetAuthorizer beside its permission map because eleven of
+identity/grpc has a TargetAuthorizer beside its permission map because most of
 its RPCs name a row whose relationship to the caller cannot be read off the
 method — an account they may or may not be a member of, within their own tenant.
 Nothing here has that shape. Every row this surface reaches is reached by a

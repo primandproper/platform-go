@@ -1,7 +1,7 @@
 /*
 Package grpc serves the sign-in service over gRPC.
 
-It is imported as signingrpc, and it is seventeen RPCs over
+It is imported as signingrpc, and it serves
 [github.com/primandproper/primitives-go/v2/authentication/signin.Service]: a
 registration and the two that finish one, the two password doors and the
 passwordless pair, the exchange that keeps a login alive, the two ways out and
@@ -14,8 +14,8 @@ happened one layer down, where the transaction is.
 # The two seams, and why there are two
 
 Every other resource surface in this module reads who is calling off one seam,
-because every request to it arrives with somebody on it. This one has nine RPCs
-that by definition do not: a caller signing in has not signed in yet, neither has
+because every request to it arrives with somebody on it. This one has RPCs that
+by definition do not: a caller signing in has not signed in yet, neither has
 the registrant answering the link that was mailed to them, and a caller signing
 out is holding the credential that names the login rather than a live token.
 
@@ -27,7 +27,7 @@ a single-tenant deployment wants and is a directory with no users in it for a
 multi-tenant one that forgot — a sign-in that refuses everybody rather than one
 that signs them into somebody else's tenant.
 
-The eight authenticated RPCs read the caller off a
+The authenticated RPCs read the caller off a
 [github.com/primandproper/platform-go/v14/callers.PrincipalExtractor], which
 resolves a [github.com/primandproper/platform-go/v14/callers.Principal]. Those
 are one package for the whole module rather than an interface per surface: a
@@ -49,9 +49,9 @@ It logs, traces, maps the code and hands back an error that is still the sentine
 the service returned, so the encoding interceptor has a chain to encode. The code
 passed is the default for an error no mapper claims, and the message is the
 description unless a registered client-safe sentinel has better words — which
-this service needs more than most, since four of its refusals share
-codes.PermissionDenied and three share codes.FailedPrecondition, and a client in
-a language that cannot read the encoded details has only the message to tell
+this service needs more than most, since several of its refusals share
+codes.PermissionDenied and several more share codes.FailedPrecondition, and a
+client in a language that cannot read the encoded details has only the message to tell
 them apart.
 
 That mapper reaches a client only once it is registered, which is
@@ -64,7 +64,7 @@ means a client cannot tell "wrong password" from "the database is down".
 
 # What a consumer still owes
 
-Transport security. Four of these RPCs carry a plaintext password and one
+Transport security. Several of these RPCs carry a plaintext password and one
 answers with a live second-factor secret; the schema's own documentation says so
 at greater length. Nothing here checks that the connection is encrypted, because
 nothing here can.

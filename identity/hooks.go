@@ -322,7 +322,7 @@ type Hooks interface {
 	// credential moved, whose it was, and when — and the columns carrying those
 	// three all survive redaction.
 	//
-	// Three of the seven take a second argument, and in each case it is the
+	// Three of them take a second argument, and in each case it is the
 	// value of a column the write cleared on its way past rather than as its
 	// purpose: the forced-change flag UpdateUserPassword releases, and the
 	// verification stamp the two issuing writes drop. A hook is told what it
@@ -466,7 +466,7 @@ var _ Hooks = NoopHooks{}
 //		return h.audit.Record(ctx, tx, scope, "user.registered", r.User.ID)
 //	}
 //
-// Embedding rather than implementing all twenty-four is what keeps a method added
+// Embedding rather than implementing every method is what keeps a method added
 // to Hooks later from breaking every consumer — a new operation arrives as a
 // no-op they can then choose to override.
 type NoopHooks struct{}

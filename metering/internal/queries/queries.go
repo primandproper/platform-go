@@ -366,8 +366,8 @@ func totalKeyMatches() []querygen.Match {
 	}
 }
 
-// Render returns the canonical sqlc input for d: the fourteen statements this
-// package's store executes, in one file's worth of text.
+// Render returns the canonical sqlc input for d: the statements this package's
+// store executes, in one file's worth of text.
 //
 // It is what metering/internal/queriesgen writes to the .sql beside this file
 // and what CI regenerates to check the committed copy still matches. That .sql

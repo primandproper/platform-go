@@ -144,8 +144,8 @@ type Declared struct {
 // It takes the [DefinitionStore] interface rather than hanging off [SQLStore]
 // because it composes three of that interface's methods and needs nothing else:
 // it works against the SQL store, against a mock, and against any other
-// backing, and settings.Store keeps the fourteen methods settings/grpc's roster
-// has ruled on.
+// backing, and settings.Store keeps only the methods settings/grpc's roster has
+// ruled on.
 func DeclareDefinitions(
 	ctx context.Context,
 	store DefinitionStore,

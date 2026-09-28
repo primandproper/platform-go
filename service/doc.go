@@ -99,8 +99,8 @@ authenticator.
 Everything else about a surface is deterministic from the config. These are not,
 because no environment variable can express them:
 
-The extractor is how a surface tells who is calling. One of them, for the
-fourteen that read one — passwordreset is the exception and needs none, because
+The extractor is how a surface tells who is calling. One of them, for every
+surface that reads one — passwordreset is the exception and needs none, because
 every RPC on it is for somebody who cannot sign in — which is the argument the
 callers package already makes: a deployment has one authentication interceptor
 and one notion of a caller. Four surfaces
@@ -121,10 +121,10 @@ from Principal.Scope() as before, which is right for every deployment whose
 directory is its tenant.
 
 The authorizers are the rules about which rows a caller who may make a call may
-make it against. Four are required, and a surface configured without one fails
+make it against. Some are required, and a surface configured without one fails
 the startup that configured it rather than mounting open — under the surface's
-own sentinel, because the surface is what knows what it was missing. Three have
-a default their own package chose, and leaving the field nil leaves that choice
+own sentinel, because the surface is what knows what it was missing. The rest
+have a default their own package chose, and leaving the field nil leaves that choice
 alone.
 
 The grants extractor is the optional fourth, and it answers what the caller may

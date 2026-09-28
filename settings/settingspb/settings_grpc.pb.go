@@ -181,13 +181,13 @@ const (
 //
 // SettingsService is the catalog and the answers stored against it.
 //
-// Thirteen RPCs over the fourteen methods of settings.Store, and the split in
-// them is two audiences rather than two nouns. The seven definition methods are
-// an operator's: what settings exist, what each holds, and who has overridden
-// one. The six value methods are a person acting on themselves, and they are
-// the settings screen every consumer ships.
+// Every method of settings.Store but one, and the split in them is two
+// audiences rather than two nouns. The definition methods are an operator's:
+// what settings exist, what each holds, and who has overridden one. The value
+// methods are a person acting on themselves, and they are the settings screen
+// every consumer ships.
 //
-// The fourteenth is DeleteValuesForSubject and it is deliberately absent. It
+// The one left out is DeleteValuesForSubject and it is deliberately absent. It
 // destroys everything one subject answered, cleared answers included, and it is
 // erasure machinery -- a dataprivacy.Eraser or a retention sweep calling on a
 // subject's behalf from inside the transaction that removes the rest of them.
@@ -197,10 +197,10 @@ const (
 // one table and present in the others. settings.Store documents the same
 // absence on the method itself.
 //
-// Every method takes its scope off the caller's principal, and six of them take
-// a subject from the request -- which a grant on the method cannot check, so
-// settings/grpc asks a SubjectAuthorizer before any of the six reads or writes
-// a row.
+// Every method takes its scope off the caller's principal, and the value
+// methods take a subject from the request -- which a grant on the method cannot
+// check, so settings/grpc asks a SubjectAuthorizer before any of them reads or
+// writes a row.
 type SettingsServiceClient interface {
 	CreateDefinition(ctx context.Context, in *CreateDefinitionRequest, opts ...grpc.CallOption) (*CreateDefinitionResponse, error)
 	GetDefinition(ctx context.Context, in *GetDefinitionRequest, opts ...grpc.CallOption) (*GetDefinitionResponse, error)
@@ -361,13 +361,13 @@ func (c *settingsServiceClient) ResolveAll(ctx context.Context, in *ResolveAllRe
 //
 // SettingsService is the catalog and the answers stored against it.
 //
-// Thirteen RPCs over the fourteen methods of settings.Store, and the split in
-// them is two audiences rather than two nouns. The seven definition methods are
-// an operator's: what settings exist, what each holds, and who has overridden
-// one. The six value methods are a person acting on themselves, and they are
-// the settings screen every consumer ships.
+// Every method of settings.Store but one, and the split in them is two
+// audiences rather than two nouns. The definition methods are an operator's:
+// what settings exist, what each holds, and who has overridden one. The value
+// methods are a person acting on themselves, and they are the settings screen
+// every consumer ships.
 //
-// The fourteenth is DeleteValuesForSubject and it is deliberately absent. It
+// The one left out is DeleteValuesForSubject and it is deliberately absent. It
 // destroys everything one subject answered, cleared answers included, and it is
 // erasure machinery -- a dataprivacy.Eraser or a retention sweep calling on a
 // subject's behalf from inside the transaction that removes the rest of them.
@@ -377,10 +377,10 @@ func (c *settingsServiceClient) ResolveAll(ctx context.Context, in *ResolveAllRe
 // one table and present in the others. settings.Store documents the same
 // absence on the method itself.
 //
-// Every method takes its scope off the caller's principal, and six of them take
-// a subject from the request -- which a grant on the method cannot check, so
-// settings/grpc asks a SubjectAuthorizer before any of the six reads or writes
-// a row.
+// Every method takes its scope off the caller's principal, and the value
+// methods take a subject from the request -- which a grant on the method cannot
+// check, so settings/grpc asks a SubjectAuthorizer before any of them reads or
+// writes a row.
 type SettingsServiceServer interface {
 	CreateDefinition(context.Context, *CreateDefinitionRequest) (*CreateDefinitionResponse, error)
 	GetDefinition(context.Context, *GetDefinitionRequest) (*GetDefinitionResponse, error)

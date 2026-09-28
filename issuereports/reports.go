@@ -171,8 +171,8 @@ func (s *SQLStore) GetReport(
 // transaction has written and not committed is visible on no other connection,
 // so a report read anywhere else would say it was never filed, or never moved,
 // and the disambiguation of a missed guard would report a report that is there
-// as absent. Three of the four single-row writes answer through this; the fourth
-// is the archive, whose row is the one this read is written not to see.
+// as absent. Every single-row write but the archive answers through this; the
+// archive's row is the one this read is written not to see.
 func (s *SQLStore) reportOn(
 	ctx context.Context,
 	exec issuereportsdb.DBTX,
@@ -424,7 +424,7 @@ func (s *SQLStore) ListReportsForSubject(
 
 // convert casts a narrowed list's rows to the base list's row type.
 //
-// The five list statements are one projection rendered five times, with more
+// The list statements are one projection rendered once per list, with more
 // predicates each time and nothing else changed, so the conversion is the
 // assertion: the day two of those projections stop being identical, in field
 // name, type or order, this stops building rather than filling the wrong fields.
@@ -441,7 +441,7 @@ func convert[From, To any](rows []From, same func(From) To) []To {
 //
 // The cursor is the id, because every list statement orders by it. A cursor
 // naming a position in an order the query does not use is a page that skips rows
-// and repeats others, with nothing reporting an error — so the five lists share
+// and repeats others, with nothing reporting an error — so the lists share
 // this rather than each naming the field they page by.
 func listPage(
 	op observability.Operation,

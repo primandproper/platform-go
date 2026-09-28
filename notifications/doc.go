@@ -79,7 +79,7 @@ handed, and the value it was handed is left untouched. That is the module's one
 spelling of what a write did, and it matters most inside a transaction: the id
 this call minted and the creation time the database stamped are readable nowhere
 else until the commit, which is exactly when the audit entry describing the write
-is being assembled. Five of the seven writes here answer that way;
+is being assembled. Every write here answers that way but two:
 [Inbox.MarkAllNotificationsRead] reports a count because it moves a set rather
 than a row, and [Registry.InvalidateDeviceToken] reports nothing because a token
 already gone is the state its caller asked for.
@@ -132,16 +132,16 @@ the tables are created by your own migration run.
 
 # Where this package stops
 
-Nine of the fourteen methods on the two seams are served over gRPC by
-notifications/grpc: the six inbox calls a bell icon makes, and the three a
-handset makes about itself. That surface reads both the directory and the
+Most of the methods on the two seams are served over gRPC by
+notifications/grpc: the inbox calls a bell icon makes, and the ones a handset
+makes about itself. That surface reads both the directory and the
 recipient off the caller the consumer's interceptor resolved, so no request on
 it names either, and it opens its own transaction for each write — the "caller
 with nothing to join" the section above describes, written once there instead of
 once per consumer.
 
-The five that stay behind are four shapes of machinery, and each says so on its
-own Store method: [Inbox.CreateNotification] is the transactional companion,
+The ones that stay behind are machinery of different shapes, and each says so
+on its own Store method: [Inbox.CreateNotification] is the transactional companion,
 [Registry.ListDevicesByPrincipals] is the internal fan-out,
 [Registry.InvalidateDeviceToken] is the provider callback hook, and
 [Inbox.DeleteNotificationsForPrincipal] and [Registry.DeleteDevicesForPrincipal]

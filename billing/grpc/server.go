@@ -185,8 +185,8 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // and the caller themselves.
 //
 // The principal is carried, unlike on authentication/oauth2clients/grpc, because
-// six of these RPCs ask [AccountAuthorizer] about it after the request has been
-// read.
+// the account-keyed RPCs ask [AccountAuthorizer] about it after the request has
+// been read.
 type request struct {
 	op        observability.Operation
 	principal callers.Principal

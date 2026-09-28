@@ -2,10 +2,9 @@
 // two halves of notifications: the in-app inbox a bell icon reads, and the
 // registry of handsets a push is addressed to.
 //
-// Nine of the fourteen methods across notifications.Inbox and
-// notifications.Registry are here and five deliberately are not. The service
-// comment at the bottom of this file names all five and says which shape of
-// machinery each one is.
+// Most of the methods across notifications.Inbox and notifications.Registry are
+// here and the rest deliberately are not. The service comment at the bottom of
+// this file names each absence and says which shape of machinery it is.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts
@@ -126,11 +125,11 @@ const (
 // notifications/grpc -- because "the caller owns the row" answers which rows,
 // not whether this deployment offers the call at all.
 //
-// # The five that are not here
+// # The methods that are not here
 //
-// Fourteen methods across notifications.Inbox and notifications.Registry, nine
-// RPCs, and the five absences are four different shapes of machinery rather than
-// five instances of one. Each argues its own case on its Store method, which is
+// Not every method across notifications.Inbox and notifications.Registry is an
+// RPC, and the absences are different shapes of machinery rather than instances
+// of one. Each argues its own case on its Store method, which is
 // where a reader of the Go API is standing when the question occurs to them.
 //
 // CreateNotification is the transactional companion. It files a notification in
@@ -160,7 +159,7 @@ const (
 // any handset's registration in any tenant on the say-so of a caller claiming
 // the provider said so.
 //
-// DeleteNotificationsForPrincipal and DeleteDevicesForPrincipal are the fourth
+// DeleteNotificationsForPrincipal and DeleteDevicesForPrincipal are the last
 // shape and the only one that is two methods, because it is one shape over two
 // tables: the erasure. Each names a principal and destroys every row under it,
 // and neither has a client. A person clearing a notification is calling
@@ -295,11 +294,11 @@ func (c *notificationsServiceClient) RevokeDevice(ctx context.Context, in *Revok
 // notifications/grpc -- because "the caller owns the row" answers which rows,
 // not whether this deployment offers the call at all.
 //
-// # The five that are not here
+// # The methods that are not here
 //
-// Fourteen methods across notifications.Inbox and notifications.Registry, nine
-// RPCs, and the five absences are four different shapes of machinery rather than
-// five instances of one. Each argues its own case on its Store method, which is
+// Not every method across notifications.Inbox and notifications.Registry is an
+// RPC, and the absences are different shapes of machinery rather than instances
+// of one. Each argues its own case on its Store method, which is
 // where a reader of the Go API is standing when the question occurs to them.
 //
 // CreateNotification is the transactional companion. It files a notification in
@@ -329,7 +328,7 @@ func (c *notificationsServiceClient) RevokeDevice(ctx context.Context, in *Revok
 // any handset's registration in any tenant on the say-so of a caller claiming
 // the provider said so.
 //
-// DeleteNotificationsForPrincipal and DeleteDevicesForPrincipal are the fourth
+// DeleteNotificationsForPrincipal and DeleteDevicesForPrincipal are the last
 // shape and the only one that is two methods, because it is one shape over two
 // tables: the erasure. Each names a principal and destroys every row under it,
 // and neither has a client. A person clearing a notification is calling

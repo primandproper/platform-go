@@ -23,12 +23,9 @@ import (
 //
 // # The method set is final
 //
-// Three methods, and there will not be a fourth. Ten gRPC surfaces in this
-// module name this type — identity/grpc, authentication/signin/grpc,
-// authentication/oauth2clients/grpc, billing/grpc, comments/grpc,
-// issuereports/grpc, notifications/grpc, settings/grpc, waitlists/grpc and
-// webhooks/grpc — so a method added here is a method every consumer of every
-// gRPC surface in this module has to grow at once, on whatever session type
+// Three methods, and there will not be a fourth. The gRPC surfaces in this
+// module name this type, so a method added here is a method every consumer of
+// every gRPC surface in this module has to grow at once, on whatever session type
 // they already had. An interface carries no default, so there is no deprecation
 // shape available: the break is total and it arrives at compile time in
 // somebody else's repository. The three that are here are the three every one

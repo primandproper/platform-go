@@ -234,7 +234,7 @@ type Registrar interface {
 // The verification token is the exception to the first sentence, and it is a
 // property of the column rather than a credential decision this package took
 // away from an engine: the token a link carries is stored as a digest, so the
-// three methods that name one take the secret and hash it themselves. Nothing
+// methods that name one take the secret and hash it themselves. Nothing
 // reads a token back out of a row — see User.EmailAddressVerificationTokenDigest.
 type CredentialStore interface {
 	// GetUserByEmailVerificationToken reads the user a verification link names,
@@ -1180,12 +1180,12 @@ type InvitationStore interface {
 //
 // # Depend on a narrower one
 //
-// Store is fifty-odd methods, which is the right size for the thing that
-// implements it and the wrong size for almost everything that calls it. It is a
-// union of ten interfaces, each named for a job rather than for a table, and a
-// caller should name the smallest one that covers what it does: a sign-in
-// middleware takes a SignInReader, a processor webhook takes a BillingWriter, a
-// support console takes a DirectoryReader.
+// Store is every method the directory has, which is the right size for the thing
+// that implements it and the wrong size for almost everything that calls it. It
+// is a union of smaller interfaces, each named for a job rather than for a
+// table, and a caller should name the smallest one that covers what it does: a
+// sign-in middleware takes a SignInReader, a processor webhook takes a
+// BillingWriter, a support console takes a DirectoryReader.
 //
 // This is not only about the size of a test double, though a three-method fake
 // beats a whole-Store mock. It is that the narrow interface is a
@@ -1195,7 +1195,7 @@ type InvitationStore interface {
 // away all of that at once, so it is what a container registers and a store
 // implements, not what a handler asks for.
 //
-// A SQL implementation is deliberately one type behind all nine. The writes
+// A SQL implementation is deliberately one type behind all of them. The writes
 // that make a registration span three tables in one transaction, so splitting
 // the implementation would split a transaction; only the seam divides. That the
 // transaction now arrives from outside does not change it — the caller supplies
@@ -1248,14 +1248,13 @@ type InvitationStore interface {
 // with no transaction of its own ignores the executor, and the seam stays one
 // signature rather than one per backing.
 //
-// # Eleven writes answer with what they wrote
+// # A write answers with what it wrote
 //
-// The four creates, the two whole-entity updates, the two archivals and the
-// three stamps hand back a row, read on the caller's transaction after the
-// write. None of them touches the value it was handed: mutating the argument
-// and returning deliver the same guarantee, and returning is the one spelling
-// available to a write addressed by an id rather than by an entity, so it is
-// the one this module uses.
+// The creates, the whole-entity updates, the archivals and the stamps hand back
+// a row, read on the caller's transaction after the write. None of them touches
+// the value it was handed: mutating the argument and returning deliver the same
+// guarantee, and returning is the one spelling available to a write addressed
+// by an id rather than by an entity, so it is the one this module uses.
 //
 // What they have in common is that the answer is not something the caller could
 // have assembled. A create settles an id and a creation time the database
@@ -1288,7 +1287,7 @@ type InvitationStore interface {
 // omits it. A deployment with one directory passes tenancy.Global() everywhere
 // and behaves exactly as it would have without the column.
 //
-// That includes the six writes that take a whole entity. They read the scope
+// That includes the writes that take a whole entity. They read the scope
 // off the argument rather than off User.Scope and its siblings, for the reason
 // comments.Store gives about Comment.Scope: an entity field is exactly the
 // derivation the column rule exists to rule out, since it makes "which directory

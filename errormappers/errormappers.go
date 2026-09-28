@@ -59,7 +59,7 @@ func Register() {
 
 	// The redemption outcomes' own wording is meant for the person reading it,
 	// so gRPC is told it may send it rather than rendering "FailedPrecondition"
-	// four times.
+	// for every one of them.
 	grpcerrors.RegisterClientSafeSentinels(links.ClientSafeSentinels...)
 
 	httperrors.RegisterHTTPErrorMapper(identity.HTTPMapper)
@@ -81,12 +81,12 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(signin.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(signin.GRPCMapper)
 
-	// The list where the codes collide worst: four of signin's nine refusals are
-	// PermissionDenied and three are FailedPrecondition, each with a different
-	// remedy. See signin.ClientSafeSentinels.
+	// The list where the codes collide worst: signin's refusals pile up on
+	// PermissionDenied and FailedPrecondition, each with a different remedy.
+	// See signin.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
 
-	// And the same twelve again as identifiers, which is what a client that must
+	// And the same list again as identifiers, which is what a client that must
 	// branch on the refusal reads instead of the prose. It is one of two reasons
 	// lists in the module, with passwordreset's below; the other client-safe
 	// lists are candidates for one and each is its own decision about names a
@@ -99,7 +99,7 @@ func Register() {
 	// one and not the other should read as it is rather than silently inherit.
 	grpcerrors.RegisterClientSafeReasons(signin.ClientSafeReasons...)
 
-	// The two refusals an authorization request meets. Both are PermissionDenied
+	// The refusals an authorization request meets. They are all PermissionDenied
 	// and so are indistinguishable by code, and each names a different remedy for
 	// somebody staring at a browser. See oauth2clients.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(oauth2clients.ClientSafeSentinels...)
@@ -112,7 +112,7 @@ func Register() {
 	grpcerrors.RegisterGRPCErrorMapper(audit.GRPCMapper)
 
 	// A request with nobody on it, at a seam derived from the extractor rather
-	// than handed one. The four surfaces behind such a seam fall back to a code
+	// than handed one. The surfaces behind such a seam fall back to a code
 	// written for a resolver that failed; this makes them say Unauthenticated,
 	// as every surface reading a principal itself does. See callers' own
 	// errormappers.go.
@@ -131,9 +131,9 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(comments.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(comments.GRPCMapper)
 
-	// The refusals most obviously written for a person: four of comments' six are
-	// InvalidArgument and two are NotFound, and each says which of a form's
-	// fields to go back to. See comments.ClientSafeSentinels.
+	// The refusals most obviously written for a person: comments' are
+	// InvalidArgument or NotFound, and each says which of a form's fields to go
+	// back to. See comments.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(comments.ClientSafeSentinels...)
 
 	httperrors.RegisterHTTPErrorMapper(webhooks.HTTPMapper)
@@ -149,9 +149,9 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(billing.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(billing.GRPCMapper)
 
-	// The worst collisions in the module: seven of billing's refusals are
-	// InvalidArgument, five are AlreadyExists and two are FailedPrecondition,
-	// and inside each family the remedies differ — acknowledge the redelivery,
+	// The worst collisions in the module: billing's refusals crowd into
+	// InvalidArgument, AlreadyExists and FailedPrecondition, and inside each
+	// family the remedies differ — acknowledge the redelivery,
 	// fix the field, or fix the code that chose the id. See
 	// billing.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(billing.ClientSafeSentinels...)
@@ -171,15 +171,15 @@ func Register() {
 
 	// Three of settings' refusals are codes.NotFound — no such setting, nobody
 	// has set it, and it has no value and no default — which are three different
-	// things to tell somebody, and one of the six names the row an administrator
+	// things to tell somebody, and another names the row an administrator
 	// has to clear before their edit can land. See settings.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(settings.ClientSafeSentinels...)
 
 	httperrors.RegisterHTTPErrorMapper(waitlists.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(waitlists.GRPCMapper)
 
-	// The only list whose reader is not signed in: four of waitlists' five
-	// refusals are FailedPrecondition, and the person meeting them is filling in
+	// The only list whose reader is not signed in: most of waitlists' refusals
+	// are FailedPrecondition, and the person meeting them is filling in
 	// a signup form or clicking an unsubscribe link. See
 	// waitlists.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(waitlists.ClientSafeSentinels...)
@@ -188,27 +188,27 @@ func Register() {
 	grpcerrors.RegisterGRPCErrorMapper(passwordreset.GRPCMapper)
 
 	// The other reader who is not signed in — that is the whole situation a
-	// reset link exists for. All three of its outcomes are one code on each
+	// reset link exists for. Every one of a link's outcomes is one code on each
 	// transport, so without the list somebody holding a day-old link is told
-	// "FailedPrecondition" where the three sentinels exist to tell them which.
+	// "FailedPrecondition" where the sentinels exist to tell them which.
 	// See passwordreset.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(passwordreset.ClientSafeSentinels...)
 
-	// And as identifiers, because the fourth — a password the consumer's policy
-	// refused — has the opposite remedy from the three link outcomes, and a
+	// And as identifiers, because the other refusal — a password the consumer's
+	// policy refused — has the opposite remedy from the link outcomes, and a
 	// client has to act on which one it met. See passwordreset.ClientSafeReasons.
 	grpcerrors.RegisterClientSafeReasons(passwordreset.ClientSafeReasons...)
 
 	httperrors.RegisterHTTPErrorMapper(metering.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(metering.GRPCMapper)
 
-	// No client-safe sentinels for metering. Its six refusals are the ingest
+	// No client-safe sentinels for metering. Its refusals are the ingest
 	// path's, the caller is a machine posting usage rather than a person reading
 	// a page, and what that caller branches on is the sentinel — which survives
 	// the wire whether or not gRPC is allowed to quote it. The field to fix is
 	// named in the message the HTTP mapper writes.
 	//
-	// The same reading for entitlements below: the two refusals a request path
+	// The same reading for entitlements below: the refusals a request path
 	// meets are platform sentinels, already mapped and already worded, and the
 	// one this package maps collides with nothing else it maps.
 	httperrors.RegisterHTTPErrorMapper(entitlements.HTTPMapper)
@@ -245,8 +245,8 @@ func Register() {
 
 	// No client-safe sentinels for phonecodes. Its one refusal a person sees,
 	// ErrCodeInvalid, is Unauthenticated, and a code that already says the
-	// code was not accepted needs no wording carried beside it; the other
-	// three are InvalidArgument on a form the consumer drew.
+	// code was not accepted needs no wording carried beside it; the rest are
+	// InvalidArgument on a form the consumer drew.
 
 	httperrors.RegisterHTTPErrorMapper(series.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(series.GRPCMapper)

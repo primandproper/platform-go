@@ -17,14 +17,14 @@ sqlc-gen-unison generates from them, in webhooks/internal/webhooksdb.
 
 # Rendered and authored
 
-Nineteen of the thirty statements come from database/querygen: the upserts, the
+Most of the statements come from database/querygen: the upserts, the
 keyed reads, the three paged lists in both directions, the archives, the plain
-insert, and the three writes that move a dispatch between states. Eleven are
-written out here in full.
+insert, and the three writes that move a dispatch between states. The rest
+are written out here in full.
 
 The line between them is not effort, and it is not "querygen was not finished".
 querygen renders statements that assign *bound values* and address rows by
-equality, which is the shape a row-oriented store is nearly all of. The eleven
+equality, which is the shape a row-oriented store is nearly all of. The rest
 are the ones outside it, and each is outside it for a reason that would still
 be true if querygen grew:
 

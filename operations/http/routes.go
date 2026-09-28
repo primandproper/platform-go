@@ -289,7 +289,7 @@ func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 //
 // It is the one route here that is not a read, and the most likely thing for a
 // consumer to leave off: a deployment whose operations should run to completion
-// mounts the other three and does not offer this one.
+// mounts the others and does not offer this one.
 func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 	return routing.Post(r, path.Join(h.basePath, "/{"+pathParam+"}", CancelSuffix), h.cancel,
 		routing.WithSummary("Request cancellation of a long-running operation"),

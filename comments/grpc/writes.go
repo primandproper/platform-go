@@ -39,9 +39,9 @@ import (
 // the consumer's catalog and, where that definition registers one, against its
 // existence hook; a reply's parent must be a live root in the same scope, on the
 // same target; the identifier is minted and the creation time is read back
-// inside the transaction. Six of those refusals are client-safe sentinels, so a
-// client is told which of them refused it rather than being told InvalidArgument
-// six ways.
+// inside the transaction. Those refusals are client-safe sentinels, so a client
+// is told which of them refused it rather than being told InvalidArgument the
+// same way each time.
 func (s *Server) CreateComment(
 	ctx context.Context,
 	request *commentspb.CreateCommentRequest,

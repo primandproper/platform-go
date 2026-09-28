@@ -4,8 +4,8 @@ Package client is a typed client for the issue reports gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be ten functions that can drift
-from the schema, to gain nothing.
+shutdown. A client that wrapped each RPC would be a function per RPC that can
+drift from the schema, to gain nothing.
 
 It is imported as issuereportsclient.
 
@@ -24,8 +24,8 @@ Both idioms work on what comes back:
 It matters most on the one call this surface exists for. A triage console's move
 is refused in three different ways — the report moved, the move is not one the
 lifecycle admits, the status does not exist — and only the first is worth
-retrying after a re-read. Three of the ten RPCs can answer codes.InvalidArgument
-for two different reasons apiece, and the code alone does not say which.
+retrying after a re-read. Several of the RPCs can answer codes.InvalidArgument
+for more than one reason, and the code alone does not say which.
 
 # Why there is no idempotency interceptor
 

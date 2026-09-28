@@ -19,9 +19,9 @@ import (
 // rather than an enum because a consumer's policy is data — a YAML file, a
 // table of roles — and it has to be able to name one without importing Go.
 //
-// There are seven of them over thirteen RPCs, and the shape of the collapse is
-// the two audiences this package has. Four grants cover the catalog, which is
-// an operator's, and three cover the answers, which are a person's own. Within
+// There are fewer of them than RPCs, and the shape of the collapse is the two
+// audiences this package has. Some grants cover the catalog, which is an
+// operator's, and the rest cover the answers, which are a person's own. Within
 // each, a get and its list share one grant: they answer the same question at
 // two cardinalities, and a grant that separated them would let a consumer allow
 // enumeration while forbidding the read it enumerates into. A consumer who

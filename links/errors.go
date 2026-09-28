@@ -9,7 +9,7 @@ import (
 // package, which is why the mapping lives here and this package imports them
 // rather than the other way around.
 //
-// The four redemption failures are separate sentinels rather than one, which is
+// The redemption failures are separate sentinels rather than one, which is
 // the opposite of what sessions does with its own. The reason is entropy. An
 // unusable session cookie is distinguishable from a forged one only by a check
 // an attacker can run millions of times, so telling the two apart is an oracle;

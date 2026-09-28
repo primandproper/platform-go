@@ -21,8 +21,8 @@ the first time it runs.
 Both failures are invisible per-package, which is why the assertion is not
 per-package. This package's test names every schema-shipping table in the module
 exactly once — as conventional or as exempt, with the exemption's reason — so a
-new table that quietly skips the triple fails a test rather than passing thirteen
-of them. It imports every migrations subpackage and is imported by nothing.
+new table that quietly skips the triple fails a test rather than passing every
+per-package one. It imports every migrations subpackage and is imported by nothing.
 
 Every table is reached through a roster of those subpackages, so the claim in
 that paragraph is only as wide as the roster: a package missing from it ships
@@ -58,8 +58,8 @@ This is asserted here rather than per package for the reason the triple is. The
 failure is invisible from inside one schema — rendering the same DDL twice says
 nothing about what a server does with it the second time, and a package's own
 tests will not notice — and it was in fact true of fourteen of the module's
-schemas at once, each of them looking locally fine. A fifteenth that reaches for
-a standalone CREATE INDEX fails here.
+schemas at once, each of them looking locally fine. The next one that reaches
+for a standalone CREATE INDEX fails here.
 
 A table is exempt only for a reason that outlives whoever wrote it, and there are
 two shapes. A table a sweeper keeps small — sessions, work queue items, outbox

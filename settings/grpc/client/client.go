@@ -4,8 +4,8 @@ Package client is a typed client for the settings gRPC service.
 It is the generated stub plus the two interceptors a caller of this module's
 services would otherwise wire by hand, and it is deliberately thin: every RPC
 reaches it by embedding, so this file adds no method of its own beyond
-construction and shutdown. A client that wrapped each RPC would be thirteen
-functions that can drift from the schema, to gain nothing.
+construction and shutdown. A client that wrapped each RPC would be a function
+per RPC that can drift from the schema, to gain nothing.
 
 It is imported as settingsclient.
 

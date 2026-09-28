@@ -48,10 +48,9 @@ token reaches a server.** A service turns a token back into a caller through a
 one back into a caller is the consumer's interceptor"* — so there is no metadata key this
 document could name as *the* answer. What it can name is the default a client implements
 unless a deployment says otherwise: the metadata entry `authorization`, valued
-`Bearer <token>`, on the five authenticated RPCs and on `GetAuthStatus` whenever a token is
-held.
+`Bearer <token>`, on the authenticated RPCs and on `GetAuthStatus` whenever a token is held.
 
-The other seven anonymous RPCs carry no credential at all, and `ExchangeRefreshToken` is the
+The anonymous RPCs carry no credential at all, and `ExchangeRefreshToken` is the
 one worth saying twice: it authenticates with the refresh token in its body, never with the access
 token, so a client that waits for a valid access token before refreshing has it backwards.
 
@@ -389,8 +388,8 @@ reason is absent more often than R11's table suggests, for three unrelated reaso
 client that treats its absence as a bug has a client that breaks on a Tuesday:
 
 - **Most of the module gives none.** Sign-in is the only package that registers reasons.
-  `identity` has thirteen refusals a caller may be told about and no identifiers for any of
-  them, so an `ExchangeRefreshToken` refused because the user was suspended arrives as a bare
+  `identity` has refusals a caller may be told about and no identifiers for any of them, so an
+  `ExchangeRefreshToken` refused because the user was suspended arrives as a bare
   `PERMISSION_DENIED`.
 - **The detail is attached best-effort.** The server-side interceptor builds the status and
   adds the reason only if it marshals, on the grounds that *"a status that says the right code

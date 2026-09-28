@@ -16,11 +16,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// listing is one of the five paged reads, reduced to "which reports did it
+// listing is one of the paged reads, reduced to "which reports did it
 // answer with", for the properties every one of them shares.
 type listing func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error)
 
-// listings are all five, each asked the question that should find report —
+// listings are all of them, each asked the question that should find report —
 // the caller's own, open, about the subject it was filed about.
 func listings() map[string]listing {
 	return map[string]listing{

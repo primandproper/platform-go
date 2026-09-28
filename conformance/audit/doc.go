@@ -34,7 +34,7 @@ implies.
 
 # What is here and what stayed behind
 
-The surface's own suite varies how the server was built: seven of its tests
+The surface's own suite varies how the server was built: several of its tests
 construct one WithChainsResolver and assert what changes. A deployed service was
 built once and cannot be rebuilt by the thing testing it, so those assertions
 are about construction rather than about behavior, and they stay in

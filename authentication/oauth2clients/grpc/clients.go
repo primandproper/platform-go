@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The whole of the surface: four RPCs over any registration in the caller's
+// The whole of the surface: the RPCs over any registration in the caller's
 // registry, each behind a permission.
 //
 // Every one of them takes the registry off the caller's principal, and none of

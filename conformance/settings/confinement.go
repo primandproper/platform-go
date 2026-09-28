@@ -148,7 +148,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	})
 
 	// The half of authorization a grant on the method cannot reach. The
-	// question these six ask is not whether the caller may call the method but
+	// question these ask is not whether the caller may call the method but
 	// whose settings they named, and a colleague in the same tenant is
 	// somebody else — the scope is shared, so this is the authorizer's refusal
 	// and nobody else's.
@@ -215,7 +215,7 @@ type gatedCall struct {
 	rpc  string
 }
 
-// subjectCalls are the six RPCs a subject authorizer gates.
+// subjectCalls are the RPCs a subject authorizer gates.
 //
 // In order rather than a map, because the positive controls run against the
 // caller's own settings and depend on it: the value the first call stores is

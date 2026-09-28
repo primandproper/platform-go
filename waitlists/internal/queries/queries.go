@@ -160,7 +160,7 @@ var Signups = Table{
 // Emitted is the tables the canonical .sql covers with the standard set, in the
 // order they appear in it.
 //
-// One of the two. Signups is deliberately absent and still contributes twelve
+// One of the two. Signups is deliberately absent and still contributes
 // statements. The list is what gets a set, not what gets a statement.
 var Emitted = []*Table{&Lists}
 

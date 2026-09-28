@@ -14,7 +14,7 @@ import (
 
 // The ledger: what each attempt to move money left behind.
 //
-// Three reads and one administrative write, and neither of the table's two real
+// Reads and an administrative archive, and neither of the table's two real
 // writes. RecordTransaction is the write this whole schema is shaped around — a
 // payment provider's event, arriving possibly twice, in the same transaction as
 // the audit entry naming who was billed and the outbox event somebody fans out —

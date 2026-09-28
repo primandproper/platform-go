@@ -73,7 +73,7 @@ searchsync's documentation works the index event through end to end.
 # Where the SQL comes from
 
 Nothing in this package composes a statement. The queries live in
-outbox/internal/queries as a rendered, committed corpus — six of the nine
+outbox/internal/queries as a rendered, committed corpus — most of its
 statements written out there rather than emitted by database/querygen, for the
 reasons that package's comment gives — sqlc checks that corpus against the
 schema outbox/migrations renders, on all three dialects, with no database

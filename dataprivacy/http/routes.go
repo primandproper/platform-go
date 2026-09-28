@@ -218,8 +218,8 @@ func (h *Handlers) receipt(req *dataprivacy.Request) *Receipt {
 // the whole surface — which is the ordinary case.
 //
 // A consumer that wants some of it calls the individual methods instead; see the
-// package documentation for the deployment that mounts four of these five and
-// renders its own confirmation page.
+// package documentation for the deployment that mounts all of these but confirm
+// and renders its own confirmation page.
 //
 // Call whichever of these you call before MountOpenAPI, so the spec the router
 // serves includes them.

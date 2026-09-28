@@ -40,16 +40,16 @@
 // Reserving the name rather than only saying so is audit.proto's pattern:
 // `reserved "scope";` is a schema protoc refuses to accept a scope field into,
 // in this repository and in a consumer's fork of the file alike, whereas a
-// comment is a request to the next author. It is reserved on all twenty-nine
-// request messages, on the four inputs they are built from, and on the nine
-// messages a response is built from -- a scope on one of those would be
+// comment is a request to the next author. It is reserved on every request
+// message, on the inputs they are built from, and on the messages a response
+// is built from -- a scope on one of those would be
 // answering a client with something the client supplied. The response wrappers
 // hold nothing but those messages and reserve nothing.
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token
 // on Invitation -- an invitation's token appears only as a request field on the
-// two RPCs that answer one, because that is where it arrives from, on a link.
+// RPCs that answer one, because that is where it arrives from, on a link.
 // A schema with no field for a secret is a stronger guarantee than a converter
 // that remembers to clear one.
 //

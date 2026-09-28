@@ -46,7 +46,8 @@ import (
 //
 // billing/grpc ships no default and takes its authorizer positionally, because
 // every default available to it is wrong in a way nothing reports — one that
-// refuses everything makes six of its RPCs answer as though nothing existed.
+// refuses everything makes its account-keyed RPCs answer as though nothing
+// existed.
 // This surface is in identity/grpc's position instead, where a closed default
 // is a coherent product: authors edit and archive their own comments, and
 // "your comments" is the page a by-author read serves. A consumer who says

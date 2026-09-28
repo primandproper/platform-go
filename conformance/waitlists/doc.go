@@ -54,7 +54,7 @@ assertions skip.
 # What is here and what stayed behind
 
 waitlists/grpc keeps its construction and contract tests: what NewServer refuses
-to be built from, the permission roster and the public five's declaration, the
+to be built from, the permission roster and the public RPCs' declaration, the
 reservations in the proto, the store-method roster, and the options. It keeps
 every test that builds the server some particular way — a SignupAuthorizer that
 permits, refuses, fails or records what it was handed, a ContactResolver, a

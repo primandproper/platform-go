@@ -71,8 +71,8 @@
 // Reserving the name rather than only saying so is audit.proto's pattern:
 // `reserved "scope";` is a schema protoc refuses to accept a scope field into,
 // in this repository and in a consumer's fork of the file alike, whereas a
-// comment is a request to the next author. It is reserved on all four request
-// messages, on [OAuth2ClientCreationInput], which one of them is built from,
+// comment is a request to the next author. It is reserved on every request
+// message, on [OAuth2ClientCreationInput], which one of them is built from,
 // and on [OAuth2Client] and [IssuedOAuth2Client], which the responses are built
 // from.
 //

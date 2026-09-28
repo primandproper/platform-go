@@ -47,7 +47,7 @@ var (
 // [ScopeResolver] the consumer supplies. Neither is here.
 //
 // There is no principal extractor, and its absence is the shape of the service
-// rather than an omission: all three RPCs are for somebody who cannot sign in,
+// rather than an omission: every RPC here is for somebody who cannot sign in,
 // so there is no caller any of them could read. That is also why this package
 // ships no authorizer seam, which every resource surface in this module that has
 // a caller does.
@@ -122,7 +122,7 @@ type request struct {
 	scope tenancy.Scope
 }
 
-// anonymous is where all three RPCs start: the span, the instruments and the
+// anonymous is where every RPC starts: the span, the instruments and the
 // scope.
 //
 // It is one helper rather than four lines per method because the four can be got

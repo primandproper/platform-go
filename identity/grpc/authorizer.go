@@ -19,7 +19,7 @@ import (
 //
 // # Why it exists
 //
-// Eleven of this service's RPCs take their target from the request body, and the
+// Some of this service's RPCs take their target from the request body, and the
 // permission fragment in front of them is a grant on the method: a holder of
 // identity.accounts.update may call UpdateAccount, and nothing in a per-method
 // check says which account. Within a tenant that made a grant directory-wide —

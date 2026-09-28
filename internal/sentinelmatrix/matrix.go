@@ -157,7 +157,7 @@ var Matrix = map[string]map[string]Decision{
 
 	callersPkg: {
 		// A request with nobody on it, at a seam a composition root derived from
-		// the extractor. Mapped so that the four surfaces behind such a seam say
+		// the extractor. Mapped so that the surfaces behind such a seam say
 		// Unauthenticated, as every surface reading a principal itself already
 		// does, rather than the code each falls back to for a resolver that
 		// failed.
@@ -197,7 +197,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrAlreadyCompleted": {Err: billing.ErrAlreadyCompleted, Is: Mapped},
 		"ErrStatusUnchanged":  {Err: billing.ErrStatusUnchanged, Is: Mapped},
 
-		// The seven a caller can correct, each naming a field rather than the
+		// The ones a caller can correct, each naming a field rather than the
 		// call. They are mapped rather than left to the platform because none of
 		// them wraps a platform sentinel: they are judgements about a value that
 		// was supplied, not about one that was missing.
@@ -237,7 +237,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrProductValueTooLong": {Err: billing.ErrProductValueTooLong, Is: Platform},
 	},
 	dataPrivacyPkg: {
-		// A subject asking after their own export or erasure is a client. These six
+		// A subject asking after their own export or erasure is a client. These
 		// are the answers they can act on: the ID is not one of theirs, the request
 		// is not in the state the call needs, or the request they sent is malformed.
 		"ErrArtifactUnavailable":     {Err: dataprivacy.ErrArtifactUnavailable, Is: Mapped},
@@ -353,7 +353,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrWatcherClosed":       {Err: operations.ErrWatcherClosed, Is: Unhandled},
 	},
 	identityPkg: {
-		// The four absences and the two collisions: what a client sent that
+		// The absences and the collisions: what a client sent that
 		// names nothing, and what a client sent that names something already
 		// taken. These are the answers a registration form and a directory UI
 		// act on, and the reason this package acquired mappers at all.
@@ -501,11 +501,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrListNotFound":   {Err: waitlists.ErrListNotFound, Is: Mapped},
 		"ErrSignupNotFound": {Err: waitlists.ErrSignupNotFound, Is: Mapped},
 
-		// The five refusals a person on a signup page meets, and the only rows
-		// in this file whose reader has not signed in. Each is also a
-		// ClientSafeSentinel: four of the five are FailedPrecondition, so the
-		// code cannot say which of them applies and each has a different
-		// remedy. ErrAlreadySignedUp is AlreadyExists rather than a fifth
+		// The refusals a person on a signup page meets, and the only rows in
+		// this file whose reader has not signed in. Each is also a
+		// ClientSafeSentinel: all but one are FailedPrecondition, so the code
+		// cannot say which of them applies and each has a different remedy.
+		// ErrAlreadySignedUp is AlreadyExists rather than another
 		// FailedPrecondition, because its collision is on a unique key.
 		"ErrAlreadySignedUp":  {Err: waitlists.ErrAlreadySignedUp, Is: Mapped},
 		"ErrAlreadyWithdrawn": {Err: waitlists.ErrAlreadyWithdrawn, Is: Mapped},
@@ -547,7 +547,7 @@ var Matrix = map[string]map[string]Decision{
 		// A refresh token presented after it was spent. It is Unauthenticated
 		// and 401 with ErrInvalidCredentials's own message, so a client cannot
 		// tell the two apart — which is why it is mapped and, alone among the
-		// nine this package maps, not client-safe. See errormappers.go.
+		// sentinels this package maps, not client-safe. See errormappers.go.
 		"ErrRefreshTokenReused": {Err: signin.ErrRefreshTokenReused, Is: Mapped},
 
 		// A verification link that named nobody — expired, already answered,
@@ -776,7 +776,7 @@ var Matrix = map[string]map[string]Decision{
 		// The ones that are somebody else's sentinel, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		//
-		// Seven wrap errors.ErrNilInputParameter and one wraps
+		// All but one wrap errors.ErrNilInputParameter, and that one wraps
 		// errors.ErrEmptyInputParameter. ErrNoScope is tenancy's own and wraps the
 		// empty-parameter sentinel too, which is why a scopeless call resolves the
 		// same way whether it was caught at registration, at dispatch, or by the
@@ -836,9 +836,10 @@ var Matrix = map[string]map[string]Decision{
 		"ErrStatusConflict":          {Err: issuereports.ErrStatusConflict, Is: Mapped},
 		"ErrUnknownStatus":           {Err: issuereports.ErrUnknownStatus, Is: Mapped},
 
-		// The three nil-argument sentinels, which wrap errors.ErrNilInputParameter
-		// and are answered by the platform mapper for that reason. Two of them
-		// cannot reach a client through this module's own surface at all: every
+		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter and
+		// are answered by the platform mapper for that reason. The database
+		// client and the executor cannot reach a client through this module's
+		// own surface at all: every
 		// write there is handed a transaction the handler opened, and every read an
 		// executor it holds.
 		"ErrNilDatabaseClient": {Err: issuereports.ErrNilDatabaseClient, Is: Platform},
@@ -870,7 +871,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrStrandedValues":            {Err: settings.ErrStrandedValues, Is: Mapped},
 		"ErrValueNotFound":             {Err: settings.ErrValueNotFound, Is: Mapped},
 
-		// The thirteen that are somebody else's sentinel, answered by the platform
+		// The ones that are somebody else's sentinel, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		//
 		// The last five are the ones worth pausing on, because they are refusals
@@ -926,7 +927,7 @@ var Matrix = map[string]map[string]Decision{
 		// the remedy is the opposite one, and client-safe for the same reason.
 		"ErrPasswordRefused": {Err: passwordreset.ErrPasswordRefused, Is: Mapped},
 
-		// Two nil arguments and two empty ones, answered by the platform
+		// Nil arguments and empty ones, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		"ErrEmptySecret":       {Err: passwordreset.ErrEmptySecret, Is: Platform},
 		"ErrEmptyUserID":       {Err: passwordreset.ErrEmptyUserID, Is: Platform},
@@ -937,12 +938,12 @@ var Matrix = map[string]map[string]Decision{
 		// reaches a client only through a service that shipped broken.
 		"ErrNonPositiveLifetime": {Err: passwordreset.ErrNonPositiveLifetime, Is: Unhandled},
 
-		// The flow over the store adds four nil arguments and two empty ones,
-		// answered by the platform mappers for the same reason the store's are:
-		// they are the tier those sentinels belong to. Four of the six are
-		// NewService refusing to be built at all, so no request path reaches
-		// them; the two empty ones are a handler that forwarded a form field it
-		// never checked.
+		// The flow over the store adds nil arguments and empty ones, answered
+		// by the platform mappers for the same reason the store's are: they are
+		// the tier those sentinels belong to. The nil ones are NewService
+		// refusing to be built at all, so no request path reaches them; the
+		// empty ones are a handler that forwarded a form field it never
+		// checked.
 		"ErrNilStore":          {Err: passwordreset.ErrNilStore, Is: Platform},
 		"ErrNilDirectory":      {Err: passwordreset.ErrNilDirectory, Is: Platform},
 		"ErrNilAuthenticator":  {Err: passwordreset.ErrNilAuthenticator, Is: Platform},
@@ -952,10 +953,10 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	meteringPkg: {
-		// The ingest path, which is the only path here a client is on. Six are
-		// what Usage.validate refuses a record for and the seventh is a meter the
-		// registry does not hold; all seven are the caller's record being wrong
-		// rather than the service being unwell.
+		// The ingest path, which is the only path here a client is on. All but
+		// one are what Usage.validate refuses a record for and the last is a
+		// meter the registry does not hold; every one is the caller's record
+		// being wrong rather than the service being unwell.
 		"ErrEmptySubject":          {Err: metering.ErrEmptySubject, Is: Mapped},
 		"ErrSubjectTooLong":        {Err: metering.ErrSubjectTooLong, Is: Mapped},
 		"ErrEmptyIdempotencyKey":   {Err: metering.ErrEmptyIdempotencyKey, Is: Mapped},
@@ -964,7 +965,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNegativeQuantity":      {Err: metering.ErrNegativeQuantity, Is: Mapped},
 		"ErrUnknownMeter":          {Err: metering.ErrUnknownMeter, Is: Mapped},
 
-		// The seven nil arguments, which wrap errors.ErrNilInputParameter.
+		// The nil arguments, which wrap errors.ErrNilInputParameter.
 		"ErrNilDatabaseClient":    {Err: metering.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilEntitlementReader": {Err: metering.ErrNilEntitlementReader, Is: Platform},
 		"ErrNilExecutor":          {Err: metering.ErrNilExecutor, Is: Platform},
@@ -1044,7 +1045,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrShredContended":  {Err: shredding.ErrShredContended, Is: Mapped},
 		"ErrEmptySubjectID":  {Err: shredding.ErrEmptySubjectID, Is: Mapped},
 
-		// The five nil arguments, which wrap errors.ErrNilInputParameter.
+		// The nil arguments, which wrap errors.ErrNilInputParameter.
 		"ErrNilDatabaseClient": {Err: shredding.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilInvalidator":    {Err: shredding.ErrNilInvalidator, Is: Platform},
 		"ErrNilKeyWrapper":     {Err: shredding.ErrNilKeyWrapper, Is: Platform},
@@ -1067,7 +1068,7 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	mediaRegistryPkg: {
-		// The six a consumer's own upload handler can be told, which is the
+		// The ones a consumer's own upload handler can be told, which is the
 		// endpoint these are for — mediaregistry/http is the guarded serve and
 		// answers its own 404 before any encoding happens. The two key
 		// collisions are both here and both AlreadyExists: one is a row in the
@@ -1081,7 +1082,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrUnattachedSubject": {Err: mediaregistry.ErrUnattachedSubject, Is: Mapped},
 		"ErrTooManyObjectIDs":  {Err: mediaregistry.ErrTooManyObjectIDs, Is: Mapped},
 
-		// The five nil arguments, which wrap errors.ErrNilInputParameter.
+		// The nil arguments, which wrap errors.ErrNilInputParameter.
 		"ErrNilDatabaseClient": {Err: mediaregistry.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: mediaregistry.ErrNilExecutor, Is: Platform},
 		"ErrNilReader":         {Err: mediaregistry.ErrNilReader, Is: Platform},
@@ -1112,8 +1113,8 @@ var Matrix = map[string]map[string]Decision{
 		// of the provider's already gets from Refresh.
 		"ErrProviderReturnedNoAccessToken": {Err: grants.ErrProviderReturnedNoAccessToken, Is: Unhandled},
 
-		// Two that wrap errors.ErrUnrecognizedInputValue, and the nil arguments,
-		// which wrap errors.ErrNilInputParameter.
+		// The ones that wrap errors.ErrUnrecognizedInputValue, and the nil
+		// arguments, which wrap errors.ErrNilInputParameter.
 		"ErrValueTooLong":            {Err: grants.ErrValueTooLong, Is: Platform},
 		"ErrUnknownRevocationReason": {Err: grants.ErrUnknownRevocationReason, Is: Platform},
 		"ErrNilDatabaseClient":       {Err: grants.ErrNilDatabaseClient, Is: Platform},
@@ -1135,7 +1136,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptySubjectID":     {Err: phonecodes.ErrEmptySubjectID, Is: Mapped},
 		"ErrEmptyCode":          {Err: phonecodes.ErrEmptyCode, Is: Mapped},
 
-		// Three that wrap errors.ErrUnrecognizedInputValue, and the nil
+		// The ones that wrap errors.ErrUnrecognizedInputValue, and the nil
 		// arguments, which wrap errors.ErrNilInputParameter.
 		"ErrValueTooLong":       {Err: phonecodes.ErrValueTooLong, Is: Platform},
 		"ErrInvalidMaxAttempts": {Err: phonecodes.ErrInvalidMaxAttempts, Is: Platform},
@@ -1164,7 +1165,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrTooFarAhead":     {Err: series.ErrTooFarAhead, Is: Mapped},
 		"ErrTooFarBack":      {Err: series.ErrTooFarBack, Is: Mapped},
 
-		// Three that wrap errors.ErrUnrecognizedInputValue, and the nil
+		// The ones that wrap errors.ErrUnrecognizedInputValue, and the nil
 		// arguments, which wrap errors.ErrNilInputParameter.
 		"ErrValueTooLong":      {Err: series.ErrValueTooLong, Is: Platform},
 		"ErrNoInstant":         {Err: series.ErrNoInstant, Is: Platform},

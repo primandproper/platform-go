@@ -44,16 +44,16 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the mappers.
 //
-// They are twelve of the fourteen the mappers claim, and the overlap is nearly
-// total on purpose: the codes collide badly here. Four of them are
-// PermissionDenied, four are FailedPrecondition and two are Unauthenticated,
-// and each has a different remedy — send a code, enroll a factor, verify an
-// address, ask an operator, use a different door, use a different credential,
-// reset rather than attach. Without this a client in a language with no access
-// to the encoded details is told the code's name four times for four different
-// remedies.
+// They are all but two of the sentinels the mappers claim, and the overlap is
+// nearly total on purpose: the codes collide badly here. Several of them share
+// PermissionDenied, several more share FailedPrecondition and others share
+// Unauthenticated, and each has a different remedy — send a code, enroll a
+// factor, verify an address, ask an operator, use a different door, use a
+// different credential, reset rather than attach. Without this a client in a
+// language with no access to the encoded details is told one code's name over
+// and over for different remedies.
 //
-// None of the twelve names a user, a handle, a table or a policy. What each says
+// None of them names a user, a handle, a table or a policy. What each says
 // is the whole of what the caller needs and the whole of what this package is
 // willing to tell them — ErrInvalidCredentials in particular says "invalid
 // credentials" and will never say which half was wrong.
@@ -127,8 +127,9 @@ const ClientReasonDomain = "signin.platform-go.primandproper.github.com"
 // errors/grpc.RegisterClientSafeReasons by errormappers.Register.
 //
 // It is the third channel, and it exists because the first two could not be
-// it. The status code collides — four of these are PermissionDenied, four are
-// FailedPrecondition and two are Unauthenticated — and ClientSafeSentinels
+// it. The status code collides — several of these share PermissionDenied,
+// several more share FailedPrecondition and others share Unauthenticated — and
+// ClientSafeSentinels
 // answers that collision with the sentinel's own prose, which is written for a
 // person to read. A client that must *act* differently, rather than display
 // differently, has had only that sentence: a second-factor prompt and a

@@ -23,8 +23,8 @@ import (
 // tier, and for this module that is one call — errormappers.Register.
 //
 // The sentinels absent from both switches are absent on purpose. Every one of
-// them wraps a platform sentinel the platform mappers already answer — four nil
-// arguments and five empty ones — and a case here would be a second copy of a
+// them wraps a platform sentinel the platform mappers already answer — the nil
+// arguments and the empty ones — and a case here would be a second copy of a
 // decision already made, free to drift from it.
 // internal/sentinelmatrix records which sentinel is in which state, and fails
 // when one is in neither.

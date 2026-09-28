@@ -40,16 +40,16 @@
 // Reserving the name rather than only saying so is audit.proto's pattern:
 // `reserved "scope";` is a schema protoc refuses to accept a scope field into,
 // in this repository and in a consumer's fork of the file alike, whereas a
-// comment is a request to the next author. It is reserved on all twenty-nine
-// request messages, on the four inputs they are built from, and on the nine
-// messages a response is built from -- a scope on one of those would be
+// comment is a request to the next author. It is reserved on every request
+// message, on the inputs they are built from, and on the messages a response
+// is built from -- a scope on one of those would be
 // answering a client with something the client supplied. The response wrappers
 // hold nothing but those messages and reserve nothing.
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token
 // on Invitation -- an invitation's token appears only as a request field on the
-// two RPCs that answer one, because that is where it arrives from, on a link.
+// RPCs that answer one, because that is where it arrives from, on a link.
 // A schema with no field for a secret is a stronger guarantee than a converter
 // that remembers to clear one.
 //
@@ -684,7 +684,7 @@ type Account struct {
 	// same account over JSON and over gRPC-JSON would emit two spellings of one
 	// field. Pinning the name makes the two descriptions of this type agree,
 	// which identity/grpc's conformance test then holds them to, and
-	// internal/protoconvention holds all eleven schemas to.
+	// internal/protoconvention holds every schema in this module to.
 	OwnerUserId                string        `protobuf:"bytes,3,opt,name=owner_user_id,json=ownerUserID,proto3" json:"owner_user_id,omitempty"`
 	BillingStatus              BillingStatus `protobuf:"varint,4,opt,name=billing_status,json=billingStatus,proto3,enum=primandproper.platform.identity.v1.BillingStatus" json:"billing_status,omitempty"`
 	PaymentProcessorCustomerId string        `protobuf:"bytes,5,opt,name=payment_processor_customer_id,json=paymentProcessorCustomerID,proto3" json:"payment_processor_customer_id,omitempty"`
@@ -979,7 +979,7 @@ func (x *MembershipWithUser) GetMembership() *Membership {
 //
 // It carries no token. The token is what a link holds, it is minted server-side
 // and it is cleared from every invitation this service returns; it appears in
-// this schema only as a request field on the two RPCs that answer one.
+// this schema only as a request field on the RPCs that answer one.
 type Invitation struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`

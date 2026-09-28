@@ -51,7 +51,7 @@ func ClientToProto(c *oauth2clients.Client) *oauth2clientspb.OAuth2Client {
 // IssuedClientToProto renders a freshly minted registration and its secret.
 //
 // It is the only converter in this package that puts a credential on the wire,
-// and it is reachable only from the two creation RPCs, which is the whole reason
+// and it is reachable only from the creation RPC, which is the whole reason
 // oauth2clients.IssuedClient is a separate type from oauth2clients.Client.
 func IssuedClientToProto(i *oauth2clients.IssuedClient) *oauth2clientspb.IssuedOAuth2Client {
 	if i == nil {

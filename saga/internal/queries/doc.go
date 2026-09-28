@@ -17,19 +17,19 @@ saga/internal/sagadb.
 
 # What querygen renders and what is written out
 
-Two of the fourteen statements come from [querygen]: the get, and the create.
+Two of the statements come from [querygen]: the get, and the create.
 Everything else is written out in this package, and the line is not effort — it
 is what the statement does that querygen has no way to say.
 
-  - Six of them assign something other than a bound value. querygen assigns a
-    column and the argument it takes; the claim increments an attempt counter
-    server-side, the two advances and the requeue zero one, the requeue clears
-    the resume hint to the empty sentinel, and four of them drop a lease to NULL
-    outright rather than binding one. Rendering those would need an expression
-    language in querygen, which is exactly what its closed set of comparands
-    exists to refuse.
+  - Several of them assign something other than a bound value. querygen
+    assigns a column and the argument it takes; the claim increments an attempt
+    counter server-side, the two advances and the requeue zero one, the requeue
+    clears the resume hint to the empty sentinel, and some of them drop a
+    lease to NULL outright rather than binding one. Rendering those would need
+    an expression language in querygen, which is exactly what its closed set of
+    comparands exists to refuse.
 
-  - Seven of them guard on a *set*: the two statuses a worker can advance, or
+  - Several of them guard on a *set*: the two statuses a worker can advance, or
     the statuses an operator is resuming an instance out of. A querygen.Match is an
     equality on one column, and two of them are an AND rather than an IN.
 

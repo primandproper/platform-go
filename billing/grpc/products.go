@@ -15,12 +15,12 @@ import (
 
 // The catalog: what the deployment sells.
 //
-// Two reads and three writes, and the split in who they are for is the whole of
+// Reads and writes, and the split in who they are for is the whole of
 // this file. The catalog is scope-wide — it carries no account, because a
 // product is a thing on offer and who bought it is a subscription or a purchase
 // — so the reads answer to the scope alone and there is no account for
-// [AccountAuthorizer] to be asked about. The three writes are administrative,
-// behind three grants that a customer-facing role does not hold.
+// [AccountAuthorizer] to be asked about. The writes are administrative, each
+// behind a grant that a customer-facing role does not hold.
 //
 // Each method is one call plus its conversion, and a write is that call inside
 // one transaction the handler opens. The error goes through

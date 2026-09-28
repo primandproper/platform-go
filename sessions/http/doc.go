@@ -12,7 +12,7 @@ the session leaves the server.
 	// in a handler
 	session, ok := sessionshttp.SessionFromContext[Principal](req.Context())
 
-# The five calls that matter
+# The calls that matter
 
 Issue, after authenticating — never before, since a session issued to an
 unauthenticated visitor is the thing a fixation attack plants.

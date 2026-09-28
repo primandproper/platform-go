@@ -26,9 +26,9 @@ eraser binds the querier it is handed to the erasure transaction it is given.
 
 # What querygen renders and what is written out
 
-Ten of the twenty statements come from [querygen]: the chain's read, its
-insert-ignore and its two guarded updates, the entry insert and the two
-single-entry reads, and the bounded prune. Everything else is written out here,
+The statements [querygen] renders are the chain's read, its insert-ignore and
+its two guarded updates, the entry insert and the two single-entry reads, and
+the bounded prune. Everything else is written out here,
 and the line is not effort — it is what the statement does that querygen has no
 way to say.
 

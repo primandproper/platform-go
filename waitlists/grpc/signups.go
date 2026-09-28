@@ -15,22 +15,22 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The queue half of the surface: thirteen RPCs, nine behind a permission and
-// four behind none.
+// The queue half of the surface: the RPCs over the signups, most behind a
+// permission and some behind none.
 //
-// The four are the person's own — the form they filled in, the confirmation
-// link it mailed them, and the two ways of asking to come off the list — and
-// they are the reason this service has a [SignupAuthorizer] and a
+// The ones behind none are the person's own — the form they filled in, the
+// confirmation link it mailed them, and the two ways of asking to come off the
+// list — and they are the reason this service has a [SignupAuthorizer] and a
 // [ScopeResolver] where the surfaces next door have neither. Everything else
 // here is whoever is running the launch.
 //
 // Every write opens its own transaction with Client.WithTransaction, and the
-// three that revise or move a row answer with what the store handed back — read
+// ones that revise or move a row answer with what the store handed back — read
 // by the store on that same transaction, so status_changed_at on the wire is the
 // instant the statement stamped rather than the one a second read would have
 // found. See waitlists.SignupStore.Invite.
 //
-// One of them switches on a sentinel and the other ten do not: the error goes
+// One of them switches on a sentinel and the others do not: the error goes
 // through grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the
 // *default*, and the encoding interceptor re-runs the registered mappers over
 // the preserved chain, so waitlists.GRPCMapper wins over the guess made here.
@@ -805,7 +805,7 @@ func (s *Server) ArchiveSignup(
 }
 
 // written runs one signup write in a transaction of its own and carries the row
-// the store answered with back out of the closure, which is what the three
+// the store answered with back out of the closure, which is what the
 // revising RPCs share.
 //
 // It used to run the read as well, because the store's writes reported only an
@@ -813,7 +813,7 @@ func (s *Server) ArchiveSignup(
 // so the row this returns is the one the statement wrote rather than one a
 // second read went looking for. What is left here is the part a closure makes
 // awkward — a value produced inside a WithTransaction callback and wanted after
-// it — plus the one status mapping the three share.
+// it — plus the one status mapping they share.
 func (s *Server) written(
 	ctx context.Context,
 	req *request,

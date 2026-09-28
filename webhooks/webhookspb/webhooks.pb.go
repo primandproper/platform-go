@@ -3,10 +3,9 @@
 // operator registers a URL, picks the events it wants, rotates its signing
 // keys, and reads back what was actually delivered.
 //
-// It is not the delivery pipeline. Ten of the nineteen methods on
-// webhooks.Store are here and nine deliberately are not; the service comment
-// at the bottom of this file names all nine absences and why each one stays
-// off the wire.
+// It is not the delivery pipeline. Some of the methods on webhooks.Store are
+// here and the rest deliberately are not; the service comment at the bottom of
+// this file names each absence and why it stays off the wire.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts

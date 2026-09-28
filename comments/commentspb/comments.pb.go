@@ -2,7 +2,7 @@
 // discussion half of a product: what somebody said, about something the
 // application owns, possibly in reply to something else somebody said.
 //
-// Eight of the ten methods on comments.Store are here. The two that are not are
+// Every method on comments.Store is here but two, and those two are
 // bulk erasure — DeleteCommentsForTarget and DeleteCommentsByAuthor — and the
 // service comment at the bottom of this file says why neither has an RPC.
 //
