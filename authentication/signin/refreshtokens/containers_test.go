@@ -141,6 +141,10 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	// The transactions are the callers' rather than the store's, which is what
 	// makes this the case worth running: the guarantee has to survive being
 	// handed out.
+	t.Run("reads a login's live token by its family", func(t *testing.T) {
+		runLiveTokenSuite(t, store, c)
+	})
+
 	t.Run("hands one token to exactly one of several concurrent consumers", func(t *testing.T) {
 		const contenders = 8
 

@@ -161,6 +161,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		LockSubjectFamilyQuery,
 		LockFamiliesForSubjectQuery,
 		ListLiveFamiliesQuery,
+		GetLiveTokenQuery,
 		SweepTokensQuery,
 	}
 

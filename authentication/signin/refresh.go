@@ -75,6 +75,16 @@ type RefreshToken struct {
 	// was proven at sign-in.
 	ActiveAccountID string `json:"activeAccountID"`
 
+	// AccessTokenID is the "jti" of the access token minted alongside this
+	// refresh token — see [SignIn.TokenID] — and empty for a row whose store
+	// recorded none.
+	//
+	// It is what [Service.CheckSignIn] compares against on a service built
+	// with [WithSupersededTokenRefusal]: the family's live row names the access
+	// token its holder is meant to be presenting, and any other carrying the
+	// family was minted by a row since spent.
+	AccessTokenID string `json:"accessTokenID,omitempty"`
+
 	// Scope is the directory the sign-in was made in.
 	Scope tenancy.Scope `json:"scope"`
 
@@ -131,6 +141,13 @@ type RefreshTokenRequest struct {
 	// are for. It may be empty, for a user who is a member of no account at all
 	// — who signs in and gets a token against nothing rather than being refused.
 	ActiveAccountID string `json:"activeAccountID"`
+
+	// AccessTokenID is the "jti" of the access token minted alongside this
+	// refresh token, which the store records so that [RefreshTokenStore.LiveToken]
+	// can hand it back. The mint that begins a login and the exchange that
+	// continues one both mint the access token first, so it is always known by
+	// the time this is.
+	AccessTokenID string `json:"accessTokenID"`
 
 	// TTL is how long the minted token may be exchanged for. It is the service's
 	// WithRefreshTokenTTL, resolved before the call, rather than something a
@@ -271,8 +288,8 @@ func (e *RefreshTokenReusedError) Unwrap() error { return ErrRefreshTokenReused 
 //
 // No carve-out is needed and none is taken: CLAUDE.md's enumerated six stays
 // closed. The mint runs inside the login transaction the service already opens.
-// The one read, ListActiveSignIns, takes the wider executor as every read in
-// the module does.
+// The two reads, ListActiveSignIns and LiveToken, take the wider executor as
+// every read in the module does.
 //
 // # A retry that is not a replay
 //
@@ -486,6 +503,29 @@ type RefreshTokenStore interface {
 		subjectID string,
 		limit uint16,
 	) ([]*ActiveSignIn, error)
+
+	// LiveToken answers one login's current refresh token, named by its
+	// family, or [ErrSignInEnded] where the login has none. It is what
+	// [Service.CheckSignIn] reads, and it may be read on every request.
+	//
+	// Live is the exchange's own reading, as it is for ListActiveSignIns: the
+	// token answered is the one Redeem would still accept, and a family that
+	// has been revoked or has lapsed has none, whether or not anything has
+	// collected its rows. A family has at most one such token — an exchange
+	// spends one and mints its successor in one transaction — so there is no
+	// second to choose between. A family unknown in scope is ErrSignInEnded
+	// too, and is not told apart from one that ended.
+	//
+	// The answer carries RefreshToken.AccessTokenID, which is what tells the
+	// login's current access token from the ones it has replaced.
+	//
+	// It is a read, so it takes the wider executor.
+	LiveToken(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		familyID string,
+	) (*RefreshToken, error)
 }
 
 // ExchangeRefreshToken spends a refresh token and answers with a fresh access
@@ -812,12 +852,16 @@ func RevokedBy(actorID string) RevocationOption {
 // issued stops being exchangeable, and it reports how many it withdrew.
 //
 // It is an operator's sign-out, and it is reported to
-// [Hooks.AfterRevokeSignIns] as [RevocationOperator]. What it does not do is
-// stop the access token already in somebody's hands — nothing here can, because
-// an access token is checked by the consumer's interceptor against the issuer's
-// signature rather than against this table. What it does is stop that access
-// token being replaced, so a sign-out takes effect within one access-token
-// lifetime, which is what [DefaultTokenTTL]'s hour is chosen against.
+// [Hooks.AfterRevokeSignIns] as [RevocationOperator]. What it does on its own
+// is stop the access token already in somebody's hands being replaced, so a
+// sign-out takes effect within one access-token lifetime, which is what
+// [DefaultTokenTTL]'s hour is chosen against. An access token is checked by the
+// consumer's interceptor against the issuer's signature rather than against this
+// table, so the token itself goes on verifying until it expires — unless that
+// interceptor also asks [Service.CheckSignIn], which answers [ErrSignInEnded]
+// for this family from the moment this commits. That is a read per request in
+// exchange for a sign-out that takes effect at once, and it is the consumer's
+// trade to make.
 //
 // A family nobody holds a live token for — never issued, already ended, or
 // lapsed — is zero and no error, and runs no hook.
@@ -1137,6 +1181,7 @@ func (s *Service) mintRefreshToken(
 		SubjectID:       signIn.Principal.User.ID,
 		ActiveAccountID: signIn.Principal.ActiveAccountID,
 		Administrative:  signIn.Administrative,
+		AccessTokenID:   signIn.TokenID,
 	})
 	if err != nil {
 		return platformerrors.Wrap(err, "minting a refresh token")

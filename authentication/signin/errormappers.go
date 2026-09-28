@@ -49,7 +49,8 @@ var (
 // PermissionDenied, several more share FailedPrecondition and others share
 // Unauthenticated, and each has a different remedy — send a code, enroll a
 // factor, verify an address, ask an operator, use a different door, use a
-// different credential, reset rather than attach. Without this a client in a
+// different credential, reset rather than attach, change the password before
+// anything else. Without this a client in a
 // language with no access to the encoded details is told one code's name over
 // and over for different remedies.
 //
@@ -103,6 +104,7 @@ var ClientSafeSentinels = []error{
 	ErrNoCredentialNamed,
 	ErrPasswordRefused,
 	ErrRegistrationRefused,
+	ErrPasswordChangeRequired,
 }
 
 // ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
@@ -194,6 +196,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
+	{Err: ErrPasswordChangeRequired, Reason: "PASSWORD_CHANGE_REQUIRED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -234,9 +237,12 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// A verification link that named nobody joins them, for the same reason:
 	// expired, already answered, never issued and simply wrong are one remedy,
 	// and telling them apart tells whoever is guessing which guesses are getting
-	// warm.
+	// warm. So does an access token whose login has ended or moved on, which is
+	// a credential that no longer proves anything.
 	case errors.Is(err, ErrRefreshTokenReused),
 		errors.Is(err, ErrInvalidVerificationToken),
+		errors.Is(err, ErrSignInEnded),
+		errors.Is(err, ErrSignInSuperseded),
 		errors.Is(err, ErrInvalidCredentials):
 		return httperrors.ErrAuthenticationFailed, "invalid credentials", true
 
@@ -264,6 +270,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrResourceConflict, "account holds no password to change", true
 	case errors.Is(err, ErrPasswordAlreadySet):
 		return httperrors.ErrResourceConflict, "account already holds a password", true
+
+	// Proven, admitted, and held at one door until the password changes. A 403
+	// rather than a conflict, because what is refused is the caller rather than
+	// the state of anything they named: the same request succeeds once they
+	// have changed it, and every other request is refused the same way until
+	// then.
+	case errors.Is(err, ErrPasswordChangeRequired):
+		return httperrors.ErrUserIsNotAuthorized, "a password change is required", true
 
 	// The one request here that is neither a refusal nor a state: a
 	// registration that did not say how the registrant will prove who they are.
@@ -295,7 +309,9 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrSecondFactorRequired),
 		errors.Is(err, ErrInvalidCredentials),
 		errors.Is(err, ErrInvalidVerificationToken),
-		errors.Is(err, ErrRefreshTokenReused):
+		errors.Is(err, ErrRefreshTokenReused),
+		errors.Is(err, ErrSignInEnded),
+		errors.Is(err, ErrSignInSuperseded):
 		return codes.Unauthenticated, true
 
 	// Proven, and refused anyway. All four are somebody the service knows and
@@ -312,7 +328,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrSecondFactorNotEnrolled),
 		errors.Is(err, ErrUserUnverified),
 		errors.Is(err, ErrNoPasswordCredential),
-		errors.Is(err, ErrPasswordAlreadySet):
+		errors.Is(err, ErrPasswordAlreadySet),
+		errors.Is(err, ErrPasswordChangeRequired):
 		return codes.FailedPrecondition, true
 
 	// A registration that named no credential is a request to correct rather

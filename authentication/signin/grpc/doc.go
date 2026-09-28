@@ -45,6 +45,14 @@ only for a request that interceptor or [PrincipalExtractor.HTTPMiddleware]
 resolved, so installing them is not optional: a server with neither sees
 nobody.
 
+A caller an operator has forced to change their password is still signed in
+and still resolved, and [PasswordChangeGate] is what holds them at the form:
+installed behind the authentication interceptor, it refuses every call but
+[PasswordChangeMethods] and the deployment's own [WithAllowedMethods] with
+signin.ErrPasswordChangeRequired until the change is made. [PrincipalExtractor]
+runs one inside its interceptors and middleware by default;
+[WithoutPasswordChangeGate] is the deliberate no.
+
 # Errors
 
 A method here hands the service's error back with a default code and does not
