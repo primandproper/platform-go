@@ -38,6 +38,28 @@ func accounts(t *testing.T, s *conformance.Session) {
 		notYours(t, err, "a neighboring directory's account")
 	})
 
+	// The read twin of the archival refusal below, and the per-person half of
+	// the directory wall above: in one directory, an account is readable by
+	// the people in it. An ordinary member, because an administrator whose
+	// standing reaches every account is entitled to read this one.
+	t.Run("an account the caller is not in is not the caller's to read", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(getAccount), conformance.AsMember())
+		needsAccount(t, mine)
+		theirs := colleague(t, s, mine)
+		needsAccount(t, theirs)
+
+		found, err := mine.Surfaces.Identity.GetAccount(mine.Context(t.Context()),
+			&identitypb.GetAccountRequest{AccountId: mine.AccountID})
+		must.NoError(t, err, must.Sprint("this caller cannot read its own account; the refusal below proves nothing"))
+		test.EqOp(t, mine.AccountID, found.GetAccount().GetId())
+
+		_, err = mine.Surfaces.Identity.GetAccount(mine.Context(t.Context()),
+			&identitypb.GetAccountRequest{AccountId: theirs.AccountID})
+		notYours(t, err, "a colleague's account the caller holds no membership in")
+	})
+
 	t.Run("an account listing pages the caller's directory only", func(t *testing.T) {
 		t.Parallel()
 
@@ -118,6 +140,38 @@ func accounts(t *testing.T, s *conformance.Session) {
 			&identitypb.GetAccountRequest{AccountId: owner.AccountID})
 		must.NoError(t, err)
 		test.EqOp(t, owner.UserID, found.GetAccount().GetOwnerUserId())
+	})
+
+	// The per-person half of the directory wall above. The new owner has to be
+	// somebody the owner shares an account with, and a colleague in the same
+	// directory is not that until they do — which the join after the refusal
+	// makes them, so the refusal stands next to the transfer it then allows.
+	t.Run("a transfer to somebody who shares no account with the owner is refused until they do", func(t *testing.T) {
+		t.Parallel()
+
+		owner := s.Subject(t, conformance.Making(transferAccountOwnership, getAccount, getPrincipal, acceptInvitation), conformance.AsMember())
+		needsAccount(t, owner)
+		stranger := colleague(t, s, owner, conformance.Making(invite))
+		needsAccount(t, stranger)
+
+		_, err := owner.Surfaces.Identity.TransferAccountOwnership(owner.Context(t.Context()),
+			&identitypb.TransferAccountOwnershipRequest{AccountId: owner.AccountID, NewOwnerUserId: stranger.UserID})
+		notYours(t, err, "a transfer to a colleague who shares no account with the owner")
+
+		// And the account is still the owner's.
+		found, err := owner.Surfaces.Identity.GetAccount(owner.Context(t.Context()),
+			&identitypb.GetAccountRequest{AccountId: owner.AccountID})
+		must.NoError(t, err)
+		test.EqOp(t, owner.UserID, found.GetAccount().GetOwnerUserId())
+
+		// The positive control: once the two share an account, the same call
+		// is answered.
+		join(t, s, stranger, owner, role)
+
+		response, err := owner.Surfaces.Identity.TransferAccountOwnership(owner.Context(t.Context()),
+			&identitypb.TransferAccountOwnershipRequest{AccountId: owner.AccountID, NewOwnerUserId: stranger.UserID})
+		must.NoError(t, err, must.Sprint("the transfer was refused after the two came to share an account; the refusal above proves nothing"))
+		test.EqOp(t, stranger.UserID, response.GetAccount().GetOwnerUserId())
 	})
 
 	t.Run("archiving an account closes it and its roster", func(t *testing.T) {

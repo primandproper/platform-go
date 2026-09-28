@@ -197,6 +197,19 @@ func set(t *testing.T, caller *conformance.Subject, name string, value *settings
 	return response.GetResolution()
 }
 
+// resolved is the caller's own resolution of a setting, failing the test if
+// it is refused.
+func resolved(t *testing.T, caller *conformance.Subject, name string) *settingspb.ResolvedSetting {
+	t.Helper()
+
+	response, err := caller.Surfaces.Settings.Resolve(caller.Context(t.Context()),
+		&settingspb.ResolveRequest{Subject: self(caller), Name: name})
+	must.NoError(t, err, must.Sprintf("resolving setting %q", name))
+	must.NotNil(t, response.GetResolution())
+
+	return response.GetResolution()
+}
+
 // byName reads a definition the way application code holds one.
 func byName(t *testing.T, caller *conformance.Subject, name string) *settingspb.SettingDefinition {
 	t.Helper()

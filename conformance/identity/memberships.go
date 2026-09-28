@@ -152,6 +152,36 @@ func memberships(t *testing.T, s *conformance.Session) {
 		notYours(t, err, "a neighboring directory's user's memberships")
 	})
 
+	// The per-person half of the directory wall above. Whose memberships a
+	// caller may read is a question about the user named: themselves, or
+	// somebody they share a live account with. A colleague in the same
+	// directory is neither until they join, and then they are.
+	t.Run("a user's memberships are refused to a colleague who shares no account with them", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(listMembershipsForUser, getPrincipal, acceptInvitation), conformance.AsMember())
+		needsAccount(t, mine)
+		stranger := colleague(t, s, mine, conformance.Making(invite))
+		needsAccount(t, stranger)
+
+		// The positive control: the caller reads its own.
+		held, err := mine.Surfaces.Identity.ListMembershipsForUser(mine.Context(t.Context()),
+			&identitypb.ListMembershipsForUserRequest{UserId: mine.UserID})
+		must.NoError(t, err)
+		must.SliceNotEmpty(t, held.GetResults(), must.Sprint("a registered caller holds no membership of its own"))
+
+		_, err = mine.Surfaces.Identity.ListMembershipsForUser(mine.Context(t.Context()),
+			&identitypb.ListMembershipsForUserRequest{UserId: stranger.UserID})
+		notYours(t, err, "a colleague's memberships the caller shares no account with")
+
+		// And the rule stated positively: sharing an account is what answers it.
+		join(t, s, stranger, mine, role)
+
+		_, err = mine.Surfaces.Identity.ListMembershipsForUser(mine.Context(t.Context()),
+			&identitypb.ListMembershipsForUserRequest{UserId: stranger.UserID})
+		must.NoError(t, err, must.Sprint("a user's memberships were refused to somebody who shares an account with them"))
+	})
+
 	t.Run("an account's roster joins each membership to its user and renders no credential", func(t *testing.T) {
 		t.Parallel()
 
