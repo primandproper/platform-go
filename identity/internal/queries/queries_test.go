@@ -140,6 +140,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"RecordUserTermsOfServiceAgreement", "RecordUserPrivacyPolicyAgreement",
 		"EraseUser",
 		"EraseInvitationsToEmailAddress", "EraseInvitationsToUser", "AnonymizeInvitationsFromUser",
+		"GetAccountIncludingArchived", "DeleteAccount",
 		"DeleteUserRoles", "InsertUserRole",
 		"DeleteMembershipRoles", "InsertMembershipRole",
 		"DeleteInvitationRoles", "InsertInvitationRole",

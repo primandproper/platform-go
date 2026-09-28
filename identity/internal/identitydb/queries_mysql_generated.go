@@ -191,6 +191,10 @@ INSERT INTO {{prefix}}identity_users (
 	?
 )`
 
+const deleteAccountMySQL = `DELETE FROM {{prefix}}identity_accounts
+WHERE id = ?
+	AND scope = ?`
+
 const deleteInvitationRolesMySQL = `DELETE FROM {{prefix}}identity_invitation_roles
 WHERE invitation_id = ?`
 
@@ -235,6 +239,30 @@ const getAccountMySQL = `SELECT
 FROM {{prefix}}identity_accounts
 WHERE {{prefix}}identity_accounts.archived_at IS NULL
 	AND {{prefix}}identity_accounts.id = ?
+	AND {{prefix}}identity_accounts.scope = ?`
+
+const getAccountIncludingArchivedMySQL = `SELECT
+	{{prefix}}identity_accounts.id,
+	{{prefix}}identity_accounts.scope,
+	{{prefix}}identity_accounts.name,
+	{{prefix}}identity_accounts.owner_user_id,
+	{{prefix}}identity_accounts.billing_status,
+	{{prefix}}identity_accounts.subscription_plan_id,
+	{{prefix}}identity_accounts.payment_processor_customer_id,
+	{{prefix}}identity_accounts.last_payment_provider_synced_at,
+	{{prefix}}identity_accounts.address_line1,
+	{{prefix}}identity_accounts.address_line2,
+	{{prefix}}identity_accounts.address_city,
+	{{prefix}}identity_accounts.address_state,
+	{{prefix}}identity_accounts.address_postal_code,
+	{{prefix}}identity_accounts.address_country,
+	{{prefix}}identity_accounts.address_phone,
+	{{prefix}}identity_accounts.time_zone,
+	{{prefix}}identity_accounts.created_at,
+	{{prefix}}identity_accounts.last_updated_at,
+	{{prefix}}identity_accounts.archived_at
+FROM {{prefix}}identity_accounts
+WHERE {{prefix}}identity_accounts.id = ?
 	AND {{prefix}}identity_accounts.scope = ?`
 
 const getArchivedAccountMySQL = `SELECT
@@ -1793,6 +1821,7 @@ type mysqlQueries struct {
 	createAccount                            string
 	createInvitation                         string
 	createUser                               string
+	deleteAccount                            string
 	deleteInvitationRoles                    string
 	deleteMembershipRoles                    string
 	deleteUserRoles                          string
@@ -1800,6 +1829,7 @@ type mysqlQueries struct {
 	eraseInvitationsToUser                   string
 	eraseUser                                string
 	getAccount                               string
+	getAccountIncludingArchived              string
 	getArchivedAccount                       string
 	getArchivedUser                          string
 	getInvitation                            string
@@ -1881,6 +1911,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		createAccount:                            strings.ReplaceAll(createAccountMySQL, prefixMarker, prefix),
 		createInvitation:                         strings.ReplaceAll(createInvitationMySQL, prefixMarker, prefix),
 		createUser:                               strings.ReplaceAll(createUserMySQL, prefixMarker, prefix),
+		deleteAccount:                            strings.ReplaceAll(deleteAccountMySQL, prefixMarker, prefix),
 		deleteInvitationRoles:                    strings.ReplaceAll(deleteInvitationRolesMySQL, prefixMarker, prefix),
 		deleteMembershipRoles:                    strings.ReplaceAll(deleteMembershipRolesMySQL, prefixMarker, prefix),
 		deleteUserRoles:                          strings.ReplaceAll(deleteUserRolesMySQL, prefixMarker, prefix),
@@ -1888,6 +1919,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		eraseInvitationsToUser:                   strings.ReplaceAll(eraseInvitationsToUserMySQL, prefixMarker, prefix),
 		eraseUser:                                strings.ReplaceAll(eraseUserMySQL, prefixMarker, prefix),
 		getAccount:                               strings.ReplaceAll(getAccountMySQL, prefixMarker, prefix),
+		getAccountIncludingArchived:              strings.ReplaceAll(getAccountIncludingArchivedMySQL, prefixMarker, prefix),
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountMySQL, prefixMarker, prefix),
 		getArchivedUser:                          strings.ReplaceAll(getArchivedUserMySQL, prefixMarker, prefix),
 		getInvitation:                            strings.ReplaceAll(getInvitationMySQL, prefixMarker, prefix),
@@ -2169,6 +2201,19 @@ func (q *mysqlQueries) CreateUser(ctx context.Context, db DBTX, arg CreateUserPa
 	return err
 }
 
+// DeleteAccount runs the :execrows query against mysql.
+func (q *mysqlQueries) DeleteAccount(ctx context.Context, db DBTX, arg DeleteAccountParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteAccount,
+		arg.ID,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // DeleteInvitationRoles runs the :execrows query against mysql.
 func (q *mysqlQueries) DeleteInvitationRoles(ctx context.Context, db DBTX, arg DeleteInvitationRolesParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.deleteInvitationRoles,
@@ -2252,6 +2297,40 @@ func (q *mysqlQueries) GetAccount(ctx context.Context, db DBTX, arg GetAccountPa
 	)
 
 	var i GetAccountRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.OwnerUserID,
+		&i.BillingStatus,
+		&i.SubscriptionPlanID,
+		&i.PaymentProcessorCustomerID,
+		&i.LastPaymentProviderSyncedAt,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.AddressPhone,
+		&i.TimeZone,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetAccountIncludingArchived runs the :one query against mysql.
+func (q *mysqlQueries) GetAccountIncludingArchived(ctx context.Context, db DBTX, arg GetAccountIncludingArchivedParams) (GetAccountIncludingArchivedRow, error) {
+	row := db.QueryRowContext(ctx, q.getAccountIncludingArchived,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetAccountIncludingArchivedRow
 
 	err := row.Scan(
 		&i.ID,
@@ -4572,6 +4651,10 @@ var (
 		LastAcceptedPrivacyPolicy              *time.Time
 	}(CreateUserParams{})
 	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(DeleteAccountParams{})
+	_ = struct {
 		InvitationID string
 	}(DeleteInvitationRolesParams{})
 	_ = struct {
@@ -4617,6 +4700,31 @@ var (
 		LastUpdatedAt               *time.Time
 		ArchivedAt                  *time.Time
 	}(GetAccountRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetAccountIncludingArchivedParams{})
+	_ = struct {
+		ID                          string
+		Scope                       tenancy.Scope
+		Name                        string
+		OwnerUserID                 string
+		BillingStatus               string
+		SubscriptionPlanID          *string
+		PaymentProcessorCustomerID  string
+		LastPaymentProviderSyncedAt *time.Time
+		AddressLine1                string
+		AddressLine2                string
+		AddressCity                 string
+		AddressState                string
+		AddressPostalCode           string
+		AddressCountry              string
+		AddressPhone                string
+		TimeZone                    string
+		CreatedAt                   time.Time
+		LastUpdatedAt               *time.Time
+		ArchivedAt                  *time.Time
+	}(GetAccountIncludingArchivedRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

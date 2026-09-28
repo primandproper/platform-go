@@ -901,6 +901,32 @@ type AdminWriter interface {
 	// the user: the row is the record of what the account was called and who
 	// owned it, and no read here reaches it afterwards.
 	ArchiveAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*Account, error)
+
+	// DeleteAccount destroys an account, live or archived, and answers with the
+	// row it destroyed.
+	//
+	// It cascades to everything the schema hangs off the account: every
+	// membership in it, live or ended, the roles those carry, and every
+	// invitation into it with that invitation's roles. A member whose default
+	// account this was has the default moved to another live membership, as
+	// ArchiveAccount does; one who belonged to nothing else keeps no default.
+	// Nothing outside identity is touched — a consumer's own tables that
+	// reference the account are the consumer's to clear, on this same
+	// transaction.
+	//
+	// It refuses one thing: an account that is not in this scope, which returns
+	// an error wrapping ErrAccountNotFound. It does not refuse an account that
+	// still has members, and that is the ruling rather than an omission. Whether
+	// an account with other people in it may be destroyed — or must be handed to
+	// one of them first — is a consumer's policy, and a guard here would be one
+	// consumer's answer imposed on every other. The consumer that has a rule
+	// reads the roster before calling; ListAllAccountMembers reads the whole of
+	// it. It does not refuse an archived account either: deleting what a
+	// retention period has run out on is the other half of what this is for.
+	//
+	// The row is read before the delete, because nothing describes it after —
+	// see ArchiveAccount for why a caller's audit entry wants it.
+	DeleteAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*Account, error)
 }
 
 // BillingWriter is what a payment processor's webhook handler needs, and

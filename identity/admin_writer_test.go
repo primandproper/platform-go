@@ -2,10 +2,12 @@ package identity
 
 import (
 	"testing"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
@@ -554,5 +556,113 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 			must.SliceLen(t, 1, memberships)
 			test.True(t, memberships[0].DefaultAccount)
 		}
+	})
+
+	t.Run("deletes an account and what the schema hangs off it", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		closing := seedAccountFor(t, env, store, owner, "Closing")
+
+		// A member whose default this is and who has somewhere else to land.
+		member := seedUserInto(t, env, store, newUser("brian"), closing.ID)
+		home := seedAccountFor(t, env, store, member, "Brian's")
+
+		invitation, err := env.createInvitation(t, store, testScope,
+			newInvitation(owner, closing.ID, "cleo@example.com", identifiers.New(), time.Now().Add(time.Hour)))
+		must.NoError(t, err)
+
+		deleted, err := env.deleteAccount(t, store, testScope, closing.ID)
+		must.NoError(t, err)
+
+		// The row as it was, since nothing reads it afterwards.
+		test.EqOp(t, closing.ID, deleted.ID)
+		test.EqOp(t, "Closing", deleted.Name)
+		test.EqOp(t, owner.ID, deleted.OwnerUserID)
+		test.False(t, deleted.Archived())
+
+		_, err = store.GetAccount(t.Context(), env.reader(), testScope, closing.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+
+		// Gone rather than archived: the read that reaches archived rows does
+		// not find it either.
+		all, err := store.ListAccounts(t.Context(), env.reader(), testScope,
+			&filtering.QueryFilter{IncludeArchived: pointer.To(true)})
+		must.NoError(t, err)
+
+		for _, account := range all.Data {
+			test.NotEq(t, closing.ID, account.ID)
+		}
+
+		// The cascade: both memberships and the invitation into the account.
+		for _, userID := range []string{owner.ID, member.ID} {
+			_, err = store.GetMembership(t.Context(), env.reader(), testScope, userID, closing.ID)
+			must.ErrorIs(t, err, ErrMembershipNotFound)
+		}
+
+		_, err = store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
+		must.ErrorIs(t, err, ErrInvitationNotFound)
+
+		// The people are not the account: both users are still there.
+		_, err = store.GetUser(t.Context(), env.reader(), testScope, owner.ID)
+		must.NoError(t, err)
+
+		// The member lands on the account they still have, and the owner, who
+		// belonged to nothing else, keeps no default and still gets a principal.
+		landing, err := store.GetPrincipal(t.Context(), env.reader(), testScope, member.ID, "")
+		must.NoError(t, err)
+		test.EqOp(t, home.ID, landing.ActiveAccountID)
+
+		remaining, err := store.ListMembershipsForUser(t.Context(), env.reader(), testScope, member.ID)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, remaining)
+		test.True(t, remaining[0].DefaultAccount)
+
+		ownerLanding, err := store.GetPrincipal(t.Context(), env.reader(), testScope, owner.ID, "")
+		must.NoError(t, err)
+		test.EqOp(t, "", ownerLanding.ActiveAccountID)
+	})
+
+	t.Run("deletes an archived account", func(t *testing.T) {
+		t.Parallel()
+
+		// What a retention sweep does: the account was closed some time ago and
+		// the period it was kept for has run out.
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+
+		must.NoError(t, env.archiveAccountErr(t, store, testScope, account.ID))
+
+		deleted, err := env.deleteAccount(t, store, testScope, account.ID)
+		must.NoError(t, err)
+		test.EqOp(t, account.ID, deleted.ID)
+		test.True(t, deleted.Archived())
+
+		// A second delete finds nothing, and answers with no row.
+		replayed, err := env.deleteAccount(t, store, testScope, account.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.Nil(t, replayed)
+	})
+
+	t.Run("refuses to delete an account that is not there", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+
+		absent, err := env.deleteAccount(t, store, testScope, identifiers.New())
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.Nil(t, absent)
+
+		// An account in the neighboring directory is absent by the same answer,
+		// rather than destroyed across the boundary.
+		_, err = env.deleteAccount(t, store, otherScope, account.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+
+		_, err = store.GetAccount(t.Context(), env.reader(), testScope, account.ID)
+		must.NoError(t, err)
 	})
 }

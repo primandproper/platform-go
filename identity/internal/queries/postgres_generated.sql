@@ -1738,6 +1738,36 @@ UPDATE identity_invitations SET
 WHERE scope = sqlc.arg(scope)
 	AND from_user = sqlc.arg(erased_from_user);
 
+-- name: GetAccountIncludingArchived :one
+SELECT
+	identity_accounts.id,
+	identity_accounts.scope,
+	identity_accounts.name,
+	identity_accounts.owner_user_id,
+	identity_accounts.billing_status,
+	identity_accounts.subscription_plan_id,
+	identity_accounts.payment_processor_customer_id,
+	identity_accounts.last_payment_provider_synced_at,
+	identity_accounts.address_line1,
+	identity_accounts.address_line2,
+	identity_accounts.address_city,
+	identity_accounts.address_state,
+	identity_accounts.address_postal_code,
+	identity_accounts.address_country,
+	identity_accounts.address_phone,
+	identity_accounts.time_zone,
+	identity_accounts.created_at,
+	identity_accounts.last_updated_at,
+	identity_accounts.archived_at
+FROM identity_accounts
+WHERE identity_accounts.id = sqlc.arg(id)
+	AND identity_accounts.scope = sqlc.arg(scope);
+
+-- name: DeleteAccount :execrows
+DELETE FROM identity_accounts
+WHERE id = sqlc.arg(id)
+	AND scope = sqlc.arg(scope);
+
 -- name: DeleteUserRoles :execrows
 DELETE FROM identity_user_roles
 WHERE user_id = sqlc.arg(user_id);
