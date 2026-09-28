@@ -32,7 +32,7 @@ var _ phonecodes.Store = &StoreMock{}
 //			ListForSubjectFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectID string) ([]*phonecodes.Code, error) {
 //				panic("mock out the ListForSubject method")
 //			},
-//			RedeemFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber string, code string) (*phonecodes.Code, error) {
+//			RedeemFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber string, code string) (*phonecodes.Code, bool, error) {
 //				panic("mock out the Redeem method")
 //			},
 //			RevokeForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subjectID string) (int64, error) {
@@ -55,7 +55,7 @@ type StoreMock struct {
 	ListForSubjectFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectID string) ([]*phonecodes.Code, error)
 
 	// RedeemFunc mocks the Redeem method.
-	RedeemFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber string, code string) (*phonecodes.Code, error)
+	RedeemFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber string, code string) (*phonecodes.Code, bool, error)
 
 	// RevokeForSubjectFunc mocks the RevokeForSubject method.
 	RevokeForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subjectID string) (int64, error)
@@ -260,7 +260,7 @@ func (mock *StoreMock) ListForSubjectCalls() []struct {
 }
 
 // Redeem calls RedeemFunc.
-func (mock *StoreMock) Redeem(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber string, code string) (*phonecodes.Code, error) {
+func (mock *StoreMock) Redeem(ctx context.Context, tx database.Tx, scope tenancy.Scope, phoneNumber string, code string) (*phonecodes.Code, bool, error) {
 	if mock.RedeemFunc == nil {
 		panic("StoreMock.RedeemFunc: method is nil but Store.Redeem was just called")
 	}
