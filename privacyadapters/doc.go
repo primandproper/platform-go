@@ -87,8 +87,10 @@ plainly: a consumer's buggy step blocks erasure for that subject until it is
 fixed. That is the direction to be wrong in. The other one is a subject who was
 told they were erased and was not.
 
-[BillingAdapter] has no such field, because billing/privacy ships no eraser for
-one to precede — see that type. Every other adapter has one, and
+[BillingAdapter] and [AuditAdapter] have no such field, because neither
+billing/privacy nor audit/privacy ships an eraser for one to precede — see those
+types. The audit log's eraser is auditerasure's, and [AuditErasureAdapter]
+carries its seam. Every other adapter has one, and
 [NotificationsAdapter] has two, because it registers two keys.
 
 # Why it is not in service

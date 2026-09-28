@@ -597,6 +597,10 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 		// application appends to its policy set, so that it is scheduled and
 		// coordinated by the same jobs.Scheduler as every other one. See
 		// auditcfg.NewRetentionPolicy.
+		//
+		// No collector either: audit/privacy's takes a mapping from a person to
+		// the tenants they belong to, and privacyadapters.Register is where a
+		// service that has one registers it.
 	}
 
 	// Operations is registered before DataPrivacy because DataPrivacy is built

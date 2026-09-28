@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 
+	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	auditprivacy "github.com/primandproper/platform-go/v14/audit/privacy"
 	grantsmock "github.com/primandproper/platform-go/v14/authentication/grants/mock"
 	oauth2clientsmock "github.com/primandproper/platform-go/v14/authentication/oauth2clients/mock"
 	passkeysmock "github.com/primandproper/platform-go/v14/authentication/passkeys/mock"
@@ -79,6 +81,7 @@ func everything() *privacyadapters.Adapters {
 			Store:   &billingmock.StoreMock{},
 			Resolve: billingprivacy.FixedAccounts(tenancy.Global()),
 		},
+		Audit:        &privacyadapters.AuditAdapter{Log: &auditmock.ReaderMock{}, Resolve: resolve},
 		AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.Postgres},
 	}
 }
@@ -99,7 +102,11 @@ func TestRegisterCoversEveryShippedAdapter(T *testing.T) {
 		want = append(want, keys...)
 	}
 
+	// Compacted, because two directories may ship one key's two halves —
+	// audit/privacy the collector, dataprivacy/auditerasure the eraser — and a
+	// key is registered once however many packages supplied it.
 	slices.Sort(want)
+	want = slices.Compact(want)
 
 	registry := dataprivacy.NewRegistry()
 
@@ -124,10 +131,13 @@ func TestRegisterSplitsCollectorsFromErasers(T *testing.T) {
 	test.SliceContains(T, collectors, billingprivacy.DefaultKey)
 	test.SliceNotContains(T, erasers, billingprivacy.DefaultKey)
 
-	// auditerasure is the other asymmetry, the other way round: the hash chain
-	// is what it erases whole scopes of, and there is nothing to export.
+	// audit is one key whose two halves ship from two packages: audit/privacy
+	// exports what names the subject, and auditerasure erases the subject's own
+	// chains whole — audit/privacy ships no eraser, because deleting an entry
+	// from the middle of a chain reads as tampering.
+	test.EqOp(T, auditerasure.DefaultKey, auditprivacy.DefaultKey)
 	test.SliceContains(T, erasers, auditerasure.DefaultKey)
-	test.SliceNotContains(T, collectors, auditerasure.DefaultKey)
+	test.SliceContains(T, collectors, auditprivacy.DefaultKey)
 
 	// notifications is two pairs under two keys rather than one of either.
 	test.SliceContains(T, collectors, notificationsprivacy.DefaultInboxKey)
@@ -199,6 +209,38 @@ func TestRegisterSkipsWhatADeploymentDoesNotHave(T *testing.T) {
 		})
 		must.NoError(t, err)
 		test.Eq(t, []string{notificationsprivacy.DefaultInboxKey}, keys)
+	})
+
+	T.Run("audit's two halves, alone and together", func(t *testing.T) {
+		t.Parallel()
+
+		resolve := dataprivacy.FixedScopes(tenancy.Global())
+
+		// The collector without the eraser: a deployment whose policy is that
+		// the audit log is never touched still owes the subject a copy of it.
+		registry := dataprivacy.NewRegistry()
+
+		keys, err := privacyadapters.Register(registry, &privacyadapters.Adapters{
+			Reader: stubReader{},
+			Audit:  &privacyadapters.AuditAdapter{Log: &auditmock.ReaderMock{}, Resolve: resolve},
+		})
+		must.NoError(t, err)
+		test.Eq(t, []string{auditprivacy.DefaultKey}, keys)
+		test.Eq(t, []string{auditprivacy.DefaultKey}, registry.CollectorKeys())
+		test.SliceEmpty(t, registry.EraserKeys())
+
+		// Both, under one key, reported once.
+		registry = dataprivacy.NewRegistry()
+
+		keys, err = privacyadapters.Register(registry, &privacyadapters.Adapters{
+			Reader:       stubReader{},
+			Audit:        &privacyadapters.AuditAdapter{Log: &auditmock.ReaderMock{}, Resolve: resolve},
+			AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.SQLite},
+		})
+		must.NoError(t, err)
+		test.Eq(t, []string{auditprivacy.DefaultKey}, keys)
+		test.Eq(t, []string{auditprivacy.DefaultKey}, registry.CollectorKeys())
+		test.Eq(t, []string{auditerasure.DefaultKey}, registry.EraserKeys())
 	})
 }
 
@@ -506,6 +548,7 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 	found := shippedAdapters(T)
 
 	for _, dir := range []string{
+		"audit/privacy",
 		"authentication/grants/privacy",
 		"authentication/oauth2clients/privacy",
 		"authentication/passkeys/privacy",
@@ -526,5 +569,5 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 		test.True(T, ok, test.Sprintf("the walk did not find %s, so nothing in this file asserted about it", dir))
 	}
 
-	test.MapLen(T, 15, found)
+	test.MapLen(T, 16, found)
 }
