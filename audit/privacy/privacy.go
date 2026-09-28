@@ -303,8 +303,8 @@ func (c *Collector) Collect(
 	)
 
 	joined := make(map[string]bool, len(groups))
-	for _, group := range groups {
-		joined[group.scope.Owner()] = true
+	for i := range groups {
+		joined[groups[i].scope.Owner()] = true
 	}
 
 	for i := range actedAs {
@@ -313,11 +313,11 @@ func (c *Collector) Collect(
 		}
 	}
 
-	for _, group := range groups {
-		entries := group.entries
+	for g := range groups {
+		entries := groups[g].entries
 
 		for i := range actedAs {
-			if actedAs[i].Scope.Owner() == group.scope.Owner() {
+			if actedAs[i].Scope.Owner() == groups[g].scope.Owner() {
 				entries = append(entries, actedAs[i])
 			}
 		}

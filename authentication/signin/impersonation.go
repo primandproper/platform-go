@@ -135,6 +135,10 @@ func (s *Service) IssueImpersonationToken(
 		return nil, op.Error(ErrEmptyUserID, "issuing an impersonation")
 	}
 
+	if operatorID == subjectID {
+		return nil, op.Error(ErrSelfImpersonation, "issuing an impersonation")
+	}
+
 	op.Set(userIDKey, subjectID)
 	op.Set(actorKey, operatorID)
 

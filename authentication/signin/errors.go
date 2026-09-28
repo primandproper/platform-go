@@ -321,6 +321,12 @@ var (
 	// ErrEmptyUserID indicates an operation on nobody.
 	ErrEmptyUserID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID")
 
+	// ErrSelfImpersonation indicates an impersonation whose operator and subject
+	// are the same user. The token it would mint carries an actor claim that
+	// callers.ActorOf reads as no delegation at all, so the audit trail would
+	// name one person twice and call it an impersonation.
+	ErrSelfImpersonation = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "an operator cannot impersonate themselves")
+
 	// ErrEmptyCredentialKind indicates a principal door whose caller named no
 	// credential. Service.IssueForPrincipal without WithCredentialKind is the
 	// door for a caller with no name to give; an empty kind through that option

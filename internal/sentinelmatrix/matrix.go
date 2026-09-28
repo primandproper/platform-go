@@ -588,6 +588,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyHandle":           {Err: signin.ErrEmptyHandle, Is: Platform},
 		"ErrEmptyPassword":         {Err: signin.ErrEmptyPassword, Is: Platform},
 		"ErrEmptyUserID":           {Err: signin.ErrEmptyUserID, Is: Platform},
+		"ErrSelfImpersonation":     {Err: signin.ErrSelfImpersonation, Is: Platform},
 		"ErrNilAuthenticator":      {Err: signin.ErrNilAuthenticator, Is: Platform},
 		"ErrNilCredentials":        {Err: signin.ErrNilCredentials, Is: Platform},
 		"ErrNilDatabaseClient":     {Err: signin.ErrNilDatabaseClient, Is: Platform},

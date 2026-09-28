@@ -234,6 +234,17 @@ func TestService_IssueImpersonationToken(T *testing.T) {
 		test.SliceEmpty(t, e.hooks.failures)
 	})
 
+	T.Run("an operator impersonating themselves is refused before anything is read", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithImpersonationPolicy(admitAll))
+
+		_, err := e.svc.IssueImpersonationToken(t.Context(), testScope, e.user.ID, testScope, e.user.ID, "")
+		test.ErrorIs(t, err, signin.ErrSelfImpersonation)
+		test.SliceEmpty(t, e.hooks.signIns)
+		test.SliceEmpty(t, e.hooks.failures)
+	})
+
 	T.Run("an invalid scope is refused", func(t *testing.T) {
 		t.Parallel()
 
