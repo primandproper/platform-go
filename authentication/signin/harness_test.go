@@ -541,6 +541,10 @@ type recordingHooks struct {
 	// was handed, so a test can read what that transaction has written so far.
 	onResend func(ctx context.Context, tx database.Tx, user *identity.User) error
 
+	// onMagicLink runs inside AfterRequestMagicLink, on the transaction it was
+	// handed, for the same reason.
+	onMagicLink func(ctx context.Context, tx database.Tx, user *identity.User) error
+
 	calls           []string
 	authentications []*signin.Authentication
 	signIns         []*signin.SignIn
@@ -548,6 +552,7 @@ type recordingHooks struct {
 	attached        []*identity.User
 	verifieds       []*signin.Verification
 	resent          []*identity.User
+	magicLinked     []*identity.User
 
 	passwords,
 	refreshes,
@@ -620,6 +625,22 @@ func (h *recordingHooks) AfterRequestVerificationEmail(
 
 	if h.onResend != nil {
 		return h.onResend(ctx, tx, user)
+	}
+
+	return nil
+}
+
+func (h *recordingHooks) AfterRequestMagicLink(
+	ctx context.Context,
+	tx database.Tx,
+	_ tenancy.Scope,
+	user *identity.User,
+) error {
+	h.calls = append(h.calls, "magic link")
+	h.magicLinked = append(h.magicLinked, user)
+
+	if h.onMagicLink != nil {
+		return h.onMagicLink(ctx, tx, user)
 	}
 
 	return nil
