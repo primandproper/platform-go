@@ -113,6 +113,23 @@ func WithTokenMinter(mint TokenMinter) Option {
 	}
 }
 
+// WithInvitationTokenReturned makes Invite return the token it minted to the
+// sender, on InviteResponse.token, so the sender can copy the invitation's link
+// and hand it over themselves — pasted into a chat rather than waiting on the
+// mail. Absent, the response carries no token and the link reaches only the
+// address it was minted for.
+//
+// It is the invitation's own link, not a second one: nothing new is stored and
+// nothing new is minted, and redeeming it is bound to the invited address
+// exactly as redeeming the mailed one is, so it admits the addressed person and
+// nobody else. That binding is what makes returning it safe, and the reason it
+// is still off by default is that a deployment should decide to hand a sender a
+// credential, rather than find it had. The token is returned once, on the
+// response to the call that minted it; no read, event or hook carries it.
+func WithInvitationTokenReturned() Option {
+	return func(s *Server) { s.returnInvitationToken = true }
+}
+
 // defaultTokenMinter is the CSPRNG the module already uses for single-use
 // tokens.
 func defaultTokenMinter(ctx context.Context) (string, error) {
