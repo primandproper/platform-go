@@ -107,6 +107,8 @@ func RegistrarMethods() []string {
 // password — or list or end their logins — because the method has no way to
 // name one. EndSignIn names a login, and the service matches it against the
 // caller as well, so a family identifier that is somebody else's ends nothing.
+// EndOtherSignIns names nothing at all: the login it keeps is read off the
+// caller's own token.
 func SelfServiceMethods() []string {
 	return []string{
 		signinpb.SignInService_GetSelf_FullMethodName,
@@ -116,6 +118,7 @@ func SelfServiceMethods() []string {
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
 		signinpb.SignInService_ListSignIns_FullMethodName,
 		signinpb.SignInService_EndSignIn_FullMethodName,
+		signinpb.SignInService_EndOtherSignIns_FullMethodName,
 	}
 }
 
@@ -123,8 +126,8 @@ func SelfServiceMethods() []string {
 // builder, all of them as public.
 //
 // Public there means "no authorization check", not "no authentication": the
-// consumer's authentication interceptor still runs, and the seven self-service
-// methods and Register refuse a request with no principal on them. The nine
+// consumer's authentication interceptor still runs, and the self-service
+// methods and Register refuse a request with no principal on them. The
 // anonymous ones are the service working as intended.
 //
 // It takes and returns the builder rather than building it, so a consumer

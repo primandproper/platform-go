@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
+	"slices"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -467,6 +468,90 @@ func (s *SQLStore) RevokeForSubject(
 	op.SpanOnly(revokedKey, revoked)
 
 	return revoked, nil
+}
+
+// RevokeForSubjectExcept ends every login one person holds but keepFamilyID,
+// and reports the families it ended, in family order.
+//
+// The revocation is one statement, so a login made while it ran is either
+// ended by it or made after it, never missed between a read and a write. The
+// families are read back afterwards on the same tx — MySQL has no RETURNING —
+// by the stamp the revocation wrote, confined to the row each login's next
+// exchange would have spent; a login that had already lapsed was not ended by
+// this call and is not reported. The read is bounded by the revocation's own
+// row count, which every family it reports contributed to, so the bound never
+// shortens the answer.
+//
+// The stamp is what ties the read to the write, so it is truncated to the
+// microsecond all three servers store: an instant bound once with a fraction the
+// column cannot hold and compared once against what the column kept would match
+// nothing. SQLite stores whole seconds, and there two revocations of one
+// subject's logins inside the same second are one stamp. The second call's
+// answer then includes families the first ended; each of them is ended, and
+// ended in that second, so the report is still true of every family it names.
+func (s *SQLStore) RevokeForSubjectExcept(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	subjectID string,
+	keepFamilyID string,
+) ([]string, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+
+	if subjectID == "" {
+		return nil, ErrEmptySubjectID
+	}
+
+	if keepFamilyID == "" {
+		return nil, ErrEmptyFamilyID
+	}
+
+	op.SetValues(map[string]any{scopeKey: scope.String(), subjectKey: subjectID, familyKey: keepFamilyID})
+
+	at := s.clock.Now().UTC().Truncate(time.Microsecond)
+
+	revoked, err := s.q.RevokeOtherRefreshTokenFamilies(ctx, tx, signindb.RevokeOtherRefreshTokenFamiliesParams{
+		RevokedAt:    &at,
+		Scope:        scope,
+		SubjectID:    subjectID,
+		KeepFamilyID: keepFamilyID,
+	})
+	if err != nil {
+		return nil, op.Error(err, "revoking a subject's other refresh token families")
+	}
+
+	op.SpanOnly(revokedKey, revoked)
+
+	if revoked == 0 {
+		return []string{}, nil
+	}
+
+	rows, err := s.q.ListEndedRefreshTokenFamilies(ctx, tx, signindb.ListEndedRefreshTokenFamiliesParams{
+		Scope:        scope,
+		SubjectID:    subjectID,
+		KeepFamilyID: keepFamilyID,
+		RevokedAt:    &at,
+		Now:          at,
+		ResultLimit:  revoked,
+	})
+	if err != nil {
+		return nil, op.Error(err, "reading back the refresh token families a revocation ended")
+	}
+
+	ended := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ended = append(ended, row.FamilyID)
+	}
+
+	// A family has one unredeemed row that is live, so this compacts nothing on
+	// a table the exchange has kept in shape. It is here so that one that has
+	// not been is reported once rather than once per row.
+	return slices.Compact(ended), nil
 }
 
 // RevokeFamilyForSubject ends one login on behalf of the person it belongs to,

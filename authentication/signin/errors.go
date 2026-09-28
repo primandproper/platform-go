@@ -361,6 +361,22 @@ var (
 	// round trip behind every empty request a bot sends.
 	ErrEmptyVerificationToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email verification token")
 
+	// ErrSignInNotIdentified indicates Service.EndOtherSignIns asked to keep a
+	// login it did not name.
+	//
+	// It is a refusal rather than ErrEmptyFamilyID because what it refuses is
+	// a request the caller cannot correct by sending another: the login to keep
+	// is the one the request came through, read off the access token, and a
+	// token that carries no "sid" claim has none to offer. What must not happen
+	// instead is the reading an empty keep invites — keep nothing, end every
+	// login — because that turns "sign out my other devices" into "sign out
+	// everywhere" for exactly the callers who cannot tell which device they are.
+	// SignOutEverywhere is the door for that, and it is a different request.
+	//
+	// It is client-safe, and so is its reason: the caller is the subject, and the
+	// only thing it discloses is that their own token names no sign-in.
+	ErrSignInNotIdentified = platformerrors.New("the sign-in this request came through cannot be identified")
+
 	// ErrEmptyFamilyID indicates a revocation that named no login.
 	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")
 

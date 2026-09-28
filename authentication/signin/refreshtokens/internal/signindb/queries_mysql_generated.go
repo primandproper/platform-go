@@ -67,6 +67,18 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	?
 )`
 
+const listEndedRefreshTokenFamiliesMySQL = `SELECT
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?
+	AND {{prefix}}signin_refresh_tokens.family_id <> ?
+	AND {{prefix}}signin_refresh_tokens.revoked_at = ?
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT ?`
+
 const listLiveRefreshTokenFamiliesMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.family_id,
 	{{prefix}}signin_refresh_tokens.active_account_id,
@@ -105,6 +117,13 @@ WHERE hash = ?
 	AND revoked_at IS NULL
 	AND expires_at > ?`
 
+const revokeOtherRefreshTokenFamiliesMySQL = `UPDATE {{prefix}}signin_refresh_tokens SET
+	revoked_at = ?
+WHERE scope = ?
+	AND subject_id = ?
+	AND family_id <> ?
+	AND revoked_at IS NULL`
+
 const revokeRefreshTokenMySQL = `UPDATE {{prefix}}signin_refresh_tokens SET
 	revoked_at = ?
 WHERE hash = ?
@@ -139,10 +158,12 @@ type mysqlQueries struct {
 	getRefreshToken                    string
 	getRefreshTokenRedemption          string
 	insertRefreshToken                 string
+	listEndedRefreshTokenFamilies      string
 	listLiveRefreshTokenFamilies       string
 	recordRefreshTokenSuccessor        string
 	redeemRefreshToken                 string
 	redeemRefreshTokenWithKey          string
+	revokeOtherRefreshTokenFamilies    string
 	revokeRefreshToken                 string
 	revokeRefreshTokenFamily           string
 	revokeRefreshTokenFamilyForSubject string
@@ -158,10 +179,12 @@ func newMySQL(prefix string) *mysqlQueries {
 		getRefreshToken:                    strings.ReplaceAll(getRefreshTokenMySQL, prefixMarker, prefix),
 		getRefreshTokenRedemption:          strings.ReplaceAll(getRefreshTokenRedemptionMySQL, prefixMarker, prefix),
 		insertRefreshToken:                 strings.ReplaceAll(insertRefreshTokenMySQL, prefixMarker, prefix),
+		listEndedRefreshTokenFamilies:      strings.ReplaceAll(listEndedRefreshTokenFamiliesMySQL, prefixMarker, prefix),
 		listLiveRefreshTokenFamilies:       strings.ReplaceAll(listLiveRefreshTokenFamiliesMySQL, prefixMarker, prefix),
 		recordRefreshTokenSuccessor:        strings.ReplaceAll(recordRefreshTokenSuccessorMySQL, prefixMarker, prefix),
 		redeemRefreshToken:                 strings.ReplaceAll(redeemRefreshTokenMySQL, prefixMarker, prefix),
 		redeemRefreshTokenWithKey:          strings.ReplaceAll(redeemRefreshTokenWithKeyMySQL, prefixMarker, prefix),
+		revokeOtherRefreshTokenFamilies:    strings.ReplaceAll(revokeOtherRefreshTokenFamiliesMySQL, prefixMarker, prefix),
 		revokeRefreshToken:                 strings.ReplaceAll(revokeRefreshTokenMySQL, prefixMarker, prefix),
 		revokeRefreshTokenFamily:           strings.ReplaceAll(revokeRefreshTokenFamilyMySQL, prefixMarker, prefix),
 		revokeRefreshTokenFamilyForSubject: strings.ReplaceAll(revokeRefreshTokenFamilyForSubjectMySQL, prefixMarker, prefix),
@@ -246,6 +269,43 @@ func (q *mysqlQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Inse
 	return err
 }
 
+// ListEndedRefreshTokenFamilies runs the :many query against mysql.
+func (q *mysqlQueries) ListEndedRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListEndedRefreshTokenFamiliesParams) ([]ListEndedRefreshTokenFamiliesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listEndedRefreshTokenFamilies,
+		arg.Scope,
+		arg.SubjectID,
+		arg.KeepFamilyID,
+		arg.RevokedAt,
+		arg.Now,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListEndedRefreshTokenFamiliesRow
+
+	for rows.Next() {
+		var i ListEndedRefreshTokenFamiliesRow
+
+		if err := rows.Scan(
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // ListLiveRefreshTokenFamilies runs the :many query against mysql.
 func (q *mysqlQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListLiveRefreshTokenFamiliesParams) ([]ListLiveRefreshTokenFamiliesRow, error) {
 	rows, err := db.QueryContext(ctx, q.listLiveRefreshTokenFamilies,
@@ -323,6 +383,21 @@ func (q *mysqlQueries) RedeemRefreshTokenWithKey(ctx context.Context, db DBTX, a
 		arg.Hash,
 		arg.Scope,
 		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RevokeOtherRefreshTokenFamilies runs the :execrows query against mysql.
+func (q *mysqlQueries) RevokeOtherRefreshTokenFamilies(ctx context.Context, db DBTX, arg RevokeOtherRefreshTokenFamiliesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeOtherRefreshTokenFamilies,
+		arg.RevokedAt,
+		arg.Scope,
+		arg.SubjectID,
+		arg.KeepFamilyID,
 	)
 	if err != nil {
 		return 0, err
@@ -451,6 +526,17 @@ var (
 		PurgeAfter      time.Time
 	}(InsertRefreshTokenParams{})
 	_ = struct {
+		Scope        tenancy.Scope
+		SubjectID    string
+		KeepFamilyID string
+		RevokedAt    *time.Time
+		Now          time.Time
+		ResultLimit  int64
+	}(ListEndedRefreshTokenFamiliesParams{})
+	_ = struct {
+		FamilyID string
+	}(ListEndedRefreshTokenFamiliesRow{})
+	_ = struct {
 		Scope       tenancy.Scope
 		SubjectID   string
 		Now         time.Time
@@ -482,6 +568,12 @@ var (
 		Scope           tenancy.Scope
 		Now             time.Time
 	}(RedeemRefreshTokenWithKeyParams{})
+	_ = struct {
+		RevokedAt    *time.Time
+		Scope        tenancy.Scope
+		SubjectID    string
+		KeepFamilyID string
+	}(RevokeOtherRefreshTokenFamiliesParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		Hash      string

@@ -131,6 +131,15 @@ const (
 	// to already hold — legal SQL that guards nothing. Naming the predicate's
 	// end separately is what makes the claim a claim.
 	ExpectedKeyArg = "expected_key"
+
+	// KeepFamilyIDArg is the one login [revokeOtherFamilies] leaves standing,
+	// as against the family_id the other revocations end.
+	//
+	// It is an argument of its own because the predicate it binds is the
+	// inverse of theirs: family_id <> keep, not family_id = the family. Under
+	// the column's name the generated params would carry a FamilyID that meant
+	// "end this one" on three statements and "spare this one" on a fourth.
+	KeepFamilyIDArg = "keep_family_id"
 )
 
 // Columns is the whole row, in the order the DDL declares it.
@@ -264,6 +273,8 @@ const (
 	RevokeFamilyQuery           = "RevokeRefreshTokenFamily"
 	RevokeSubjectFamilyQuery    = "RevokeRefreshTokenFamilyForSubject"
 	RevokeTokensForSubjectQuery = "RevokeRefreshTokensForSubject"
+	RevokeOtherFamiliesQuery    = "RevokeOtherRefreshTokenFamilies"
+	ListEndedFamiliesQuery      = "ListEndedRefreshTokenFamilies"
 	ListLiveFamiliesQuery       = "ListLiveRefreshTokenFamilies"
 	SweepTokensQuery            = "SweepRefreshTokens"
 )
@@ -281,8 +292,9 @@ const (
 // idempotent path reads what the ordinary one does not — exchanged, with or
 // without a key, and then the two writes a retry of that exchange makes; or
 // revoked, alone, as one of a family's — named by the token or by its owner —
-// or as one of a subject's; listed, while it is the live one of its login; and
-// finally collected once its purge deadline has passed.
+// as one of a subject's, or as one of a subject's other logins, which is read
+// back afterwards for the families it ended; listed, while it is the live one of
+// its login; and finally collected once its purge deadline has passed.
 //
 // # The five statements the idempotent path adds
 //
@@ -364,6 +376,8 @@ func Render(d dialect.Dialect) string {
 		revokeFamily(g),
 		revokeSubjectFamily(g),
 		revokeForSubject(g),
+		revokeOtherFamilies(g),
+		listEndedFamilies(g),
 		listLiveFamilies(g),
 		sweep(g),
 	})
@@ -596,6 +610,67 @@ func revokeForSubject(g *querygen.Generator) *querygen.Query {
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: SubjectIDColumn},
 		unrevoked(),
+	)
+}
+
+// revokeOtherFamilies ends every login one person holds but one: "sign out my
+// other devices".
+//
+// It is [revokeForSubject] with the kept family excluded, and it is one
+// statement for that statement's reason. The alternative a client already has —
+// list its logins, then end each one but its own — decides on a list read a
+// round trip earlier, so a login made in between survives a request whose whole
+// point was that it should not. Here the server decides which rows are "other"
+// at the instant they are revoked, and a login that raced the request is one of
+// them.
+//
+// The kept family is excluded rather than re-issued, and the exclusion names
+// nothing but the family: a keep that is not this subject's, or does not exist,
+// spares nothing and ends every login the subject holds. That is the failure in
+// the direction a sign-out wants. The door refuses an empty keep before it gets
+// here, so "no family" can never render as "every family".
+func revokeOtherFamilies(g *querygen.Generator) *querygen.Query {
+	return g.UpdateQuery(RevokeOtherFamiliesQuery, TokensTable, Columns, RevokeColumns, nil,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectIDColumn},
+		querygen.Match{Column: FamilyIDColumn, Arg: KeepFamilyIDArg, Exclude: true},
+		unrevoked(),
+	)
+}
+
+// listEndedFamilies reads back which logins [revokeOtherFamilies] ended, on the
+// same transaction and right after it.
+//
+// It is a second statement because one of the three dialects cannot make it
+// part of the first: MySQL has no RETURNING. What it identifies the revocation
+// by is the stamp that revocation wrote, which is the one fact the write leaves
+// on exactly the rows it moved.
+//
+// It answers one row per login rather than one per token, and the predicates
+// are what pick it. A family's spent predecessors were revoked in the same
+// statement and carry the same stamp, so the read is confined to the unredeemed
+// row — the one an exchange would have accepted a moment earlier — and to one
+// whose deadline had not passed at the revocation, since a login that had
+// already lapsed on its own was not ended by anybody. Those are the listing's
+// three guards with the revocation's stamp in place of "not revoked", and the
+// liveness guard is [stillLive] bound to the revocation's instant rather than a
+// second spelling of it.
+//
+// It is bounded, as every read here is, and the store binds the revocation's
+// affected-row count as the limit: every login it ended contributed at least its
+// one live row to that count, so the bound can never cut the answer short.
+func listEndedFamilies(g *querygen.Generator) *querygen.Query {
+	return g.SweepQuery(ListEndedFamiliesQuery, TokensTable, Columns,
+		querygen.Sweep{
+			Order:      []querygen.Order{{Column: FamilyIDColumn}},
+			Projection: []string{FamilyIDColumn},
+		},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectIDColumn},
+		querygen.Match{Column: FamilyIDColumn, Arg: KeepFamilyIDArg, Exclude: true},
+		querygen.Match{Column: RevokedAtColumn},
+		unredeemed(),
+		stillLive(),
 	)
 }
 

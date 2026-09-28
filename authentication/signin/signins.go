@@ -177,6 +177,75 @@ func (s *Service) EndSignIn(
 	return revoked, nil
 }
 
+// EndOtherSignIns ends every one of a person's logins but keepFamilyID, and
+// reports the families it ended.
+//
+// It is "sign out my other devices", and it is a door of its own rather than
+// [Service.ListSignIns] followed by [Service.EndSignIn] for each entry but one,
+// because that loop decides which logins are "other" before it ends them: a
+// login made between the list and the last end survives a request whose point
+// was that it should not. Here the decision and the revocation are one
+// statement — see [RefreshTokenStore.RevokeForSubjectExcept].
+//
+// keepFamilyID is the login the request came through, and an empty one is
+// [ErrSignInNotIdentified] rather than an instruction to keep nothing. A caller
+// who cannot say which login it is has asked for something this door cannot do
+// safely, and the one reading it could give — every login ends — is
+// [Service.RevokeRefreshTokensForSubject], which the caller can ask for by name.
+// A keepFamilyID that is not userID's spares nothing, since there is nothing of
+// theirs it names; that is the direction a sign-out should fail in.
+//
+// It reports families rather than a token count, one per login that was live
+// when it ended, so whatever records a sign-out records one per device. A person
+// with no other login is an empty slice and no error. What it does not do is
+// stop an access token already issued to one of those logins — see
+// [Service.RevokeRefreshTokenFamily] — so each ends within one access-token
+// lifetime rather than at once.
+//
+// A service built without [WithRefreshTokenStore] is
+// [ErrRefreshTokensNotConfigured], as [Service.ListSignIns] is.
+func (s *Service) EndOtherSignIns(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	keepFamilyID string,
+) (ended []string, err error) {
+	ctx, op, done := s.begin(ctx, opEndOtherSignIns,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+		observability.WithValue(familyKey, keepFamilyID),
+	)
+	defer func() { done(err) }()
+
+	if s.refreshTokens == nil {
+		return nil, op.Error(ErrRefreshTokensNotConfigured, "ending a subject's other sign-ins")
+	}
+
+	if err = scope.Validate(); err != nil {
+		return nil, op.Error(err, "checking the scope a subject's other sign-ins were ended in")
+	}
+
+	if userID == "" {
+		return nil, op.Error(ErrEmptyUserID, "reading the subject whose other sign-ins are ended")
+	}
+
+	if keepFamilyID == "" {
+		return nil, op.Error(ErrSignInNotIdentified, "reading the sign-in to keep")
+	}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		var txErr error
+
+		ended, txErr = s.refreshTokens.RevokeForSubjectExcept(ctx, tx, scope, userID, keepFamilyID)
+
+		return txErr
+	}); err != nil {
+		return nil, op.Error(err, "ending a subject's other sign-ins")
+	}
+
+	return ended, nil
+}
+
 // signInListLimit resolves the limit a listing runs with: the default for
 // none, the ceiling for too many, and what was asked for otherwise.
 func signInListLimit(limit uint16) uint16 {

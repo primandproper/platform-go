@@ -233,3 +233,90 @@ func TestService_EndSignIn(T *testing.T) {
 		test.ErrorIs(t, err, signin.ErrRefreshTokensNotConfigured)
 	})
 }
+
+func TestService_EndOtherSignIns(T *testing.T) {
+	T.Parallel()
+
+	T.Run("ends every other login and reports which", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		kept, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		phone, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		laptop, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ended, err := e.svc.EndOtherSignIns(t.Context(), testScope, e.user.ID, kept.FamilyID)
+		must.NoError(t, err)
+		test.SliceContainsAll(t, []string{phone.FamilyID, laptop.FamilyID}, ended)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, phone.RefreshToken)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, laptop.RefreshToken)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, kept.RefreshToken)
+		test.NoError(t, err)
+
+		signIns, err := e.svc.ListSignIns(t.Context(), testScope, e.user.ID, 0)
+		must.NoError(t, err)
+		test.Eq(t, []string{kept.FamilyID}, familiesOf(signIns))
+	})
+
+	T.Run("reports nothing when the asking login is the only one", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		kept, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		ended, err := e.svc.EndOtherSignIns(t.Context(), testScope, e.user.ID, kept.FamilyID)
+		must.NoError(t, err)
+		test.SliceEmpty(t, ended)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, kept.RefreshToken)
+		test.NoError(t, err)
+	})
+
+	// The refusal the whole door turns on: a caller that cannot say which
+	// login it is gets nothing ended, rather than everything.
+	T.Run("refuses to keep a login it was not told", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.EndOtherSignIns(t.Context(), testScope, e.user.ID, "")
+		test.ErrorIs(t, err, signin.ErrSignInNotIdentified)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+		test.NoError(t, err)
+	})
+
+	T.Run("refuses a request that names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		_, err := e.svc.EndOtherSignIns(t.Context(), testScope, "", "family")
+		test.ErrorIs(t, err, signin.ErrEmptyUserID)
+	})
+
+	T.Run("refuses on a service that stores no refresh tokens", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		_, err := e.svc.EndOtherSignIns(t.Context(), testScope, e.user.ID, "family")
+		test.ErrorIs(t, err, signin.ErrRefreshTokensNotConfigured)
+	})
+}

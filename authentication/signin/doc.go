@@ -80,8 +80,9 @@ lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
 consumer's interceptor refuse administrative work under an ordinary login by the
 same person.
 
-A person's live families are what [Service.ListSignIns] answers and what
-[Service.EndSignIn] ends one of, for a "where you're signed in" screen. Each
+A person's live families are what [Service.ListSignIns] answers, what
+[Service.EndSignIn] ends one of, and what [Service.EndOtherSignIns] ends all but
+one of, for a "where you're signed in" screen. Each
 entry carries the family, so a consumer that records a device per login from
 [Hooks.AfterIssueToken] joins it on that.
 

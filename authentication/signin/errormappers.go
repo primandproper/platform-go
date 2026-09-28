@@ -103,6 +103,7 @@ var ClientSafeSentinels = []error{
 	ErrNoCredentialNamed,
 	ErrPasswordRefused,
 	ErrRegistrationRefused,
+	ErrSignInNotIdentified,
 }
 
 // ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
@@ -194,6 +195,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
+	{Err: ErrSignInNotIdentified, Reason: "SIGN_IN_NOT_IDENTIFIED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -264,6 +266,11 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrResourceConflict, "account holds no password to change", true
 	case errors.Is(err, ErrPasswordAlreadySet):
 		return httperrors.ErrResourceConflict, "account already holds a password", true
+	// Ending every login but this one, from a request whose token names no
+	// login. It is the credential's state rather than the caller's input, and
+	// the remedy is signing in again with a client that carries one.
+	case errors.Is(err, ErrSignInNotIdentified):
+		return httperrors.ErrResourceConflict, "the sign-in this request came through cannot be identified", true
 
 	// The one request here that is neither a refusal nor a state: a
 	// registration that did not say how the registrant will prove who they are.
@@ -312,7 +319,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrSecondFactorNotEnrolled),
 		errors.Is(err, ErrUserUnverified),
 		errors.Is(err, ErrNoPasswordCredential),
-		errors.Is(err, ErrPasswordAlreadySet):
+		errors.Is(err, ErrPasswordAlreadySet),
+		errors.Is(err, ErrSignInNotIdentified):
 		return codes.FailedPrecondition, true
 
 	// A registration that named no credential is a request to correct rather

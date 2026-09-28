@@ -148,6 +148,7 @@ const (
 	SignInService_SignOutEverywhere_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
 	SignInService_ListSignIns_FullMethodName          = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
 	SignInService_EndSignIn_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/EndSignIn"
+	SignInService_EndOtherSignIns_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/EndOtherSignIns"
 	SignInService_GetAuthStatus_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
 	SignInService_GetSelf_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/GetSelf"
 	SignInService_UpdatePassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
@@ -199,12 +200,14 @@ type SignInServiceClient interface {
 	// through a consumer's own administrative surface.
 	SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*SignOutResponse, error)
 	SignOutEverywhere(ctx context.Context, in *SignOutEverywhereRequest, opts ...grpc.CallOption) (*SignOutEverywhereResponse, error)
-	// The screen between those two sizes: the calling user's live logins, and
-	// ending one of them by name. Both need a caller and name nobody else; an
-	// operator doing either for somebody else calls signin.Service's methods
-	// through their own administrative surface.
+	// The screen between those two sizes: the calling user's live logins, ending
+	// one of them by name, and ending all of them but the one asking. All three
+	// need a caller and name nobody else; an operator doing any of them for
+	// somebody else calls signin.Service's methods through their own
+	// administrative surface.
 	ListSignIns(ctx context.Context, in *ListSignInsRequest, opts ...grpc.CallOption) (*ListSignInsResponse, error)
 	EndSignIn(ctx context.Context, in *EndSignInRequest, opts ...grpc.CallOption) (*EndSignInResponse, error)
+	EndOtherSignIns(ctx context.Context, in *EndOtherSignInsRequest, opts ...grpc.CallOption) (*EndOtherSignInsResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error)
 	GetSelf(ctx context.Context, in *GetSelfRequest, opts ...grpc.CallOption) (*GetSelfResponse, error)
@@ -342,6 +345,16 @@ func (c *signInServiceClient) EndSignIn(ctx context.Context, in *EndSignInReques
 	return out, nil
 }
 
+func (c *signInServiceClient) EndOtherSignIns(ctx context.Context, in *EndOtherSignInsRequest, opts ...grpc.CallOption) (*EndOtherSignInsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndOtherSignInsResponse)
+	err := c.cc.Invoke(ctx, SignInService_EndOtherSignIns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *signInServiceClient) GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetAuthStatusResponse)
@@ -436,12 +449,14 @@ type SignInServiceServer interface {
 	// through a consumer's own administrative surface.
 	SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error)
 	SignOutEverywhere(context.Context, *SignOutEverywhereRequest) (*SignOutEverywhereResponse, error)
-	// The screen between those two sizes: the calling user's live logins, and
-	// ending one of them by name. Both need a caller and name nobody else; an
-	// operator doing either for somebody else calls signin.Service's methods
-	// through their own administrative surface.
+	// The screen between those two sizes: the calling user's live logins, ending
+	// one of them by name, and ending all of them but the one asking. All three
+	// need a caller and name nobody else; an operator doing any of them for
+	// somebody else calls signin.Service's methods through their own
+	// administrative surface.
 	ListSignIns(context.Context, *ListSignInsRequest) (*ListSignInsResponse, error)
 	EndSignIn(context.Context, *EndSignInRequest) (*EndSignInResponse, error)
+	EndOtherSignIns(context.Context, *EndOtherSignInsRequest) (*EndOtherSignInsResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error)
 	GetSelf(context.Context, *GetSelfRequest) (*GetSelfResponse, error)
@@ -494,6 +509,9 @@ func (UnimplementedSignInServiceServer) ListSignIns(context.Context, *ListSignIn
 }
 func (UnimplementedSignInServiceServer) EndSignIn(context.Context, *EndSignInRequest) (*EndSignInResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EndSignIn not implemented")
+}
+func (UnimplementedSignInServiceServer) EndOtherSignIns(context.Context, *EndOtherSignInsRequest) (*EndOtherSignInsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EndOtherSignIns not implemented")
 }
 func (UnimplementedSignInServiceServer) GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthStatus not implemented")
@@ -747,6 +765,24 @@ func _SignInService_EndSignIn_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SignInService_EndOtherSignIns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndOtherSignInsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).EndOtherSignIns(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_EndOtherSignIns_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).EndOtherSignIns(ctx, req.(*EndOtherSignInsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SignInService_GetAuthStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAuthStatusRequest)
 	if err := dec(in); err != nil {
@@ -891,6 +927,10 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EndSignIn",
 			Handler:    _SignInService_EndSignIn_Handler,
+		},
+		{
+			MethodName: "EndOtherSignIns",
+			Handler:    _SignInService_EndOtherSignIns_Handler,
 		},
 		{
 			MethodName: "GetAuthStatus",

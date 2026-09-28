@@ -391,6 +391,36 @@ type RefreshTokenStore interface {
 		subjectID string,
 	) (int64, error)
 
+	// RevokeForSubjectExcept ends every login one person holds but the one
+	// named, and reports the families it ended. It is what
+	// [Service.EndOtherSignIns] calls.
+	//
+	// It is RevokeForSubject with one family spared, and a method of its own for
+	// that method's reason: the client-side version — list the logins, end each
+	// one but your own — decides on a list read earlier, so a login made in
+	// between survives the request meant to end it. The revocation is one
+	// statement, so a login is either ended by it or made after it.
+	//
+	// What it reports is the logins it ended, not the tokens: one family per
+	// login that was live — exchangeable — when the revocation ran, in no
+	// promised order, and none for a login that had already lapsed on its own.
+	// It is what a sign-out hook is handed, so an audit records a sign-out per
+	// device rather than per row. A subject holding no other login is an empty
+	// slice and no error.
+	//
+	// keepFamilyID spares only itself. One that is not the subject's, or names
+	// nothing, spares nothing, and every login the subject holds ends — the
+	// direction a sign-out should fail in. An empty one is refused rather than
+	// read as "keep nothing": that reading is RevokeForSubject, which is a
+	// different request with a different door.
+	RevokeForSubjectExcept(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		subjectID string,
+		keepFamilyID string,
+	) ([]string, error)
+
 	// ListActiveSignIns answers one entry per live login a subject holds, most
 	// recently refreshed first, and no more than limit of them. It is what
 	// [Service.ListSignIns] reads.

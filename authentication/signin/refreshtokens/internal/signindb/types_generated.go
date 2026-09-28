@@ -66,6 +66,21 @@ type InsertRefreshTokenParams struct {
 	PurgeAfter      time.Time
 }
 
+// ListEndedRefreshTokenFamiliesParams are the arguments to ListEndedRefreshTokenFamilies.
+type ListEndedRefreshTokenFamiliesParams struct {
+	Scope        tenancy.Scope
+	SubjectID    string
+	KeepFamilyID string
+	RevokedAt    *time.Time
+	Now          time.Time
+	ResultLimit  int64
+}
+
+// ListEndedRefreshTokenFamiliesRow is one row of ListEndedRefreshTokenFamilies's result.
+type ListEndedRefreshTokenFamiliesRow struct {
+	FamilyID string
+}
+
 // ListLiveRefreshTokenFamiliesParams are the arguments to ListLiveRefreshTokenFamilies.
 type ListLiveRefreshTokenFamiliesParams struct {
 	Scope       tenancy.Scope
@@ -106,6 +121,14 @@ type RedeemRefreshTokenWithKeyParams struct {
 	Hash            string
 	Scope           tenancy.Scope
 	Now             time.Time
+}
+
+// RevokeOtherRefreshTokenFamiliesParams are the arguments to RevokeOtherRefreshTokenFamilies.
+type RevokeOtherRefreshTokenFamiliesParams struct {
+	RevokedAt    *time.Time
+	Scope        tenancy.Scope
+	SubjectID    string
+	KeepFamilyID string
 }
 
 // RevokeRefreshTokenParams are the arguments to RevokeRefreshToken.

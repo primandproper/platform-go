@@ -579,6 +579,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
 		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
 
+		// Ending every other login from a token that names none. A state of the
+		// credential rather than of the request, read the way the rows above
+		// are, and refused rather than widened into ending every login.
+		"ErrSignInNotIdentified": {Err: signin.ErrSignInNotIdentified, Is: Mapped},
+
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Some are wiring failures and the rest
 		// are a request that arrived incomplete.

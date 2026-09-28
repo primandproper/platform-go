@@ -159,6 +159,8 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		RevokeFamilyQuery,
 		RevokeSubjectFamilyQuery,
 		RevokeTokensForSubjectQuery,
+		RevokeOtherFamiliesQuery,
+		ListEndedFamiliesQuery,
 		ListLiveFamiliesQuery,
 		SweepTokensQuery,
 	}
@@ -179,16 +181,16 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 			test.SliceEqFunc(t, want, names, func(a, b string) bool { return a == b })
 
 			// Nothing archives one of these rows, and nothing pages through
-			// them: the one listing is a bounded read of a person's live
+			// them: the two reads that list are bounded reads of one person's
 			// logins, so there is no cursor, no filter window and no
-			// descending variant — and the limit is that listing's alone.
+			// descending variant — and the limit is those two reads' alone.
 			test.StrNotContains(t, rendered, querygen.ArchivedAtColumn)
 			test.StrNotContains(t, rendered, "page_cursor")
 			test.StrNotContains(t, rendered, "filtered_count")
 			test.StrNotContains(t, rendered, querygen.DescendingSuffix)
 
 			for _, named := range statements(rendered) {
-				if named.name == ListLiveFamiliesQuery {
+				if named.name == ListLiveFamiliesQuery || named.name == ListEndedFamiliesQuery {
 					continue
 				}
 
@@ -357,6 +359,53 @@ func TestRender_RevokingAFamilyForItsOwnerIsKeyedOnTheOwner(T *testing.T) {
 			test.StrContains(t, statement(t, rendered, RevokeSubjectFamilyQuery),
 				SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
 			test.StrNotContains(t, statement(t, rendered, RevokeFamilyQuery), SubjectIDColumn)
+		})
+	}
+}
+
+// TestRender_RevokingOtherLoginsSparesOnlyTheKeptOne pins "sign out my other
+// devices" to one statement whose only exclusion is the kept family, and the
+// read-back to the rows that statement moved.
+//
+// The revocation is the subject-wide one with a single inverted key, so a login
+// made while it runs cannot be missed between a list and a loop of ends. The
+// read-back is keyed on the revocation's own stamp and the one unredeemed row a
+// live login has, so it names each ended login once and nothing an earlier
+// revocation ended.
+func TestRender_RevokingOtherLoginsSparesOnlyTheKeptOne(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+
+			revoke := statement(t, rendered, RevokeOtherFamiliesQuery)
+
+			test.StrContains(t, revoke, "UPDATE "+TokensTable)
+			test.StrContains(t, revoke, RevokedAtColumn+" = sqlc.arg("+RevokedAtColumn+")")
+			test.StrContains(t, revoke, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
+			test.StrContains(t, revoke, SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
+			test.StrContains(t, revoke, FamilyIDColumn+" <> sqlc.arg("+KeepFamilyIDArg+")")
+			test.StrContains(t, revoke, RevokedAtColumn+" IS NULL")
+			test.StrNotContains(t, revoke, ExpiresAtColumn)
+
+			ended := statement(t, rendered, ListEndedFamiliesQuery)
+
+			test.StrContains(t, ended, "SELECT")
+			test.StrContains(t, ended, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
+			test.StrContains(t, ended, SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
+			test.StrContains(t, ended, FamilyIDColumn+" <> sqlc.arg("+KeepFamilyIDArg+")")
+			test.StrContains(t, ended, RevokedAtColumn+" = sqlc.arg("+RevokedAtColumn+")")
+			test.StrContains(t, ended, RedeemedAtColumn+" IS NULL")
+			test.StrContains(t, ended, ExpiresAtColumn+" > sqlc.arg("+NowArg+")")
+
+			projection, _, found := strings.Cut(ended, "FROM")
+			must.True(t, found)
+
+			test.StrContains(t, projection, querygen.Qualify(TokensTable, FamilyIDColumn))
+			test.StrNotContains(t, projection, HashColumn)
 		})
 	}
 }

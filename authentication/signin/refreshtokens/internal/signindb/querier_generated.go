@@ -38,6 +38,8 @@ type Querier interface {
 	GetRefreshTokenRedemption(ctx context.Context, db DBTX, arg GetRefreshTokenRedemptionParams) (GetRefreshTokenRedemptionRow, error)
 	// InsertRefreshToken runs the :exec query.
 	InsertRefreshToken(ctx context.Context, db DBTX, arg InsertRefreshTokenParams) error
+	// ListEndedRefreshTokenFamilies runs the :many query.
+	ListEndedRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListEndedRefreshTokenFamiliesParams) ([]ListEndedRefreshTokenFamiliesRow, error)
 	// ListLiveRefreshTokenFamilies runs the :many query.
 	ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListLiveRefreshTokenFamiliesParams) ([]ListLiveRefreshTokenFamiliesRow, error)
 	// RecordRefreshTokenSuccessor runs the :execrows query.
@@ -55,6 +57,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RedeemRefreshTokenWithKey(ctx context.Context, db DBTX, arg RedeemRefreshTokenWithKeyParams) (int64, error)
+	// RevokeOtherRefreshTokenFamilies runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RevokeOtherRefreshTokenFamilies(ctx context.Context, db DBTX, arg RevokeOtherRefreshTokenFamiliesParams) (int64, error)
 	// RevokeRefreshToken runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

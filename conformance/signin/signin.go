@@ -30,6 +30,7 @@ const surface = "signin"
 const (
 	adminLoginForToken            = signinpb.SignInService_AdminLoginForToken_FullMethodName
 	attachPassword                = signinpb.SignInService_AttachPassword_FullMethodName
+	endOtherSignIns               = signinpb.SignInService_EndOtherSignIns_FullMethodName
 	endSignIn                     = signinpb.SignInService_EndSignIn_FullMethodName
 	exchangeRefreshToken          = signinpb.SignInService_ExchangeRefreshToken_FullMethodName
 	getAuthStatus                 = signinpb.SignInService_GetAuthStatus_FullMethodName
@@ -100,6 +101,7 @@ const (
 	reasonAdminSignInUnavailable  = "ADMIN_SIGNIN_UNAVAILABLE"
 	reasonPasswordAlreadySet      = "PASSWORD_ALREADY_SET"
 	reasonNoCredentialNamed       = "NO_CREDENTIAL_NAMED" //nolint:gosec // G101: a refusal's name, not a credential.
+	reasonSignInNotIdentified     = "SIGN_IN_NOT_IDENTIFIED"
 )
 
 // password is what the registrations here choose, and newPassword is what a

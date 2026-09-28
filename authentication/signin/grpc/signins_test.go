@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -186,6 +187,90 @@ func TestServer_EndSignIn(T *testing.T) {
 		h := newRefreshHarness(t, nil)
 
 		_, err := h.client.EndSignIn(h.rootCtx, &signinpb.EndSignInRequest{FamilyId: "family"})
+		test.ErrorIs(t, err, signingrpc.ErrNoPrincipal)
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+}
+
+func TestServer_EndOtherSignIns(T *testing.T) {
+	T.Parallel()
+
+	// The login kept is the one the request came through, read off the
+	// principal; every other one of the caller's ends.
+	T.Run("ends every login but the one asking", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		phone := h.signInAsJane(t)
+		tablet := h.signInAsJane(t)
+		laptop := h.signInAsJane(t)
+
+		_, err := h.client.EndOtherSignIns(asUserIn(h.rootCtx, h.user.ID, laptop.GetFamilyId()), &signinpb.EndOtherSignInsRequest{})
+		must.NoError(t, err)
+
+		for _, ended := range []*signinpb.IssuedToken{phone, tablet} {
+			_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+				RefreshToken: ended.GetRefreshToken(),
+			})
+			test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		}
+
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: laptop.GetRefreshToken(),
+		})
+		test.NoError(t, err)
+	})
+
+	// The refusal this RPC is built around. ListSignIns marks nothing when it
+	// is not told which login is asking; a sign-out cannot, because "keep
+	// nothing" is every login ending.
+	T.Run("refuses a principal that names no login and ends nothing", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		janes := h.signInAsJane(t)
+
+		_, err := h.client.EndOtherSignIns(h.asJane(), &signinpb.EndOtherSignInsRequest{})
+		test.ErrorIs(t, err, signin.ErrSignInNotIdentified)
+		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+
+		info, ok := grpcerrors.ClientReasonFromStatus(err)
+		must.True(t, ok)
+		test.EqOp(t, "SIGN_IN_NOT_IDENTIFIED", info.GetReason())
+		test.EqOp(t, signin.ClientReasonDomain, info.GetDomain())
+
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: janes.GetRefreshToken(),
+		})
+		test.NoError(t, err)
+	})
+
+	// The subject is the caller, so somebody else asking ends nothing of Jane's
+	// whichever family their token names.
+	T.Run("ends nobody else's logins", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		janes := h.signInAsJane(t)
+
+		_, err := h.client.EndOtherSignIns(asUserIn(h.rootCtx, "somebody_else", "family_theirs"), &signinpb.EndOtherSignInsRequest{})
+		must.NoError(t, err)
+
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: janes.GetRefreshToken(),
+		})
+		test.NoError(t, err)
+	})
+
+	T.Run("an anonymous caller is refused", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		_, err := h.client.EndOtherSignIns(h.rootCtx, &signinpb.EndOtherSignInsRequest{})
 		test.ErrorIs(t, err, signingrpc.ErrNoPrincipal)
 		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 	})

@@ -337,6 +337,39 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.NoError(t, redeemErr)
 	})
 
+	// The read-back matches the rows the revocation moved by the stamp it wrote,
+	// so the stamp has to survive each engine's temporal type exactly. The clock
+	// is moved off the whole second first, so an instant carrying more precision
+	// than a column keeps is what gets written and then compared.
+	t.Run("ends a person's other logins and reports which", func(t *testing.T) {
+		const fraction = time.Second + 123456789*time.Nanosecond
+
+		kept := mint(t, "family_except_kept", "user_except", time.Hour)
+		phone := mint(t, "family_except_phone", "user_except", time.Hour)
+		phone = rotate(t, store, testScope(), phone.Secret)
+		laptop := mint(t, "family_except_laptop", "user_except", time.Hour)
+		theirs := mint(t, "family_except_theirs", "user_except_neighbor", time.Hour)
+
+		c.advance(fraction)
+		defer c.advance(-fraction)
+
+		ended, revokeErr := revokeForSubjectExcept(t, store, testScope(), "user_except", "family_except_kept")
+		must.NoError(t, revokeErr)
+		test.Eq(t, []string{"family_except_laptop", "family_except_phone"}, ended)
+
+		_, redeemErr := redeem(t, store, testScope(), phone.Secret)
+		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
+
+		_, redeemErr = redeem(t, store, testScope(), laptop.Secret)
+		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
+
+		_, redeemErr = redeem(t, store, testScope(), kept.Secret)
+		test.NoError(t, redeemErr)
+
+		_, redeemErr = redeem(t, store, testScope(), theirs.Secret)
+		test.NoError(t, redeemErr)
+	})
+
 	// A prefix is not decoration: it renders a second table, and both the DDL and
 	// every statement have to agree about which one they mean.
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {
