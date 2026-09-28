@@ -332,6 +332,24 @@ no rows anywhere. `authentication/signin/grpc` serves all of it, and is the one
 surface in the module that reads its tenant off the connection rather than off a
 caller — because a caller signing in has not become one yet.
 
+It also turns its own tokens back into callers, which it once left to the
+consumer. That ruling now covers only tokens this module did not mint. For a
+token `signin` minted, resolved through `identity`'s directory, every input was
+already this module's, and every consumer wrote the same interceptor over them.
+One consumer's copy got the part that matters most wrong: it gave an
+administrator's ordinary sign-in their service roles. `signingrpc.NewPrincipalExtractor`
+verifies the token and resolves the principal through the read that refuses a
+banned user. It carries the login's family so `ListSignIns` can mark the
+current one, and grants service roles only on a token minted through the
+administrative door. A seam can say what an ordinary-door token keeps; by
+default it keeps none. Grants come from the consumer's role policy, and a
+deployment that also accepts another kind of token chains its own extractor
+in behind this one. Its interceptors enforce a table of which methods need a
+caller. The table is built from each surface's own method lists, and a method
+nobody declared is refused. The application installs it: `service` builds no
+extractor, so a composition root names it to `service.Transports` and puts its
+interceptor in the gRPC chain and its middleware on the router.
+
 `audit` crosses too, and it is the one that ships **strictly narrower than its
 own interface**. `audit/grpc` serves the `Reader` and nothing else:
 read one entry, page them, verify a scope's hash chain. `Record` is not there

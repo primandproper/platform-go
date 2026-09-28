@@ -20,9 +20,12 @@ it would be proving a service nobody could run.
 
   - The interceptors. The gRPC server resolves []grpc.UnaryServerInterceptor from
     the injector, and nothing in this module registers one. The harness registers
-    the error encoder and a stand-in authentication interceptor, in that order —
+    the error encoder and signingrpc's authentication interceptor, in that order —
     and a consumer who forgets the encoder has every mapped sentinel reach their
-    clients as Internal, which the anonymous suite reads as a failure.
+    clients as Internal, which the anonymous suite reads as a failure. Every
+    service but sign-in is declared optional on the interceptor's table, so that
+    whether a request with nobody on it is refused stays each surface's decision
+    and the anonymous suite keeps asserting the surfaces rather than the table.
   - The services Register does not build. identity/config's RegisterService is a
     call the application makes. oauth2clients and passwordreset have config
     blocks, and the harness leaves both unset and builds the two services by
@@ -35,15 +38,21 @@ it would be proving a service nobody could run.
     rule working, not a gap in it.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
-  - The extractor, through service.Transports, and the authorizers that
-    surfaces refuse to mount without. They encode one rule — a caller has
-    standing in their own user and their active account — rather than a yes,
-    because a permissive authorizer would let every later confinement assertion
-    pass on the strength of the rule being absent.
-  - The grants extractor, through service.Transports, which is what the
-    surfaces that ask inside a handler read to decide whether include_archived
-    is honored and whether a reserved setting may be written. The stand-in
-    credential carries a role: a member holds every permission those surfaces'
+  - The extractor, and the authorizers that surfaces refuse to mount
+    without. The extractor is signingrpc's, named to service.Transports as
+    both the extractor and the grants, and its interceptor and middleware are
+    installed by the harness, since service installs neither. A subject's
+    credential is therefore a token the sign-in service minted for it — through
+    the administrative door for an administrator — and not a stand-in this
+    harness reads back. The authorizers encode one rule — a
+    caller has standing in their own user and their active account — rather
+    than a yes, because a permissive authorizer would let every later
+    confinement assertion pass on the strength of the rule being absent.
+  - The role policy, on the extractor through signingrpc.WithGrants, which is
+    what the surfaces that ask inside a handler read to decide whether
+    include_archived is honored and whether a reserved setting may be written.
+    An administrator holds a service role the extractor keeps only on an
+    administrative token: a member holds every permission those surfaces'
     Permissions maps name except the archive grants and settings' reserved-write
     grant, and an administrator holds those as well. That split is what lets the
     subject mint an administrator for conformance.AsAdmin, so the granted half

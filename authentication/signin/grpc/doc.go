@@ -34,6 +34,17 @@ are one package for the whole module rather than an interface per surface: a
 consumer writes one extractor and every service here uses it, where two would be
 two chances to disagree about who is calling.
 
+For a token the sign-in service minted, that extractor is this package's:
+[NewPrincipalExtractor] verifies the token, resolves the caller through
+identity's directory, and confers service roles only on a token minted through
+the administrative door. [PrincipalExtractor.UnaryServerInterceptor] resolves
+each request's caller once, against an [AuthenticationRequirements] table that
+[RequireAuthentication] declares this service's methods onto. Tokens of any
+other kind reach it through [WithFallback]. [PrincipalExtractor.Extract] answers
+only for a request that interceptor or [PrincipalExtractor.HTTPMiddleware]
+resolved, so installing them is not optional: a server with neither sees
+nobody.
+
 # Errors
 
 A method here hands the service's error back with a default code and does not

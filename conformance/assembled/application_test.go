@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -43,6 +44,7 @@ import (
 	"github.com/samber/do/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -283,22 +285,27 @@ func roles() (member, admin *authorization.PermissionSet) {
 	return authorization.NewPermissionSet(ordinary...), authorization.NewPermissionSet(append(every, administrative...)...)
 }
 
-// grantsOf is this harness's grants extractor, handed to service.Transports the
-// way a consumer hands theirs: it reads the principal the stand-in
-// authentication interceptor put on the context and answers with that
-// principal's role. A request with nobody on it has no authority, which every
-// surface reads as a denial.
-func grantsOf(ctx context.Context) (authorization.Grants, bool) {
-	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
-	if !ok {
-		return authorization.Grants{}, false
+// grantsOf is this harness's role policy, handed to the sign-in extractor the
+// way a consumer hands theirs: it reads the roles on the caller the extractor
+// resolved and answers with the matching set. The extractor asks it only for a
+// request somebody is on, so a request with nobody on it has no authority,
+// which every surface reads as a denial.
+func grantsOf(_ context.Context, principal callers.Principal) (authorization.Grants, error) {
+	if isAdministrator(principal) {
+		return authorization.NewGrants(adminRole), nil
 	}
 
-	if principal.admin {
-		return authorization.NewGrants(adminRole), true
-	}
+	return authorization.NewGrants(memberRole), nil
+}
 
-	return authorization.NewGrants(memberRole), true
+// isAdministrator reports whether a caller holds adminServiceRole on this
+// request. The directory holds it for every administrator subject; the
+// extractor leaves it on the request only for a token the administrative door
+// minted, so reading it here is reading the rule the extractor exists to apply.
+func isAdministrator(principal callers.Principal) bool {
+	caller, ok := principal.(*signingrpc.Caller)
+
+	return ok && slices.Contains(caller.Identity().ServiceRoles(), adminServiceRole)
 }
 
 // staffOnly is the reservation this harness's second run makes: a deployment
@@ -371,16 +378,29 @@ var staffOnly = []string{
 // subject forgetting a reservation, or a suite asking AsMember and not
 // skipping — is refused here rather than in a consumer's deployment. A request
 // with nobody on it is left to the handler, since no door is reserved.
-func reserveStaffCalls(
-	ctx context.Context,
-	req any,
-	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (any, error) {
-	principal, ok := ctx.Value(principalKey{}).(*testPrincipal)
-	if !ok || !principal.reserving || principal.admin || !slices.Contains(staffOnly, info.FullMethod) {
-		return handler(ctx, req)
+//
+// It runs after the extractor's interceptor, so the caller it reads is the one
+// that interceptor resolved.
+func reserveStaffCalls(extractor *signingrpc.PrincipalExtractor) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		principal, ok := extractor.Extract(ctx)
+		if !ok || !reserving(ctx) || isAdministrator(principal) || !slices.Contains(staffOnly, info.FullMethod) {
+			return handler(ctx, req)
+		}
+
+		return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
+	}
+}
+
+// reserving reports whether a request was made in the run that reserves
+// staffOnly.
+func reserving(ctx context.Context) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
 	}
 
-	return nil, status.Errorf(codes.PermissionDenied, "%s is reserved to an administrator", info.FullMethod)
+	values := md.Get(mdReserving)
+
+	return len(values) > 0 && values[0] == "true"
 }

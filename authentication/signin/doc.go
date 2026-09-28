@@ -161,11 +161,23 @@ Nothing here holds a write transaction open across a password hash.
 
 # What is not here
 
-No session. This package hands back tokens; what a consumer does with them — a
+No session. This package hands back tokens. What a consumer does with them — a
 cookie through [github.com/primandproper/platform-go/v14/sessions], an
-Authorization header, a gRPC credential — is theirs, and the interceptor that
-turns one back into a caller is the consumer's too. Nothing in this package reads
-a request.
+Authorization header, a gRPC credential — is theirs. Nothing in this package
+reads a request.
+
+Turning a token back into a caller used to be the consumer's too. It still is
+for any token this package did not mint, and no longer for one it did. For those,
+every input was already this module's: the claims [DefaultClaims] writes, the
+directory read that refuses a banned user, and the surfaces' own lists of which
+methods need a caller. Every consumer composed them the same way, and a copy
+that forgot [ClaimAdministrative] gave an administrator's ordinary login their
+operator permissions. So signin/grpc's NewPrincipalExtractor does it. It
+confers service roles only on a token minted through the administrative door,
+and it chains a consumer's own extractor in behind it for any other kind of
+token. It lives in signin/grpc rather than here because reading a token is a
+transport's job, and [TokenIssuer] stays narrowed to minting for the reason it
+gives.
 
 A family is not a counter-example to that, and the distinction is worth stating
 because the two are easy to confuse. A family is a group of credentials this
