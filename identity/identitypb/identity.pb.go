@@ -3475,8 +3475,15 @@ func (x *GetPrincipalRequest) GetActiveAccountId() string {
 }
 
 type GetPrincipalResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Principal     *Principal             `protobuf:"bytes,1,opt,name=principal,proto3" json:"principal,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Principal *Principal             `protobuf:"bytes,1,opt,name=principal,proto3" json:"principal,omitempty"`
+	// active_account is the account principal.active_account_id names, read in
+	// the same call. Reading it through GetAccount instead needs a grant every
+	// member would have to hold to see their own current account; here the
+	// membership check that resolved the active account is the authorization.
+	// Absent for a caller who holds no memberships, whose active_account_id is
+	// empty.
+	ActiveAccount *Account `protobuf:"bytes,2,opt,name=active_account,json=activeAccount,proto3" json:"active_account,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3514,6 +3521,13 @@ func (*GetPrincipalResponse) Descriptor() ([]byte, []int) {
 func (x *GetPrincipalResponse) GetPrincipal() *Principal {
 	if x != nil {
 		return x.Principal
+	}
+	return nil
+}
+
+func (x *GetPrincipalResponse) GetActiveAccount() *Account {
+	if x != nil {
+		return x.ActiveAccount
 	}
 	return nil
 }
@@ -4940,9 +4954,10 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"c\n" +
 	"\x13GetPrincipalRequest\x12/\n" +
 	"\x11active_account_id\x18\x01 \x01(\tH\x00R\x0factiveAccountID\x88\x01\x01B\x14\n" +
-	"\x12_active_account_idR\x05scope\"c\n" +
+	"\x12_active_account_idR\x05scope\"\xb7\x01\n" +
 	"\x14GetPrincipalResponse\x12K\n" +
-	"\tprincipal\x18\x01 \x01(\v2-.primandproper.platform.identity.v1.PrincipalR\tprincipal\"0\n" +
+	"\tprincipal\x18\x01 \x01(\v2-.primandproper.platform.identity.v1.PrincipalR\tprincipal\x12R\n" +
+	"\x0eactive_account\x18\x02 \x01(\v2+.primandproper.platform.identity.v1.AccountR\ractiveAccount\"0\n" +
 	"\x0eGetUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userIDR\x05scope\"O\n" +
 	"\x0fGetUserResponse\x12<\n" +
@@ -5239,99 +5254,100 @@ var file_primandproper_platform_identity_v1_identity_proto_depIdxs = []int32{
 	4,   // 58: primandproper.platform.identity.v1.SetUserServiceRolesResponse.user:type_name -> primandproper.platform.identity.v1.User
 	4,   // 59: primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse.user:type_name -> primandproper.platform.identity.v1.User
 	10,  // 60: primandproper.platform.identity.v1.GetPrincipalResponse.principal:type_name -> primandproper.platform.identity.v1.Principal
-	4,   // 61: primandproper.platform.identity.v1.GetUserResponse.user:type_name -> primandproper.platform.identity.v1.User
-	80,  // 62: primandproper.platform.identity.v1.ListUsersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 63: primandproper.platform.identity.v1.ListUsersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	4,   // 64: primandproper.platform.identity.v1.ListUsersResponse.results:type_name -> primandproper.platform.identity.v1.User
-	80,  // 65: primandproper.platform.identity.v1.SearchUsersByUsernameRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 66: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	4,   // 67: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.results:type_name -> primandproper.platform.identity.v1.User
-	6,   // 68: primandproper.platform.identity.v1.GetAccountResponse.account:type_name -> primandproper.platform.identity.v1.Account
-	80,  // 69: primandproper.platform.identity.v1.ListAccountsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 70: primandproper.platform.identity.v1.ListAccountsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	6,   // 71: primandproper.platform.identity.v1.ListAccountsResponse.results:type_name -> primandproper.platform.identity.v1.Account
-	80,  // 72: primandproper.platform.identity.v1.ListAccountsForUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 73: primandproper.platform.identity.v1.ListAccountsForUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	6,   // 74: primandproper.platform.identity.v1.ListAccountsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Account
-	7,   // 75: primandproper.platform.identity.v1.GetMembershipResponse.membership:type_name -> primandproper.platform.identity.v1.Membership
-	7,   // 76: primandproper.platform.identity.v1.ListMembershipsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Membership
-	80,  // 77: primandproper.platform.identity.v1.ListAccountMembersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 78: primandproper.platform.identity.v1.ListAccountMembersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	8,   // 79: primandproper.platform.identity.v1.ListAccountMembersResponse.results:type_name -> primandproper.platform.identity.v1.MembershipWithUser
-	9,   // 80: primandproper.platform.identity.v1.GetInvitationResponse.invitation:type_name -> primandproper.platform.identity.v1.Invitation
-	80,  // 81: primandproper.platform.identity.v1.ListInvitationsFromUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 82: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	9,   // 83: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
-	80,  // 84: primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 85: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	9,   // 86: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
-	17,  // 87: primandproper.platform.identity.v1.IdentityService.Register:input_type -> primandproper.platform.identity.v1.RegisterRequest
-	19,  // 88: primandproper.platform.identity.v1.IdentityService.UpdateProfile:input_type -> primandproper.platform.identity.v1.UpdateProfileRequest
-	21,  // 89: primandproper.platform.identity.v1.IdentityService.UpdateAccount:input_type -> primandproper.platform.identity.v1.UpdateAccountRequest
-	23,  // 90: primandproper.platform.identity.v1.IdentityService.RecordAgreement:input_type -> primandproper.platform.identity.v1.RecordAgreementRequest
-	25,  // 91: primandproper.platform.identity.v1.IdentityService.Invite:input_type -> primandproper.platform.identity.v1.InviteRequest
-	27,  // 92: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:input_type -> primandproper.platform.identity.v1.AcceptInvitationRequest
-	29,  // 93: primandproper.platform.identity.v1.IdentityService.RejectInvitation:input_type -> primandproper.platform.identity.v1.RejectInvitationRequest
-	31,  // 94: primandproper.platform.identity.v1.IdentityService.CancelInvitation:input_type -> primandproper.platform.identity.v1.CancelInvitationRequest
-	33,  // 95: primandproper.platform.identity.v1.IdentityService.CreateAccount:input_type -> primandproper.platform.identity.v1.CreateAccountRequest
-	35,  // 96: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:input_type -> primandproper.platform.identity.v1.TransferAccountOwnershipRequest
-	37,  // 97: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:input_type -> primandproper.platform.identity.v1.SetDefaultAccountRequest
-	39,  // 98: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:input_type -> primandproper.platform.identity.v1.SetMembershipRolesRequest
-	41,  // 99: primandproper.platform.identity.v1.IdentityService.RemoveMembership:input_type -> primandproper.platform.identity.v1.RemoveMembershipRequest
-	43,  // 100: primandproper.platform.identity.v1.IdentityService.ArchiveUser:input_type -> primandproper.platform.identity.v1.ArchiveUserRequest
-	45,  // 101: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:input_type -> primandproper.platform.identity.v1.ArchiveAccountRequest
-	47,  // 102: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:input_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusRequest
-	49,  // 103: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:input_type -> primandproper.platform.identity.v1.SetUserServiceRolesRequest
-	51,  // 104: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:input_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeRequest
-	53,  // 105: primandproper.platform.identity.v1.IdentityService.GetPrincipal:input_type -> primandproper.platform.identity.v1.GetPrincipalRequest
-	55,  // 106: primandproper.platform.identity.v1.IdentityService.GetUser:input_type -> primandproper.platform.identity.v1.GetUserRequest
-	57,  // 107: primandproper.platform.identity.v1.IdentityService.ListUsers:input_type -> primandproper.platform.identity.v1.ListUsersRequest
-	59,  // 108: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:input_type -> primandproper.platform.identity.v1.SearchUsersByUsernameRequest
-	61,  // 109: primandproper.platform.identity.v1.IdentityService.GetAccount:input_type -> primandproper.platform.identity.v1.GetAccountRequest
-	63,  // 110: primandproper.platform.identity.v1.IdentityService.ListAccounts:input_type -> primandproper.platform.identity.v1.ListAccountsRequest
-	65,  // 111: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:input_type -> primandproper.platform.identity.v1.ListAccountsForUserRequest
-	67,  // 112: primandproper.platform.identity.v1.IdentityService.GetMembership:input_type -> primandproper.platform.identity.v1.GetMembershipRequest
-	69,  // 113: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:input_type -> primandproper.platform.identity.v1.ListMembershipsForUserRequest
-	71,  // 114: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:input_type -> primandproper.platform.identity.v1.ListAccountMembersRequest
-	73,  // 115: primandproper.platform.identity.v1.IdentityService.GetInvitation:input_type -> primandproper.platform.identity.v1.GetInvitationRequest
-	75,  // 116: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:input_type -> primandproper.platform.identity.v1.ListInvitationsFromUserRequest
-	77,  // 117: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:input_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest
-	18,  // 118: primandproper.platform.identity.v1.IdentityService.Register:output_type -> primandproper.platform.identity.v1.RegisterResponse
-	20,  // 119: primandproper.platform.identity.v1.IdentityService.UpdateProfile:output_type -> primandproper.platform.identity.v1.UpdateProfileResponse
-	22,  // 120: primandproper.platform.identity.v1.IdentityService.UpdateAccount:output_type -> primandproper.platform.identity.v1.UpdateAccountResponse
-	24,  // 121: primandproper.platform.identity.v1.IdentityService.RecordAgreement:output_type -> primandproper.platform.identity.v1.RecordAgreementResponse
-	26,  // 122: primandproper.platform.identity.v1.IdentityService.Invite:output_type -> primandproper.platform.identity.v1.InviteResponse
-	28,  // 123: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:output_type -> primandproper.platform.identity.v1.AcceptInvitationResponse
-	30,  // 124: primandproper.platform.identity.v1.IdentityService.RejectInvitation:output_type -> primandproper.platform.identity.v1.RejectInvitationResponse
-	32,  // 125: primandproper.platform.identity.v1.IdentityService.CancelInvitation:output_type -> primandproper.platform.identity.v1.CancelInvitationResponse
-	34,  // 126: primandproper.platform.identity.v1.IdentityService.CreateAccount:output_type -> primandproper.platform.identity.v1.CreateAccountResponse
-	36,  // 127: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:output_type -> primandproper.platform.identity.v1.TransferAccountOwnershipResponse
-	38,  // 128: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:output_type -> primandproper.platform.identity.v1.SetDefaultAccountResponse
-	40,  // 129: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:output_type -> primandproper.platform.identity.v1.SetMembershipRolesResponse
-	42,  // 130: primandproper.platform.identity.v1.IdentityService.RemoveMembership:output_type -> primandproper.platform.identity.v1.RemoveMembershipResponse
-	44,  // 131: primandproper.platform.identity.v1.IdentityService.ArchiveUser:output_type -> primandproper.platform.identity.v1.ArchiveUserResponse
-	46,  // 132: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:output_type -> primandproper.platform.identity.v1.ArchiveAccountResponse
-	48,  // 133: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:output_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusResponse
-	50,  // 134: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:output_type -> primandproper.platform.identity.v1.SetUserServiceRolesResponse
-	52,  // 135: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:output_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse
-	54,  // 136: primandproper.platform.identity.v1.IdentityService.GetPrincipal:output_type -> primandproper.platform.identity.v1.GetPrincipalResponse
-	56,  // 137: primandproper.platform.identity.v1.IdentityService.GetUser:output_type -> primandproper.platform.identity.v1.GetUserResponse
-	58,  // 138: primandproper.platform.identity.v1.IdentityService.ListUsers:output_type -> primandproper.platform.identity.v1.ListUsersResponse
-	60,  // 139: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:output_type -> primandproper.platform.identity.v1.SearchUsersByUsernameResponse
-	62,  // 140: primandproper.platform.identity.v1.IdentityService.GetAccount:output_type -> primandproper.platform.identity.v1.GetAccountResponse
-	64,  // 141: primandproper.platform.identity.v1.IdentityService.ListAccounts:output_type -> primandproper.platform.identity.v1.ListAccountsResponse
-	66,  // 142: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:output_type -> primandproper.platform.identity.v1.ListAccountsForUserResponse
-	68,  // 143: primandproper.platform.identity.v1.IdentityService.GetMembership:output_type -> primandproper.platform.identity.v1.GetMembershipResponse
-	70,  // 144: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:output_type -> primandproper.platform.identity.v1.ListMembershipsForUserResponse
-	72,  // 145: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:output_type -> primandproper.platform.identity.v1.ListAccountMembersResponse
-	74,  // 146: primandproper.platform.identity.v1.IdentityService.GetInvitation:output_type -> primandproper.platform.identity.v1.GetInvitationResponse
-	76,  // 147: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:output_type -> primandproper.platform.identity.v1.ListInvitationsFromUserResponse
-	78,  // 148: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:output_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse
-	118, // [118:149] is the sub-list for method output_type
-	87,  // [87:118] is the sub-list for method input_type
-	87,  // [87:87] is the sub-list for extension type_name
-	87,  // [87:87] is the sub-list for extension extendee
-	0,   // [0:87] is the sub-list for field type_name
+	6,   // 61: primandproper.platform.identity.v1.GetPrincipalResponse.active_account:type_name -> primandproper.platform.identity.v1.Account
+	4,   // 62: primandproper.platform.identity.v1.GetUserResponse.user:type_name -> primandproper.platform.identity.v1.User
+	80,  // 63: primandproper.platform.identity.v1.ListUsersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 64: primandproper.platform.identity.v1.ListUsersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	4,   // 65: primandproper.platform.identity.v1.ListUsersResponse.results:type_name -> primandproper.platform.identity.v1.User
+	80,  // 66: primandproper.platform.identity.v1.SearchUsersByUsernameRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 67: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	4,   // 68: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.results:type_name -> primandproper.platform.identity.v1.User
+	6,   // 69: primandproper.platform.identity.v1.GetAccountResponse.account:type_name -> primandproper.platform.identity.v1.Account
+	80,  // 70: primandproper.platform.identity.v1.ListAccountsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 71: primandproper.platform.identity.v1.ListAccountsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	6,   // 72: primandproper.platform.identity.v1.ListAccountsResponse.results:type_name -> primandproper.platform.identity.v1.Account
+	80,  // 73: primandproper.platform.identity.v1.ListAccountsForUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 74: primandproper.platform.identity.v1.ListAccountsForUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	6,   // 75: primandproper.platform.identity.v1.ListAccountsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Account
+	7,   // 76: primandproper.platform.identity.v1.GetMembershipResponse.membership:type_name -> primandproper.platform.identity.v1.Membership
+	7,   // 77: primandproper.platform.identity.v1.ListMembershipsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Membership
+	80,  // 78: primandproper.platform.identity.v1.ListAccountMembersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 79: primandproper.platform.identity.v1.ListAccountMembersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	8,   // 80: primandproper.platform.identity.v1.ListAccountMembersResponse.results:type_name -> primandproper.platform.identity.v1.MembershipWithUser
+	9,   // 81: primandproper.platform.identity.v1.GetInvitationResponse.invitation:type_name -> primandproper.platform.identity.v1.Invitation
+	80,  // 82: primandproper.platform.identity.v1.ListInvitationsFromUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 83: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	9,   // 84: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
+	80,  // 85: primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	81,  // 86: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	9,   // 87: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
+	17,  // 88: primandproper.platform.identity.v1.IdentityService.Register:input_type -> primandproper.platform.identity.v1.RegisterRequest
+	19,  // 89: primandproper.platform.identity.v1.IdentityService.UpdateProfile:input_type -> primandproper.platform.identity.v1.UpdateProfileRequest
+	21,  // 90: primandproper.platform.identity.v1.IdentityService.UpdateAccount:input_type -> primandproper.platform.identity.v1.UpdateAccountRequest
+	23,  // 91: primandproper.platform.identity.v1.IdentityService.RecordAgreement:input_type -> primandproper.platform.identity.v1.RecordAgreementRequest
+	25,  // 92: primandproper.platform.identity.v1.IdentityService.Invite:input_type -> primandproper.platform.identity.v1.InviteRequest
+	27,  // 93: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:input_type -> primandproper.platform.identity.v1.AcceptInvitationRequest
+	29,  // 94: primandproper.platform.identity.v1.IdentityService.RejectInvitation:input_type -> primandproper.platform.identity.v1.RejectInvitationRequest
+	31,  // 95: primandproper.platform.identity.v1.IdentityService.CancelInvitation:input_type -> primandproper.platform.identity.v1.CancelInvitationRequest
+	33,  // 96: primandproper.platform.identity.v1.IdentityService.CreateAccount:input_type -> primandproper.platform.identity.v1.CreateAccountRequest
+	35,  // 97: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:input_type -> primandproper.platform.identity.v1.TransferAccountOwnershipRequest
+	37,  // 98: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:input_type -> primandproper.platform.identity.v1.SetDefaultAccountRequest
+	39,  // 99: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:input_type -> primandproper.platform.identity.v1.SetMembershipRolesRequest
+	41,  // 100: primandproper.platform.identity.v1.IdentityService.RemoveMembership:input_type -> primandproper.platform.identity.v1.RemoveMembershipRequest
+	43,  // 101: primandproper.platform.identity.v1.IdentityService.ArchiveUser:input_type -> primandproper.platform.identity.v1.ArchiveUserRequest
+	45,  // 102: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:input_type -> primandproper.platform.identity.v1.ArchiveAccountRequest
+	47,  // 103: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:input_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusRequest
+	49,  // 104: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:input_type -> primandproper.platform.identity.v1.SetUserServiceRolesRequest
+	51,  // 105: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:input_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeRequest
+	53,  // 106: primandproper.platform.identity.v1.IdentityService.GetPrincipal:input_type -> primandproper.platform.identity.v1.GetPrincipalRequest
+	55,  // 107: primandproper.platform.identity.v1.IdentityService.GetUser:input_type -> primandproper.platform.identity.v1.GetUserRequest
+	57,  // 108: primandproper.platform.identity.v1.IdentityService.ListUsers:input_type -> primandproper.platform.identity.v1.ListUsersRequest
+	59,  // 109: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:input_type -> primandproper.platform.identity.v1.SearchUsersByUsernameRequest
+	61,  // 110: primandproper.platform.identity.v1.IdentityService.GetAccount:input_type -> primandproper.platform.identity.v1.GetAccountRequest
+	63,  // 111: primandproper.platform.identity.v1.IdentityService.ListAccounts:input_type -> primandproper.platform.identity.v1.ListAccountsRequest
+	65,  // 112: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:input_type -> primandproper.platform.identity.v1.ListAccountsForUserRequest
+	67,  // 113: primandproper.platform.identity.v1.IdentityService.GetMembership:input_type -> primandproper.platform.identity.v1.GetMembershipRequest
+	69,  // 114: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:input_type -> primandproper.platform.identity.v1.ListMembershipsForUserRequest
+	71,  // 115: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:input_type -> primandproper.platform.identity.v1.ListAccountMembersRequest
+	73,  // 116: primandproper.platform.identity.v1.IdentityService.GetInvitation:input_type -> primandproper.platform.identity.v1.GetInvitationRequest
+	75,  // 117: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:input_type -> primandproper.platform.identity.v1.ListInvitationsFromUserRequest
+	77,  // 118: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:input_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest
+	18,  // 119: primandproper.platform.identity.v1.IdentityService.Register:output_type -> primandproper.platform.identity.v1.RegisterResponse
+	20,  // 120: primandproper.platform.identity.v1.IdentityService.UpdateProfile:output_type -> primandproper.platform.identity.v1.UpdateProfileResponse
+	22,  // 121: primandproper.platform.identity.v1.IdentityService.UpdateAccount:output_type -> primandproper.platform.identity.v1.UpdateAccountResponse
+	24,  // 122: primandproper.platform.identity.v1.IdentityService.RecordAgreement:output_type -> primandproper.platform.identity.v1.RecordAgreementResponse
+	26,  // 123: primandproper.platform.identity.v1.IdentityService.Invite:output_type -> primandproper.platform.identity.v1.InviteResponse
+	28,  // 124: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:output_type -> primandproper.platform.identity.v1.AcceptInvitationResponse
+	30,  // 125: primandproper.platform.identity.v1.IdentityService.RejectInvitation:output_type -> primandproper.platform.identity.v1.RejectInvitationResponse
+	32,  // 126: primandproper.platform.identity.v1.IdentityService.CancelInvitation:output_type -> primandproper.platform.identity.v1.CancelInvitationResponse
+	34,  // 127: primandproper.platform.identity.v1.IdentityService.CreateAccount:output_type -> primandproper.platform.identity.v1.CreateAccountResponse
+	36,  // 128: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:output_type -> primandproper.platform.identity.v1.TransferAccountOwnershipResponse
+	38,  // 129: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:output_type -> primandproper.platform.identity.v1.SetDefaultAccountResponse
+	40,  // 130: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:output_type -> primandproper.platform.identity.v1.SetMembershipRolesResponse
+	42,  // 131: primandproper.platform.identity.v1.IdentityService.RemoveMembership:output_type -> primandproper.platform.identity.v1.RemoveMembershipResponse
+	44,  // 132: primandproper.platform.identity.v1.IdentityService.ArchiveUser:output_type -> primandproper.platform.identity.v1.ArchiveUserResponse
+	46,  // 133: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:output_type -> primandproper.platform.identity.v1.ArchiveAccountResponse
+	48,  // 134: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:output_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusResponse
+	50,  // 135: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:output_type -> primandproper.platform.identity.v1.SetUserServiceRolesResponse
+	52,  // 136: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:output_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse
+	54,  // 137: primandproper.platform.identity.v1.IdentityService.GetPrincipal:output_type -> primandproper.platform.identity.v1.GetPrincipalResponse
+	56,  // 138: primandproper.platform.identity.v1.IdentityService.GetUser:output_type -> primandproper.platform.identity.v1.GetUserResponse
+	58,  // 139: primandproper.platform.identity.v1.IdentityService.ListUsers:output_type -> primandproper.platform.identity.v1.ListUsersResponse
+	60,  // 140: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:output_type -> primandproper.platform.identity.v1.SearchUsersByUsernameResponse
+	62,  // 141: primandproper.platform.identity.v1.IdentityService.GetAccount:output_type -> primandproper.platform.identity.v1.GetAccountResponse
+	64,  // 142: primandproper.platform.identity.v1.IdentityService.ListAccounts:output_type -> primandproper.platform.identity.v1.ListAccountsResponse
+	66,  // 143: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:output_type -> primandproper.platform.identity.v1.ListAccountsForUserResponse
+	68,  // 144: primandproper.platform.identity.v1.IdentityService.GetMembership:output_type -> primandproper.platform.identity.v1.GetMembershipResponse
+	70,  // 145: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:output_type -> primandproper.platform.identity.v1.ListMembershipsForUserResponse
+	72,  // 146: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:output_type -> primandproper.platform.identity.v1.ListAccountMembersResponse
+	74,  // 147: primandproper.platform.identity.v1.IdentityService.GetInvitation:output_type -> primandproper.platform.identity.v1.GetInvitationResponse
+	76,  // 148: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:output_type -> primandproper.platform.identity.v1.ListInvitationsFromUserResponse
+	78,  // 149: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:output_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse
+	119, // [119:150] is the sub-list for method output_type
+	88,  // [88:119] is the sub-list for method input_type
+	88,  // [88:88] is the sub-list for extension type_name
+	88,  // [88:88] is the sub-list for extension extendee
+	0,   // [0:88] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_identity_v1_identity_proto_init() }

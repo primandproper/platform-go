@@ -778,6 +778,14 @@ message GetPrincipalRequest {
 
 message GetPrincipalResponse {
   Principal principal = 1;
+
+  // active_account is the account principal.active_account_id names, read in
+  // the same call. Reading it through GetAccount instead needs a grant every
+  // member would have to hold to see their own current account; here the
+  // membership check that resolved the active account is the authorization.
+  // Absent for a caller who holds no memberships, whose active_account_id is
+  // empty.
+  Account active_account = 2;
 }
 
 message GetUserRequest {

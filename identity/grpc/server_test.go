@@ -452,6 +452,29 @@ func TestGetPrincipalAnswersForTheCaller(T *testing.T) {
 	test.EqOp(T, registration.User.ID, principal.GetUser().GetId())
 	test.EqOp(T, registration.Account.ID, principal.GetActiveAccountId())
 	test.SliceLen(T, 1, principal.GetMemberships())
+
+	active := response.GetActiveAccount()
+	must.NotNil(T, active)
+	test.EqOp(T, registration.Account.ID, active.GetId())
+	test.EqOp(T, registration.Account.Name, active.GetName())
+}
+
+// TestGetPrincipalNamesNoAccountForACallerWithoutOne is the other half of the
+// active account riding along: somebody nobody has put in an account yet is
+// still answered, and is answered with no account rather than an error.
+func TestGetPrincipalNamesNoAccountForACallerWithoutOne(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	user := h.seedUser(T, testScope, "nobody")
+	ctx := h.as(&testPrincipal{userID: user.ID, scope: testScope})
+
+	response, err := h.client.GetPrincipal(ctx, &identitypb.GetPrincipalRequest{})
+	must.NoError(T, err)
+
+	test.EqOp(T, "", response.GetPrincipal().GetActiveAccountId())
+	test.Nil(T, response.GetActiveAccount())
 }
 
 // TestGetPrincipalRefusesASuspendedCaller is the ban arriving on the wire. The
