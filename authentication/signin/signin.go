@@ -118,12 +118,6 @@ const (
 	// would be a latency nobody could attribute.
 	opCheckSignIn = "check_sign_in"
 
-	// Checking a login is a series of its own, and the one a deployment that
-	// makes it on every request will see dwarf the rest: what a dashboard asks
-	// of it is what the per-request read costs, which folded into anything else
-	// would be a latency nobody could attribute.
-	opCheckSignIn = "check_sign_in"
-
 	// The registration door and the ones that finish it. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
 	// is how many people arrived, which has nothing to do with how often they
