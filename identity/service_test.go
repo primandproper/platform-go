@@ -695,7 +695,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		// the answer are one transaction, so a dead invitation takes the user
 		// with it rather than leaving somebody committed and unaffiliated.
 		//
-		// Four ways for an invitation not to admit the caller, and one
+		// Six ways for an invitation not to admit the caller, and one
 		// assertion under all of them: nobody named grace is in the directory.
 		cases := []struct {
 			wants   error
@@ -703,6 +703,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			expires time.Time
 			name    string
 			token   string
+			toEmail string
 		}{
 			{
 				name:    "wrong token",
@@ -736,6 +737,25 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 				expires: time.Now().UTC().Add(-time.Hour),
 				wants:   ErrInvitationExpired,
 			},
+			{
+				// The token is right; the address is somebody else's. A link
+				// that leaked admits nobody but the person it was sent to.
+				name:    "addressed to somebody else",
+				token:   "the-token",
+				toEmail: "hopper@example.com",
+				expires: futureExpiry(),
+				wants:   ErrInvitationNotFound,
+			},
+			{
+				// And it says nothing more than a wrong token would: an expired
+				// invitation under the wrong address is not reported as expired,
+				// which would tell the holder their token was the right one.
+				name:    "addressed to somebody else, and expired",
+				token:   "the-token",
+				toEmail: "hopper@example.com",
+				expires: time.Now().UTC().Add(-time.Hour),
+				wants:   ErrInvitationNotFound,
+			},
 		}
 
 		for i := range cases {
@@ -749,8 +769,13 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 				sender := registerAda(t, service, "ada")
 
+				toEmail := testCase.toEmail
+				if toEmail == "" {
+					toEmail = "grace@example.com"
+				}
+
 				issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User,
-					sender.Account.ID, "grace@example.com", "the-token", testCase.expires))
+					sender.Account.ID, toEmail, "the-token", testCase.expires))
 				must.NoError(t, err)
 
 				if testCase.prepare != nil {
@@ -773,6 +798,13 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 				must.ErrorIs(t, err, ErrUserNotFound)
 
 				test.EqOp(t, 0, hooks.ran("register_with_invitation"))
+
+				// Nor did the invitation admit anybody: the account still has
+				// its owner and nobody else.
+				members, err := store.ListAccountMembers(t.Context(), env.reader(), testScope,
+					sender.Account.ID, nil)
+				must.NoError(t, err)
+				must.SliceLen(t, 1, members.Data)
 			})
 		}
 	})
@@ -993,6 +1025,35 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		test.EqOp(t, 1, hooks.ran("accept"))
 		test.EqOp(t, acceptance, hooks.acceptance)
+	})
+
+	t.Run("refuses an acceptor the invitation was not addressed to", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		sender := registerAda(t, service, "ada")
+		recipient := seedUser(t, env, store, newUser("grace"))
+		holder := seedUser(t, env, store, newUser("hopper"))
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			recipient.EmailAddress, "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		// Holding the link is not being the person it was sent to.
+		_, err = service.AcceptInvitation(t.Context(), testScope,
+			issued.ID, "the-token", holder.ID, "")
+		must.ErrorIs(t, err, ErrInvitationNotFound)
+		test.EqOp(t, 0, hooks.ran("accept"))
+
+		_, err = store.GetMembership(t.Context(), env.reader(), testScope, holder.ID, sender.Account.ID)
+		must.ErrorIs(t, err, ErrMembershipNotFound)
+
+		// And the invitation is still the recipient's to answer.
+		_, err = service.AcceptInvitation(t.Context(), testScope,
+			issued.ID, "the-token", recipient.ID, "")
+		must.NoError(t, err)
 	})
 
 	t.Run("a failing accept hook leaves the invitation pending and mints nothing", func(t *testing.T) {

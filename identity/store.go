@@ -1134,6 +1134,15 @@ type InvitationStore interface {
 	// who is not returns an error wrapping ErrUserNotFound rather than a
 	// membership spanning two directories.
 	//
+	// Their address must be the one the invitation was sent to, compared
+	// folded. The token travels wherever the mail and the events about it
+	// travel, and the address is what keeps a leaked one from being a bearer
+	// pass into the account. A user at another address is refused with
+	// ErrInvitationNotFound, as a wrong token is, and never with
+	// ErrInvitationExpired: that would tell them the token was right. Whether
+	// the address is verified is not asked — a registration by invitation holds
+	// an unverified one by construction.
+	//
 	// statusNote is why the answer went the way it did, and it lands in
 	// Invitation.StatusNote. The sender's Note is untouched — an invite email's
 	// message is still readable beside the acceptance that answered it.
