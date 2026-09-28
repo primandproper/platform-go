@@ -93,9 +93,10 @@ type SQLStore struct {
 //
 // The exchange's read-back runs on the transaction that just wrote — see Redeem
 // — so replica lag cannot turn a freshly minted token into one that is "not
-// found" and then works when retried. The one read a replica may serve is
-// ListActiveSignIns, which takes whatever executor its caller hands it, and
-// nothing in this package reaches for Client.Reader() on its own.
+// found" and then works when retried. The reads a replica may serve are
+// ListActiveSignIns and LiveToken, which take whatever executor their caller
+// hands them, and nothing in this package reaches for Client.Reader() on its
+// own.
 //
 // It does not create the table. Hand migrations.SQL to your own migration run,
 // or migrations.SQLSince if an earlier release already created it.
@@ -236,6 +237,7 @@ func (s *SQLStore) Issue(
 		SignedInAt:      signedInAt,
 		ExpiresAt:       now.Add(request.TTL),
 		PurgeAfter:      now.Add(request.TTL).Add(s.retention),
+		AccessTokenID:   request.AccessTokenID,
 	}
 
 	if err = s.q.InsertRefreshToken(ctx, tx, signindb.InsertRefreshTokenParams{
@@ -249,6 +251,7 @@ func (s *SQLStore) Issue(
 		SignedInAt:      token.SignedInAt,
 		ExpiresAt:       token.ExpiresAt,
 		PurgeAfter:      token.PurgeAfter,
+		AccessTokenID:   optionalString(token.AccessTokenID),
 	}); err != nil {
 		return nil, op.Error(err, "storing refresh token row")
 	}
@@ -578,6 +581,68 @@ func (s *SQLStore) ListActiveSignIns(
 	return signIns, nil
 }
 
+// LiveToken answers one login's current refresh token, named by its family, or
+// signin.ErrSignInEnded where it has none.
+//
+// It is the listing's three guards read by family rather than by subject, and
+// against this store's own clock for the reason the exchange's deadline is, so
+// the row it answers is the row an exchange would still accept. The family index
+// version 1 created serves it, which matters because a consumer may make this
+// read on every request.
+//
+// A family unknown in scope reads exactly as one that ended, because from here
+// it is one: nothing it could present would be accepted.
+func (s *SQLStore) LiveToken(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	familyID string,
+) (*signin.RefreshToken, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+
+	if q == nil {
+		return nil, ErrNilExecutor
+	}
+
+	if familyID == "" {
+		return nil, ErrEmptyFamilyID
+	}
+
+	op.SetValues(map[string]any{scopeKey: scope.String(), familyKey: familyID})
+
+	row, err := s.q.GetLiveRefreshTokenForFamily(ctx, q, signindb.GetLiveRefreshTokenForFamilyParams{
+		Scope:    scope,
+		FamilyID: familyID,
+		Now:      s.clock.Now().UTC(),
+	})
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, signin.ErrSignInEnded
+		}
+
+		return nil, op.Error(err, "reading a refresh token family's live row")
+	}
+
+	live := signindb.GetRefreshTokenRow(row)
+
+	return tokenFromRow(&live), nil
+}
+
+// optionalString is the bound value of a nullable text column: NULL for the
+// empty string, which is how a caller with nothing to record says so.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+
+	return &value
+}
+
 // tokenFromRow renders one stored row as a signin.RefreshToken.
 //
 // Every instant is converted to UTC here rather than left as the driver chose. A
@@ -596,6 +661,10 @@ func tokenFromRow(row *signindb.GetRefreshTokenRow) *signin.RefreshToken {
 		SignedInAt:      row.SignedInAt.UTC(),
 		ExpiresAt:       row.ExpiresAt.UTC(),
 		PurgeAfter:      row.PurgeAfter.UTC(),
+	}
+
+	if row.AccessTokenID != nil {
+		token.AccessTokenID = *row.AccessTokenID
 	}
 
 	if row.RedeemedAt != nil {

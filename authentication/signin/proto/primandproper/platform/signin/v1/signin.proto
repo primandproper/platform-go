@@ -310,13 +310,14 @@ message ExchangeRefreshTokenResponse {
 // detection does -- so this is the same act performed on purpose, with the
 // server told that it was deliberate rather than having to assume theft.
 //
-// What it cannot do is stop an access token already in somebody's hands. Nothing
-// here can: an access token is checked by the consumer's interceptor against the
-// issuer's signature and not against any table this service holds. What it stops
-// is that token being replaced, so a sign-out takes effect within one
-// access-token lifetime. A deployment that needs it to take effect sooner is
-// asking for shorter access tokens, which is signin.WithTokenTTL, rather than
-// for another RPC.
+// What it does on its own is stop the access token already in somebody's hands
+// being replaced, so a sign-out takes effect within one access-token lifetime:
+// an access token is checked by the consumer's interceptor against the issuer's
+// signature rather than against any table this service holds. A deployment that
+// needs it to take effect at once has its interceptor ask
+// signin.Service.CheckSignIn on every request -- the sign-in extractor's
+// WithSignInCheck -- which refuses the ended login's access token from the next
+// request on, rather than asking for another RPC.
 message SignOutRequest {
   reserved "scope";
 

@@ -131,7 +131,7 @@ func (s *Service) ListSignIns(
 // sign-out. What it does not do is stop an access token already in somebody's
 // hands — see [Service.RevokeRefreshTokenFamily], whose documentation applies
 // here unchanged — so the login ends within one access-token lifetime rather
-// than at once.
+// than at once, unless the consumer's interceptor asks [Service.CheckSignIn].
 //
 // A service built without [WithRefreshTokenStore] is
 // [ErrRefreshTokensNotConfigured], as [Service.ListSignIns] is.
@@ -175,6 +175,85 @@ func (s *Service) EndSignIn(
 	}
 
 	return revoked, nil
+}
+
+// CheckSignIn answers whether an access token's login is still going, and is
+// the per-request check a consumer's interceptor may make: nil for a login that
+// is, [ErrSignInEnded] for one that is not, and — on a service built with
+// [WithSupersededTokenRefusal] — [ErrSignInSuperseded] for an access token the
+// login has since replaced.
+//
+// familyID and tokenID are the token's own claims, [ClaimFamilyID] and its
+// "jti". tokenID is read only by a service that refuses superseded tokens,
+// which refuses an empty one with [ErrEmptyTokenID]; one that does not compares
+// nothing and passes whatever it is given through unread.
+//
+// # What it buys, and what it costs
+//
+// An access token is a signed statement that stands until it expires, which is
+// why a sign-out, [Service.EndSignIn] and a detected reuse take effect within
+// one access-token lifetime rather than at once: they end the family, and
+// nothing reads the family while its access token is being presented. This is
+// that read. An interceptor that makes it turns every one of those into an
+// access token refused on its next request — the promise a "sign out that
+// device" button makes — at the price of one indexed read per request. A cache
+// in front of it is the consumer's, and so is how stale a cached answer may be:
+// whatever it holds is how long an ended login keeps working.
+//
+// It reads on the write pool rather than a replica, which is the half of that
+// price worth naming. A refresh writes the family's current token and the very
+// next request presents the access token it minted; a replica that has not yet
+// seen the write would answer with the token before it, so a lagging read
+// would refuse a fresh token as superseded, and would keep an ended login
+// working for as long as it lagged. Either is the check failing at the one
+// thing it is for.
+//
+// # What it does not decide
+//
+// Anything about the person. A banned user's login is still a login, and the
+// directory's principal read is what refuses them; this answers about the
+// token's login and nothing else, and makes no call on the directory.
+//
+// A service built without [WithRefreshTokenStore] holds no logins to read and
+// is [ErrRefreshTokensNotConfigured].
+func (s *Service) CheckSignIn(
+	ctx context.Context,
+	scope tenancy.Scope,
+	familyID string,
+	tokenID string,
+) (err error) {
+	ctx, op, done := s.begin(ctx, opCheckSignIn,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(familyKey, familyID),
+	)
+	defer func() { done(err) }()
+
+	if s.refreshTokens == nil {
+		return op.Error(ErrRefreshTokensNotConfigured, "checking a sign-in")
+	}
+
+	if err = scope.Validate(); err != nil {
+		return op.Error(err, "checking the scope a sign-in was checked in")
+	}
+
+	if familyID == "" {
+		return op.Error(ErrEmptyFamilyID, "reading the sign-in to check")
+	}
+
+	if s.refuseSuperseded && tokenID == "" {
+		return op.Error(ErrEmptyTokenID, "reading the access token to check")
+	}
+
+	current, err := s.refreshTokens.LiveToken(ctx, s.client.Writer(), scope, familyID)
+	if err != nil {
+		return op.Error(err, "checking a sign-in")
+	}
+
+	if s.refuseSuperseded && current.AccessTokenID != tokenID {
+		return op.Error(ErrSignInSuperseded, "checking a sign-in")
+	}
+
+	return nil
 }
 
 // signInListLimit resolves the limit a listing runs with: the default for

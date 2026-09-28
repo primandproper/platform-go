@@ -563,6 +563,13 @@ var Matrix = map[string]map[string]Decision{
 		// own words would say which of the five happened.
 		"ErrInvalidMagicLink": {Err: signin.ErrInvalidMagicLink, Is: Mapped},
 
+		// An access token whose login has ended, or has since replaced it. Same
+		// construction again: each wraps ErrInvalidCredentials and is not
+		// client-safe, because its own words would tell whoever holds a stolen
+		// copy what the person they took it from has done since.
+		"ErrSignInEnded":      {Err: signin.ErrSignInEnded, Is: Mapped},
+		"ErrSignInSuperseded": {Err: signin.ErrSignInSuperseded, Is: Mapped},
+
 		// Proven, and refused anyway. The four PermissionDenials: two statuses
 		// an operator set, and the two halves of the administrative door.
 		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
@@ -617,6 +624,10 @@ var Matrix = map[string]map[string]Decision{
 		// guess that missed.
 		"ErrEmptyFamilyID":     {Err: signin.ErrEmptyFamilyID, Is: Platform},
 		"ErrEmptyRefreshToken": {Err: signin.ErrEmptyRefreshToken, Is: Platform},
+
+		// A check that named no access token to compare, which is the same
+		// reading: a caller that did not read the claim, not a token that lost.
+		"ErrEmptyTokenID": {Err: signin.ErrEmptyTokenID, Is: Platform},
 
 		// A door answered with no token at all, which is the same reading again:
 		// an empty request is a client that did not submit.

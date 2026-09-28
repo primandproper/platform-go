@@ -99,6 +99,12 @@ const (
 	// revoke — revoking the family instead is the outcome the retry exists to
 	// avoid, and revoking nothing leaves one login holding two live tokens.
 	SuccessorHashColumn = "successor_hash"
+	// AccessTokenIDColumn is the "jti" of the access token minted alongside
+	// this row, and NULL on a row minted before the column existed. It is
+	// written by the mint and read by [readLive], which is how a per-request
+	// check tells a login's current access token from one the login has since
+	// replaced.
+	AccessTokenIDColumn = "access_token_id"
 )
 
 // The arguments the two clock comparisons bind, named for the comparison rather
@@ -154,6 +160,7 @@ var Columns = []string{
 	RevokedAtColumn,
 	RedeemedWithKeyColumn,
 	SuccessorHashColumn,
+	AccessTokenIDColumn,
 }
 
 // RecordColumns is what the read projects, in the order the generated row type
@@ -182,6 +189,7 @@ var RecordColumns = []string{
 	PurgeAfterColumn,
 	RedeemedAtColumn,
 	RevokedAtColumn,
+	AccessTokenIDColumn,
 }
 
 // InsertColumns is what a mint writes: every column but the two stamps, which
@@ -202,6 +210,7 @@ var InsertColumns = []string{
 	SignedInAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,
+	AccessTokenIDColumn,
 }
 
 // FamilyColumns is what the listing of a person's live logins projects: one
@@ -256,6 +265,7 @@ const (
 	InsertTokenQuery            = "InsertRefreshToken"
 	GetTokenQuery               = "GetRefreshToken"
 	GetRedemptionQuery          = "GetRefreshTokenRedemption"
+	GetLiveTokenQuery           = "GetLiveRefreshTokenForFamily"
 	RedeemTokenQuery            = "RedeemRefreshToken"
 	RedeemTokenWithKeyQuery     = "RedeemRefreshTokenWithKey"
 	ClaimRemintQuery            = "ClaimRefreshTokenRemint"
@@ -281,8 +291,9 @@ const (
 // idempotent path reads what the ordinary one does not — exchanged, with or
 // without a key, and then the two writes a retry of that exchange makes; or
 // revoked, alone, as one of a family's — named by the token or by its owner —
-// or as one of a subject's; listed, while it is the live one of its login; and
-// finally collected once its purge deadline has passed.
+// or as one of a subject's; listed, while it is the live one of its login, or
+// read as that one by its family; and finally collected once its purge deadline
+// has passed.
 //
 // # The five statements the idempotent path adds
 //
@@ -365,6 +376,7 @@ func Render(d dialect.Dialect) string {
 		revokeSubjectFamily(g),
 		revokeForSubject(g),
 		listLiveFamilies(g),
+		readLive(g),
 		sweep(g),
 	})
 }
@@ -644,6 +656,31 @@ func listLiveFamilies(g *querygen.Generator) *querygen.Query {
 		},
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: SubjectIDColumn},
+		unredeemed(),
+		unrevoked(),
+		stillLive(),
+	)
+}
+
+// readLive is one login's current token, read by its family: the row
+// [listLiveFamilies] would list for it, found by the family rather than by the
+// person.
+//
+// It is what a per-request check reads, so it is keyed on what an access token
+// carries — the scope and the family, which version 1's family index serves —
+// and it carries the exchange's three guards for [listLiveFamilies]' reason: a
+// family has exactly one row they admit while the login is going and none once
+// it has ended, so "no row" is the answer "this login is over" and a row is the
+// answer "it is not, and this is the access token it minted last".
+//
+// No Order, because there is no second row to choose between. A key that could
+// admit two would need one; this one admits one by the same invariant the
+// listing already rests on.
+func readLive(g *querygen.Generator) *querygen.Query {
+	return g.ReadQuery(GetLiveTokenQuery, TokensTable, Columns,
+		querygen.Read{Projection: RecordColumns},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: FamilyIDColumn},
 		unredeemed(),
 		unrevoked(),
 		stillLive(),

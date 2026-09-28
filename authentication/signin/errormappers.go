@@ -237,9 +237,12 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// A verification link that named nobody joins them, for the same reason:
 	// expired, already answered, never issued and simply wrong are one remedy,
 	// and telling them apart tells whoever is guessing which guesses are getting
-	// warm.
+	// warm. So does an access token whose login has ended or moved on, which is
+	// a credential that no longer proves anything.
 	case errors.Is(err, ErrRefreshTokenReused),
 		errors.Is(err, ErrInvalidVerificationToken),
+		errors.Is(err, ErrSignInEnded),
+		errors.Is(err, ErrSignInSuperseded),
 		errors.Is(err, ErrInvalidCredentials):
 		return httperrors.ErrAuthenticationFailed, "invalid credentials", true
 
@@ -306,7 +309,9 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrSecondFactorRequired),
 		errors.Is(err, ErrInvalidCredentials),
 		errors.Is(err, ErrInvalidVerificationToken),
-		errors.Is(err, ErrRefreshTokenReused):
+		errors.Is(err, ErrRefreshTokenReused),
+		errors.Is(err, ErrSignInEnded),
+		errors.Is(err, ErrSignInSuperseded):
 		return codes.Unauthenticated, true
 
 	// Proven, and refused anyway. All four are somebody the service knows and

@@ -92,6 +92,19 @@ type PrincipalDirectory interface {
 	) (*identity.Principal, error)
 }
 
+// SignInChecker answers whether an access token's login is still going.
+//
+// It is signin.Service.CheckSignIn, and a *signin.Service satisfies it. nil is
+// a login that is going; an error wrapping signin.ErrInvalidCredentials is one
+// that has ended or, on a service that refuses them, an access token the login
+// has replaced; an error wrapping signin.ErrEmptyTokenID is a token with no ID
+// for a service that refuses superseded tokens to compare, and is refused as a
+// token the sign-in service did not mint; any other error is a read that could
+// not be made.
+type SignInChecker interface {
+	CheckSignIn(ctx context.Context, scope tenancy.Scope, familyID, tokenID string) error
+}
+
 // GrantsResolver is the consumer's role policy: what a caller may do.
 //
 // It is handed the principal the extractor resolved — a *Caller for a token
@@ -169,7 +182,8 @@ func (c *Caller) Identity() *identity.Principal { return c.principal }
 //
 // That the token verifies and carries signin.DefaultClaims' four claims; that
 // the directory still admits the user and still counts them a member of the
-// account the token was minted against; and what an ordinary-door token of
+// account the token was minted against; with WithSignInCheck, that the login
+// the token belongs to has not ended; and what an ordinary-door token of
 // somebody who holds service roles carries — nothing of those roles unless
 // WithOrdinaryServiceRoles says otherwise. signin.ClaimAdministrative is the
 // only thing that confers service roles, which is what makes the
@@ -211,6 +225,7 @@ type PrincipalExtractor struct {
 	grants   GrantsResolver
 	ordinary ServiceRolesPolicy
 	fallback callers.PrincipalExtractor
+	signIns  SignInChecker
 
 	gate *PasswordChangeGate
 
@@ -281,6 +296,31 @@ func WithFallback(fallback callers.PrincipalExtractor) ExtractorOption {
 	return func(e *PrincipalExtractor) {
 		if fallback != nil {
 			e.fallback = fallback
+		}
+	}
+}
+
+// WithSignInCheck makes every token this module minted answer for its login as
+// well as its signature: a token whose login has ended — signed out, ended by
+// name, revoked for reuse or by an operator — names nobody from the next
+// request on, rather than from when it expires. A nil checker is ignored,
+// leaving none, and a token then stands until it expires, which is the family
+// model's premise.
+//
+// It is a read per request, and that is the trade it makes: see
+// signin.Service.CheckSignIn, which is what a consumer passes here and whose
+// WithSupersededTokenRefusal decides whether an access token the login has
+// since replaced is refused as well.
+//
+// A refusal is ErrUnauthenticated, and like a refused user it does not go to
+// WithFallback: a signed-out token is still this module's, and a fallback that
+// could answer for it would be a second opinion on the sign-out. A checker that
+// could not answer is reported as the outage it is, as a directory that could
+// not be read is.
+func WithSignInCheck(checker SignInChecker) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		if checker != nil {
+			e.signIns = checker
 		}
 	}
 }
@@ -484,6 +524,10 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 	op.Set(scopeKey, scope.String())
 	op.Set(userIDKey, userID)
 
+	if err = e.checkSignIn(ctx, scope, familyID, claims.JTI()); err != nil {
+		return nil, op.Error(err, "checking a bearer token's sign-in")
+	}
+
 	principal, err := e.directory.GetPrincipal(ctx, e.client.Reader(), scope, userID, accountID)
 	if err != nil {
 		if refusesTheCaller(err) {
@@ -510,6 +554,42 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 	}, nil
 }
 
+// checkSignIn asks the checker WithSignInCheck named whether the token's login
+// is still going, and is nil where it named none.
+//
+// A token with no family claim is refused rather than passed: under a check,
+// a token whose login cannot be named is one whose sign-out cannot be seen, and
+// signin.DefaultClaims writes the claim on every token this module mints.
+func (e *PrincipalExtractor) checkSignIn(ctx context.Context, scope tenancy.Scope, familyID, tokenID string) error {
+	if e.signIns == nil {
+		return nil
+	}
+
+	if familyID == "" {
+		return platformerrors.Wrapf(ErrNotASignInToken, "no %q claim", signin.ClaimFamilyID)
+	}
+
+	err := e.signIns.CheckSignIn(ctx, scope, familyID, tokenID)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, signin.ErrInvalidCredentials) {
+		return platformerrors.Join(ErrUnauthenticated, err)
+	}
+
+	// A token with no "jti" is refused for the reason one with no family claim
+	// is: a checker that refuses superseded tokens compares the token's ID, and
+	// a token that carries none is not one signin.DefaultClaims' issuer minted.
+	// It is the checker that says so rather than this method, because only a
+	// checker that refuses superseded tokens reads the ID at all.
+	if errors.Is(err, signin.ErrEmptyTokenID) {
+		return platformerrors.Join(platformerrors.Wrap(ErrNotASignInToken, "no \"jti\" claim"), err)
+	}
+
+	return err
+}
+
 // withOrdinaryServiceRoles is the principal an ordinary-door token carries: the
 // directory's answer with the user's service roles narrowed to what the policy
 // keeps. The directory's value is copied rather than edited, so a directory
@@ -531,10 +611,12 @@ func (e *PrincipalExtractor) withOrdinaryServiceRoles(ctx context.Context, princ
 	return &narrowed
 }
 
-// refusesTheCaller reports whether a directory error is an answer about the
-// caller rather than a failure to give one.
+// refusesTheCaller reports whether a directory error, or a sign-in check's, is
+// an answer about the caller rather than a failure to give one.
 func refusesTheCaller(err error) bool {
-	return errors.Is(err, identity.ErrSignInNotAdmitted) ||
+	return errors.Is(err, signin.ErrSignInEnded) ||
+		errors.Is(err, signin.ErrSignInSuperseded) ||
+		errors.Is(err, identity.ErrSignInNotAdmitted) ||
 		errors.Is(err, identity.ErrUserNotFound) ||
 		errors.Is(err, identity.ErrMembershipNotFound) ||
 		errors.Is(err, platformerrors.ErrInvalidIDProvided) ||

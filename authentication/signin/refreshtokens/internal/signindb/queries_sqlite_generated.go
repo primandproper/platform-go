@@ -19,6 +19,26 @@ WHERE hash = ?2
 	AND scope = ?3
 	AND redeemed_with_key = ?4`
 
+const getLiveRefreshTokenForFamilySQLite = `SELECT
+	{{prefix}}signin_refresh_tokens.scope,
+	{{prefix}}signin_refresh_tokens.family_id,
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.active_account_id,
+	{{prefix}}signin_refresh_tokens.administrative,
+	{{prefix}}signin_refresh_tokens.issued_at,
+	{{prefix}}signin_refresh_tokens.signed_in_at,
+	{{prefix}}signin_refresh_tokens.expires_at,
+	{{prefix}}signin_refresh_tokens.purge_after,
+	{{prefix}}signin_refresh_tokens.redeemed_at,
+	{{prefix}}signin_refresh_tokens.revoked_at,
+	{{prefix}}signin_refresh_tokens.access_token_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?1
+	AND {{prefix}}signin_refresh_tokens.family_id = ?2
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?3`
+
 const getRefreshTokenSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.scope,
 	{{prefix}}signin_refresh_tokens.family_id,
@@ -30,7 +50,8 @@ const getRefreshTokenSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.expires_at,
 	{{prefix}}signin_refresh_tokens.purge_after,
 	{{prefix}}signin_refresh_tokens.redeemed_at,
-	{{prefix}}signin_refresh_tokens.revoked_at
+	{{prefix}}signin_refresh_tokens.revoked_at,
+	{{prefix}}signin_refresh_tokens.access_token_id
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = ?1
 	AND {{prefix}}signin_refresh_tokens.scope = ?2`
@@ -53,7 +74,8 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	issued_at,
 	signed_in_at,
 	expires_at,
-	purge_after
+	purge_after,
+	access_token_id
 ) VALUES (
 	?1,
 	?2,
@@ -64,7 +86,8 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	?7,
 	?8,
 	?9,
-	?10
+	?10,
+	?11
 )`
 
 const listLiveRefreshTokenFamiliesSQLite = `SELECT
@@ -136,6 +159,7 @@ WHERE purge_after <= ?1`
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
 	claimRefreshTokenRemint            string
+	getLiveRefreshTokenForFamily       string
 	getRefreshToken                    string
 	getRefreshTokenRedemption          string
 	insertRefreshToken                 string
@@ -155,6 +179,7 @@ type sqliteQueries struct {
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
 		claimRefreshTokenRemint:            strings.ReplaceAll(claimRefreshTokenRemintSQLite, prefixMarker, prefix),
+		getLiveRefreshTokenForFamily:       strings.ReplaceAll(getLiveRefreshTokenForFamilySQLite, prefixMarker, prefix),
 		getRefreshToken:                    strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
 		getRefreshTokenRedemption:          strings.ReplaceAll(getRefreshTokenRedemptionSQLite, prefixMarker, prefix),
 		insertRefreshToken:                 strings.ReplaceAll(insertRefreshTokenSQLite, prefixMarker, prefix),
@@ -215,6 +240,34 @@ func (q *sqliteQueries) ClaimRefreshTokenRemint(ctx context.Context, db DBTX, ar
 	return result.RowsAffected()
 }
 
+// GetLiveRefreshTokenForFamily runs the :one query against sqlite.
+func (q *sqliteQueries) GetLiveRefreshTokenForFamily(ctx context.Context, db DBTX, arg GetLiveRefreshTokenForFamilyParams) (GetLiveRefreshTokenForFamilyRow, error) {
+	row := db.QueryRowContext(ctx, q.getLiveRefreshTokenForFamily,
+		arg.Scope,
+		arg.FamilyID,
+		timeText(arg.Now),
+	)
+
+	var i GetLiveRefreshTokenForFamilyRow
+
+	err := row.Scan(
+		&i.Scope,
+		&i.FamilyID,
+		&i.SubjectID,
+		&i.ActiveAccountID,
+		&i.Administrative,
+		&i.IssuedAt,
+		&i.SignedInAt,
+		&i.ExpiresAt,
+		&i.PurgeAfter,
+		&i.RedeemedAt,
+		&i.RevokedAt,
+		&i.AccessTokenID,
+	)
+
+	return i, err
+}
+
 // GetRefreshToken runs the :one query against sqlite.
 func (q *sqliteQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRefreshTokenParams) (GetRefreshTokenRow, error) {
 	row := db.QueryRowContext(ctx, q.getRefreshToken,
@@ -236,6 +289,7 @@ func (q *sqliteQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRef
 		&i.PurgeAfter,
 		&i.RedeemedAt,
 		&i.RevokedAt,
+		&i.AccessTokenID,
 	)
 
 	return i, err
@@ -271,6 +325,7 @@ func (q *sqliteQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Ins
 		timeText(arg.SignedInAt),
 		timeText(arg.ExpiresAt),
 		timeText(arg.PurgeAfter),
+		arg.AccessTokenID,
 	)
 
 	return err
@@ -444,6 +499,25 @@ var (
 		ExpectedKey     *string
 	}(ClaimRefreshTokenRemintParams{})
 	_ = struct {
+		Scope    tenancy.Scope
+		FamilyID string
+		Now      time.Time
+	}(GetLiveRefreshTokenForFamilyParams{})
+	_ = struct {
+		Scope           tenancy.Scope
+		FamilyID        string
+		SubjectID       string
+		ActiveAccountID string
+		Administrative  bool
+		IssuedAt        time.Time
+		SignedInAt      time.Time
+		ExpiresAt       time.Time
+		PurgeAfter      time.Time
+		RedeemedAt      *time.Time
+		RevokedAt       *time.Time
+		AccessTokenID   *string
+	}(GetLiveRefreshTokenForFamilyRow{})
+	_ = struct {
 		Hash  string
 		Scope tenancy.Scope
 	}(GetRefreshTokenParams{})
@@ -459,6 +533,7 @@ var (
 		PurgeAfter      time.Time
 		RedeemedAt      *time.Time
 		RevokedAt       *time.Time
+		AccessTokenID   *string
 	}(GetRefreshTokenRow{})
 	_ = struct {
 		Hash  string
@@ -479,6 +554,7 @@ var (
 		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		PurgeAfter      time.Time
+		AccessTokenID   *string
 	}(InsertRefreshTokenParams{})
 	_ = struct {
 		Scope       tenancy.Scope
