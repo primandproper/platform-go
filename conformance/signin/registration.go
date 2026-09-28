@@ -262,4 +262,60 @@ func registration(t *testing.T, s *conformance.Session) {
 		test.StrNotContains(t, registered.String(), link,
 			test.Sprint("the registration's answer carried the verification link"))
 	})
+
+	// A sender who copied an invitation's link holds the link the mail
+	// carries, and it does what the mailed one does: registers the person it
+	// was addressed to into the inviting account. Somebody else registering
+	// with it is refused as a wrong token is, and the refusal leaves the link
+	// standing for the person it was meant for.
+	t.Run("a copied invitation link registers the addressed person into the inviting account", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().InvitationTokenReturned {
+			t.Skip("conformance: this subject does not return an invitation's token to its sender (Seams.InvitationTokenReturned), so there is no copied link; skipping")
+		}
+
+		inviter := directoryCaller(t, s, invite)
+		if inviter.AccountID == "" {
+			t.Skip("conformance: this subject does not surface the inviter's account, so there is no account to be invited into; skipping")
+		}
+
+		addressed := freshEmail()
+
+		invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
+			AccountId: inviter.AccountID,
+			ToEmail:   addressed,
+			ToName:    "Some Body",
+			Roles:     []string{s.Roles().Membership[0]},
+		})
+		must.NoError(t, err, must.Sprint("inviting somebody who has not registered"))
+
+		link := &signinpb.RegistrationInvitation{
+			InvitationId: invited.GetInvitation().GetId(),
+			Token:        invited.GetToken(),
+		}
+		must.NotEqOp(t, "", link.GetToken(), must.Sprint("a subject that returns the token returned none"))
+
+		by := registrar(t, s)
+
+		stranger := withPassword(registrationRequest(s))
+		stranger.Account, stranger.OwnerRoles = nil, nil
+		stranger.Invitation = link
+
+		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), stranger)
+		must.Error(t, err, must.Sprint("a copied link registered somebody it was not addressed to"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
+
+		request := withPassword(registrationRequest(s))
+		request.User.EmailAddress = addressed
+		request.Account, request.OwnerRoles = nil, nil
+		request.Invitation = link
+
+		_, registered := register(t, s, request)
+
+		test.Nil(t, registered.GetAccount(), test.Sprint("a registration by invitation minted an account of its own"))
+		test.EqOp(t, inviter.AccountID, registered.GetMembership().GetBelongsToAccount(),
+			test.Sprint("a copied link registered its addressee somewhere other than the inviting account"))
+		test.EqOp(t, identitypb.InvitationStatus_INVITATION_STATUS_ACCEPTED, registered.GetInvitation().GetStatus())
+	})
 }

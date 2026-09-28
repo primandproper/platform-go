@@ -172,7 +172,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Audit:         &auditcfg.Config{Dialect: d, TablePrefix: prefix},
 		Billing:       &billingcfg.Config{TablePrefix: prefix},
 		Comments:      &commentscfg.Config{TablePrefix: prefix},
-		Identity:      &identitycfg.Config{TablePrefix: prefix},
+		Identity:      &identitycfg.Config{TablePrefix: prefix, ReturnInvitationToken: true},
 		IssueReports:  &issuereportscfg.Config{TablePrefix: prefix},
 		Notifications: &notificationscfg.Config{TablePrefix: prefix},
 		Settings:      &settingscfg.Config{TablePrefix: prefix},
@@ -245,11 +245,16 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// the way a consumer's main installs it: its interceptor in the chain, its
 	// middleware on the router, and it named to Transports as the extractor
 	// and the grants every surface reads. service builds none of this.
+	//
+	// It checks each token's login as well, which is the per-request read a
+	// deployment buys immediate revocation with, and what lets this harness
+	// declare Seams.ImmediateRevocation.
 	extractor, err := signingrpc.NewPrincipalExtractor(
 		do.MustInvoke[tokens.Issuer](i),
 		do.MustInvoke[database.Client](i),
 		do.MustInvoke[identity.Store](i),
 		signingrpc.WithGrants(grantsOf),
+		signingrpc.WithSignInCheck(do.MustInvoke[*signin.Service](i)),
 	)
 	must.NoError(t, err)
 
@@ -463,10 +468,19 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				return &bearerConn{ClientConnInterface: conn, token: issued.GetToken(), reserving: reserving}, nil
 			},
 
+			// The extractor above checks every token's login on every request.
+			ImmediateRevocation: true,
+
 			// The one target type registerApplication declares, for the reads that
 			// name a target without writing to it. Its writes go through
 			// CommentTarget, since the type checks that a target exists.
 			CommentTargetType: string(thingType),
+
+			// The identity block above returns an invitation's token to its
+			// sender, so the suites assert that reading here and the
+			// identity harness, built on the server's default, asserts the
+			// other.
+			InvitationTokenReturned: true,
 
 			Dialect: d,
 

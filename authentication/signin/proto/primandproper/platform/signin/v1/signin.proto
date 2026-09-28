@@ -310,13 +310,14 @@ message ExchangeRefreshTokenResponse {
 // detection does -- so this is the same act performed on purpose, with the
 // server told that it was deliberate rather than having to assume theft.
 //
-// What it cannot do is stop an access token already in somebody's hands. Nothing
-// here can: an access token is checked by the consumer's interceptor against the
-// issuer's signature and not against any table this service holds. What it stops
-// is that token being replaced, so a sign-out takes effect within one
-// access-token lifetime. A deployment that needs it to take effect sooner is
-// asking for shorter access tokens, which is signin.WithTokenTTL, rather than
-// for another RPC.
+// What it does on its own is stop the access token already in somebody's hands
+// being replaced, so a sign-out takes effect within one access-token lifetime:
+// an access token is checked by the consumer's interceptor against the issuer's
+// signature rather than against any table this service holds. A deployment that
+// needs it to take effect at once has its interceptor ask
+// signin.Service.CheckSignIn on every request -- the sign-in extractor's
+// WithSignInCheck -- which refuses the ended login's access token from the next
+// request on, rather than asking for another RPC.
 message SignOutRequest {
   reserved "scope";
 
@@ -446,6 +447,29 @@ message EndSignInRequest {
 
 // EndSignInResponse is empty -- see SignOutResponse.
 message EndSignInResponse {}
+
+// EndOtherSignInsRequest ends every login the calling user holds except the one
+// the request was made through: "sign out my other devices".
+//
+// It names nobody and no login. The subject is the caller, and the login it
+// keeps is read off the caller's access token -- its "sid" claim, the family_id
+// ListSignIns marks current -- rather than taken from a field, so a request
+// cannot keep a login other than its own. A caller whose token names no login is
+// refused with FAILED_PRECONDITION and the reason SIGN_IN_NOT_IDENTIFIED rather
+// than having every login ended: that is SignOutEverywhere, which is a request a
+// client makes on purpose.
+//
+// It is one revocation on the server rather than ListSignIns followed by an
+// EndSignIn for each entry, and that is what it is for. The loop decides which
+// logins are "other" a round trip before it ends them, so one made in between
+// survives; here the decision and the revocation are the same statement.
+message EndOtherSignInsRequest {
+  reserved "scope";
+}
+
+// EndOtherSignInsResponse is empty -- see SignOutResponse. A client that wants
+// to show what is left calls ListSignIns.
+message EndOtherSignInsResponse {}
 
 // GetAuthStatusRequest names nobody. The subject is whoever is calling, and a
 // field naming somebody else would be a directory read wearing a whoami's
@@ -871,12 +895,14 @@ service SignInService {
   rpc SignOut(SignOutRequest) returns (SignOutResponse);
   rpc SignOutEverywhere(SignOutEverywhereRequest) returns (SignOutEverywhereResponse);
 
-  // The screen between those two sizes: the calling user's live logins, and
-  // ending one of them by name. Both need a caller and name nobody else; an
-  // operator doing either for somebody else calls signin.Service's methods
-  // through their own administrative surface.
+  // The screen between those two sizes: the calling user's live logins, ending
+  // one of them by name, and ending all of them but the one asking. All three
+  // need a caller and name nobody else; an operator doing any of them for
+  // somebody else calls signin.Service's methods through their own
+  // administrative surface.
   rpc ListSignIns(ListSignInsRequest) returns (ListSignInsResponse);
   rpc EndSignIn(EndSignInRequest) returns (EndSignInResponse);
+  rpc EndOtherSignIns(EndOtherSignInsRequest) returns (EndOtherSignInsResponse);
 
   // The two reads a client makes on load.
   rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);

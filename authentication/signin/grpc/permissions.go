@@ -108,6 +108,8 @@ func RegistrarMethods() []string {
 // password — or list or end their logins, or mail them a verification link —
 // because the method has no way to name one. EndSignIn names a login, and the service matches it against the
 // caller as well, so a family identifier that is somebody else's ends nothing.
+// EndOtherSignIns names nothing at all: the login it keeps is read off the
+// caller's own token.
 func SelfServiceMethods() []string {
 	return []string{
 		signinpb.SignInService_GetSelf_FullMethodName,
@@ -117,6 +119,7 @@ func SelfServiceMethods() []string {
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
 		signinpb.SignInService_ListSignIns_FullMethodName,
 		signinpb.SignInService_EndSignIn_FullMethodName,
+		signinpb.SignInService_EndOtherSignIns_FullMethodName,
 		signinpb.SignInService_RequestVerificationEmail_FullMethodName,
 	}
 }

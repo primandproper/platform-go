@@ -19,6 +19,29 @@ type ClaimRefreshTokenRemintParams struct {
 	ExpectedKey     *string
 }
 
+// GetLiveRefreshTokenForFamilyParams are the arguments to GetLiveRefreshTokenForFamily.
+type GetLiveRefreshTokenForFamilyParams struct {
+	Scope    tenancy.Scope
+	FamilyID string
+	Now      time.Time
+}
+
+// GetLiveRefreshTokenForFamilyRow is one row of GetLiveRefreshTokenForFamily's result.
+type GetLiveRefreshTokenForFamilyRow struct {
+	Scope           tenancy.Scope
+	FamilyID        string
+	SubjectID       string
+	ActiveAccountID string
+	Administrative  bool
+	IssuedAt        time.Time
+	SignedInAt      time.Time
+	ExpiresAt       time.Time
+	PurgeAfter      time.Time
+	RedeemedAt      *time.Time
+	RevokedAt       *time.Time
+	AccessTokenID   *string
+}
+
 // GetRefreshTokenParams are the arguments to GetRefreshToken.
 type GetRefreshTokenParams struct {
 	Hash  string
@@ -38,6 +61,7 @@ type GetRefreshTokenRow struct {
 	PurgeAfter      time.Time
 	RedeemedAt      *time.Time
 	RevokedAt       *time.Time
+	AccessTokenID   *string
 }
 
 // GetRefreshTokenRedemptionParams are the arguments to GetRefreshTokenRedemption.
@@ -64,6 +88,7 @@ type InsertRefreshTokenParams struct {
 	SignedInAt      time.Time
 	ExpiresAt       time.Time
 	PurgeAfter      time.Time
+	AccessTokenID   *string
 }
 
 // ListLiveRefreshTokenFamiliesParams are the arguments to ListLiveRefreshTokenFamilies.
@@ -82,6 +107,64 @@ type ListLiveRefreshTokenFamiliesRow struct {
 	IssuedAt        time.Time
 	SignedInAt      time.Time
 	ExpiresAt       time.Time
+}
+
+// LockLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockLiveRefreshTokenFamiliesForSubject.
+type LockLiveRefreshTokenFamiliesForSubjectParams struct {
+	Scope       tenancy.Scope
+	SubjectID   string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamiliesForSubjectRow is one row of LockLiveRefreshTokenFamiliesForSubject's result.
+type LockLiveRefreshTokenFamiliesForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
+// LockLiveRefreshTokenFamilyParams are the arguments to LockLiveRefreshTokenFamily.
+type LockLiveRefreshTokenFamilyParams struct {
+	Scope       tenancy.Scope
+	FamilyID    string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamilyRow is one row of LockLiveRefreshTokenFamily's result.
+type LockLiveRefreshTokenFamilyRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
+// LockLiveRefreshTokenFamilyForSubjectParams are the arguments to LockLiveRefreshTokenFamilyForSubject.
+type LockLiveRefreshTokenFamilyForSubjectParams struct {
+	Scope       tenancy.Scope
+	SubjectID   string
+	FamilyID    string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamilyForSubjectRow is one row of LockLiveRefreshTokenFamilyForSubject's result.
+type LockLiveRefreshTokenFamilyForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
+// LockOtherLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockOtherLiveRefreshTokenFamiliesForSubject.
+type LockOtherLiveRefreshTokenFamiliesForSubjectParams struct {
+	Scope        tenancy.Scope
+	SubjectID    string
+	KeepFamilyID string
+	Now          time.Time
+	ResultLimit  int64
+}
+
+// LockOtherLiveRefreshTokenFamiliesForSubjectRow is one row of LockOtherLiveRefreshTokenFamiliesForSubject's result.
+type LockOtherLiveRefreshTokenFamiliesForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
 }
 
 // RecordRefreshTokenSuccessorParams are the arguments to RecordRefreshTokenSuccessor.
@@ -120,21 +203,6 @@ type RevokeRefreshTokenFamilyParams struct {
 	RevokedAt *time.Time
 	Scope     tenancy.Scope
 	FamilyID  string
-}
-
-// RevokeRefreshTokenFamilyForSubjectParams are the arguments to RevokeRefreshTokenFamilyForSubject.
-type RevokeRefreshTokenFamilyForSubjectParams struct {
-	RevokedAt *time.Time
-	Scope     tenancy.Scope
-	SubjectID string
-	FamilyID  string
-}
-
-// RevokeRefreshTokensForSubjectParams are the arguments to RevokeRefreshTokensForSubject.
-type RevokeRefreshTokensForSubjectParams struct {
-	RevokedAt *time.Time
-	Scope     tenancy.Scope
-	SubjectID string
 }
 
 // SweepRefreshTokensParams are the arguments to SweepRefreshTokens.

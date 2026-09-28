@@ -3,6 +3,7 @@ package refreshtokens
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -274,21 +275,43 @@ func revokeFamily(tb testing.TB, store *SQLStore, scope tenancy.Scope, familyID 
 	return revoked, err
 }
 
-// revokeForSubject ends every login one person holds, in a transaction of its
-// own.
-func revokeForSubject(tb testing.TB, store *SQLStore, scope tenancy.Scope, subjectID string) (int64, error) {
+// endSignIns ends the live logins selector names, in a transaction of its own.
+func endSignIns(tb testing.TB, store *SQLStore, scope tenancy.Scope, selector signin.SignInSelector) ([]*signin.EndedSignIn, error) {
 	tb.Helper()
 
-	var revoked int64
+	var ended []*signin.EndedSignIn
 
 	err := withTx(tb, store, func(tx database.Tx) error {
-		var revokeErr error
-		revoked, revokeErr = store.RevokeForSubject(tb.Context(), tx, scope, subjectID)
+		var endErr error
+		ended, endErr = store.EndSignIns(tb.Context(), tx, scope, selector)
 
-		return revokeErr
+		return endErr
 	})
 
-	return revoked, err
+	return ended, err
+}
+
+// endedFamilies is the families a revocation reported ending, sorted, since the
+// store answers them in lock order rather than in any order a test minted them.
+func endedFamilies(ended []*signin.EndedSignIn) []string {
+	ids := make([]string, 0, len(ended))
+	for _, e := range ended {
+		ids = append(ids, e.FamilyID)
+	}
+
+	slices.Sort(ids)
+
+	return ids
+}
+
+// endedRevoked is how many refresh tokens a revocation reported withdrawing.
+func endedRevoked(ended []*signin.EndedSignIn) int64 {
+	var revoked int64
+	for _, e := range ended {
+		revoked += e.Revoked
+	}
+
+	return revoked
 }
 
 // recordingLogger counts what was logged as an error, for the one code path in

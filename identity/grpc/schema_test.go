@@ -48,6 +48,12 @@ func TestNoResponseMessageCarriesASecret(T *testing.T) {
 	// which is the only direction a token travels here.
 	tokenBearingRequests := []string{"AcceptInvitationRequest", "RejectInvitationRequest"}
 
+	// The one response allowed a token, and only the field named token: the
+	// invitation's link handed back to its sender, empty unless the server was
+	// built WithInvitationTokenReturned. Anything else forbidden on it still
+	// fails, and so does a token on any other response.
+	senderCopies := map[string]string{"InviteResponse": "token"}
+
 	file := identityFileDescriptor(T)
 	messages := file.Messages()
 
@@ -65,6 +71,10 @@ func TestNoResponseMessageCarriesASecret(T *testing.T) {
 			fields := msg.Fields()
 			for j := range fields.Len() {
 				field := string(fields.Get(j).Name())
+				if senderCopies[name] == field {
+					continue
+				}
+
 				test.False(t, slices.Contains(forbidden, field), test.Sprintf(
 					"%s.%s puts a credential on the wire", name, field))
 			}

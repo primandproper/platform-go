@@ -101,14 +101,22 @@ const (
 	opSignOut              = "sign_out"
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
+	opSignOutEverywhere    = "sign_out_everywhere"
 	opUpdatePassword       = "update_password"
 
 	// Listing a person's logins and ending one of them are two series of their
 	// own. Ending one is not folded into revoke_refresh_token_family for the
 	// reason signing out is not: it is a person's decision, and that series is
 	// where a detected reuse's alarm lands.
-	opListSignIns = "list_sign_ins"
-	opEndSignIn   = "end_sign_in"
+	opListSignIns     = "list_sign_ins"
+	opEndSignIn       = "end_sign_in"
+	opEndOtherSignIns = "end_other_sign_ins"
+
+	// Checking a login is a series of its own, and the one a deployment that
+	// makes it on every request will see dwarf the rest: what a dashboard asks
+	// of it is what the per-request read costs, which folded into anything else
+	// would be a latency nobody could attribute.
+	opCheckSignIn = "check_sign_in"
 
 	// The registration door and the ones that finish it. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
@@ -338,8 +346,10 @@ type AuthStatus struct {
 
 	// RequiresPasswordChange reports whether an operator has forced a password
 	// change. This service still signs such a user in — the alternative is a
-	// user who cannot reach the form — so it is the client's job to send them
-	// to it, and this is how they are told.
+	// user who cannot reach the form — and this is how a client is told to
+	// send them to it. What holds them there is signin/grpc's
+	// PasswordChangeGate, which refuses their other calls with
+	// ErrPasswordChangeRequired until the change is made.
 	RequiresPasswordChange bool `json:"requiresPasswordChange"`
 
 	// EmailAddressVerified reports whether their address has been proven
@@ -455,6 +465,11 @@ type Service struct {
 	// store.
 	magicLinkMailer MagicLinkMailer
 
+	// What the options wrote, kept only until the observer is built from it.
+	logger          logging.Logger
+	tracerProvider  tracing.Provider
+	metricsProvider metrics.Provider
+
 	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
 	// any password that is not empty.
 	passwordPolicy PasswordPolicy
@@ -466,11 +481,6 @@ type Service struct {
 	// registrationPolicy is nil until WithRegistrationPolicy names one, and nil
 	// registers exactly what the request named.
 	registrationPolicy RegistrationPolicy
-
-	// What the options wrote, kept only until the observer is built from it.
-	logger          logging.Logger
-	tracerProvider  tracing.Provider
-	metricsProvider metrics.Provider
 
 	claims ClaimsBuilder
 
@@ -497,6 +507,10 @@ type Service struct {
 	// which refuses a zero one — see DefaultVerificationLinkTTL.
 	verificationLinkTTL time.Duration
 	magicLinkFloor      time.Duration
+
+	// refuseSuperseded is WithSupersededTokenRefusal, and false is what "an
+	// access token stands until its login ends" means to CheckSignIn.
+	refuseSuperseded bool
 
 	secondFactor SecondFactorPolicy
 }

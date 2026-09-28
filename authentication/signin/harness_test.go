@@ -510,7 +510,15 @@ func (f *fakeIssuer) IssueToken(
 		return "", "", f.err
 	}
 
-	return "token-for-" + subject, "jti-" + subject, nil
+	// The first token a subject is issued is "jti-<subject>", and each after it
+	// is numbered, so a login that refreshes holds a different access token
+	// from the one it began with — which is what a superseded check compares.
+	jti = "jti-" + subject
+	if f.calls > 1 {
+		jti = fmt.Sprintf("%s-%d", jti, f.calls)
+	}
+
+	return "token-for-" + subject, jti, nil
 }
 
 // recordingHooks records every call, and can be made to fail one of them.
@@ -533,6 +541,10 @@ type recordingHooks struct {
 	refreshErr    error
 	verifyTOTPErr error
 
+	// revokeErr fails the revocation hook, so a test can prove the revocation
+	// it follows rolls back with it.
+	revokeErr error
+
 	// verified is the user the second-factor hook was handed: the row the
 	// directory's write answered with, rather than the copy read before it.
 	verified *identity.User
@@ -553,6 +565,7 @@ type recordingHooks struct {
 	verifieds       []*signin.Verification
 	resent          []*identity.User
 	magicLinked     []*identity.User
+	revocations     []*signin.Revocation
 
 	passwords,
 	refreshes,
@@ -662,6 +675,18 @@ func (h *recordingHooks) AfterVerifyTOTPSecret(
 	h.verified = user
 
 	return h.verifyTOTPErr
+}
+
+func (h *recordingHooks) AfterRevokeSignIns(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	revocation *signin.Revocation,
+) error {
+	h.calls = append(h.calls, "revoke")
+	h.revocations = append(h.revocations, revocation)
+
+	return h.revokeErr
 }
 
 // stubAuthenticator is an Authenticator with no argon2 behind it, for the tests

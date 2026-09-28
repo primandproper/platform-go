@@ -237,7 +237,7 @@ revoking a role has no effect until the token expires."*
 | field | what a client owes |
 | --- | --- |
 | `user`, `active_account_id`, `account_ids` | who this is, where they are, and everywhere they could be |
-| `requires_password_change` | an operator forced one. The service still signs them in — *"the alternative is a user who cannot reach the form"* — so routing them to it is the client's job |
+| `requires_password_change` | an operator forced one. The service still signs them in — *"the alternative is a user who cannot reach the form"* — so routing them to it is the client's job. From v14.2.0 the server holds them there too: every other call answers `FAILED_PRECONDITION`, reason `PASSWORD_CHANGE_REQUIRED`, until the change is made — save `GetAuthStatus`, `GetSelf`, `GetPrincipal`, the change itself (`UpdatePassword` or a reset), the sign-out and login-ending RPCs, and the doors |
 | `email_address_verified` | false means an unfinished registration; the remedy is the mailed link |
 | `has_password` | false is a passwordless user, and offering them a change-password form *"is offering them a form that cannot work"* |
 | `two_factor_enrolled` | a secret issued and never verified is not one |
@@ -339,11 +339,13 @@ all of them with an empty `SignOutResponse`. So a client never shows an error fo
 and never needs to: pressing it twice, or pressing it on a session that had already lapsed, is
 the ordinary case.
 
-**What neither one stops is an access token already issued.** Nothing can — it is checked
-against the issuer's signature rather than against any table — so a sign-out takes effect
-within one access-token lifetime. A client should therefore `clear()` locally as well, which it
-was going to do anyway, and a deployment that needs the window shorter shortens the access
-token.
+**What neither one stops, by default, is an access token already issued.** It is checked
+against the issuer's signature rather than against any table, so a sign-out takes effect within
+one access-token lifetime. A deployment whose extractor checks each token's login on every
+request (`signin.Service.CheckSignIn`, through the extractor's `WithSignInCheck`) closes that
+window: the ended login's access token is `UNAUTHENTICATED` from its next request. A client
+cannot tell which deployment it is talking to, so it should `clear()` locally either way, which
+it was going to do anyway.
 
 **R17 — a `signOut()` that only clears local state is a lie on a shared device.** It is one
 extra call, it cannot fail in a way worth reporting, and without it the refresh token stays
@@ -368,13 +370,24 @@ that told them apart would say which identifiers are live. So a client removes t
 re-lists; it never branches on the answer. Ending the `current` login is allowed and is a
 sign-out, with the same one-access-token-lifetime window as the other two.
 
+`EndOtherSignIns` is "sign out my other devices": every login the caller holds ends except the
+one the request came through. It names nothing — the login it keeps is the access token's `sid`,
+read off the principal — and it is one revocation on the server, so a client should call it rather
+than `ListSignIns` plus an `EndSignIn` per row, which lets a login made in between survive.
+
+**`EndOtherSignIns` is refused, never widened, when the server cannot tell which login is
+asking.** A principal without the `sid` is `FAILED_PRECONDITION` with reason
+`SIGN_IN_NOT_IDENTIFIED`; nothing is ended. It is the same wiring gap that leaves `current` false,
+and a client that wants every login ended regardless calls `SignOutEverywhere`.
+
 No device, browser or address is listed, and none will be: whether those are recorded at all is
 the consumer's decision, keyed on `family_id` from the `AfterIssueToken` hook, and a client that
 shows them reads them from the consumer's own surface.
 
 An operator listing or ending somebody else's sessions is not here and will not be: these RPCs
 name nobody, so there is no field an administrator could use. That act is a Go-side call —
-`signin.Service.ListSignIns` and `signin.Service.EndSignIn` take the subject as an argument —
+`signin.Service.ListSignIns`, `signin.Service.EndSignIn` and `signin.Service.EndOtherSignIns`
+take the subject as an argument —
 behind the consumer's own administrative surface.
 
 ## Errors
@@ -546,6 +559,8 @@ error details. Everything outside sign-in is [R13](#errors): the code, and nothi
 | `PASSWORD_ALREADY_SET` | `FAILED_PRECONDITION` | attaching a password to somebody who holds one; it is a change, not an attach |
 | `EMAIL_ADDRESS_ALREADY_VERIFIED` | `FAILED_PRECONDITION` | asking for another verification link for an address already proven; there is nothing to verify, so stop offering the button |
 | `NO_CREDENTIAL_NAMED` | `INVALID_ARGUMENT` | a registration that did not say how the user will sign in; fix the request |
+| `PASSWORD_CHANGE_REQUIRED` | `FAILED_PRECONDITION` | an operator forced a password change and this call is not one that makes it; send them to the form, then retry. From v14.2.0; over HTTP it is a `403` |
+| `SIGN_IN_NOT_IDENTIFIED` | `FAILED_PRECONDITION` | `EndOtherSignIns` from a token naming no login; nothing was ended, and `SignOutEverywhere` is the door that needs no `sid` |
 
 That is the whole set, and its edges are both load-bearing. A sign-in refusal absent from it
 carries no reason at all, which is how **R7 survives this**: a reused, expired or revoked
