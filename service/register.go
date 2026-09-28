@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"slices"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
@@ -38,7 +37,6 @@ import (
 	capitalismcfg "github.com/primandproper/primitives-go/v2/capitalism/config"
 	circuitbreakingcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/config"
 	partitionedcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/partitioned/config"
-	"github.com/primandproper/primitives-go/v2/config/injection"
 	cookiescfg "github.com/primandproper/primitives-go/v2/cookies/config"
 	encryptioncfg "github.com/primandproper/primitives-go/v2/cryptography/encryption/config"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
@@ -48,7 +46,6 @@ import (
 	"github.com/primandproper/primitives-go/v2/encoding"
 	eventstreamcfg "github.com/primandproper/primitives-go/v2/eventstream/config"
 	featureflagscfg "github.com/primandproper/primitives-go/v2/featureflags/config"
-	"github.com/primandproper/primitives-go/v2/healthcheck"
 	"github.com/primandproper/primitives-go/v2/httpclient"
 	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	llmcfg "github.com/primandproper/primitives-go/v2/llm/config"
@@ -71,7 +68,6 @@ import (
 	inboundcfg "github.com/primandproper/primitives-go/v2/webhooks/inbound/config"
 
 	"github.com/samber/do/v2"
-	"google.golang.org/grpc"
 )
 
 // Register walks cfg and registers every subsystem it names with i.
@@ -740,73 +736,6 @@ func registerServers(i do.Injector, cfg *Config) {
 
 	if cfg.GRPCServer != nil {
 		do.ProvideValue(i, cfg.GRPCServer)
-		registerGRPCServer(i)
+		grpcserver.RegisterGRPCServer(i)
 	}
-}
-
-// registerGRPCServer is grpcserver.RegisterGRPCServer with one thing added:
-// the forced-password-change gate RegisterTransports built, installed after
-// every interceptor the application registered.
-//
-// It is here rather than in the application's interceptor list because the
-// gate is on by default, and a default a consumer has to remember to install
-// is not one. It has to be innermost because it reads the caller the
-// application's authentication interceptor resolved, and the application's
-// list is the one place this package cannot put anything into, so the gate is
-// appended to it here. A service whose RegisterTransports built no gate — no
-// sign-in surface, Transports.PasswordChange.Disabled, or no
-// RegisterTransports at all — gets exactly the server
-// grpcserver.RegisterGRPCServer would have built.
-func registerGRPCServer(i do.Injector) {
-	do.Provide(i, func(i do.Injector) (*grpcserver.Server, error) {
-		pillars, err := observability.InvokePillars(i)
-		if err != nil {
-			return nil, err
-		}
-
-		registry, err := injection.InvokeOptional[healthcheck.Registry](i)
-		if err != nil {
-			return nil, err
-		}
-
-		mounted, err := injection.InvokeOptional[*mountedTransports](i)
-		if err != nil {
-			return nil, err
-		}
-
-		unary, stream := innermostGate(
-			do.MustInvoke[[]grpc.UnaryServerInterceptor](i),
-			do.MustInvoke[[]grpc.StreamServerInterceptor](i),
-			mounted,
-		)
-
-		return grpcserver.NewGRPCServer(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*grpcserver.Config](i),
-			unary,
-			stream,
-			do.MustInvoke[[]grpcserver.RegistrationFunc](i),
-			grpcserver.WithLogger(pillars.Logger),
-			grpcserver.WithTracerProvider(pillars.TracerProvider),
-			grpcserver.WithHealthRegistry(registry),
-		)
-	})
-}
-
-// innermostGate appends the gate mounted built, if it built one, to the end of
-// the application's interceptors — the last to run before a handler, and so
-// after the authentication interceptor it reads. The application's slices are
-// clipped first, so the append never writes into an array the application
-// still holds.
-func innermostGate(
-	unary []grpc.UnaryServerInterceptor,
-	stream []grpc.StreamServerInterceptor,
-	mounted *mountedTransports,
-) ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
-	if mounted == nil || mounted.gate == nil {
-		return unary, stream
-	}
-
-	return append(slices.Clip(unary), mounted.gate.UnaryServerInterceptor()),
-		append(slices.Clip(stream), mounted.gate.StreamServerInterceptor())
 }

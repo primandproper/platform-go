@@ -15,6 +15,7 @@ import (
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/callers"
+	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -150,14 +151,26 @@ func TestDirectoryPasswordChange(T *testing.T) {
 		test.True(t, owed)
 	})
 
-	T.Run("reports a directory that cannot answer", func(t *testing.T) {
+	T.Run("a principal the directory does not hold owes nothing", func(t *testing.T) {
 		t.Parallel()
 
 		h := newExtractorHarness(t)
 		required, err := signingrpc.DirectoryPasswordChange(h.db, h.store)
 		must.NoError(t, err)
 
-		_, err = required(t.Context(), &testPrincipal{userID: "nobody-by-that-id", scope: testScope})
+		owed, err := required(t.Context(), &testPrincipal{userID: "nobody-by-that-id", scope: testScope})
+		must.NoError(t, err)
+		test.False(t, owed)
+	})
+
+	T.Run("reports a directory that cannot answer", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		required, err := signingrpc.DirectoryPasswordChange(h.db, brokenDirectory{})
+		must.NoError(t, err)
+
+		_, err = required(t.Context(), &testPrincipal{userID: h.member.User.ID, scope: testScope})
 		test.Error(t, err)
 	})
 }
@@ -176,19 +189,14 @@ func TestPasswordChangeGate_interceptors(T *testing.T) {
 	T.Parallel()
 
 	// dial serves the sign-in surface behind the chain a deployment builds: the
-	// error encoder, the authentication interceptor, and the gate innermost.
-	dial := func(t *testing.T, h *extractorHarness) *signinclient.Client {
+	// error encoder and the authentication interceptor, whose gate is on
+	// unless opts say otherwise.
+	dial := func(t *testing.T, h *extractorHarness, opts ...signingrpc.ExtractorOption) *signinclient.Client {
 		t.Helper()
 
-		e := h.extractor(t)
+		e := h.extractor(t, opts...)
 
 		reqs, err := signingrpc.RequireAuthentication(signingrpc.NewAuthenticationRequirements()).Build()
-		must.NoError(t, err)
-
-		required, err := signingrpc.DirectoryPasswordChange(h.db, h.store)
-		must.NoError(t, err)
-
-		gate, err := signingrpc.NewPasswordChangeGate(e.Extract, required)
 		must.NoError(t, err)
 
 		srv, err := signingrpc.NewServer(h.svc, e.Extract,
@@ -198,7 +206,6 @@ func TestPasswordChangeGate_interceptors(T *testing.T) {
 		grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
 			grpcerrors.UnaryErrorEncodingInterceptor(),
 			e.UnaryServerInterceptor(reqs),
-			gate.UnaryServerInterceptor(),
 		))
 		srv.RegisterOn(grpcServer)
 
@@ -262,6 +269,19 @@ func TestPasswordChangeGate_interceptors(T *testing.T) {
 		// having stepped aside.
 		_, err = client.VerifyTOTPSecret(ctx, &signinpb.VerifyTOTPSecretRequest{TotpCode: "000000"})
 		test.NotEqOp(t, "PASSWORD_CHANGE_REQUIRED", reasonOf(err))
+	})
+
+	T.Run("an extractor without the gate lets a flagged caller through", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		client := dial(t, h, signingrpc.WithoutPasswordChangeGate())
+		ctx := bearer(t.Context(), h.issue(t, h.member, false).Token)
+
+		flag(t, h, true)
+
+		_, err := client.ListSignIns(ctx, &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
 	})
 
 	T.Run("a request with nobody on it is not the gate's", func(t *testing.T) {
@@ -479,4 +499,170 @@ func TestPasswordChangeGate_HTTPMiddleware(T *testing.T) {
 		test.EqOp(t, httperrors.ErrNothingSpecific, body.Error.Code)
 		test.StrNotContains(t, body.Error.Message, "directory down")
 	})
+}
+
+func TestPrincipalExtractor_passwordChangeGate(T *testing.T) {
+	T.Parallel()
+
+	const ownMethod = "/consumer.v1.Profile/GetAvatar"
+
+	reqs, reqsErr := signingrpc.NewAuthenticationRequirements().
+		Declare(signingrpc.AuthenticationRequired, ownMethod).
+		Build()
+	must.NoError(T, reqsErr)
+
+	// call runs ownMethod through e's unary interceptor as h's member,
+	// reporting whether the handler was reached.
+	call := func(t *testing.T, h *extractorHarness, e *signingrpc.PrincipalExtractor) (bool, error) {
+		t.Helper()
+
+		ctx := metadata.NewIncomingContext(t.Context(),
+			metadata.Pairs("authorization", "Bearer "+h.issue(t, h.member, false).Token))
+
+		reached := false
+		_, callErr := e.UnaryServerInterceptor(reqs)(ctx, nil, &grpc.UnaryServerInfo{FullMethod: ownMethod},
+			func(context.Context, any) (any, error) {
+				reached = true
+
+				return nil, nil
+			})
+
+		return reached, callErr
+	}
+
+	// serve runs one request through e's HTTP middleware as h's member.
+	serve := func(t *testing.T, h *extractorHarness, e *signingrpc.PrincipalExtractor) (*httptest.ResponseRecorder, bool) {
+		t.Helper()
+
+		reached := false
+		handler := e.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			reached = true
+
+			w.WriteHeader(http.StatusNoContent)
+		}))
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/avatar", http.NoBody)
+		req.Header.Set("Authorization", "Bearer "+h.issue(t, h.member, false).Token)
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+
+		return res, reached
+	}
+
+	T.Run("is on by default, for a deployment's own methods too", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		e := h.extractor(t)
+
+		reached, err := call(t, h, e)
+		must.NoError(t, err)
+		test.True(t, reached)
+
+		flag(t, h, true)
+
+		reached, err = call(t, h, e)
+		test.False(t, reached)
+		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+		test.ErrorIs(t, err, signin.ErrPasswordChangeRequired)
+	})
+
+	T.Run("passes a method the deployment allows", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		e := h.extractor(t, signingrpc.WithPasswordChangeAllowedMethods(ownMethod))
+
+		flag(t, h, true)
+
+		reached, err := call(t, h, e)
+		must.NoError(t, err)
+		test.True(t, reached)
+	})
+
+	T.Run("reads the flag the way the deployment names", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		e := h.extractor(t, signingrpc.WithPasswordChangeRequired(always(true, nil)))
+
+		reached, err := call(t, h, e)
+		test.False(t, reached)
+		test.ErrorIs(t, err, signin.ErrPasswordChangeRequired)
+	})
+
+	T.Run("holds an HTTP request too, unless the deployment allows it", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		flag(t, h, true)
+
+		res, reached := serve(t, h, h.extractor(t))
+		test.False(t, reached)
+		test.EqOp(t, http.StatusForbidden, res.Code)
+
+		_, reached = serve(t, h, h.extractor(t,
+			signingrpc.WithPasswordChangeAllowedRequests(func(r *http.Request) bool { return r.URL.Path == "/avatar" })))
+		test.True(t, reached)
+
+		_, reached = serve(t, h, h.extractor(t, signingrpc.WithoutPasswordChangeGate()))
+		test.True(t, reached)
+	})
+
+	T.Run("refuses a fallback it has no way to read the flag of", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		directory := principalsOnly{h.store}
+
+		_, err := signingrpc.NewPrincipalExtractor(h.signer, h.db, directory, signingrpc.WithFallback(somebody))
+		test.ErrorIs(t, err, signingrpc.ErrNoPasswordChangeReading)
+
+		// Each of the three ways out builds.
+		for _, opts := range [][]signingrpc.ExtractorOption{
+			{signingrpc.WithFallback(somebody), signingrpc.WithPasswordChangeRequired(always(false, nil))},
+			{signingrpc.WithFallback(somebody), signingrpc.WithoutPasswordChangeGate()},
+			nil,
+		} {
+			_, err = signingrpc.NewPrincipalExtractor(h.signer, h.db, directory, opts...)
+			test.NoError(t, err)
+		}
+	})
+
+	T.Run("reads a directory that cannot read users off the caller it resolved", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExtractorHarness(t)
+		e, err := signingrpc.NewPrincipalExtractor(h.signer, h.db, principalsOnly{h.store})
+		must.NoError(t, err)
+
+		flag(t, h, true)
+
+		reached, err := call(t, h, e)
+		test.False(t, reached)
+		test.ErrorIs(t, err, signin.ErrPasswordChangeRequired)
+	})
+}
+
+// principalsOnly is a directory that can resolve principals and nothing else,
+// as a deployment's own directory might.
+type principalsOnly struct {
+	directory signingrpc.PrincipalDirectory
+}
+
+func (d principalsOnly) GetPrincipal(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID, activeAccountID string,
+) (*identity.Principal, error) {
+	return d.directory.GetPrincipal(ctx, q, scope, userID, activeAccountID)
+}
+
+// brokenDirectory is a directory that cannot be read.
+type brokenDirectory struct{}
+
+func (brokenDirectory) GetUser(context.Context, database.SQLQueryExecutor, tenancy.Scope, string) (*identity.User, error) {
+	return nil, platformerrors.New("directory down")
 }

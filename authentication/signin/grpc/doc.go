@@ -49,8 +49,9 @@ A caller an operator has forced to change their password is still signed in
 and still resolved, and [PasswordChangeGate] is what holds them at the form:
 installed behind the authentication interceptor, it refuses every call but
 [PasswordChangeMethods] and the deployment's own [WithAllowedMethods] with
-signin.ErrPasswordChangeRequired until the change is made. A service built
-through the service package has it installed by default.
+signin.ErrPasswordChangeRequired until the change is made. [PrincipalExtractor]
+runs one inside its interceptors and middleware by default;
+[WithoutPasswordChangeGate] is the deliberate no.
 
 # Errors
 

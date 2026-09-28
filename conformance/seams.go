@@ -173,9 +173,10 @@ type Seams struct {
 	OperatorMethods []string
 
 	// PasswordChangeGateDisabled says the deployment installs no gate holding a
-	// caller who owes a forced password change at the form — it set
-	// service.Transports.PasswordChange.Disabled, or assembled its server
-	// without signin/grpc's PasswordChangeGate. True skips the assertion that
+	// caller who owes a forced password change at the form — it built
+	// signin/grpc's PrincipalExtractor WithoutPasswordChangeGate, or
+	// authenticates through its own interceptor and installed no
+	// PasswordChangeGate behind it. True skips the assertion that
 	// such a caller's ordinary call is refused, with that printed; false, the
 	// zero value, asserts it, because the gate is on by default.
 	//

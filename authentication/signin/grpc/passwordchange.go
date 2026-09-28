@@ -73,7 +73,10 @@ type PasswordChangeDirectory interface {
 // A *Caller carries it — PrincipalExtractor read the user on this request to
 // resolve them — so a deployment whose every caller came through that extractor
 // pays nothing for the gate. A principal some other extractor produced, such as
-// WithFallback's, is read by its UserID in its Scope on the client's reader.
+// WithFallback's, is read by its UserID in its Scope on the client's reader,
+// and one the directory does not hold — a service account, a legacy session's
+// user — owes nothing: the flag is a fact about this directory's users, and
+// a caller who is not one has no password here to change.
 func DirectoryPasswordChange(client database.Client, directory PasswordChangeDirectory) (PasswordChangeRequired, error) {
 	if client == nil {
 		return nil, ErrNilPasswordChangeClient
@@ -91,6 +94,10 @@ func DirectoryPasswordChange(client database.Client, directory PasswordChangeDir
 		}
 
 		user, err := directory.GetUser(ctx, client.Reader(), principal.Scope(), principal.UserID())
+		if platformerrors.Is(err, identity.ErrUserNotFound) {
+			return false, nil
+		}
+
 		if err != nil {
 			return false, platformerrors.Wrap(err, "reading whether the caller owes a password change")
 		}
@@ -166,11 +173,13 @@ func PasswordChangeMethods() []string {
 //
 // Behind the authentication interceptor, which is what puts a caller where the
 // extractor reads one: a gate ahead of it sees nobody on any request and lets
-// everything through. service.RegisterTransports installs it innermost of all
-// the interceptors, for every method on the server, the application's own
-// included. A deployment assembling its own server appends UnaryServerInterceptor
-// and StreamServerInterceptor after its authentication interceptor, and
-// HTTPMiddleware after its authentication middleware.
+// everything through. PrincipalExtractor builds one and runs it inside its own
+// interceptors and HTTPMiddleware, right after resolving the caller, so a
+// deployment authenticating through it has the gate on every method and route
+// without installing anything. A deployment authenticating through its own
+// interceptor builds the gate here and appends UnaryServerInterceptor and
+// StreamServerInterceptor after that interceptor, and HTTPMiddleware after its
+// authentication middleware.
 //
 // # Whose flag
 //

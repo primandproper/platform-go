@@ -166,11 +166,6 @@ var (
 // a surface that mounts open, so a missing one is a startup error rather than a
 // default.
 type Transports struct {
-
-	// Authorizers are the per-surface rules about which rows a caller who may
-	// make this call may make it against.
-	Authorizers Authorizers
-
 	// Extractor is how every mounted surface tells who is calling.
 	//
 	// One extractor for all of them, which is the argument callers' own
@@ -220,6 +215,10 @@ type Transports struct {
 	// not a scope.
 	TenantOf func(principal callers.Principal) (tenancy.Scope, error)
 
+	// Authorizers are the per-surface rules about which rows a caller who may
+	// make this call may make it against.
+	Authorizers Authorizers
+
 	// Grants is what the caller may do, for the seven surfaces that ask it
 	// inside a handler rather than at the method: billing, comments,
 	// issuereports, notifications, settings, waitlists and webhooks.
@@ -255,54 +254,6 @@ type Transports struct {
 	// They are appended after the platform's, so a service name declared on
 	// both fails on this one, which is the half the application can move.
 	Registrations []grpcserver.RegistrationFunc
-
-	// PasswordChange is the gate that holds a caller who owes a forced password
-	// change at the form. It is on wherever the sign-in surface mounts; see
-	// PasswordChange's own documentation for what a deployment may say about it.
-	PasswordChange PasswordChange
-}
-
-// PasswordChange configures the forced-password-change gate RegisterTransports
-// installs wherever the sign-in surface mounts.
-//
-// The gate is signin/grpc's PasswordChangeGate, and it is installed on the gRPC
-// server as the innermost interceptor of all — after every interceptor the
-// application registered, its authentication interceptor included, because
-// the gate reads the caller that interceptor resolved. So it reaches every
-// method on the server, the application's own services included: a flag an
-// operator set is enforced on the calls a deployment wrote as well as the
-// calls this module did.
-//
-// It is on by default, and a zero value is a deployment that wants it: a flag
-// enforced by nobody is an operator control that works only when every client
-// cooperates. What a deployment says is which of its own methods a caller on
-// their way to the form may still make, and, rarely, how the flag is read.
-//
-// The HTTP half is not installed. Middleware on this module's router runs in
-// the order it was added and must be added before any route, and the gate has
-// to come after the application's authentication middleware — an order only
-// the application's main knows. A deployment that serves its own routes to
-// signed-in callers installs signingrpc.PasswordChangeGate.HTTPMiddleware
-// itself, after its authentication middleware.
-type PasswordChange struct {
-
-	// Required reads whether a caller owes the change. Nil reads it through
-	// identity, off the caller where the sign-in extractor already carries it
-	// and from the directory where it does not — signingrpc's
-	// DirectoryPasswordChange. A deployment whose own principal already carries
-	// the flag names a reading of it here.
-	Required signingrpc.PasswordChangeRequired
-
-	// AllowedMethods are the application's own methods, as gRPC full method
-	// names, that a caller owing a password change may still make. The
-	// platform's — signingrpc.PasswordChangeMethods — are always allowed and
-	// are not repeated here.
-	AllowedMethods []string
-
-	// Disabled installs no gate. It is for a deployment that enforces the flag
-	// somewhere of its own; a deployment that sets it and enforces it nowhere
-	// has a flag an operator can set and nothing obeys.
-	Disabled bool
 }
 
 // Authorizers is the second seam, one field per surface that takes one.
@@ -453,11 +404,6 @@ func RegisterTransports(i do.Injector, t *Transports) {
 // half is already on the router by the time this exists — mounting is what
 // building it did — so the names are all there is left to hold.
 type mountedTransports struct {
-
-	// gate is the forced-password-change gate, built wherever the sign-in
-	// surface mounted and Transports.PasswordChange did not disable it, and nil
-	// otherwise. The gRPC server installs it innermost; see PasswordChange.
-	gate *signingrpc.PasswordChangeGate
 	// registrations is the platform's surfaces followed by the application's,
 	// in the order the gRPC server will register them.
 	registrations []grpcserver.RegistrationFunc
@@ -504,7 +450,7 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 	// on the application's — which is the one of the two its author can move.
 	m.registrations = append(m.registrations, t.Registrations...)
 
-	return &mountedTransports{registrations: m.registrations, names: m.names, gate: m.gate}, nil
+	return &mountedTransports{registrations: m.registrations, names: m.names}, nil
 }
 
 // mount is one pass over the surfaces, carrying what they are all built from
@@ -518,8 +464,6 @@ type mount struct {
 	pillars *observability.Pillars
 
 	t *Transports
-
-	gate *signingrpc.PasswordChangeGate
 
 	registrations []grpcserver.RegistrationFunc
 	names         []string
@@ -1151,72 +1095,6 @@ func (m *mount) signIn() {
 	}
 
 	m.mountedGRPC("sign-in", srv.RegisterOn)
-	m.passwordChangeGate(extract)
-}
-
-// passwordChangeGate builds the gate that holds a flagged caller at the form,
-// for the server to install. It is built beside the sign-in surface because
-// that is what makes a forced change something a caller can discharge: a gate
-// on a server with no UpdatePassword would refuse a flagged caller everything.
-//
-// The default reading resolves the two dependencies the sign-in service was
-// itself built from, so a service that mounted sign-in has both.
-func (m *mount) passwordChangeGate(extract callers.PrincipalExtractor) {
-	cfg := m.t.PasswordChange
-	if cfg.Disabled {
-		return
-	}
-
-	required := cfg.Required
-	if required == nil {
-		client, ok := need[database.Client](m)
-		if !ok {
-			m.unreadable(do.NameOf[database.Client]())
-
-			return
-		}
-
-		directory, ok := need[identity.Store](m)
-		if !ok {
-			m.unreadable(do.NameOf[identity.Store]())
-
-			return
-		}
-
-		read, err := signingrpc.DirectoryPasswordChange(client, directory)
-		if err != nil {
-			m.fail("password change gate", err)
-
-			return
-		}
-
-		required = read
-	}
-
-	gate, err := signingrpc.NewPasswordChangeGate(extract, required,
-		signingrpc.WithAllowedMethods(cfg.AllowedMethods...),
-		signingrpc.WithGatePillars(m.pillars),
-	)
-	if err != nil {
-		m.fail("password change gate", err)
-
-		return
-	}
-
-	m.gate = gate
-}
-
-// unreadable fails the gate for want of what its default reading reads. It is
-// unreachable through a sign-in service built from Config.SignIn, which is
-// built from both, and it is a failure rather than a gate quietly left off
-// because a flag nothing enforces is the thing the gate exists to end.
-func (m *mount) unreadable(what string) {
-	if m.err != nil {
-		return
-	}
-
-	m.fail("password change gate", platformerrors.Wrapf(platformerrors.ErrNilInputParameter,
-		"no %s to read a forced password change from; name Transports.PasswordChange.Required or register one", what))
 }
 
 // waitlists mounts the signup surface. Its authorizer is required, and its
