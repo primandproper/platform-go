@@ -73,3 +73,6 @@ CREATE INDEX IF NOT EXISTS signin_refresh_tokens_subject_idx
 CREATE INDEX IF NOT EXISTS signin_refresh_tokens_purge_after_idx
     ON signin_refresh_tokens (purge_after);
 
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN access_token_id TEXT;
+

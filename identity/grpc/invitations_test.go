@@ -21,8 +21,8 @@ import (
 
 // fixedMinter is a consumer's TokenMinter: whatever mints their links. Here it
 // mints a known one, which is the only way a test can follow an invitation the
-// way a recipient does — the token is never returned to the sender, so nothing
-// on the wire could hand it back.
+// way a recipient does — by default the token is not returned to the sender,
+// so nothing on the wire could hand it back.
 func fixedMinter(token string) identitygrpc.TokenMinter {
 	return func(context.Context) (string, error) { return token, nil }
 }
@@ -80,6 +80,73 @@ func TestInviteMintsTheTokenAndKeepsIt(T *testing.T) {
 	test.EqOp(T, invitation.GetId(), stored.ID)
 	test.EqOp(T, sender.User.ID, stored.FromUser)
 	test.EqOp(T, identity.InvitationPending, stored.Status)
+}
+
+// TestInviteReturnsNoTokenByDefault is the default reading of the rule: the
+// response carries the redacted invitation and nothing beside it.
+func TestInviteReturnsNoTokenByDefault(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, identitygrpc.WithTokenMinter(fixedMinter(testInvitationToken)))
+
+	sender := h.seedAccount(T, testScope, "sender")
+
+	response, err := h.client.Invite(h.as(&testPrincipal{userID: sender.User.ID, scope: testScope}),
+		&identitypb.InviteRequest{AccountId: sender.Account.ID, ToEmail: "invitee@example.com", Roles: []string{"support"}})
+	must.NoError(T, err)
+
+	test.EqOp(T, "", response.GetToken())
+	test.StrNotContains(T, response.String(), testInvitationToken,
+		test.Sprint("the invitation's token came back to a sender the server was not built to return it to"))
+}
+
+// TestInviteReturnsTheTokenWhenAskedTo is the other reading: built with
+// WithInvitationTokenReturned, the sender holds the link the mail carries, and
+// that link admits the person it was addressed to and nobody else.
+//
+// The default minter rather than a fixed one, so the token asserted against is
+// one the test could only have learned from the response.
+func TestInviteReturnsTheTokenWhenAskedTo(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, identitygrpc.WithInvitationTokenReturned())
+
+	sender := h.seedAccount(T, testScope, "sender")
+
+	response, err := h.client.Invite(h.as(&testPrincipal{userID: sender.User.ID, scope: testScope}),
+		&identitypb.InviteRequest{AccountId: sender.Account.ID, ToEmail: "invitee@example.com", Roles: []string{"support"}})
+	must.NoError(T, err)
+
+	token := response.GetToken()
+	must.NotEqOp(T, "", token, must.Sprint("a server built to return the token returned none"))
+
+	// Beside the invitation, never on it: the invitation is as redacted as it
+	// is everywhere else, and a read of it carries no token either.
+	invitation := response.GetInvitation()
+	test.StrNotContains(T, invitation.String(), token)
+
+	read, err := h.client.GetInvitation(h.as(&testPrincipal{userID: sender.User.ID, scope: testScope}),
+		&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
+	must.NoError(T, err)
+	test.StrNotContains(T, read.String(), token)
+
+	// Somebody else holding the copied link is refused as though it were the
+	// wrong token, because acceptance is bound to the address.
+	bystander := h.seedUser(T, testScope, "bystander")
+
+	_, err = h.client.AcceptInvitation(h.as(&testPrincipal{userID: bystander.ID, scope: testScope}),
+		&identitypb.AcceptInvitationRequest{InvitationId: invitation.GetId(), Token: token})
+	must.Error(T, err)
+	test.EqOp(T, codes.NotFound, status.Code(err))
+
+	// The addressed person, handed the same link, lands in the sender's account.
+	invitee := h.seedUser(T, testScope, "invitee")
+
+	accepted, err := h.client.AcceptInvitation(h.as(&testPrincipal{userID: invitee.ID, scope: testScope}),
+		&identitypb.AcceptInvitationRequest{InvitationId: invitation.GetId(), Token: token})
+	must.NoError(T, err)
+	test.EqOp(T, invitee.ID, accepted.GetAcceptance().GetMembership().GetBelongsToUser())
+	test.EqOp(T, sender.Account.ID, accepted.GetAcceptance().GetMembership().GetBelongsToAccount())
 }
 
 // TestInviteDefaultsTheExpiry pins the one thing a transport cannot decline to

@@ -237,6 +237,45 @@ func refresh(t *testing.T, s *conformance.Session) {
 		loggedIn(t, anon, who.username, password)
 	})
 
+	// The promise a "sign out that device" button makes, where the deployment
+	// has bought it: the access token already in the device's hands stops
+	// working on its next request, rather than when it expires.
+	t.Run("an ended login's access token stops working at once, where the deployment checks it", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().ImmediateRevocation {
+			t.Skip("conformance: this subject does not declare Seams.ImmediateRevocation, so an ended login's access token is promised only to stop within its lifetime; skipping")
+		}
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		who := signInAs(t, s, anon)
+
+		phone := loggedIn(t, anon, who.username, password)
+		laptop := loggedIn(t, anon, who.username, password)
+		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
+
+		onPhone := caller(t, s, phone, getSelf)
+		onLaptop := caller(t, s, laptop, getSelf, endSignIn)
+
+		// The control: the phone's access token works before its login ends.
+		_, err := onPhone.Surfaces.SignIn.GetSelf(onPhone.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err, must.Sprint("a live login's access token was refused"))
+
+		// Ended from the other device, as the button beside it on a "where
+		// you're signed in" screen ends it.
+		_, err = onLaptop.Surfaces.SignIn.EndSignIn(onLaptop.Context(t.Context()),
+			&signinpb.EndSignInRequest{FamilyId: phone.GetFamilyId()})
+		must.NoError(t, err)
+
+		_, err = onPhone.Surfaces.SignIn.GetSelf(onPhone.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.Error(t, err, must.Sprint("an ended login's access token still worked"))
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+
+		// And the scope of the button: the laptop is another login.
+		_, err = onLaptop.Surfaces.SignIn.GetSelf(onLaptop.Context(t.Context()), &signinpb.GetSelfRequest{})
+		test.NoError(t, err, test.Sprint("ending one login stopped another's access token"))
+	})
+
 	// The logins a person holds, as a screen lists them, and the button beside
 	// each one. A family identifier is not a secret, so ending one that is not
 	// the caller's must end nothing and say nothing: every EndSignIn answer is

@@ -68,8 +68,11 @@ A family is one login: minted when the password was proven, inherited by every
 successor, revoked as a unit by a detected reuse or by
 [Service.RevokeRefreshTokenFamily]. It reaches a token as the "sid" claim —
 [ClaimFamilyID] — so a consumer's interceptor can check a token against a
-revocation, and it reaches [Hooks.AfterIssueToken] on the [SignIn], which is why
-the refresh mint happens inside the login transaction rather than beside it.
+revocation, which [Service.CheckSignIn] is: a read per request that makes an
+ended login's access token stop working at once rather than when it expires,
+and, with [WithSupersededTokenRefusal], one its login has since replaced. It
+reaches [Hooks.AfterIssueToken] on the [SignIn], which is why the refresh mint
+happens inside the login transaction rather than beside it.
 
 [SignIn.FamilyID] is set whether or not a refresh token was stored, because it
 names a sign-in rather than a row.

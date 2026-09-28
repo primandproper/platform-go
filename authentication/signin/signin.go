@@ -123,6 +123,12 @@ const (
 	opListSignIns = "list_sign_ins"
 	opEndSignIn   = "end_sign_in"
 
+	// Checking a login is a series of its own, and the one a deployment that
+	// makes it on every request will see dwarf the rest: what a dashboard asks
+	// of it is what the per-request read costs, which folded into anything else
+	// would be a latency nobody could attribute.
+	opCheckSignIn = "check_sign_in"
+
 	// The registration door and the ones that finish it. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
 	// is how many people arrived, which has nothing to do with how often they
@@ -354,8 +360,10 @@ type AuthStatus struct {
 
 	// RequiresPasswordChange reports whether an operator has forced a password
 	// change. This service still signs such a user in — the alternative is a
-	// user who cannot reach the form — so it is the client's job to send them
-	// to it, and this is how they are told.
+	// user who cannot reach the form — and this is how a client is told to
+	// send them to it. What holds them there is signin/grpc's
+	// PasswordChangeGate, which refuses their other calls with
+	// ErrPasswordChangeRequired until the change is made.
 	RequiresPasswordChange bool `json:"requiresPasswordChange"`
 
 	// EmailAddressVerified reports whether their address has been proven
@@ -515,6 +523,10 @@ type Service struct {
 	// which refuses a zero one — see DefaultVerificationLinkTTL.
 	verificationLinkTTL time.Duration
 	magicLinkFloor      time.Duration
+
+	// refuseSuperseded is WithSupersededTokenRefusal, and false is what "an
+	// access token stands until its login ends" means to CheckSignIn.
+	refuseSuperseded bool
 
 	secondFactor SecondFactorPolicy
 }

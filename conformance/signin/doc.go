@@ -49,6 +49,9 @@ Two secrets reach a person through mail rather than a response, and each
 assertion that needs one reads it through an action: VerificationToken for the
 link a registration mails, and MagicLinkToken for a sign-in link. A subject
 that cannot say what it mailed skips those assertions with the reason printed.
+A registration answering an invitation is asserted through the link its sender
+copied, which exists only where the deployment returns an invitation's token
+to its sender and says so in Seams.InvitationTokenReturned; elsewhere it skips.
 
 Refresh tokens are optional — a deployment built without a store answers a
 sign-in with none, which the client contract calls a valid shape — so the
@@ -68,8 +71,20 @@ Authorizer seam in docs/client-contract.md, and a skip where the subject
 supplies none. The caller is held to the calls it declares, as every minted
 caller is.
 
+A deployment that checks each access token's login on every request says so
+in Seams.ImmediateRevocation, and is then held to it: an access token stops
+working on the request after its login is ended by name, while another login
+the same person holds goes on working. A deployment that does not is one whose
+sign-out takes effect within one access-token lifetime, and the assertion
+skips.
+
 The administrative door is asserted the same way, once the registrant is
 granted Seams.Roles.Administrator, and skips where the subject names none.
+
+A forced change is asserted twice: that it is reported and still signs in, and
+that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
+made. The second is the gate signin/grpc's extractor runs by default, and
+skips where the subject says Seams.PasswordChangeGateDisabled.
 
 # Who a call is made as
 

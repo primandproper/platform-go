@@ -20,15 +20,33 @@ func invitations(t *testing.T, s *conformance.Session) {
 
 	role, otherRole := membershipRoles(s)
 
-	t.Run("an invitation is kept, and its token is not returned to the sender", func(t *testing.T) {
+	t.Run("an invitation is kept, and its token comes back to the sender only if the deployment says so", func(t *testing.T) {
 		t.Parallel()
 
 		sender := s.Subject(t, conformance.Making(invite, getInvitation))
-		invitation := sendInvitation(t, sender, freshEmail(), role)
+		needsAccount(t, sender)
+
+		response, err := sender.Surfaces.Identity.Invite(sender.Context(t.Context()), &identitypb.InviteRequest{
+			AccountId: sender.AccountID,
+			ToEmail:   freshEmail(),
+			Roles:     []string{role},
+		})
+		must.NoError(t, err)
+
+		invitation := response.GetInvitation()
 		token := tokenFor(t, s, sender, invitation.GetId())
 
+		// Either way, never on the invitation itself.
 		test.StrNotContains(t, invitation.String(), token,
-			test.Sprint("the invitation's token came back to the sender"))
+			test.Sprint("the invitation's token came back on the invitation"))
+
+		if s.Seams().InvitationTokenReturned {
+			test.EqOp(t, token, response.GetToken(),
+				test.Sprint("a deployment that returns the token returned one other than it delivered"))
+		} else {
+			test.StrNotContains(t, response.String(), token,
+				test.Sprint("the invitation's token came back to the sender (Seams.InvitationTokenReturned is false)"))
+		}
 
 		read, err := sender.Surfaces.Identity.GetInvitation(sender.Context(t.Context()),
 			&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})

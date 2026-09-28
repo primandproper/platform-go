@@ -36,3 +36,6 @@ UPDATE signin_refresh_tokens AS t
 ALTER TABLE signin_refresh_tokens
     MODIFY signed_in_at DATETIME(6) NOT NULL;
 
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN access_token_id VARCHAR(255);
+

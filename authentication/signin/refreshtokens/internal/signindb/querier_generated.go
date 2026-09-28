@@ -32,6 +32,8 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	ClaimRefreshTokenRemint(ctx context.Context, db DBTX, arg ClaimRefreshTokenRemintParams) (int64, error)
+	// GetLiveRefreshTokenForFamily runs the :one query.
+	GetLiveRefreshTokenForFamily(ctx context.Context, db DBTX, arg GetLiveRefreshTokenForFamilyParams) (GetLiveRefreshTokenForFamilyRow, error)
 	// GetRefreshToken runs the :one query.
 	GetRefreshToken(ctx context.Context, db DBTX, arg GetRefreshTokenParams) (GetRefreshTokenRow, error)
 	// GetRefreshTokenRedemption runs the :one query.

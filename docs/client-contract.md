@@ -237,7 +237,7 @@ revoking a role has no effect until the token expires."*
 | field | what a client owes |
 | --- | --- |
 | `user`, `active_account_id`, `account_ids` | who this is, where they are, and everywhere they could be |
-| `requires_password_change` | an operator forced one. The service still signs them in — *"the alternative is a user who cannot reach the form"* — so routing them to it is the client's job |
+| `requires_password_change` | an operator forced one. The service still signs them in — *"the alternative is a user who cannot reach the form"* — so routing them to it is the client's job. From v14.2.0 the server holds them there too: every other call answers `FAILED_PRECONDITION`, reason `PASSWORD_CHANGE_REQUIRED`, until the change is made — save `GetAuthStatus`, `GetSelf`, `GetPrincipal`, the change itself (`UpdatePassword` or a reset), the sign-out and login-ending RPCs, and the doors |
 | `email_address_verified` | false means an unfinished registration; the remedy is the mailed link |
 | `has_password` | false is a passwordless user, and offering them a change-password form *"is offering them a form that cannot work"* |
 | `two_factor_enrolled` | a secret issued and never verified is not one |
@@ -328,11 +328,13 @@ all of them with an empty `SignOutResponse`. So a client never shows an error fo
 and never needs to: pressing it twice, or pressing it on a session that had already lapsed, is
 the ordinary case.
 
-**What neither one stops is an access token already issued.** Nothing can — it is checked
-against the issuer's signature rather than against any table — so a sign-out takes effect
-within one access-token lifetime. A client should therefore `clear()` locally as well, which it
-was going to do anyway, and a deployment that needs the window shorter shortens the access
-token.
+**What neither one stops, by default, is an access token already issued.** It is checked
+against the issuer's signature rather than against any table, so a sign-out takes effect within
+one access-token lifetime. A deployment whose extractor checks each token's login on every
+request (`signin.Service.CheckSignIn`, through the extractor's `WithSignInCheck`) closes that
+window: the ended login's access token is `UNAUTHENTICATED` from its next request. A client
+cannot tell which deployment it is talking to, so it should `clear()` locally either way, which
+it was going to do anyway.
 
 **R17 — a `signOut()` that only clears local state is a lie on a shared device.** It is one
 extra call, it cannot fail in a way worth reporting, and without it the refresh token stays
@@ -534,6 +536,7 @@ error details. Everything outside sign-in is [R13](#errors): the code, and nothi
 | `NO_PASSWORD_CREDENTIAL` | `FAILED_PRECONDITION` | a signed-in subject changing a password they do not have; offer the door they do |
 | `PASSWORD_ALREADY_SET` | `FAILED_PRECONDITION` | attaching a password to somebody who holds one; it is a change, not an attach |
 | `NO_CREDENTIAL_NAMED` | `INVALID_ARGUMENT` | a registration that did not say how the user will sign in; fix the request |
+| `PASSWORD_CHANGE_REQUIRED` | `FAILED_PRECONDITION` | an operator forced a password change and this call is not one that makes it; send them to the form, then retry. From v14.2.0; over HTTP it is a `403` |
 
 That is the whole set, and its edges are both load-bearing. A sign-in refusal absent from it
 carries no reason at all, which is how **R7 survives this**: a reused, expired or revoked

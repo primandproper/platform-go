@@ -135,6 +135,33 @@ var (
 	// alarm on it.
 	ErrRefreshTokenReused = platformerrors.Wrap(ErrInvalidCredentials, "refresh token has already been exchanged")
 
+	// ErrSignInEnded indicates Service.CheckSignIn for a login that is over:
+	// its family was revoked — by a sign-out, EndSignIn, a detected reuse, an
+	// operator or an erasure — or it lapsed without being refreshed, or it was
+	// never begun in the scope named. They are one answer, because the remedy
+	// is one: sign in again.
+	//
+	// It wraps ErrInvalidCredentials and is absent from ClientSafeSentinels, the
+	// construction ErrRefreshTokenReused uses and for a narrower reason. An
+	// access token whose login has ended is a credential that no longer proves
+	// anything, which is what the wrapped sentinel says; and the specific words
+	// would tell whoever is holding a stolen one that the person they took it
+	// from has signed out.
+	ErrSignInEnded = platformerrors.Wrap(ErrInvalidCredentials, "sign-in has ended")
+
+	// ErrSignInSuperseded indicates Service.CheckSignIn, on a service built with
+	// WithSupersededTokenRefusal, for an access token its login has since
+	// replaced: the login is still going, and the access token its current
+	// refresh token was minted with is a different one.
+	//
+	// It is not ErrSignInEnded, because the login has not ended and a client
+	// that reads it as a sign-out discards a session it still holds. It wraps
+	// ErrInvalidCredentials and is absent from ClientSafeSentinels for that
+	// sentinel's reason: the client that refreshed holds the newer token and has
+	// no use for the distinction, and whoever holds the older copy is told
+	// nothing about what the other holder did.
+	ErrSignInSuperseded = platformerrors.Wrap(ErrInvalidCredentials, "access token has been superseded by its sign-in")
+
 	// ErrTOTPIssuerNotConfigured indicates Service.RefreshTOTPSecret on a
 	// service built without WithTOTPIssuer.
 	//
@@ -216,6 +243,18 @@ var (
 	// anything else is passed over in favor of these words. It is a request to
 	// correct, and nothing was hashed, minted or written before it was refused.
 	ErrRegistrationRefused = platformerrors.New("registration does not meet this service's requirements")
+
+	// ErrPasswordChangeRequired indicates a call refused because an operator
+	// has forced the caller to change their password and they have not yet.
+	//
+	// The sign-in doors never answer with it: a user a forced change locked out
+	// of signing in could never reach the form. It is the answer of the gate
+	// signin/grpc's PasswordChangeGate puts in front of everything else, which
+	// lets through the calls a flagged caller needs to discharge the obligation
+	// and refuses the rest. It is a state to fix rather than a request to
+	// correct, and the remedy is the one the words name: change the password,
+	// and the same call then succeeds.
+	ErrPasswordChangeRequired = platformerrors.New("a password change is required")
 
 	// ErrRegistrationNotConfigured indicates Service.Register on a service built
 	// without WithRegistrar.
@@ -361,6 +400,13 @@ var (
 	// missed, and answering it with a refusal would put a database round trip
 	// behind every empty request a bot sends.
 	ErrEmptyRefreshToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token")
+
+	// ErrEmptyTokenID indicates Service.CheckSignIn, on a service that refuses
+	// superseded tokens, naming no access token to compare. It is not
+	// ErrSignInSuperseded: a token this package minted always carries its
+	// issuer's "jti", so a check that has none to pass is a caller that did not
+	// read it rather than a token that lost.
+	ErrEmptyTokenID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty access token ID")
 
 	// ErrNilRegistration indicates a nil *Registration.
 	ErrNilRegistration = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil registration")

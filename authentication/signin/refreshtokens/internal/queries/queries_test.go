@@ -160,6 +160,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		RevokeSubjectFamilyQuery,
 		RevokeTokensForSubjectQuery,
 		ListLiveFamiliesQuery,
+		GetLiveTokenQuery,
 		SweepTokensQuery,
 	}
 

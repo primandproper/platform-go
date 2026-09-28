@@ -510,7 +510,15 @@ func (f *fakeIssuer) IssueToken(
 		return "", "", f.err
 	}
 
-	return "token-for-" + subject, "jti-" + subject, nil
+	// The first token a subject is issued is "jti-<subject>", and each after it
+	// is numbered, so a login that refreshes holds a different access token
+	// from the one it began with — which is what a superseded check compares.
+	jti = "jti-" + subject
+	if f.calls > 1 {
+		jti = fmt.Sprintf("%s-%d", jti, f.calls)
+	}
+
+	return "token-for-" + subject, jti, nil
 }
 
 // recordingHooks records every call, and can be made to fail one of them.

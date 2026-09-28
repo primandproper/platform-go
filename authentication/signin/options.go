@@ -506,6 +506,33 @@ func WithRefreshTokenStore(store RefreshTokenStore) ServiceOption {
 	}
 }
 
+// WithSupersededTokenRefusal makes [Service.CheckSignIn] refuse an access token
+// its login has since replaced, with [ErrSignInSuperseded], as well as one whose
+// login has ended.
+//
+// It is off by default, because the family model's premise is the other one:
+// an access token is a signed statement that stands on its own until it
+// expires, and a refresh mints a new one without withdrawing the last. A
+// deployment that turns this on has decided instead that a login holds one
+// working access token at a time — the one its latest exchange minted — which
+// is what a "this session was replaced" answer promises.
+//
+// What that costs is stated rather than left to be discovered. A client that
+// refreshes while a request carrying its previous access token is in flight
+// has that request refused, and has to retry it with the token the refresh
+// handed back. A login whose current refresh token was minted before its table
+// recorded access tokens — see the refreshtokens migrations' version 4 —
+// records none, so every access token it minted is refused until its next
+// exchange mints a successor that does; that is one refresh, forced, for a login
+// that predates the column.
+//
+// It has no effect on a service that never calls CheckSignIn.
+func WithSupersededTokenRefusal() ServiceOption {
+	return func(s *Service) {
+		s.refuseSuperseded = true
+	}
+}
+
 // WithAdminServiceRoles names the identity service roles that admit an
 // administrative sign-in. Holding any one of them is enough.
 //
