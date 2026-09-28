@@ -38,3 +38,9 @@ CREATE TABLE IF NOT EXISTS audit_log_chains (
     archived_at         DATETIME
 );
 
+ALTER TABLE audit_log_entries
+    ADD COLUMN actor_impersonator TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS audit_log_entries_impersonator_idx
+    ON audit_log_entries (actor_impersonator, recorded_at);
+

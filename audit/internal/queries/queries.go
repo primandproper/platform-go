@@ -70,6 +70,10 @@ const (
 	ActorTypeColumn = "actor_type"
 	// ActorIPColumn is the address the action arrived from.
 	ActorIPColumn = "actor_ip"
+	// ActorImpersonatorColumn is who was really acting when the actor was
+	// acting through somebody else's identity, and empty otherwise. It arrived
+	// in the schema's second version; see audit/migrations.
+	ActorImpersonatorColumn = "actor_impersonator"
 	// ChangeSetColumn holds the encoded per-field before/after, and is NULL for
 	// an entry that carries none.
 	ChangeSetColumn = "change_set"
@@ -121,6 +125,7 @@ var EntryColumns = []string{
 	MetadataColumn,
 	PrevHashColumn,
 	HashColumn,
+	ActorImpersonatorColumn,
 }
 
 // EntryNullableColumns names the columns an insert may set to NULL: the two
@@ -484,7 +489,7 @@ func entryStatements(g *querygen.Generator) []*querygen.Query {
 // [querygen.Generator.WindowConditions].
 //
 // Everything else about it is querygen's own listing, assembled from the
-// fragments it exports: the six selectors as optional narrowings, the keyset
+// fragments it exports: the selectors as optional narrowings, the keyset
 // predicate, the two counts riding on the rows, and the page-size clause each
 // dialect spells its own way.
 func listings(g *querygen.Generator) []*querygen.Query {
@@ -547,17 +552,18 @@ var SelectorColumns = []string{
 	ResourceIDColumn,
 	ResourceTypeColumn,
 	EventTypeColumn,
+	ActorImpersonatorColumn,
 }
 
 // SelectorArg is the argument one selector binds through.
 func SelectorArg(column string) string { return column + SelectorArgSuffix }
 
-// selectors is the audit.Query expressed as predicates: six columns a caller
+// selectors is the audit.Query expressed as predicates: the columns a caller
 // may narrow on, each of which an absent argument leaves alone.
 //
-// They are optional narrowings rather than enumerated statements because the
-// six are independent — sixty-four statements, a hundred and twenty-eight once
-// each is emitted in both directions — and they are narrowings rather than
+// They are optional narrowings rather than enumerated statements because they
+// are independent — an enumeration is one statement per subset of them, twice
+// over once each is emitted in both directions — and they are narrowings rather than
 // optional arguments because an absent one must not narrow to the sentinel. The
 // scope is the case that decides it: the empty string is the chain
 // platform-level events are recorded in, so reading an absent scope as "the
@@ -885,10 +891,10 @@ func scopeErasureQuery(g *querygen.Generator, name, table string, annotation que
 }
 
 // subjectMentionsQuery renders the count of entries the chain will not let go
-// of: the ones where the subject acted inside somebody else's scope, or was the
-// thing acted on.
+// of: the ones where the subject acted inside somebody else's scope, was the
+// thing acted on, or acted as somebody else.
 //
-// The two columns are a disjunction rather than two statements, because the
+// The three columns are a disjunction rather than two statements, because the
 // number the subject is owed is of entries and not of mentions — an entry where
 // they were both the actor and the resource is one entry, and two counts added
 // together would report it twice.
@@ -898,7 +904,8 @@ func scopeErasureQuery(g *querygen.Generator, name, table string, annotation que
 func subjectMentionsQuery(g *querygen.Generator) *querygen.Query {
 	mentions := g.MatchConditions(EntriesTable,
 		querygen.Match{Column: ActorIDColumn, Arg: SubjectIDArg},
-		querygen.Match{Column: ResourceIDColumn, Arg: SubjectIDArg})
+		querygen.Match{Column: ResourceIDColumn, Arg: SubjectIDArg},
+		querygen.Match{Column: ActorImpersonatorColumn, Arg: SubjectIDArg})
 
 	return &querygen.Query{
 		Annotation: querygen.QueryAnnotation{Name: SubjectMentionsQuery, Type: querygen.OneType},

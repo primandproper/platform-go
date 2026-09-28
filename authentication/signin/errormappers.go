@@ -98,6 +98,7 @@ var ClientSafeSentinels = []error{
 	ErrUserTerminated,
 	ErrNotAnAdministrator,
 	ErrAdminLoginDisabled,
+	ErrImpersonationDisabled,
 	ErrNoPasswordCredential,
 	ErrPasswordAlreadySet,
 	ErrNoCredentialNamed,
@@ -189,6 +190,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrUserTerminated, Reason: "USER_TERMINATED", Domain: ClientReasonDomain},
 	{Err: ErrNotAnAdministrator, Reason: "NOT_AN_ADMINISTRATOR", Domain: ClientReasonDomain},
 	{Err: ErrAdminLoginDisabled, Reason: "ADMIN_SIGNIN_UNAVAILABLE", Domain: ClientReasonDomain},
+	{Err: ErrImpersonationDisabled, Reason: "IMPERSONATION_UNAVAILABLE", Domain: ClientReasonDomain},
 	{Err: ErrNoPasswordCredential, Reason: "NO_PASSWORD_CREDENTIAL", Domain: ClientReasonDomain},
 	{Err: ErrPasswordAlreadySet, Reason: "PASSWORD_ALREADY_SET", Domain: ClientReasonDomain},
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
@@ -254,6 +256,12 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrNotAnAdministrator), errors.Is(err, ErrAdminLoginDisabled):
 		return httperrors.ErrUserIsNotAuthorized, "administrative sign-in is not available", true
 
+	// The impersonation door, answered like the administrative one: a service
+	// with no such door is refused as its operators would be. Its caller is an
+	// operator surface rather than a client, so there is no oracle to collapse.
+	case errors.Is(err, ErrImpersonationDisabled):
+		return httperrors.ErrUserIsNotAuthorized, "impersonation is not available", true
+
 	// The three states an act is refused from rather than forbidden. Each is
 	// fixable, in a specific order, and the message says which act comes first.
 	case errors.Is(err, ErrSecondFactorNotEnrolled):
@@ -298,12 +306,13 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrRefreshTokenReused):
 		return codes.Unauthenticated, true
 
-	// Proven, and refused anyway. All four are somebody the service knows and
+	// Proven, and refused anyway. Each is somebody the service knows and
 	// will not admit, which is what PermissionDenied means.
 	case errors.Is(err, ErrUserBanned),
 		errors.Is(err, ErrUserTerminated),
 		errors.Is(err, ErrNotAnAdministrator),
-		errors.Is(err, ErrAdminLoginDisabled):
+		errors.Is(err, ErrAdminLoginDisabled),
+		errors.Is(err, ErrImpersonationDisabled):
 		return codes.PermissionDenied, true
 
 	// The state is wrong rather than the caller. gRPC has a code for that and

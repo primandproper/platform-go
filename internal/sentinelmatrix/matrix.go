@@ -563,12 +563,14 @@ var Matrix = map[string]map[string]Decision{
 		// own words would say which of the five happened.
 		"ErrInvalidMagicLink": {Err: signin.ErrInvalidMagicLink, Is: Mapped},
 
-		// Proven, and refused anyway. The four PermissionDenials: two statuses
-		// an operator set, and the two halves of the administrative door.
-		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
-		"ErrNotAnAdministrator": {Err: signin.ErrNotAnAdministrator, Is: Mapped},
-		"ErrUserBanned":         {Err: signin.ErrUserBanned, Is: Mapped},
-		"ErrUserTerminated":     {Err: signin.ErrUserTerminated, Is: Mapped},
+		// Proven, and refused anyway. The PermissionDenials: two statuses an
+		// operator set, the two halves of the administrative door, and the
+		// impersonation door a deployment never opened.
+		"ErrAdminLoginDisabled":    {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
+		"ErrImpersonationDisabled": {Err: signin.ErrImpersonationDisabled, Is: Mapped},
+		"ErrNotAnAdministrator":    {Err: signin.ErrNotAnAdministrator, Is: Mapped},
+		"ErrUserBanned":            {Err: signin.ErrUserBanned, Is: Mapped},
+		"ErrUserTerminated":        {Err: signin.ErrUserTerminated, Is: Mapped},
 
 		// The three states an act is refused from rather than forbidden. Each is
 		// fixable in a specific order, and these are the rows where the two

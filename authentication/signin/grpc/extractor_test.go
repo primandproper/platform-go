@@ -111,6 +111,7 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	svc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), signer,
 		signin.WithAdminServiceRoles(serviceAdminRole),
 		signin.WithRefreshTokenStore(refreshStore),
+		signin.WithImpersonationPolicy(func(context.Context, *identity.User, *identity.User) error { return nil }),
 	)
 	must.NoError(t, err)
 
@@ -298,6 +299,60 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		_, err := fresh.extractor(t).Authenticate(t.Context(), issued.Token)
 		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
 		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
+	})
+
+	T.Run("an impersonation token is the subject's, acted through by the operator", func(t *testing.T) {
+		t.Parallel()
+
+		issued, err := h.svc.IssueImpersonationToken(t.Context(), testScope,
+			h.admin.User.ID, h.member.User.ID, h.member.Account.ID)
+		must.NoError(t, err)
+
+		caller, err := h.extractor(t).Authenticate(t.Context(), issued.Token)
+		must.NoError(t, err)
+
+		test.EqOp(t, h.member.User.ID, caller.UserID())
+		test.EqOp(t, h.member.Account.ID, caller.ActiveAccountID())
+		test.EqOp(t, h.admin.User.ID, caller.ActorID())
+		test.EqOp(t, h.admin.User.ID, callers.ActorOf(caller))
+		test.EqOp(t, h.admin.User.ID, callers.DelegatedActor(caller))
+
+		// Not administrative, whatever the operator holds: it is the subject's
+		// token, and the subject did not come through that door.
+		test.False(t, caller.Administrative())
+		test.SliceEmpty(t, caller.Identity().ServiceRoles())
+	})
+
+	T.Run("an ordinary token is nobody's but its user's", func(t *testing.T) {
+		t.Parallel()
+
+		caller, err := h.extractor(t).Authenticate(t.Context(), h.issue(t, h.member, false).Token)
+		must.NoError(t, err)
+
+		test.EqOp(t, "", caller.ActorID())
+		test.EqOp(t, h.member.User.ID, callers.ActorOf(caller))
+	})
+
+	T.Run("a banned operator's impersonation names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		fresh := newExtractorHarness(t)
+
+		issued, err := fresh.svc.IssueImpersonationToken(t.Context(), testScope,
+			fresh.admin.User.ID, fresh.member.User.ID, fresh.member.Account.ID)
+		must.NoError(t, err)
+
+		must.NoError(t, fresh.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return fresh.store.UpdateUserAccountStatus(t.Context(), tx, testScope, fresh.admin.User.ID, identity.StatusBanned, "")
+		}))
+
+		_, err = fresh.extractor(t).Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
+
+		// The subject's own token is untouched by the operator's ban.
+		_, err = fresh.extractor(t).Authenticate(t.Context(), fresh.issue(t, fresh.member, false).Token)
+		test.NoError(t, err)
 	})
 
 	T.Run("a directory that cannot answer is not a refusal of the credential", func(t *testing.T) {

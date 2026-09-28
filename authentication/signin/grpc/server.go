@@ -30,6 +30,9 @@ const serverName = "signin_grpc"
 const (
 	scopeKey  = "identity.scope"
 	userIDKey = "identity.user_id"
+
+	// actorIDKey is the operator on an impersonation token, as signin records it.
+	actorIDKey = "signin.actor_id"
 )
 
 // The errors this package returns for its own failures, as opposed to the

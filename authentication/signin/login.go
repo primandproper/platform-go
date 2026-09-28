@@ -2,6 +2,7 @@ package signin
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"time"
 
@@ -613,14 +614,42 @@ func (s *Service) mintToken(
 		ttl = s.adminTokenTTL
 	}
 
-	claims, err := s.claims(ctx, &ClaimsInput{
+	return s.mint(ctx, &ClaimsInput{
 		Principal:      principal,
 		FamilyID:       familyID,
 		Administrative: administrative,
-	})
+	}, ttl)
+}
+
+// mint is mintToken with the lifetime and the whole claims input chosen by the
+// caller, which is what the impersonation door needs and the other doors do not.
+//
+// [ClaimActor] is settled here, after the builder, and not left to it. On an
+// impersonation it is stamped whatever the builder returned, because a custom
+// builder that forgot it would mint a token whose every write is filed under the
+// subject with nothing naming the operator — the unattributable write the claim
+// exists to end. On every other token it is removed, because a builder that
+// could set it could forge a delegation the impersonation door never approved.
+func (s *Service) mint(ctx context.Context, input *ClaimsInput, ttl time.Duration) (*SignIn, error) {
+	built, err := s.claims(ctx, input)
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "building token claims")
 	}
+
+	// Cloned rather than edited, because the map is the builder's and it may
+	// hand the same one back every call.
+	claims := maps.Clone(built)
+	if input.ActorID != "" {
+		if claims == nil {
+			claims = map[string]any{}
+		}
+
+		claims[ClaimActor] = input.ActorID
+	} else {
+		delete(claims, ClaimActor)
+	}
+
+	principal := input.Principal
 
 	token, jti, err := s.issuer.IssueToken(ctx, principal.User.ID, ttl, claims)
 	if err != nil {
@@ -630,10 +659,11 @@ func (s *Service) mintToken(
 	return &SignIn{
 		Token:          token,
 		TokenID:        jti,
-		FamilyID:       familyID,
+		FamilyID:       input.FamilyID,
 		ExpiresAt:      s.clk.Now().UTC().Add(ttl),
 		Principal:      principal,
-		Administrative: administrative,
+		Administrative: input.Administrative,
+		ActorID:        input.ActorID,
 	}, nil
 }
 

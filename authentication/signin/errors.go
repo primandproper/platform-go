@@ -79,6 +79,15 @@ var (
 	// consumer reading their own logs needs to know which.
 	ErrAdminLoginDisabled = platformerrors.New("administrative sign-in is not configured")
 
+	// ErrImpersonationDisabled indicates an impersonation against a service
+	// that named no ImpersonationPolicy.
+	//
+	// It is the posture ErrAdminLoginDisabled takes toward a service that named
+	// no administrative roles: the door does not exist until the deployment
+	// says who may use it, because a library has no way to know which of the
+	// deployment's permissions that is.
+	ErrImpersonationDisabled = platformerrors.New("impersonation is not configured")
+
 	// ErrNoPasswordCredential indicates a password change for a user who holds
 	// no password — a passkey-only or federated registration.
 	//

@@ -41,6 +41,10 @@ const (
 	// adminKey records which door an attempt came through.
 	adminKey = "signin.administrative"
 
+	// actorKey is the operator on an impersonation — who is really acting,
+	// beside userIDKey's subject.
+	actorKey = "signin.actor_id"
+
 	// padKey records whether a timing floor was held to in full. It is false only
 	// where the caller's context ended first, which makes a short answer a fact
 	// about that request rather than a silent hole in the enumeration defense.
@@ -86,6 +90,11 @@ const (
 	// how often somebody proves a password must not count a passkey as one.
 	opIssueForPrincipal      = "issue_for_principal"
 	opAdminIssueForPrincipal = "admin_issue_for_principal"
+
+	// The impersonation door, a series of its own: how often operators act as
+	// somebody else is a number a deployment watches on its own, and folding it
+	// into the principal doors would hide it among passkeys.
+	opIssueImpersonationToken = "issue_impersonation_token"
 
 	// The refresh doors. Exchanging is a series of its own rather than a
 	// second kind of login, because the two answer different questions of a
@@ -247,6 +256,12 @@ type SignIn struct {
 	// unless a consumer's issuer overrides the expiry it was handed.
 	ExpiresAt time.Time `json:"expiresAt"`
 
+	// RefreshTokenExpiresAt is when the refresh token stops being exchangeable,
+	// and the zero time when there is none. It is the deadline that actually
+	// bounds this sign-in: an idle client that lets it pass has to prove a
+	// password again.
+	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt,omitzero"`
+
 	// Principal is who signed in — the user, redacted, their memberships, and
 	// the account this token is against.
 	//
@@ -255,12 +270,6 @@ type SignIn struct {
 	// in a response is the transport's decision; this is the whole answer, so
 	// that decision can be made.
 	Principal *identity.Principal `json:"principal"`
-
-	// RefreshTokenExpiresAt is when the refresh token stops being exchangeable,
-	// and the zero time when there is none. It is the deadline that actually
-	// bounds this sign-in: an idle client that lets it pass has to prove a
-	// password again.
-	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt,omitzero"`
 
 	// Token is the credential itself. It is not redacted anywhere, because a
 	// sign-in that hides it has accomplished nothing — which is the reason it
@@ -291,6 +300,12 @@ type SignIn struct {
 	// TokenID is the issuer's "jti" for this token: the handle a revocation list
 	// names and the value a hook records.
 	TokenID string `json:"tokenID"`
+
+	// ActorID is the operator on a sign-in [Service.IssueImpersonationToken]
+	// minted, and empty on every other. Principal is the subject — the person
+	// being impersonated — and the token names both, as its subject and as
+	// [ClaimActor].
+	ActorID string `json:"actorID,omitempty"`
 
 	// Administrative reports whether this token came through
 	// AdminLoginForToken.
@@ -442,6 +457,11 @@ type Service struct {
 	// store.
 	magicLinkMailer MagicLinkMailer
 
+	// What the options wrote, kept only until the observer is built from it.
+	logger          logging.Logger
+	tracerProvider  tracing.Provider
+	metricsProvider metrics.Provider
+
 	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
 	// any password that is not empty.
 	passwordPolicy PasswordPolicy
@@ -454,14 +474,13 @@ type Service struct {
 	// registers exactly what the request named.
 	registrationPolicy RegistrationPolicy
 
-	// What the options wrote, kept only until the observer is built from it.
-	logger          logging.Logger
-	tracerProvider  tracing.Provider
-	metricsProvider metrics.Provider
-
 	claims ClaimsBuilder
 
 	instruments *metrics.OperationSet
+
+	// impersonationPolicy is nil until WithImpersonationPolicy names one, and
+	// nil is ErrImpersonationDisabled on every IssueImpersonationToken.
+	impersonationPolicy ImpersonationPolicy
 
 	totpIssuer string
 
@@ -469,6 +488,10 @@ type Service struct {
 
 	tokenTTL      time.Duration
 	adminTokenTTL time.Duration
+
+	// impersonationTokenTTL is how long an impersonation lasts — see
+	// DefaultImpersonationTokenTTL.
+	impersonationTokenTTL time.Duration
 
 	refreshTokenTTL      time.Duration
 	adminRefreshTokenTTL time.Duration
@@ -557,7 +580,9 @@ func NewService(
 		claims:        DefaultClaims,
 		tokenTTL:      DefaultTokenTTL,
 		adminTokenTTL: DefaultAdminTokenTTL,
-		secondFactor:  SecondFactorWhenEnrolled,
+
+		impersonationTokenTTL: DefaultImpersonationTokenTTL,
+		secondFactor:          SecondFactorWhenEnrolled,
 
 		refreshTokenTTL:      DefaultRefreshTokenTTL,
 		adminRefreshTokenTTL: DefaultAdminRefreshTokenTTL,

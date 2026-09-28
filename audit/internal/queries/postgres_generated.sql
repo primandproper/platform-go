@@ -56,7 +56,8 @@ INSERT INTO audit_log_entries (
 	change_set,
 	metadata,
 	prev_hash,
-	hash
+	hash,
+	actor_impersonator
 ) VALUES (
 	sqlc.arg(id),
 	sqlc.arg(seq),
@@ -71,7 +72,8 @@ INSERT INTO audit_log_entries (
 	sqlc.narg(change_set),
 	sqlc.narg(metadata),
 	sqlc.arg(prev_hash),
-	sqlc.arg(hash)
+	sqlc.arg(hash),
+	sqlc.arg(actor_impersonator)
 );
 
 -- name: GetAuditLogEntry :one
@@ -89,7 +91,8 @@ SELECT
 	audit_log_entries.change_set,
 	audit_log_entries.metadata,
 	audit_log_entries.prev_hash,
-	audit_log_entries.hash
+	audit_log_entries.hash,
+	audit_log_entries.actor_impersonator
 FROM audit_log_entries
 WHERE audit_log_entries.id = sqlc.arg(id)
 	AND (sqlc.narg(scope_filter)::text IS NULL OR audit_log_entries.scope = sqlc.narg(scope_filter));
@@ -109,7 +112,8 @@ SELECT
 	audit_log_entries.change_set,
 	audit_log_entries.metadata,
 	audit_log_entries.prev_hash,
-	audit_log_entries.hash
+	audit_log_entries.hash,
+	audit_log_entries.actor_impersonator
 FROM audit_log_entries
 WHERE audit_log_entries.scope = sqlc.arg(scope)
 	AND audit_log_entries.seq = sqlc.arg(seq);
@@ -129,7 +133,8 @@ SELECT
 	audit_log_entries.change_set,
 	audit_log_entries.metadata,
 	audit_log_entries.prev_hash,
-	audit_log_entries.hash
+	audit_log_entries.hash,
+	audit_log_entries.actor_impersonator
 FROM audit_log_entries
 WHERE audit_log_entries.scope = sqlc.arg(scope)
 	AND audit_log_entries.recorded_at > COALESCE(sqlc.narg(recorded_after), (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
@@ -154,6 +159,7 @@ SELECT
 	audit_log_entries.metadata,
 	audit_log_entries.prev_hash,
 	audit_log_entries.hash,
+	audit_log_entries.actor_impersonator,
 	(
 		SELECT COUNT(audit_log_entries.id)
 		FROM audit_log_entries
@@ -163,6 +169,7 @@ SELECT
 			AND (sqlc.narg(resource_id_filter)::text IS NULL OR audit_log_entries.resource_id = sqlc.narg(resource_id_filter))
 			AND (sqlc.narg(resource_type_filter)::text IS NULL OR audit_log_entries.resource_type = sqlc.narg(resource_type_filter))
 			AND (sqlc.narg(event_type_filter)::text IS NULL OR audit_log_entries.event_type = sqlc.narg(event_type_filter))
+			AND (sqlc.narg(actor_impersonator_filter)::text IS NULL OR audit_log_entries.actor_impersonator = sqlc.narg(actor_impersonator_filter))
 			AND audit_log_entries.recorded_at > COALESCE(sqlc.narg(created_after), (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
 			AND audit_log_entries.recorded_at < COALESCE(sqlc.narg(created_before), (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 	) AS filtered_count,
@@ -175,6 +182,7 @@ SELECT
 			AND (sqlc.narg(resource_id_filter)::text IS NULL OR audit_log_entries.resource_id = sqlc.narg(resource_id_filter))
 			AND (sqlc.narg(resource_type_filter)::text IS NULL OR audit_log_entries.resource_type = sqlc.narg(resource_type_filter))
 			AND (sqlc.narg(event_type_filter)::text IS NULL OR audit_log_entries.event_type = sqlc.narg(event_type_filter))
+			AND (sqlc.narg(actor_impersonator_filter)::text IS NULL OR audit_log_entries.actor_impersonator = sqlc.narg(actor_impersonator_filter))
 	) AS total_count
 FROM audit_log_entries
 WHERE (sqlc.narg(scope_filter)::text IS NULL OR audit_log_entries.scope = sqlc.narg(scope_filter))
@@ -183,6 +191,7 @@ WHERE (sqlc.narg(scope_filter)::text IS NULL OR audit_log_entries.scope = sqlc.n
 	AND (sqlc.narg(resource_id_filter)::text IS NULL OR audit_log_entries.resource_id = sqlc.narg(resource_id_filter))
 	AND (sqlc.narg(resource_type_filter)::text IS NULL OR audit_log_entries.resource_type = sqlc.narg(resource_type_filter))
 	AND (sqlc.narg(event_type_filter)::text IS NULL OR audit_log_entries.event_type = sqlc.narg(event_type_filter))
+	AND (sqlc.narg(actor_impersonator_filter)::text IS NULL OR audit_log_entries.actor_impersonator = sqlc.narg(actor_impersonator_filter))
 	AND audit_log_entries.recorded_at > COALESCE(sqlc.narg(created_after), (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
 	AND audit_log_entries.recorded_at < COALESCE(sqlc.narg(created_before), (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 	AND audit_log_entries.id > COALESCE(sqlc.narg(page_cursor), '')
@@ -205,6 +214,7 @@ SELECT
 	audit_log_entries.metadata,
 	audit_log_entries.prev_hash,
 	audit_log_entries.hash,
+	audit_log_entries.actor_impersonator,
 	(
 		SELECT COUNT(audit_log_entries.id)
 		FROM audit_log_entries
@@ -214,6 +224,7 @@ SELECT
 			AND (sqlc.narg(resource_id_filter)::text IS NULL OR audit_log_entries.resource_id = sqlc.narg(resource_id_filter))
 			AND (sqlc.narg(resource_type_filter)::text IS NULL OR audit_log_entries.resource_type = sqlc.narg(resource_type_filter))
 			AND (sqlc.narg(event_type_filter)::text IS NULL OR audit_log_entries.event_type = sqlc.narg(event_type_filter))
+			AND (sqlc.narg(actor_impersonator_filter)::text IS NULL OR audit_log_entries.actor_impersonator = sqlc.narg(actor_impersonator_filter))
 			AND audit_log_entries.recorded_at > COALESCE(sqlc.narg(created_after), (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
 			AND audit_log_entries.recorded_at < COALESCE(sqlc.narg(created_before), (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 	) AS filtered_count,
@@ -226,6 +237,7 @@ SELECT
 			AND (sqlc.narg(resource_id_filter)::text IS NULL OR audit_log_entries.resource_id = sqlc.narg(resource_id_filter))
 			AND (sqlc.narg(resource_type_filter)::text IS NULL OR audit_log_entries.resource_type = sqlc.narg(resource_type_filter))
 			AND (sqlc.narg(event_type_filter)::text IS NULL OR audit_log_entries.event_type = sqlc.narg(event_type_filter))
+			AND (sqlc.narg(actor_impersonator_filter)::text IS NULL OR audit_log_entries.actor_impersonator = sqlc.narg(actor_impersonator_filter))
 	) AS total_count
 FROM audit_log_entries
 WHERE (sqlc.narg(scope_filter)::text IS NULL OR audit_log_entries.scope = sqlc.narg(scope_filter))
@@ -234,6 +246,7 @@ WHERE (sqlc.narg(scope_filter)::text IS NULL OR audit_log_entries.scope = sqlc.n
 	AND (sqlc.narg(resource_id_filter)::text IS NULL OR audit_log_entries.resource_id = sqlc.narg(resource_id_filter))
 	AND (sqlc.narg(resource_type_filter)::text IS NULL OR audit_log_entries.resource_type = sqlc.narg(resource_type_filter))
 	AND (sqlc.narg(event_type_filter)::text IS NULL OR audit_log_entries.event_type = sqlc.narg(event_type_filter))
+	AND (sqlc.narg(actor_impersonator_filter)::text IS NULL OR audit_log_entries.actor_impersonator = sqlc.narg(actor_impersonator_filter))
 	AND audit_log_entries.recorded_at > COALESCE(sqlc.narg(created_after), (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
 	AND audit_log_entries.recorded_at < COALESCE(sqlc.narg(created_before), (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 	AND (audit_log_entries.id <= COALESCE(sqlc.narg(page_cursor), audit_log_entries.id) AND audit_log_entries.id <> COALESCE(sqlc.narg(page_cursor), ''))
@@ -305,4 +318,5 @@ WHERE scope = ANY(sqlc.arg(scopes)::text[]);
 SELECT COUNT(*)
 FROM audit_log_entries
 WHERE audit_log_entries.actor_id = sqlc.arg(subject_id)
-	OR audit_log_entries.resource_id = sqlc.arg(subject_id);
+	OR audit_log_entries.resource_id = sqlc.arg(subject_id)
+	OR audit_log_entries.actor_impersonator = sqlc.arg(subject_id);

@@ -42,6 +42,7 @@ const (
 	eventTypeKey    = "audit.event_type"
 	actorIDKey      = "audit.actor_id"
 	actorTypeKey    = "audit.actor_type"
+	impersonatorKey = "audit.impersonator"
 	checkedKey      = "audit.checked"
 	intactKey       = "audit.intact"
 	completeKey     = "audit.complete"
@@ -242,7 +243,30 @@ type Actor struct {
 	// recorded rather than derived at read time because the association between
 	// a principal and an address is exactly what an investigation needs and is
 	// not recoverable afterwards.
+	//
+	// On an impersonated entry it is the impersonator's address, because the
+	// impersonator is who the request arrived from.
 	IP string `json:"ip,omitempty"`
+
+	// Impersonator is who was really acting when ID was acting through
+	// somebody else's identity — an operator signed in as a customer — and
+	// empty when ID was acting for themselves.
+	//
+	// ID stays the subject: the entry is filed under the person whose identity
+	// the request carried, because that is whose data it read and wrote, and a
+	// query for what happened to a customer's account has to find it. This is
+	// the second slot, and it is what stops that entry from saying the customer
+	// did it. [PrincipalActor] fills both from a request's principal, reading
+	// the operator off callers.Delegated.
+	//
+	// It is a column of its own rather than a key in Metadata, for two reasons
+	// that are really one. Metadata is the caller's, and a reserved key in it
+	// is a value any caller could write, so an entry could name an operator who
+	// never acted; and a value inside an encoded blob is one no statement can
+	// select on, so [Query.ImpersonatorID] — what this operator did as somebody
+	// else — could not be asked. It is covered by the hash like every other
+	// field; see the canonical image.
+	Impersonator string `json:"impersonator,omitempty"`
 }
 
 // Change is one field's before and after.

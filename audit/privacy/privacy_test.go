@@ -128,7 +128,7 @@ func TestNewCollector(T *testing.T) {
 func TestCollector_Collect(T *testing.T) {
 	T.Parallel()
 
-	T.Run("reads each scope by actor and by resource, confined to that scope", func(t *testing.T) {
+	T.Run("reads each scope by actor, by resource and by impersonator, confined to that scope", func(t *testing.T) {
 		t.Parallel()
 
 		var reader database.SQLQueryExecutor = &testReader{}
@@ -146,13 +146,19 @@ func TestCollector_Collect(T *testing.T) {
 				// console's read, and a subject's export is not that.
 				must.NotNil(t, query.Scope)
 
-				// Exactly one of the two narrowings, and it is the subject.
+				// Exactly one of the three narrowings, and it is the subject.
 				switch {
 				case query.ActorID != "":
 					test.EqOp(t, subject.ID, query.ActorID)
 					test.EqOp(t, "", query.ResourceID)
+					test.EqOp(t, "", query.ImpersonatorID)
 
 					return page(entry(*query.Scope, "acted_in_"+query.Scope.String(), 1, subject.ID, "recipe_1")), nil
+				case query.ImpersonatorID != "":
+					test.EqOp(t, subject.ID, query.ImpersonatorID)
+					test.EqOp(t, "", query.ResourceID)
+
+					return page(), nil
 				default:
 					test.EqOp(t, subject.ID, query.ResourceID)
 
@@ -181,7 +187,7 @@ func TestCollector_Collect(T *testing.T) {
 			"acted_on_in_acct_1", "acted_in_acct_1",
 			"acted_on_in_acct_2", "acted_in_acct_2",
 		}, ids)
-		test.SliceLen(t, 4, log.ListCalls())
+		test.SliceLen(t, 6, log.ListCalls())
 	})
 
 	T.Run("an entry the subject acted on themselves is exported once", func(t *testing.T) {
@@ -242,6 +248,83 @@ func TestCollector_Collect(T *testing.T) {
 		test.EqOp(t, "theirs", collected[1].ID)
 		test.EqOp(t, "admin_1", collected[1].Actor.ID)
 		test.EqOp(t, "", collected[1].Actor.IP)
+	})
+
+	// An operator acted as the subject. The entry is the subject's — filed
+	// under them, about their account — and it is exported as what it was: an
+	// act somebody else performed under their name, from somebody else's
+	// address.
+	T.Run("exports an act somebody performed as the subject as impersonated", func(t *testing.T) {
+		t.Parallel()
+
+		impersonated := entry(firstScope, "as_them", 0, subject.ID, "recipe_1")
+		impersonated.Actor.Impersonator = "operator_1"
+
+		log := &auditmock.ReaderMock{
+			ListFunc: func(
+				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
+			) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				if query.ActorID == subject.ID {
+					return page(impersonated), nil
+				}
+
+				return page(), nil
+			},
+		}
+
+		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
+		must.NoError(t, err)
+
+		fragment, err := collector.Collect(t.Context(), tenancy.Scope{}, subject)
+		must.NoError(t, err)
+
+		var collected []audit.Entry
+		must.NoError(t, json.Unmarshal(fragment, &collected))
+		must.SliceLen(t, 1, collected)
+
+		test.EqOp(t, subject.ID, collected[0].Actor.ID)
+		test.EqOp(t, "operator_1", collected[0].Actor.Impersonator,
+			test.Sprint("an impersonated act must not read as the subject's own"))
+		test.EqOp(t, "", collected[0].Actor.IP,
+			test.Sprint("the address is the operator's, not the subject's"))
+		test.EqOp(t, "203.0.113.7", impersonated.Actor.IP,
+			test.Sprint("the reader's entry is not the collector's to edit"))
+	})
+
+	// The same entry, seen from the operator's side: filed under somebody else,
+	// and found only because the collector also reads by impersonator.
+	T.Run("exports what the subject did as somebody else, with their own address", func(t *testing.T) {
+		t.Parallel()
+
+		asSomebody := entry(firstScope, "as_customer", 0, "customer_1", "recipe_1")
+		asSomebody.Actor.Impersonator = subject.ID
+
+		log := &auditmock.ReaderMock{
+			ListFunc: func(
+				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
+			) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				if query.ImpersonatorID == subject.ID {
+					return page(asSomebody), nil
+				}
+
+				return page(), nil
+			},
+		}
+
+		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
+		must.NoError(t, err)
+
+		fragment, err := collector.Collect(t.Context(), tenancy.Scope{}, subject)
+		must.NoError(t, err)
+
+		var collected []audit.Entry
+		must.NoError(t, json.Unmarshal(fragment, &collected))
+		must.SliceLen(t, 1, collected)
+
+		test.EqOp(t, "customer_1", collected[0].Actor.ID)
+		test.EqOp(t, subject.ID, collected[0].Actor.Impersonator)
+		test.EqOp(t, "203.0.113.7", collected[0].Actor.IP,
+			test.Sprint("the request arrived from the subject, so the address is theirs"))
 	})
 
 	T.Run("exports another person's changed fields without their values", func(t *testing.T) {

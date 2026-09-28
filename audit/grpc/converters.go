@@ -67,9 +67,10 @@ func timeFromProto(t *timestamppb.Timestamp) time.Time {
 // ActorToProto renders who did the thing.
 func ActorToProto(actor audit.Actor) *auditpb.Actor {
 	return &auditpb.Actor{
-		Id:   actor.ID,
-		Type: string(actor.Type),
-		Ip:   actor.IP,
+		Id:           actor.ID,
+		Type:         string(actor.Type),
+		Ip:           actor.IP,
+		Impersonator: actor.Impersonator,
 	}
 }
 
@@ -81,9 +82,10 @@ func ActorFromProto(in *auditpb.Actor) audit.Actor {
 	}
 
 	return audit.Actor{
-		ID:   in.GetId(),
-		Type: audit.ActorType(in.GetType()),
-		IP:   in.GetIp(),
+		ID:           in.GetId(),
+		Type:         audit.ActorType(in.GetType()),
+		IP:           in.GetIp(),
+		Impersonator: in.GetImpersonator(),
 	}
 }
 
@@ -230,11 +232,12 @@ func queryFromProto(in *auditpb.EntryQuery) *audit.Query {
 	}
 
 	return &audit.Query{
-		ActorID:      in.GetActorId(),
-		ActorType:    audit.ActorType(in.GetActorType()),
-		ResourceID:   in.GetResourceId(),
-		ResourceType: in.GetResourceType(),
-		EventType:    audit.EventType(in.GetEventType()),
+		ActorID:        in.GetActorId(),
+		ActorType:      audit.ActorType(in.GetActorType()),
+		ResourceID:     in.GetResourceId(),
+		ResourceType:   in.GetResourceType(),
+		EventType:      audit.EventType(in.GetEventType()),
+		ImpersonatorID: in.GetImpersonatorId(),
 	}
 }
 

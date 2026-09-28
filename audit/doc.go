@@ -158,6 +158,24 @@ names that absence, and spells both halves of the Actor. It is not ActorSystem,
 which is a claim that the application acted deliberately. An entry that simply
 leaves the actor out is still refused; see ErrEmptyActor.
 
+# Somebody acting as somebody else
+
+An operator signed in as a customer makes requests that are the customer's —
+their data, their account — and acts that are the operator's. An entry records
+both: Actor.ID is the customer, which is who the entry is filed under and what
+a query for the customer's history finds, and Actor.Impersonator is the
+operator. PrincipalActor fills the pair from a request's callers.Principal,
+reading the operator off callers.Delegated; dataprivacy.PrincipalActorResolver
+is the same reading for the surface in this module that records entries about a
+request, and a consumer's own hooks reach for it directly.
+
+The impersonator is a column and inside the hash, not a key in Metadata.
+Metadata is the caller's to fill, so a reserved key there would be a value any
+caller could write; and a value in an encoded blob is one no statement can select
+on, so Query.ImpersonatorID — what this operator did as somebody else — could not
+be asked. An entry naming one is hashed under a second framing, so an entry
+naming none hashes exactly as every entry recorded before the column existed.
+
 # Redaction
 
 A password hash or a bearer token that reaches this table is in the one table
@@ -261,7 +279,8 @@ audit/migrations renders the DDL for a dialect and table prefix. If you already
 run database/migrate, pass migrations.SQL to WithGeneratedMigration and the
 tables are created by your normal migration run at a version you choose — no DDL
 copied into your repository. Statements returns the same DDL pre-split for
-callers using something else.
+callers using something else. The schema is versioned, and a database created
+by an earlier release takes what SQLSince renders from the version it is at.
 
 The library owns the schema rather than defining a repository interface for the
 application to implement, and the hash chain is why: the uniqueness constraint

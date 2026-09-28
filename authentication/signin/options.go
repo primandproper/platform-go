@@ -59,6 +59,17 @@ const DefaultRefreshTokenTTL = 30 * 24 * time.Hour
 // carrying a live administrative session for a month.
 const DefaultAdminRefreshTokenTTL = 12 * time.Hour
 
+// DefaultImpersonationTokenTTL is how long a token minted by
+// [Service.IssueImpersonationToken] lives, and so how long an impersonation
+// lasts: there is no refresh token behind it.
+//
+// Fifteen minutes, the administrative token's lifetime, and for a sharper
+// version of its reason. An impersonation is an operator doing one piece of
+// work as somebody else, and it should end when that work does rather than when
+// somebody remembers to end it. An operator who needs longer asks again, and
+// the deployment's policy is asked again with them.
+const DefaultImpersonationTokenTTL = 15 * time.Minute
+
 // The claims DefaultClaims puts on a token beside the registered ones the
 // issuer owns. They are exported because a consumer's own interceptor reads
 // them back off a parsed token, and a claim key spelled twice is a claim read
@@ -105,6 +116,22 @@ const (
 	// administrative door insists on — by withholding service-level permissions
 	// from any token on which it is false.
 	ClaimAdministrative = "administrative"
+
+	// ClaimActor is who is really acting on an impersonation token — the
+	// operator's user ID, beside the registered subject, which stays the user
+	// being impersonated. It is present only on a token
+	// [Service.IssueImpersonationToken] minted, and its absence is the answer
+	// "nobody is acting through this login": this service stamps it on an
+	// impersonation whatever the ClaimsBuilder returned, and strips it from
+	// every other token, so a builder can neither lose it nor forge it.
+	//
+	// It is a flat string under a key of its own rather than RFC 8693's "act",
+	// deliberately. "act" is a JSON object ({"sub": ...}), and a claim set that
+	// stringifies its values — which signin/grpc's extractor already reads
+	// booleans back from — cannot carry an object faithfully. A client reading
+	// "act" would also be entitled to the rest of RFC 8693's semantics, a chain
+	// of nested actors this package does not mint.
+	ClaimActor = "actor_id"
 )
 
 // SecondFactorPolicy is what this service does about a user who holds no proven
@@ -181,6 +208,22 @@ type ClaimsInput struct {
 	// mints one token per sign-in still has a login to name.
 	FamilyID string `json:"familyID"`
 
+	// ActorID is the operator on a token [Service.IssueImpersonationToken]
+	// mints, and empty on every other. Principal is still the subject: the
+	// token is theirs, and so is every row a request made with it writes.
+	//
+	// A builder need not copy it into a claim, and cannot keep it out of one —
+	// the service stamps [ClaimActor] itself. It is here so the builder can
+	// decide what else an impersonation's token says.
+	//
+	// What such a token may do is not decided here. Whether an impersonated
+	// request carries the operator's grants or only the subject's is the
+	// consumer's grants resolver's call — signin/grpc's WithGrants, or whatever
+	// authorization.GrantsExtractor a deployment runs — which reads the actor
+	// back through callers.DelegatedActor. The claim is what makes either answer
+	// expressible; neither is this package's to pick.
+	ActorID string `json:"actorID,omitempty"`
+
 	// Administrative is whether the login came through the administrative door.
 	// A sign-in sets it from the door it was called at and an exchange carries
 	// it forward from the spent token's row, so every token in a family agrees.
@@ -227,12 +270,18 @@ func DefaultClaims(_ context.Context, input *ClaimsInput) (map[string]any, error
 		return nil, identity.ErrNilUser
 	}
 
-	return map[string]any{
+	claims := map[string]any{
 		ClaimAccountID:      input.Principal.ActiveAccountID,
 		ClaimScope:          input.Principal.User.Scope.Owner(),
 		ClaimFamilyID:       input.FamilyID,
 		ClaimAdministrative: input.Administrative,
-	}, nil
+	}
+
+	if input.ActorID != "" {
+		claims[ClaimActor] = input.ActorID
+	}
+
+	return claims, nil
 }
 
 // ServiceOption configures a Service.
@@ -330,6 +379,33 @@ func WithRegistrationPolicy(policy RegistrationPolicy) ServiceOption {
 	return func(s *Service) {
 		if policy != nil {
 			s.registrationPolicy = policy
+		}
+	}
+}
+
+// WithImpersonationPolicy sets who may act as whom, which is what opens
+// [Service.IssueImpersonationToken]. A nil policy is ignored, leaving none.
+//
+// Naming none — which is the default — is what "this service has no
+// impersonation" means: every call is [ErrImpersonationDisabled]. That is the
+// posture [WithAdminServiceRoles] takes toward the administrative door, and for
+// the same reason: whether the door exists at all is the deployment's, and a
+// library cannot guess which of its permissions says so. See
+// [ImpersonationPolicy].
+func WithImpersonationPolicy(policy ImpersonationPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.impersonationPolicy = policy
+		}
+	}
+}
+
+// WithImpersonationTokenTTL sets how long an impersonation token lives. A
+// non-positive duration is ignored, leaving DefaultImpersonationTokenTTL.
+func WithImpersonationTokenTTL(ttl time.Duration) ServiceOption {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.impersonationTokenTTL = ttl
 		}
 	}
 }

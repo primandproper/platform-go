@@ -190,10 +190,11 @@ this row's claim about `signin` itself rather than about everything under its
 path.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
-owns no table either, and it is not a flow: it is three names — the interface a
-consumer's authentication interceptor satisfies, the function that reads one off
-a context, and the refusal an authorizer returns — that every gRPC surface here
-names and no two of them may disagree about. It is a domain because a principal
+owns no table either, and it is not a flow: it is the interface a consumer's
+authentication interceptor satisfies, the function that reads one off a context,
+the refusal an authorizer returns, and the optional second identity an operator
+acting as somebody else fills — names that every gRPC surface here reads and no
+two of them may disagree about. It is a domain because a principal
 is a user, the directory they are in and the account their request is against,
 and an application with no users has nobody to extract. It is a package of its
 own because it was declared in `identity/grpc` until `/v14`, so a consumer
@@ -349,6 +350,28 @@ caller. The table is built from each surface's own method lists, and a method
 nobody declared is refused. The application installs it: `service` builds no
 extractor, so a composition root names it to `service.Transports` and puts its
 interceptor in the gRPC chain and its middleware on the router.
+
+**Somebody acting as somebody else.** This module once ruled impersonation not a
+platform notion: every layer had room for one identity, so the only way to fit
+an operator into a request was to put the subject's ID where the actor's
+belonged — a working system, and an audit trail that says the subject did it.
+The objection stands; it is the reason for a second slot rather than for none,
+because the deployments with an operator tool told that lie anyway, in their own
+interceptors. The platform owns the mechanism and the deployment owns the
+policy. `callers.Delegated` is the optional interface a principal answers with
+the operator behind it, and `callers.ActorOf` names who is really acting.
+`signin.Service.IssueImpersonationToken` mints a short-lived token with no
+refresh token behind it, carrying `signin.ClaimActor`, and refuses every call
+with `ErrImpersonationDisabled` until `WithImpersonationPolicy` names the rule
+— the platform names no permission for it. `signingrpc`'s extractor turns the
+claim back into a `Delegated` caller and refuses it once the operator is
+banned. `audit.Actor.Impersonator` records the operator beside the subject the
+entry is filed under, in a column inside the hash chain, so
+`audit.Query.ImpersonatorID`, `audit/privacy`'s export and
+`audit.Erasure.CountMentions` all find the operator. Whether an impersonated
+request carries the operator's grants or the subject's is the consumer's
+`GrantsResolver`'s call, and no RPC exposes the door: it belongs behind the
+deployment's own operator surface.
 
 `audit` crosses too, and it is the one that ships **strictly narrower than its
 own interface**. `audit/grpc` serves the `Reader` and nothing else:

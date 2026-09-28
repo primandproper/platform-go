@@ -27,7 +27,7 @@ func TestEntryRoundTrip(T *testing.T) {
 		ResourceType: "recipe",
 		ResourceID:   "recipe_1",
 		Scope:        tenancy.Of("acct_ours"),
-		Actor:        audit.Actor{ID: "user_1", Type: audit.ActorUser, IP: "203.0.113.7"},
+		Actor:        audit.Actor{ID: "user_1", Type: audit.ActorUser, IP: "203.0.113.7", Impersonator: "operator_1"},
 		Changes: map[string]audit.Change{
 			"name":     {Old: "Soup", New: "Stew"},
 			"servings": {Old: float64(2), New: float64(4)},
