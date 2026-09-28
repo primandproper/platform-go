@@ -489,7 +489,8 @@ func (f VerificationMailerFunc) SendVerification(ctx context.Context, mail *Veri
 // link has, [WithVerificationLinkTTL]. The digest replaces whatever link was
 // outstanding, so only the newest link verifies. The token reaches the
 // [VerificationMailer] and nothing else: it is not returned, not logged and not
-// handed to a hook.
+// handed to [Hooks.AfterRequestVerificationEmail], which runs in the
+// transaction that stored the digest and is told only who asked.
 //
 // The link is committed before the mail is sent, and the mail is sent after the
 // commit rather than from inside it, for the reason [Service.RequestMagicLink]
@@ -565,7 +566,7 @@ func (s *Service) RequestVerificationEmail(
 
 		user = current
 
-		return nil
+		return s.hooks.AfterRequestVerificationEmail(ctx, tx, scope, current.Redacted())
 	}); err != nil {
 		return op.Error(err, "minting a verification link")
 	}

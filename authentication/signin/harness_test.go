@@ -519,6 +519,8 @@ func (f *fakeIssuer) IssueToken(
 // token door runs the authentication hook first — the two slices below record
 // that both ran, and nothing in them records which was first.
 type recordingHooks struct {
+	signin.NoopHooks
+
 	authErr   error
 	issueErr  error
 	failedErr error
@@ -535,14 +537,17 @@ type recordingHooks struct {
 	// directory's write answered with, rather than the copy read before it.
 	verified *identity.User
 
+	// onResend runs inside AfterRequestVerificationEmail, on the transaction it
+	// was handed, so a test can read what that transaction has written so far.
+	onResend func(ctx context.Context, tx database.Tx, user *identity.User) error
+
 	calls           []string
 	authentications []*signin.Authentication
 	signIns         []*signin.SignIn
 	failures        []*signin.FailedSignIn
 	attached        []*identity.User
 	verifieds       []*signin.Verification
-
-	signin.NoopHooks
+	resent          []*identity.User
 
 	passwords,
 	refreshes,
@@ -602,6 +607,22 @@ func (h *recordingHooks) AfterVerify(
 	h.verifieds = append(h.verifieds, verification)
 
 	return h.verifyErr
+}
+
+func (h *recordingHooks) AfterRequestVerificationEmail(
+	ctx context.Context,
+	tx database.Tx,
+	_ tenancy.Scope,
+	user *identity.User,
+) error {
+	h.calls = append(h.calls, "resend")
+	h.resent = append(h.resent, user)
+
+	if h.onResend != nil {
+		return h.onResend(ctx, tx, user)
+	}
+
+	return nil
 }
 
 func (h *recordingHooks) AfterRefreshTOTPSecret(_ context.Context, _ database.Tx, _ tenancy.Scope, _ *identity.User) error {

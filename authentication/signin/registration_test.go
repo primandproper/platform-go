@@ -717,6 +717,7 @@ func TestNoopHooks_finishesARegistration(T *testing.T) {
 
 	test.NoError(T, hooks.AfterAttachPassword(T.Context(), nil, testScope, nil))
 	test.NoError(T, hooks.AfterVerify(T.Context(), nil, testScope, nil))
+	test.NoError(T, hooks.AfterRequestVerificationEmail(T.Context(), nil, testScope, nil))
 }
 
 // staleStandingVerifications is identity's store with one lie in it: the read

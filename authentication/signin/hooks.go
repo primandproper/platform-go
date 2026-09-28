@@ -285,6 +285,22 @@ type Hooks interface {
 	// the stamps these writes just made rather than the copy read before them.
 	AfterVerify(ctx context.Context, tx database.Tx, scope tenancy.Scope, verification *Verification) error
 
+	// AfterRequestVerificationEmail is called with the user who was minted a
+	// fresh verification link, as they stood before the write and redacted, in
+	// the transaction that stored its digest and retired the link before it.
+	//
+	// It runs before the mail is sent, because the mail is sent only after that
+	// transaction commits: an error here rolls the new link back, leaves the
+	// outstanding one working, and sends nothing. So a resend is never mailed
+	// without this having run, and what a consumer records here is that a link
+	// was asked for and for whom — which is also what an unexplained stream of
+	// them looks like from the audit side.
+	//
+	// The token is deliberately not here. It is in flight to exactly one
+	// address, and a hook that recorded it would put a working verification link
+	// in whatever the hook writes to.
+	AfterRequestVerificationEmail(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+
 	// AfterVerifyTOTPSecret is called with the user who proved possession of the
 	// secret they hold, redacted, in the transaction that marked it verified.
 	//
@@ -365,6 +381,11 @@ func (NoopHooks) AfterAttachPassword(context.Context, database.Tx, tenancy.Scope
 
 // AfterVerify does nothing.
 func (NoopHooks) AfterVerify(context.Context, database.Tx, tenancy.Scope, *Verification) error {
+	return nil
+}
+
+// AfterRequestVerificationEmail does nothing.
+func (NoopHooks) AfterRequestVerificationEmail(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
 	return nil
 }
 
