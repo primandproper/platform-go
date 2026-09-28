@@ -24,7 +24,7 @@ import (
 //
 // They map more than issuereports/grpc raises, deliberately. A consumer serving
 // their own report form over HTTP gets the same answers, and a mapping that
-// only covered the ten RPCs this module ships would make what a refusal means
+// only covered the RPCs this module ships would make what a refusal means
 // depend on which transport happened to ask.
 //
 // The three nil-argument sentinels are absent from both switches on purpose:
@@ -48,16 +48,16 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the mappers.
 //
-// They are the four the lifecycle refuses with, and the list is four rather than
-// eight because of who cannot read the details. A Go client running the typed
-// client in issuereports/grpc/client decodes the sentinel off the status and
-// matches it with errors.Is, so every refusal here is already legible to one.
-// A client generated into Swift or Kotlin has the code and the message, and for
-// these four the code is not the answer: two of them are codes.InvalidArgument
-// and differ in what the caller does next — offer a different move, or name a
-// status this queue has — and the other two say "re-read, the report moved" and
-// "there is no such report", which are different instructions carrying the same
-// urgency.
+// They are the ones the lifecycle refuses with, and the list stops there rather
+// than taking every mapped sentinel because of who cannot read the details. A
+// Go client running the typed client in issuereports/grpc/client decodes the
+// sentinel off the status and matches it with errors.Is, so every refusal here
+// is already legible to one. A client generated into Swift or Kotlin has the
+// code and the message, and for these the code is not the answer: two of them
+// are codes.InvalidArgument and differ in what the caller does next — offer a
+// different move, or name a status this queue has — and the other two say
+// "re-read, the report moved" and "there is no such report", which are
+// different instructions carrying the same urgency.
 //
 // The three empty-field refusals are not here. They are what a client's own form
 // validation says before the request is sent, and their code plus the field the

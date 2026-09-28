@@ -47,7 +47,7 @@ var (
 	// It is separate from the registry because notifications declares the two
 	// seams separately, and one value satisfies both: a consumer passes their
 	// notifications.SQLStore twice. Both are required — a server that tolerated
-	// a nil registry would answer three of its nine methods differently
+	// a nil registry would answer its device methods differently
 	// depending on wiring a client cannot see.
 	ErrNilInbox = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil notifications inbox for the gRPC server")
 

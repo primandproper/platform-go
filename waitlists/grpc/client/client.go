@@ -4,7 +4,7 @@ Package client is a typed client for the waitlists gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be nineteen functions that can
+shutdown. A client that wrapped each RPC would be a function per RPC that can
 drift from the schema, to gain nothing.
 
 It is imported as waitlistsclient.
@@ -22,7 +22,7 @@ Both idioms work on what comes back:
 	if status.Code(err) == codes.FailedPrecondition { ... }   // and so does the code
 
 It matters more here than on the surfaces next door, because the client of the
-public five is frequently rendering a page for the person who caused the
+public RPCs is frequently rendering a page for the person who caused the
 refusal. All three of the refusals this service quotes share
 FailedPrecondition — a closed list, a transition from the wrong status, and a
 second withdrawal — and the code alone does not say which sentence to put on the
@@ -107,8 +107,8 @@ func WithDialOptions(opts ...grpc.DialOption) Option {
 // interceptor, for a caller assembling their own chain.
 //
 // The cost of using it is the one this package's documentation opens with: an
-// errors.Is against a waitlists sentinel then never matches, and four of the
-// five refusals share a code.
+// errors.Is against a waitlists sentinel then never matches, and most of its
+// refusals share a code.
 func WithoutDefaultInterceptors() Option {
 	return func(o *options) { o.skipInterceptors = true }
 }

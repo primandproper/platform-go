@@ -207,14 +207,26 @@ func (s *Server) CancelInvitation(
 
 // GetInvitation reads one invitation, redacted.
 //
-// It is the one id-addressed method here with no row check, and that is a
-// decision rather than an omission: the reader this method exists for includes
-// the recipient, who is neither the sender nor a member of the account they have
-// been invited to, so the rule the rest of this file applies would refuse
-// exactly the person the invitation was for. What stands in its place is the
-// redaction — the token never reaches this response — and
-// PermissionReadInvitations, which is a permission of its own precisely so that
-// a consumer can grant it narrowly.
+// PermissionReadInvitations is the grant and [TargetAuthorizer] is the
+// confinement, as everywhere else in this file: a holder of the permission
+// reads an invitation [TargetAuthorizer.AuthorizeInvitation] permits them —
+// by default its sender or a member of the account it is into, and whatever an
+// operator's rule widens that to — and nothing else in the directory.
+//
+// The one reader the seam is not asked about is the invitee, who is neither
+// the sender nor a member of the account they have been invited to and is the
+// person the invitation was for. A caller the authorizer refused is permitted
+// when their own user row carries a verified address that is the one the
+// invitation names, which is the rule ListInvitationsForEmailAddress already
+// reads by: the invitee can list this invitation while it is pending whatever
+// the seam says, so a seam that refused them this read would be refusing
+// nothing but its status once answered. The address has
+// to be verified for the reason that method gives — an unverified one is
+// whatever the caller typed a moment ago.
+//
+// A refusal is codes.PermissionDenied, and it reads the same whether the
+// invitation is somebody else's or is not there, so the id space is not
+// enumerable through this method. The token never reaches the response.
 func (s *Server) GetInvitation(
 	ctx context.Context,
 	request *identitypb.GetInvitationRequest,
@@ -227,6 +239,10 @@ func (s *Server) GetInvitation(
 	defer func() { done(err) }()
 
 	op.Set(invitationIDKey, request.GetInvitationId())
+
+	if err = s.authorizeInvitationRead(ctx, op, principal, request.GetInvitationId()); err != nil {
+		return nil, err
+	}
 
 	invitation, err := s.store.GetInvitation(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetInvitationId())

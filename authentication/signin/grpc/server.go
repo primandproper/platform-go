@@ -42,12 +42,12 @@ var (
 	// ErrNilPrincipalExtractor indicates a nil callers.PrincipalExtractor.
 	//
 	// It is refused at construction rather than defaulted, because the only
-	// default available is one that resolves nobody — and the eight RPCs that
-	// need a caller would then refuse every request while the nine that do not
-	// kept working, which is a server that looks half alive.
+	// default available is one that resolves nobody — and the RPCs that need a
+	// caller would then refuse every request while the ones that do not kept
+	// working, which is a server that looks half alive.
 	ErrNilPrincipalExtractor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil principal extractor for the sign-in server")
 
-	// ErrNoPrincipal indicates a request to one of the eight authenticated RPCs
+	// ErrNoPrincipal indicates a request to one of the authenticated RPCs
 	// that arrived with nobody on it.
 	//
 	// It is a sentinel of its own rather than a wrap of a platform one, for the
@@ -66,9 +66,10 @@ var (
 //
 // # What it is
 //
-// Seven RPCs, each one call into the service and a conversion on either side.
-// Three are anonymous — the two doors, and the status read that answers "no" to
-// a caller who is not signed in — and four require a principal.
+// Each RPC is one call into the service and a conversion on either side. Some
+// are anonymous — the doors, the finishes of a registration, the exchange and
+// the sign-out, and the status read that answers "no" to a caller who is not
+// signed in — and the rest require a principal. [AnonymousMethods] is the list.
 //
 // # What it is not
 //
@@ -175,7 +176,7 @@ type request struct {
 	scope     tenancy.Scope
 }
 
-// anonymous is where the three RPCs that need no caller start: the span, the
+// anonymous is where the RPCs that need no caller start: the span, the
 // instruments and the scope.
 //
 // It is one helper rather than four lines per method because the four can be
@@ -220,7 +221,7 @@ func (s *Server) anonymous(ctx context.Context, method string) (
 	return ctx, &request{op: op, scope: scope}, done, nil
 }
 
-// caller is anonymous plus the principal the eight authenticated RPCs need.
+// caller is anonymous plus the principal the authenticated RPCs need.
 //
 // The scope comes off the resolver rather than off the principal, so one wiring
 // decision governs the whole service — see [ScopeResolver].

@@ -182,25 +182,6 @@ type Seams struct {
 	// say here, and one that supplied a wider rule says so rather than having
 	// the suite guess which rule it wrote.
 	MediaObjectsShared bool
-
-	// ExclusiveDatabase says the suite is the only writer against this
-	// subject's database for the length of the run.
-	//
-	// It unlocks the handful of assertions that cannot be phrased without it —
-	// a sweep's survivors, an empty-result read — and it is false by default
-	// because a consumer running this against a shared environment is the case
-	// that must be safe when nobody thought about it.
-	ExclusiveDatabase bool
-
-	// ControlledTime says the suite may move the clock the subject's service
-	// reads, through whatever mechanism the subject arranged.
-	//
-	// direct mode sets it where it runs inside a testing/synctest bubble.
-	// A deployed service cannot offer it, so expiry and pacing assertions skip
-	// there — which is honest: nothing a consumer can do makes their production
-	// clock movable, and a suite that waited for real time is a suite nobody
-	// runs.
-	ControlledTime bool
 }
 
 // Subject is one caller, and the clients it calls through.

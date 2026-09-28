@@ -67,7 +67,7 @@ var (
 // expires its own entries needs no sweep, and a store that is not a table has no
 // column.
 type SQLStore struct {
-	// db is not what the four writes run on — those are handed the caller's
+	// db is not what the writes run on — those are handed the caller's
 	// transaction. It is here for the two things a Client answers that a Tx
 	// cannot: the dialect the generated statements are rendered for, read once at
 	// construction, and the executor Sweep runs on, which belongs to nobody's

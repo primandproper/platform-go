@@ -188,8 +188,31 @@ func invitations(t *testing.T, s *conformance.Session) {
 
 		_, err = stranger.Surfaces.Identity.GetInvitation(stranger.Context(t.Context()),
 			&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
-		must.Error(t, err)
-		test.EqOp(t, codes.NotFound, status.Code(err))
+		notYours(t, err, "a neighboring directory's invitation")
+	})
+
+	t.Run("an invitation read is refused to a colleague outside the account it is into", func(t *testing.T) {
+		t.Parallel()
+
+		sender := s.Subject(t, conformance.Making(invite, getInvitation))
+		invitation := sendInvitation(t, sender, freshEmail(), role)
+
+		// The positive control: the sender is a member of the account the
+		// invitation is into, and reads it through the same call.
+		read, err := sender.Surfaces.Identity.GetInvitation(sender.Context(t.Context()),
+			&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
+		must.NoError(t, err, must.Sprint("the account's own member cannot read its invitation; the refusal below proves nothing"))
+		test.EqOp(t, invitation.GetId(), read.GetInvitation().GetId())
+
+		// Same directory, same permission, another account, and not the
+		// address the invitation names. The permission is the grant, and it
+		// does not reach somebody else's account.
+		stranger := colleague(t, s, sender, conformance.Making(getInvitation), conformance.AsMember())
+
+		_, err = stranger.Surfaces.Identity.GetInvitation(stranger.Context(t.Context()),
+			&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
+		must.Error(t, err, must.Sprint("a colleague outside the account read its invitation"))
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
 	})
 
 	t.Run("a sender's listing is what they sent", func(t *testing.T) {

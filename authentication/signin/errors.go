@@ -135,8 +135,8 @@ var (
 	// is a 500, which is what it is.
 	ErrTOTPIssuerNotConfigured = platformerrors.New("no TOTP issuer label is configured")
 
-	// ErrRefreshTokensNotConfigured indicates one of the three refresh doors on
-	// a service built without WithRefreshTokenStore.
+	// ErrRefreshTokensNotConfigured indicates one of the refresh doors on a
+	// service built without WithRefreshTokenStore.
 	//
 	// Such a service issues one token per sign-in and holds no table, which is
 	// what this package did before rotation existed and is still the right shape
@@ -236,8 +236,8 @@ var (
 	// wiring failure and no status is mapped for it.
 	ErrRegistrationIncomplete = platformerrors.New("registrar answered with no registration")
 
-	// ErrVerificationsNotConfigured indicates one of the three doors that finish
-	// a registration on a service built without WithVerifications. It is a wiring
+	// ErrVerificationsNotConfigured indicates one of the doors that finish a
+	// registration on a service built without WithVerifications. It is a wiring
 	// failure, and is a 500 for the reason above.
 	ErrVerificationsNotConfigured = platformerrors.New("no verifications directory is configured")
 

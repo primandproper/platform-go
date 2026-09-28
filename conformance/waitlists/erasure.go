@@ -177,6 +177,47 @@ func erasure(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
+	// The per-person half of the tenant wall below. An erasure names one
+	// person, and a neighbor on the same list is somebody else — which a
+	// deployment serving every list from one directory relies on as much as
+	// any, and which no wall can hold for it.
+	t.Run("an erasure withdraws the named person's signups and no one else's", func(t *testing.T) {
+		t.Parallel()
+
+		erased := s.Subject(t, conformance.Making(joinList, confirmSignup))
+		needsUser(t, erased)
+		bystander := colleague(t, s, erased, conformance.Making(joinList, confirmSignup))
+		needsUser(t, bystander)
+		operator := s.Subject(t, conformance.Making(createList, getSignup, getSignupByContact, withdrawSignupsForSubject),
+			conformance.InTenant(surface, erased.ScopeFor(surface)))
+		list := openList(t, operator, open())
+
+		theirs := signedUp(t, s, erased, operator, list.GetId(), freshContact())
+		neighbor := signedUp(t, s, bystander, operator, list.GetId(), freshContact())
+
+		// A lower bound, for the reason the erasure above gives.
+		test.GreaterEq(t, int64(1), eraseSubject(t, operator, erased))
+
+		// The positive control: the person named is withdrawn, so the erasure
+		// reached this list and the survivor below is not a call that reached
+		// nothing.
+		read, err := operator.Surfaces.Waitlists.GetSignup(operator.Context(t.Context()),
+			&waitlistspb.GetSignupRequest{ListId: list.GetId(), SignupId: theirs.GetId()})
+		must.NoError(t, err)
+		must.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, read.GetResult().GetStatus(),
+			must.Sprint("the person named was not withdrawn; the survivor below proves nothing"))
+
+		read, err = operator.Surfaces.Waitlists.GetSignup(operator.Context(t.Context()),
+			&waitlistspb.GetSignupRequest{ListId: list.GetId(), SignupId: neighbor.GetId()})
+		must.NoError(t, err, must.Sprint("a neighbor's signup is gone after somebody else's erasure"))
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, read.GetResult().GetStatus(),
+			test.Sprint("an erasure moved a signup belonging to somebody it did not name"))
+		test.EqOp(t, neighbor.GetContact(), read.GetResult().GetContact(),
+			test.Sprint("an erasure blanked the address of somebody it did not name"))
+		test.EqOp(t, bystander.UserID, read.GetResult().GetSubject().GetId(),
+			test.Sprint("an erasure blanked the subject of somebody it did not name"))
+	})
+
 	t.Run("an erasure reaches the caller's tenant only", func(t *testing.T) {
 		t.Parallel()
 

@@ -118,7 +118,7 @@ goes in front of [signin.Service.RequestMagicLink], and neither this package nor
 that service will do it for a consumer — see that method, which says so on
 itself.
 
-It opens no transaction. All three methods are writes and all three take the
+It opens no transaction. Every method is a write and every one takes the
 caller's database.Tx. [SQLStore.Sweep] is the exception and the usual one: a
 worker on a timer is the component servicing itself, so it runs on the handle
 the store was built with.

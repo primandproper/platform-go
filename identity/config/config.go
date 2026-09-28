@@ -42,7 +42,7 @@ import (
 type Config struct {
 	_ struct{} `json:"-" yaml:"-"`
 
-	// TablePrefix names the six identity tables. It must match the prefix the
+	// TablePrefix names the identity tables. It must match the prefix the
 	// migrations were rendered with. Defaults to identity.DefaultTablePrefix.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 

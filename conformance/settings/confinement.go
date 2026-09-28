@@ -147,8 +147,60 @@ func confinement(t *testing.T, s *conformance.Session) {
 		}
 	})
 
+	// The per-person half of the assertion above, which a catalog shared by
+	// the whole deployment still owes: a colleague reads the same definition,
+	// and resolving it answers for them rather than for whoever answered it
+	// first. Nothing about it is a tenant wall, so it holds in a directory
+	// every caller shares.
+	t.Run("a colleague resolving a setting the caller answered gets their own resolution, not the caller's value", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(setValue, resolve, resolveAll))
+		needsUser(t, caller)
+		other := colleague(t, s, caller, conformance.Making(setValue, resolve, resolveAll))
+
+		c := names()
+		defineCatalog(t, s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface))), &c)
+		set(t, caller, c.digest, stringValue(optionDaily))
+
+		// The positive control: the caller's answer is stored and is what the
+		// caller resolves, so the colleague's resolution below is compared
+		// against a value that exists.
+		chose := resolved(t, caller, c.digest)
+		must.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_SUBJECT, chose.GetSource(),
+			must.Sprint("this caller's own answer did not resolve as theirs; the comparison below proves nothing"))
+		must.EqOp(t, optionDaily, chose.GetTypedValue().GetStringValue())
+
+		// The colleague has answered nothing, so they get the definition's
+		// default.
+		theirs := resolved(t, other, c.digest)
+		test.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_DEFAULT, theirs.GetSource(),
+			test.Sprint("a colleague who answered nothing resolved somebody else's answer"))
+		test.EqOp(t, optionWeekly, theirs.GetTypedValue().GetStringValue())
+
+		all, err := other.Surfaces.Settings.ResolveAll(other.Context(t.Context()),
+			&settingspb.ResolveAllRequest{Subject: self(other)})
+		must.NoError(t, err)
+
+		for _, resolution := range all.GetResolutions() {
+			if resolution.GetDefinition().GetName() == c.digest {
+				test.NotEqOp(t, settingspb.ValueSource_VALUE_SOURCE_SUBJECT, resolution.GetSource(),
+					test.Sprint("a colleague's settings page carried the caller's answer"))
+			}
+		}
+
+		// And the mirror image: the colleague answering does not move the
+		// caller's.
+		set(t, other, c.digest, stringValue(optionNever))
+
+		chose = resolved(t, caller, c.digest)
+		test.EqOp(t, settingspb.ValueSource_VALUE_SOURCE_SUBJECT, chose.GetSource())
+		test.EqOp(t, optionDaily, chose.GetTypedValue().GetStringValue(),
+			test.Sprint("a colleague's answer replaced the caller's"))
+	})
+
 	// The half of authorization a grant on the method cannot reach. The
-	// question these six ask is not whether the caller may call the method but
+	// question these ask is not whether the caller may call the method but
 	// whose settings they named, and a colleague in the same tenant is
 	// somebody else — the scope is shared, so this is the authorizer's refusal
 	// and nobody else's.
@@ -206,6 +258,46 @@ func confinement(t *testing.T, s *conformance.Session) {
 		})
 		notYours(t, err, "a neighboring directory's account's settings")
 	})
+
+	// The same question inside one directory, where no wall stands between
+	// the two accounts and the refusal is the deployment's SubjectAuthorizer's.
+	// This module ships no default for it, and a deployment that resolves no
+	// account subjects at all would refuse this too — so the caller's own
+	// account is asked first, and the assertion is only made where that one is
+	// answered, which is what makes the refusal about membership.
+	t.Run("an account the caller holds no membership in is not the caller's to resolve", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(resolve), conformance.AsMember())
+		needsUser(t, caller)
+		needsAccount(t, caller)
+		stranger := colleague(t, s, caller)
+		needsAccount(t, stranger)
+
+		c := names()
+		defineCatalog(t, s.Subject(t, conformance.Making(createDefinition), conformance.InTenant(surface, caller.ScopeFor(surface))), &c)
+
+		// The positive control: the caller's own resolution is answered.
+		_, err := caller.Surfaces.Settings.Resolve(caller.Context(t.Context()),
+			&settingspb.ResolveRequest{Subject: self(caller), Name: c.digest})
+		must.NoError(t, err, must.Sprint("this caller cannot resolve its own setting; the refusal below proves nothing"))
+
+		_, err = caller.Surfaces.Settings.Resolve(caller.Context(t.Context()), &settingspb.ResolveRequest{
+			Subject: &settingspb.SettingSubject{Type: subjectAccount, Id: caller.AccountID},
+			Name:    c.digest,
+		})
+		if status.Code(err) == codes.PermissionDenied {
+			t.Skip("conformance: this subject resolves no account subjects, so a refused stranger's account says nothing about membership")
+		}
+
+		must.NoError(t, err, must.Sprint("this caller cannot resolve its own account's setting; the refusal below proves nothing"))
+
+		_, err = caller.Surfaces.Settings.Resolve(caller.Context(t.Context()), &settingspb.ResolveRequest{
+			Subject: &settingspb.SettingSubject{Type: subjectAccount, Id: stranger.AccountID},
+			Name:    c.digest,
+		})
+		notYours(t, err, "an account the caller holds no membership in")
+	})
 }
 
 // gatedCall is one RPC a subject authorizer gates, made against whichever
@@ -215,7 +307,7 @@ type gatedCall struct {
 	rpc  string
 }
 
-// subjectCalls are the six RPCs a subject authorizer gates.
+// subjectCalls are the RPCs a subject authorizer gates.
 //
 // In order rather than a map, because the positive controls run against the
 // caller's own settings and depend on it: the value the first call stores is

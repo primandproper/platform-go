@@ -19,7 +19,7 @@ import (
 // rather than an enum because a consumer's policy is data — a YAML file, a table
 // of roles — and it has to be able to name one without importing Go.
 //
-// There are nine of them over eleven RPCs, and the two collapses are deliberate.
+// There are fewer grants than RPCs, and the two collapses are deliberate.
 // Each get and its list share one grant, because they answer the same question
 // at two cardinalities and a grant that separated them would let a consumer
 // allow enumeration while forbidding the read it enumerates into. A consumer who

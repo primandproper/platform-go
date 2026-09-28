@@ -14,7 +14,7 @@ import (
 
 // The recurring half: who is paying for what, and until when.
 //
-// Four reads and one administrative write, and no way to open, sync or move a
+// Reads and an administrative archive, and no way to open, sync or move a
 // subscription. billing.SubscriptionStore has three writes this service does not
 // serve — CreateSubscription, UpdateSubscription and SetSubscriptionStatus — and
 // their caller is a processor callback already inside the consumer's own
@@ -22,7 +22,7 @@ import (
 // billing.Store for it stated on each method.
 //
 // The reads divide by who they answer to. ListSubscriptions is scope-wide and is
-// the operator's, behind a grant of its own. The other three are somebody's own
+// the operator's, behind a grant of its own. The rest are somebody's own
 // and pass through [AccountAuthorizer]: two name the account in the request, and
 // GetSubscription reads the row first and then asks about the account on it.
 

@@ -19,7 +19,7 @@ import (
 // rather than an enum because a consumer's policy is data — a YAML file, a
 // table of roles — and it has to be able to name one without importing Go.
 //
-// There are five of them over eight RPCs, and the collapses are deliberate. The
+// There are fewer of them than RPCs, and the collapses are deliberate. The
 // three reads of one discussion share one grant, because a comment's audience
 // is the discussion it is in and a policy that let somebody read a thread's
 // roots but not its replies would describe half a page. What does not collapse

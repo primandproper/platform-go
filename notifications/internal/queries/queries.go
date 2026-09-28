@@ -210,7 +210,7 @@ func inboxWrites(g *querygen.Generator) []*querygen.Query {
 // for first is what the unread page already carries, and this schema needs no
 // COUNT statement of its own.
 //
-// GetNotification answers three of the four inbox writes as well as the read a
+// GetNotification answers most of the inbox writes as well as the read a
 // consumer calls. A row this transaction just filed is not archived and a row it
 // just stamped read is still in the inbox, so the ordinary keyed read reaches
 // both on the caller's transaction — which is why the creation-time read this

@@ -364,7 +364,7 @@ func lockSuffix(g *querygen.Generator) string {
 	return clause
 }
 
-// transitions renders the six writes the state machine makes.
+// transitions renders the writes the state machine makes.
 //
 // Every one of them is written out here rather than emitted, and the line is
 // the SET list rather than the effort. querygen assigns bound values — a column

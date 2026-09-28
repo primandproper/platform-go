@@ -15,9 +15,9 @@ import (
 // person's list, everything about a kind of thing, and everything about one
 // particular thing.
 //
-// Four of the five are the triager's, and their target is the queue rather than
-// a person: the grant on the method is the whole of the answer to "whose", which
-// is what PermissionTriageReports means. The fifth names a person and is
+// All but one are the triager's, and their target is the queue rather than a
+// person: the grant on the method is the whole of the answer to "whose", which
+// is what PermissionTriageReports means. The one that names a person is
 // therefore the one that asks [ReportAuthorizer], before it reads anything —
 // there is nothing to read yet, and the name is the thing being gated.
 //
@@ -30,7 +30,7 @@ import (
 // A filter no converter can read is answered as malformed, before anything is
 // gated or read: saying so discloses nothing about any row.
 //
-// All five gate on one thing they share: a request for archived reports is
+// All of them gate on one thing they share: a request for archived reports is
 // honored only for a caller holding [PermissionArchiveReports], and cleared for
 // everybody else. archived.go is where that is argued.
 

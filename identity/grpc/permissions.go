@@ -48,13 +48,13 @@ const (
 	// PermissionRequirePasswordChange covers forcing a password change at a
 	// user's next sign-in, and releasing one.
 	//
-	// It is the lightest of the four operator writes and is its own grant so
+	// It is the lightest of the operator writes and is its own grant so
 	// that it can be granted lightly. It destroys nothing, discloses nothing and
 	// locks nobody out: the subject clears the requirement by choosing a new
 	// password, which is a door they already have. A support desk that should be
 	// able to answer "we think your password leaked" without being able to ban
 	// anybody, end their sessions or make them an operator holds this and none
-	// of the other three.
+	// of the other operator grants.
 	//
 	// One grant covers both directions, because releasing a requirement is the
 	// same act performed by the same person a minute later — usually the one who
@@ -133,9 +133,10 @@ const (
 
 	// PermissionReadInvitations covers reading one invitation by id.
 	//
-	// It is the one id-addressed grant with no row check behind it, because the
-	// reader it exists for includes the recipient — who is neither the sender nor
-	// a member of the account yet. GetInvitation says the same at more length.
+	// It is a grant on the method like every other here, and which invitation
+	// is [TargetAuthorizer]'s question — with the recipient admitted beside
+	// whatever it answers, since they are neither the sender nor a member of
+	// the account yet. GetInvitation says why at more length.
 	PermissionReadInvitations authorization.Permission = "identity.invitations.read"
 )
 
@@ -147,7 +148,7 @@ const (
 // the entry — the map is theirs once they have it, and authorization/grpc's
 // builder takes whatever they hand it.
 //
-// It is also only half of what gates this service. Twelve of these methods take
+// It is also only half of what gates this service. Some of these methods take
 // their target from the request body, and a grant on the method cannot say which
 // account, user or invitation the caller may name — that is [TargetAuthorizer],
 // asked inside the handler, and it is not overridable through this map. See
@@ -175,7 +176,7 @@ func Permissions() map[string][]authorization.Permission {
 		// Registration.
 		identitypb.IdentityService_Register_FullMethodName: {PermissionCreateUsers},
 
-		// The four operator writes, each with its own permission.
+		// The operator writes, each with its own permission.
 		identitypb.IdentityService_ArchiveUser_FullMethodName:                   {PermissionArchiveUsers},
 		identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName:       {PermissionUpdateUserStatus},
 		identitypb.IdentityService_SetUserServiceRoles_FullMethodName:           {PermissionUpdateUserServiceRoles},
@@ -208,8 +209,8 @@ func Permissions() map[string][]authorization.Permission {
 //
 // It exists because the two-step version of this is a hole that fails silently.
 // A consumer who calls RequireAll(Permissions()) and forgets the Public loop
-// gets a builder that Builds cleanly and an enforcer that denies all eight
-// self-service methods as undeclared — GetPrincipal among them, which is the
+// gets a builder that Builds cleanly and an enforcer that denies every
+// self-service method as undeclared — GetPrincipal among them, which is the
 // whoami every client makes on load, so the application appears broken at sign
 // in for a reason nothing connects to a missing loop. Nothing reports it at
 // wiring time, because "declared nowhere" and "deliberately absent" look

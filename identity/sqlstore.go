@@ -459,8 +459,8 @@ func uniquenessResult(err, taken error) error {
 // Global(), so "unset" here is genuinely unset rather than the global scope
 // spelled shortly.
 //
-// It takes the entity's field rather than the entity because the six writes that
-// carry one carry four different types between them, and the rule is the row's
+// It takes the entity's field rather than the entity because the writes that
+// carry one carry several different types between them, and the rule is the row's
 // rather than any one of theirs — see comments.Store.CreateComment, which
 // settled it for every store in this module.
 func adoptScope(scope tenancy.Scope, carried *tenancy.Scope, entity string) error {

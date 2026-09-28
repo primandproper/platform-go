@@ -43,7 +43,7 @@ instead, which is what Match has always been for. The conflict targets name the
 same columns, because Postgres matches ON CONFLICT against a unique index the
 table actually has and both of these are the primary key.
 
-# The fourteen statements
+# The statements
 
 	InsertMeteringEvent            the ingest write, and the dedupe
 	MeteringEventExists            the read-only dedupe probe
@@ -61,7 +61,7 @@ table actually has and both of these are the primary key.
 	MarkMeteringTotalFlushed       a settled post
 	ReleaseMeteringFlush           a failed one
 
-Five of them are querygen's own shapes; the rest are written out here, and the
+A few of them are querygen's own shapes; the rest are written out here, and the
 line between the two halves is the one database/querygen's own doc draws.
 querygen assigns bound values, and these do not: the folds add, maximize, and
 choose between two columns with a CASE; the claim increments an attempt counter

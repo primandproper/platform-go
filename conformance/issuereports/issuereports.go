@@ -39,6 +39,9 @@ const (
 	kindBug     = "bug"
 	detailsBug  = "the thing did not work"
 	subjectKind = "recipe"
+
+	// revised is what a revision says, where what it says is immaterial.
+	revised = "revised"
 )
 
 // Suite is the report queue's behavioral assertions.

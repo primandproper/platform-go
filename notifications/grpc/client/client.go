@@ -4,8 +4,8 @@ Package client is a typed client for the notifications gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be nine functions that can drift
-from the schema, to gain nothing.
+shutdown. A client that wrapped each RPC would be a function per RPC that can
+drift from the schema, to gain nothing.
 
 It is imported as notificationsclient.
 

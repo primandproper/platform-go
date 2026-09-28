@@ -10,17 +10,17 @@ import (
 // rather than a map of permissions.
 //
 // Nothing here is permissioned, and that is a conclusion rather than an
-// omission. Nine of the seventeen RPCs are how a caller becomes somebody at all
-// — or, in SignOut's case, stops being them — so there is no grant that could
-// gate them: a permission check in front of sign-in is a check against the
-// caller's roles, and an anonymous caller has none. Seven take their subject
-// from the principal and have no field that could name anybody else — the whole
-// of their authorization is "this is the caller's own row", checked by the
+// omission. The anonymous RPCs are how a caller becomes somebody at all — or,
+// in SignOut's case, stops being them — so there is no grant that could gate
+// them: a permission check in front of sign-in is a check against the caller's
+// roles, and an anonymous caller has none. All but one of the rest take their
+// subject from the principal and have no field that could name anybody else —
+// the whole of their authorization is "this is the caller's own row", checked by the
 // method having no way to be about another one. EndSignIn names a login rather
 // than a person, and is among them because the caller is part of what it
 // matches: a family that is not theirs ends nothing.
 //
-// The seventeenth is Register, which is neither: it requires a caller and is not
+// The exception is Register, which is neither: it requires a caller and is not
 // about them. It is still ungated, and that is the same conclusion identity's
 // namesake reaches — the registrar is the consumer's own service, the policy
 // that decides who may sign up is theirs and sits in front of the call, and a
@@ -30,12 +30,13 @@ import (
 //
 // So there is no Permissions map here, unlike identity/grpc, and a consumer
 // looking for one is looking for something that would be wrong to have. What
-// there is instead is [Require], which declares all seventeen to an authorization
-// policy explicitly. The difference between "declared and requires nothing" and
-// "not declared" is the difference between a service that works and one whose
-// every method is denied by the enforcer's fail-closed rule, and nothing reports
-// the second at wiring time — which is exactly why the declaration is a function
-// here rather than a paragraph telling a consumer to write a loop.
+// there is instead is [Require], which declares every one of them to an
+// authorization policy explicitly. The difference between "declared and
+// requires nothing" and "not declared" is the difference between a service that
+// works and one whose every method is denied by the enforcer's fail-closed
+// rule, and nothing reports the second at wiring time — which is exactly why
+// the declaration is a function here rather than a paragraph telling a consumer
+// to write a loop.
 
 // AnonymousMethods are the RPCs that require no caller at all.
 //
@@ -45,9 +46,9 @@ import (
 // require a live access token to renew an expired one, which is the one moment a
 // client has none.
 //
-// The fourth is GetAuthStatus, which answers "no" rather than refusing — see its
-// own documentation for why a whoami that refuses anonymous callers makes every
-// client treat its first question as an error.
+// GetAuthStatus is anonymous too, and it answers "no" rather than refusing —
+// see its own documentation for why a whoami that refuses anonymous callers
+// makes every client treat its first question as an error.
 //
 // The next two are the doors that finish a registration, and they are anonymous
 // for the reason the first three are: the token mailed to the person they are
@@ -63,7 +64,7 @@ import (
 // permission could protect: the thing that must not be abused there is the rate
 // it is called at, which is the consumer's to bound in front of it.
 //
-// The ninth is SignOut, which is ExchangeRefreshToken's argument read backwards.
+// The last is SignOut, which is ExchangeRefreshToken's argument read backwards.
 // It presents the same credential and it is the moment a client is least likely
 // to hold a live access token: an application closed for a week has an expired
 // one, and a sign-out that required it would refuse everybody who had waited

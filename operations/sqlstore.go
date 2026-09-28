@@ -323,8 +323,8 @@ func (s *SQLStore) scopedRow(
 
 // unscopedRow is the read-back RequestCancel makes, on an id it has just
 // written and with no scope to hold. It is the whole of what the unscoped
-// statement in the corpus is for; see Store on the seven methods that take
-// neither, and why this is not a variant a consumer read may reach for.
+// statement in the corpus is for; see Store on the methods that take neither,
+// and why this is not a variant a consumer read may reach for.
 func (s *SQLStore) unscopedRow(ctx context.Context, id string) (*Operation, error) {
 	var (
 		row operationsdb.GetOperationRow

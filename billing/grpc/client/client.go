@@ -4,7 +4,7 @@ Package client is a typed client for the billing gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be eighteen functions that can
+shutdown. A client that wrapped each RPC would be a function per RPC that can
 drift from the schema, to gain nothing.
 
 It is imported as billingclient.
@@ -21,8 +21,8 @@ Both idioms work on what comes back:
 	if errors.Is(err, billing.ErrProductNotFound) { ... }  // std errors, matches
 	if status.Code(err) == codes.NotFound { ... }          // and so does the code
 
-It matters more here than on the other surfaces. Seven of billing's refusals
-share codes.InvalidArgument, five share codes.AlreadyExists and two share
+It matters more here than on the other surfaces. Several of billing's refusals
+share each of codes.InvalidArgument, codes.AlreadyExists and
 codes.FailedPrecondition, and inside each family the remedies differ — fix a
 field, fix the code that chose an id, or do nothing because the work is already
 done. The code alone frequently does not say which.
@@ -31,13 +31,13 @@ done. The code alone frequently does not say which.
 
 identity's client applies one and this does not, and the difference is which
 calls are here. An idempotency store keeps a response so it can be replayed, and
-its value is on a write a caller must not perform twice. Twelve of these
-eighteen RPCs are reads, and the writes that would have wanted it — the ones a
+its value is on a write a caller must not perform twice. Most of these RPCs
+are reads, and the writes that would have wanted it — the ones a
 redelivered payment event makes — are deliberately not on this surface at all;
 the store's own unique indexes are what make those safe, in the statement rather
 than in a cache in front of it.
 
-The four administrative writes that are here are a console's, made by a person
+The administrative writes that are here are a console's, made by a person
 watching the result. A retried ArchiveProduct archives a product that is already
 archived, which the store answers the same way twice.
 */

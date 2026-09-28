@@ -7,10 +7,11 @@ It lives here for the reason `client-contract.md` does: it describes a thing
 consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
-**Status:** in progress. Five suites and all three subjects exist; the assembled
-subject mounts all twelve gRPC surfaces over all three dialects and the three
-HTTP surfaces wherever they can run, and the per-surface suites cover two of
-them. [What is left](#what-is-left) is the honest list, and nothing below
+**Status:** in progress. All three subjects exist, and there is a suite for
+each of the twelve gRPC surfaces, one each for the dataprivacy and mediaregistry
+HTTP surfaces, and three that cut across every surface. The assembled subject
+mounts all twelve gRPC surfaces and all three HTTP surfaces over all three
+dialects. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
 
 ## The problem it exists to solve
@@ -19,8 +20,8 @@ Every gRPC surface here is tested twice, and the two tests prove different
 things.
 
 Each `<pkg>/grpc` package hand-builds a server, hands it a store and a test
-extractor, and asserts what the handler decides. That is 425 assertions across
-twelve surfaces, and none of them has been through a composition root.
+extractor, and asserts what the handler decides. None of those assertions has
+been through a composition root.
 
 A consumer's integration suite boots a whole service and asserts the same
 promises again — in their repository, in their assertion library, against their
@@ -108,10 +109,20 @@ bring about. Both skip with the reason printed. That is `service.Config`'s
 presence-is-the-switch rule one level down. Nothing degrades quietly: a suite
 that silently asserted nothing is worse than no suite.
 
+**Nothing here asserts a clock or claims a database.** No suite asserts an
+expiry, a TTL, a pacing rule or a sweep, and `Seams` has no field offering a
+movable clock or a database the run owns alone — two such fields once existed,
+were read by no suite, and were deleted so that a consumer reading the seams
+could not conclude those promises were covered. They are asserted in process,
+and a consumer's own test of one is not something these suites replace. A
+time-based promise that later wants a suite — refresh-token expiry, link TTLs,
+retention sweeps — comes back as a seam shaped for that suite, not as a general
+flag.
+
 **Some promises can only be asserted in process.** `NewServer(nil, db)` has no wire form,
 a permission roster is a statement about a server rather than a call, and a
 converter test is about two Go types. So is anything that varies how the server
-was built — all seven of `audit/grpc`'s `WithChainsResolver` tests, and
+was built — `audit/grpc`'s `WithChainsResolver` tests, and
 `identity/grpc`'s authorizer suite. A deployed service was built once and cannot
 be rebuilt by the thing testing it.
 
@@ -164,8 +175,8 @@ runner's Docker daemon. A job that already has databases sets the two
 
 They are **not** in the coverage gate, and that is about the number rather than
 about the tests. `go test` credits coverage to whichever harness executed the
-code, so `conformance/anonymous` reported 0.9% while asserting against all
-thirty-one of identity's RPCs on every run, and the two leaf suites that happen
+code, so `conformance/anonymous` reported 0.9% while asserting against every
+one of identity's RPCs on every run, and the two leaf suites that happen
 to sit beside a harness reported ~100%. Both figures are the same accident
 pointing in opposite directions. `codecov.yml` and `.scripts/coverage.sh` carry
 the long form; excluding them from a number is not excluding them from CI, and
@@ -173,29 +184,29 @@ all three files say so and point at each other.
 
 ## What exists
 
-| suite | assertions | notes |
-| --- | --- | --- |
-| `conformance/anonymous` | 154 | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
-| `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
-| `conformance/pagination` | 156 | every paged read reports the filter it applied |
-| `conformance/identity` | 49 | accounts, memberships, invitations, users |
-| `conformance/settings` | 29 | definitions, values, reserved settings, confinement |
-| `conformance/waitlists` | 40 | both audiences: the console, and the public signup page |
-| `conformance/billing` | 32 | products, subscriptions, the account rule |
-| `conformance/issuereports` | 48 | filing, lifecycle, the triage queue |
-| `conformance/signin` | 31 | registration, the password and magic-link doors, refresh, sign-out |
-| `conformance/webhooks` | 29 | event types, endpoints, signing keys, subscriptions |
-| `conformance/comments` | 27 | writing, reading, authorship |
-| `conformance/notifications` | 20 | the inbox and devices |
-| `conformance/audit` | 12 | reads, confinement, paging, verification |
-| `conformance/passwordreset` | 8 | the reset flow end to end |
-| `conformance/oauth2clients` | 7 | the administered registry |
-| `conformance/dataprivacy` | 5 | privacy requests over HTTP, and the operations that fulfill them |
-| `conformance/mediaregistry` | 3 | the guarded object read: its owner, another tenant, a colleague |
+| suite | covers |
+| --- | --- |
+| `conformance/anonymous` | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
+| `conformance/filters` | every paged read refuses a malformed filter, behind a positive control |
+| `conformance/pagination` | every paged read reports the filter it applied |
+| `conformance/identity` | accounts, memberships, invitations, users |
+| `conformance/settings` | definitions, values, reserved settings, confinement |
+| `conformance/waitlists` | both audiences: the console, and the public signup page |
+| `conformance/billing` | products, subscriptions, the account rule |
+| `conformance/issuereports` | filing, lifecycle, the triage queue |
+| `conformance/signin` | registration, the password and magic-link doors, refresh, sign-out |
+| `conformance/webhooks` | event types, endpoints, signing keys, subscriptions |
+| `conformance/comments` | writing, reading, authorship |
+| `conformance/notifications` | the inbox and devices |
+| `conformance/audit` | reads, confinement, paging, verification |
+| `conformance/passwordreset` | the reset flow end to end |
+| `conformance/oauth2clients` | the administered registry |
+| `conformance/dataprivacy` | privacy requests over HTTP, and the operations that fulfill them |
+| `conformance/mediaregistry` | the guarded object read: its owner, another tenant, a colleague |
 
-689 leaf assertions on each run of the assembled subject, which serves every
-surface on Postgres, SQLite and MySQL 8 alike. Every one passes on all three,
-with eight skips on each, every skip printing its reason.
+The assembled subject serves every surface on Postgres, SQLite and MySQL 8
+alike, and runs every suite on each. Every assertion passes on all three, and
+every skip prints its reason.
 
 | subject | where | mounts |
 | --- | --- | --- |
@@ -207,19 +218,19 @@ twelve descriptors, but an RPC is only called on a surface the subject mounted,
 and until the assembled subject existed no subject mounted anything but identity
 — so identity's 31 were executed and the other 111 were compiled. Audit's three
 ran for the first time through `service.New`, and all three failed; see below.
-With every surface mounted all 142 run, on three dialects. The other ten
+With every surface mounted all of them run, on three dialects. The other ten
 surfaces passed on first mounting: what they refuse without a caller was already
 right, and the value of running them is that it now stays right.
 
-The HTTP half adds ten routes — dataprivacy's five, mediaregistry's one and
-operations' four — each refusing a request with nobody on it as 401. They are
+The HTTP half adds every route dataprivacy, mediaregistry and operations serve,
+each refusing a request with nobody on it as 401. They are
 listed rather than enumerated, since no registry holds an HTTP route, and the
-list is checked against what each package's Mount actually returns, and all
-ten are asserted on all three dialects.
+list is checked against what each package's Mount actually returns, and every
+one is asserted on all three dialects.
 
 `conformance/filters` and `conformance/pagination` are the other two
 cross-cutting suites, and both find their reads the way `anonymous` does: every
-RPC whose request carries a `filtering.v1.QueryFilter`, 39 of them today. The
+RPC whose request carries a `filtering.v1.QueryFilter`. The
 shared half is `conformance/internal/pagedrpc`, whose one hand-written part is a
 request per read that needs more than a filter to be answerable — an account, a
 comment target, a subject — enumerated rather than inferred, and checked against
@@ -231,8 +242,8 @@ direction nobody recognizes, and a timestamp outside protobuf's range, the two
 things `filtering/grpc` reports rather than corrects. Each read is first called
 with a well-formed filter, and that call must not be `InvalidArgument` — without
 that control, a read refused for a missing account would pass for the wrong
-reason. All 39 pass on all three dialects, and a surface made to list despite the
-error reds it.
+reason. Every one passes on all three dialects, and a surface made to list despite
+the error reds it.
 
 *pagination* asserts a page reports the filter it applied rather than the one
 it was sent: the default page size when none was asked for, a normalized sort
@@ -241,15 +252,15 @@ for the wire's `uint16` clamped rather than wrapped. The last is phrased as a
 comparison — asking for 65546 must be answered as asking for 65535 is — because
 `MaxQueryFilterLimit` is a deployment's to raise and a suite that knew the
 ceiling would be wrong on the deployments that did. A surface made to report the
-request's filter as the applied one reds three of the four. Two reads skip,
-with the reason printed: settings' `ListValuesForDefinition` answers an unknown
-definition with NotFound, and identity's `ListInvitationsForEmailAddress`
-answers `FailedPrecondition`, so neither has a page to read without state a
-client should not be the one to create.
+request's filter as the applied one reds three of the four. A read with no page
+to answer until a client creates state it should not be the one to create
+skips, with the reason printed: settings' `ListValuesForDefinition` answers an
+unknown definition with NotFound, and identity's
+`ListInvitationsForEmailAddress` answers `FailedPrecondition`.
 
 A surface the composition root stops mounting fails here rather than skipping:
 the harness hands every suite a client for all twelve, and an unmounted one
-answers `Unimplemented`. Dropping billing's config block reds all eighteen of
+answers `Unimplemented`. Dropping billing's config block reds every one of
 its RPCs.
 
 `conformance/anonymous` is the shape that pays, and the reason to prefer
@@ -263,14 +274,15 @@ disagree with them. Its roster is checked against `protoregistry.GlobalFiles`,
 because a missing entry compiles perfectly and quietly asserts nothing about an
 entire service.
 
-It asserts both directions. The 127 RPCs that require a caller must refuse one
-that has none; the 15 that do not must not be refused that way. The second
+It asserts both directions. Every RPC that requires a caller must refuse one
+that has none; every one that does not must not be refused that way. The second
 direction is the one nothing else checks and the one with a user-visible
 failure: three of waitlists' public RPCs are a signup form, the link in the mail
 that follows, and the unsubscribe in that mail.
 
-Roughly 142 of the 150 assertions are dialect-independent; that ratio inverts as
-per-surface work lands, which is almost entirely SQL-shaped.
+The cross-cutting suites are close to dialect-independent; the per-surface
+suites are almost entirely SQL-shaped, which is why the assembled subject runs
+every one of them on all three.
 
 ## What it has already found
 
@@ -331,12 +343,7 @@ tenant still gets a 404, and the suite asserts both.
 
 ## What is left
 
-1. **Every gRPC surface has a suite.** Each suite's commit names the in-process
-   tests whose promises it restates, and the ones it cannot reach and why —
-   construction, rosters, converters, schema, options, observability, and
-   anything that varies how a server was built.
-
-2. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
+1. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
    own deployment, runs these suites in its integration job, and deletes the
    integration tests of this module's promises they now cover. That is its
    work, in its repository, and it is what the suites exist to make possible.

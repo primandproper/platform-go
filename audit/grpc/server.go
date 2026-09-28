@@ -142,7 +142,7 @@ var _ auditpb.AuditServiceServer = (*Server)(nil)
 // this surface's caller is a connection with no transaction of its own to join,
 // so the client is read for Reader() and for nothing else: there is no Writer()
 // here, because the recorder is deliberately not on this surface, and no
-// WithTransaction, because three reads have nothing to make atomic.
+// WithTransaction, because reads have nothing to make atomic.
 //
 // The two are positional and the scope resolver is a required option:
 // [WithScopeResolver] has no default behind it, so a server built without it is
@@ -244,7 +244,7 @@ func (s *Server) begin(ctx context.Context, method string) (
 
 	// Validated here rather than left to the reader, so that a resolver which
 	// answered the zero Scope without an error is one refusal with one message
-	// for all three RPCs. Each of them would refuse it on its own — the reader
+	// for every RPC. Each of them would refuse it on its own — the reader
 	// validates the scope it is handed, and the *tenancy.Scope a get takes
 	// reads a non-nil pointer at the zero Scope as a lookup that came back
 	// empty rather than as "every tenant" — but "the connection could not be

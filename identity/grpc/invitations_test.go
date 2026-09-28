@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -260,7 +261,7 @@ func TestRejectInvitationChecksTheTokenBeforeWriting(T *testing.T) {
 
 	// And the invitation is untouched, which is the half a status write
 	// addressed by id alone would have got wrong.
-	read, err := h.client.GetInvitation(h.ctx(),
+	read, err := h.client.GetInvitation(h.as(&testPrincipal{userID: sender.User.ID, scope: testScope}),
 		&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
 	must.NoError(T, err)
 	test.EqOp(T, identitypb.InvitationStatus_INVITATION_STATUS_PENDING, read.GetInvitation().GetStatus())
@@ -320,17 +321,20 @@ func TestGetInvitationIsScopedAndRedacted(T *testing.T) {
 	sender := h.seedAccount(T, testScope, "sender")
 	invitation := invite(T, h, sender, "invitee@example.com", "support")
 
-	read, err := h.client.GetInvitation(h.ctx(),
+	read, err := h.client.GetInvitation(h.as(&testPrincipal{userID: sender.User.ID, scope: testScope}),
 		&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
 	must.NoError(T, err)
 	test.EqOp(T, "invitee@example.com", read.GetInvitation().GetToEmail())
 	test.StrNotContains(T, read.GetInvitation().String(), testInvitationToken)
 
-	// A neighbor cannot read it, and is told it is absent.
-	_, err = h.client.GetInvitation(h.as(&testPrincipal{userID: "caller", scope: otherScope}),
+	// A neighbor cannot read it. The row check finds nothing in their scope and
+	// refuses, which is the answer a stranger in the sender's own scope gets —
+	// so the two are indistinguishable.
+	_, err = h.client.GetInvitation(h.as(&testPrincipal{userID: sender.User.ID, scope: otherScope}),
 		&identitypb.GetInvitationRequest{InvitationId: invitation.GetId()})
 	must.Error(T, err)
-	test.EqOp(T, codes.NotFound, status.Code(err))
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+	test.True(T, errors.Is(err, callers.ErrTargetNotPermitted))
 }
 
 func TestListInvitationsFromUserPagesWhatTheCallerSent(T *testing.T) {

@@ -16,11 +16,11 @@ It is imported as-is.
 Three names, no table, no transport, and no import of anything else in this
 module — which is the whole of the point. [Principal] and [PrincipalExtractor]
 were declared in identity/grpc, because the directory was the first surface to
-cross onto the wire and an interface gets written where it is first needed. Ten
-surfaces name them now and nine of those need nothing else identity has: a
-consumer wiring only settings, or only comments, linked identity, its generated
-querier, its migrations and its protobuf bindings in order to compile an
-interface with three methods on it.
+cross onto the wire and an interface gets written where it is first needed.
+Nearly every surface names them now, and all but authentication/signin/grpc
+need nothing else identity has: a consumer wiring only settings, or only
+comments, linked identity, its generated querier, its migrations and its
+protobuf bindings in order to compile an interface with three methods on it.
 
 It is a move rather than an alias left behind. An alias compiles, and it also
 preserves the build edge for everybody who keeps spelling the old name, which

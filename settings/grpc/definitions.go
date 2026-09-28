@@ -13,13 +13,13 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The catalog half of the surface: seven RPCs over the settings defined in the
+// The catalog half of the surface: the RPCs over the settings defined in the
 // caller's scope, each behind a permission.
 //
 // Every one of them takes the scope off the caller's principal, and none of
 // them takes a subject, which is why none of them asks the
-// [SubjectAuthorizer]: a definition is nobody's in particular. The four reads
-// are one call each; the three writes are one call inside one transaction,
+// [SubjectAuthorizer]: a definition is nobody's in particular. The reads are
+// one call each; the writes are one call inside one transaction,
 // because settings.Store's writes take a database.Tx and an RPC handler is the
 // caller with nothing of its own to join.
 //

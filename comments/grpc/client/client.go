@@ -4,8 +4,8 @@ Package client is a typed client for the comments gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be eight functions that can drift
-from the schema, to gain nothing.
+shutdown. A client that wrapped each RPC would be a function per RPC that can
+drift from the schema, to gain nothing.
 
 It is imported as commentsclient.
 
@@ -21,22 +21,22 @@ Both idioms work on what comes back:
 	if errors.Is(err, comments.ErrNestedReply) { ... }   // std errors, matches
 	if status.Code(err) == codes.InvalidArgument { ... } // and so does the code
 
-It matters here more than on most of this module's surfaces, because nine of
+It matters here more than on most of this module's surfaces, because most of
 this service's refusals share InvalidArgument — an unknown target type, a reply
 to a reply, a reply filed under the wrong discussion, an empty body, a read of
 replies naming no parent, a target missing either half, a comment attributed to
 nobody, and one written into a scope it does not name. The code alone does not
 say which field a form should put a red border around; the sentinel does, and
-six of them carry a sentence written for the person who has to fix it.
+the client-safe ones carry a sentence written for the person who has to fix it.
 
 # Why there is no idempotency interceptor
 
 identity's client applies one and this does not, and the reason is what a
-retried write costs on each surface. Seven of these eight RPCs are naturally
-idempotent — five reads, an edit that assigns a body, and an archive that is
+retried write costs on each surface. Every RPC here but one is naturally
+idempotent — the reads, an edit that assigns a body, and an archive that is
 refused the second time.
 
-The eighth is CreateComment, and a replayed one writes a second comment. That is
+The exception is CreateComment, and a replayed one writes a second comment. That is
 a real cost and it is still not this package's to fix by default: an idempotency
 store keeps a response so it can be replayed, and the response here is somebody's
 sentence with a minted identifier on it — so the store would hold a copy of every
@@ -96,7 +96,7 @@ func WithDialOptions(opts ...grpc.DialOption) Option {
 //
 // The cost of using it is the one this package's documentation opens with: an
 // errors.Is against a comments sentinel then never matches, and the codes alone
-// do not tell nine of the refusals apart.
+// do not tell the InvalidArgument refusals apart.
 func WithoutDefaultInterceptors() Option {
 	return func(o *options) { o.skipInterceptors = true }
 }

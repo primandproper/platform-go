@@ -113,8 +113,8 @@ func (s *Server) confineToLive(
 // readFilter reads the page a request asked for, and confines it to what the
 // caller may be shown.
 //
-// It is a method with a description rather than three copies of the same eight
-// lines, because the three paged reads share both failures: a filter no
+// It is a method with a description rather than a copy of the same eight lines
+// in each paged read, because the paged reads share both failures: a filter no
 // converter can read is the client's to fix and is InvalidArgument rather than
 // the Internal every other call site here passes, and a request for archived
 // rows is a request this surface answers in exactly one place.

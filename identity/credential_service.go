@@ -23,17 +23,17 @@ import (
 //
 // # Why they are not in authentication/signin
 //
-// That package has three credential operations of its own, and each re-checks
+// That package has credential operations of its own, and each re-checks
 // the current password before it writes. That is the right rule for a signed-in
 // person changing their own credential and the wrong one for every flow that has
 // no current password to ask for: a password reset answers a mailed link, an
 // operator forcing a change is not the subject, and a verification link is
 // itself the proof. Those flows cannot go through signin, so they were reaching
 // the store directly — which is exactly where the hook was missing, and why the
-// seam belongs on this Service, beside the seventeen operations a consumer's
-// audit layer already hangs off.
+// seam belongs on this Service, beside the operations a consumer's audit layer
+// already hangs off.
 //
-// The three that overlap are not a second implementation of signin's. signin
+// The ones that overlap are not a second implementation of signin's. signin
 // asks for the password, hashes, verifies a code, and then writes; the write and
 // the hook are the tail of a longer operation whose front half is authentication
 // this package does not do. What is shared is the store write, which is where
@@ -48,10 +48,10 @@ import (
 // never hashes, never compares, and never generates.
 //
 // Every one of them answers with the user as the write left them, redacted, and
-// hands that same value to the hook. Five read the row back to produce it and
-// two take it from a write that answers with one; three of the five read the
-// pre-state as well, because the write is about to clear a column a hook would
-// have wanted and Hooks says so on each of the three methods that gets one.
+// hands that same value to the hook. Some read the row back to produce it and
+// the rest take it from a write that answers with one. Those whose write is
+// about to clear a column a hook would have wanted read the pre-state as well,
+// and Hooks says so on each method that gets one.
 
 // UpdateUserPassword writes a new password hash, in one transaction with
 // whatever Hooks.AfterUpdateUserPassword writes beside it.

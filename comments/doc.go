@@ -159,13 +159,13 @@ losing the author would be a worse outcome than either.
 
 # On the wire
 
-comments/grpc is the gRPC surface over [Store]: eight RPCs, the .proto they are
+comments/grpc is the gRPC surface over [Store]: its RPCs, the .proto they are
 described by, a typed client, and the permissions each one wants. What stays the
 consumer's is what was always theirs — who is calling, what each method
 requires, whose comments a caller may touch, and the catalog itself, which is an
 opaque string in the schema and never a generated enum.
 
-Two of the ten store methods are deliberately not there, and both are named on
+Two of the store's methods are deliberately not there, and both are named on
 their own method here: [Store.DeleteCommentsForTarget] and
 [Store.DeleteCommentsByAuthor] are bulk erasure that exists to commit inside
 somebody else's transaction.

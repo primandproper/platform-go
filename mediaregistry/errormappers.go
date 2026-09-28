@@ -26,7 +26,7 @@ import (
 //
 // Not mediaregistry/http, which is the guarded serve and answers its own 404
 // before any encoding happens — that package's documentation says so and still
-// does. The endpoint these six are for is the consumer's own upload handler,
+// does. The endpoint these are for is the consumer's own upload handler,
 // over the consumer's own form, because the key, the owner and the subject an
 // object hangs off are all theirs; StoreAndRecord is the line at the end of it,
 // and every one of these is a thing that line can tell them. Without a pair here

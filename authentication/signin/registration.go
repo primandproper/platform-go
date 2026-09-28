@@ -25,7 +25,7 @@ import (
 // part identity may not do.
 //
 // [github.com/primandproper/platform-go/v14/identity.Service] satisfies it. A
-// consumer whose directory is not that one implements the two methods.
+// consumer whose directory is not that one implements the interface.
 type Registrar interface {
 	// Register creates the user, the first account they own and the membership
 	// between them, in one transaction.

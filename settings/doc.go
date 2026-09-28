@@ -267,9 +267,9 @@ chooses. The platform ships no numbered migration file — see that package.
 
 # Where this package stops
 
-Not at the store any more. settings/grpc serves thirteen of this store's
-fourteen methods over gRPC, from settings.proto, with converters, a typed client
-and a default permission fragment — because the resolution above is exactly what
+Not at the store any more. settings/grpc serves all but one of this store's
+methods over gRPC, from settings.proto, with converters, a typed client and a
+default permission fragment — because the resolution above is exactly what
 a hand-written service gets subtly wrong, and shipping the store without it left
 every consumer re-deriving the fallback.
 

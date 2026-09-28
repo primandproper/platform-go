@@ -73,13 +73,14 @@ structural rather than a rule somebody has to remember.
 
 # Where the SQL comes from
 
-Nothing in this package composes a statement. The six it executes — the create,
-the read, the overwrite, the existence check, the delete, and the sweep — are
-rendered from sessions/database/internal/queries into one canonical .sql per
-dialect, checked against this package's own schema by sqlc with no database
-running, and executed through the querier sqlc-gen-unison generates from those
-same files. A column renamed in migrations is then a failed `make unison` rather
-than a runtime scan error on whichever dialect noticed first.
+Nothing in this package composes a statement. The ones it executes — the create,
+the read, the overwrite, the existence check, the delete, the listing and
+revocations a person's security page makes, and the sweep — are rendered from
+sessions/database/internal/queries into one canonical .sql per dialect, checked
+against this package's own schema by sqlc with no database running, and executed
+through the querier sqlc-gen-unison generates from those same files. A column
+renamed in migrations is then a failed `make unison` rather than a runtime scan
+error on whichever dialect noticed first.
 
 The rendered .sql is committed even though nothing imports it, for the reasons
 identity's is: it is what `sqlc compile` is handed, it anchors the drift gate a

@@ -1,7 +1,7 @@
 /*
 Package grpc serves the password reset flow over gRPC.
 
-It is imported as passwordresetgrpc, and it is three RPCs over
+It is imported as passwordresetgrpc, and it serves
 [github.com/primandproper/platform-go/v14/authentication/passwordreset.Service]:
 ask for a link, check that a link is still good, spend it. Each method converts,
 calls one thing, and converts back. There is no orchestration here — the
@@ -41,16 +41,16 @@ and an unknown one with a 404 — or logging the difference somewhere a support
 tool can read it — puts back the account enumerator the floor exists to prevent,
 in a place nothing in this module can reach.
 
-The other two RPCs owe the opposite, and the contrast is deliberate. A link that
-cannot be spent is expired, already used, or was never a link, and all three are
-told apart. The secret is high-entropy, so learning which one happened requires
-already holding the token — and somebody with a day-old link is owed the
-difference between "that link expired" and "that link is not a link". See
-passwordreset.ClientSafeSentinels, which is what puts each sentinel's own words
-on the wire, and passwordreset.ClientSafeReasons, which gives each an identifier
-a client branches on. A fourth outcome shares the list: a password the
-service's policy refused, which leaves the link live and asks for another
-password rather than another link.
+The RPCs that check and spend a link owe the opposite, and the contrast is
+deliberate. A link that cannot be spent is expired, already used, or was never a
+link, and all three are told apart. The secret is high-entropy, so learning
+which one happened requires already holding the token — and somebody with a
+day-old link is owed the difference between "that link expired" and "that link
+is not a link". See passwordreset.ClientSafeSentinels, which is what puts each
+sentinel's own words on the wire, and passwordreset.ClientSafeReasons, which
+gives each an identifier a client branches on. A fourth outcome shares the list:
+a password the service's policy refused, which leaves the link live and asks for
+another password rather than another link.
 
 # Errors
 

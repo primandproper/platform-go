@@ -15,7 +15,7 @@ over server-sent events and be pushed each state it reaches.
 
 	handlers.Mount(router)
 
-Mount registers all four routes. A consumer that wants some of them calls
+Mount registers every route. A consumer that wants some of them calls
 MountGet, MountList, MountCancel, and MountEvents itself and leaves out the rest
 — a deployment whose operations should run to completion is the usual reason,
 and it mounts everything but MountCancel.

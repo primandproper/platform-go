@@ -78,9 +78,9 @@ scope like any other and matches only itself. A single-tenant deployment names n
 owner anywhere, pairs it with operations/http.GlobalOwner, and behaves exactly as
 it did before the dimension existed.
 
-Seven Store methods take no scope, and each says why on itself. They are the
-worker's own: the claim, the flush, the two outcomes, the cancellation write, the
-recovery sweep and the reap. A sweep bounded by tenant would leave every other
+The worker's own Store methods take no scope, and each says why on itself: the
+claim, the flush, the two outcomes, the cancellation write, the recovery sweep
+and the reap. A sweep bounded by tenant would leave every other
 tenant's operations stranded, which is the shape of the carve-out rather than an
 exception somebody wanted.
 

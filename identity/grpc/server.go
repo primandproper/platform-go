@@ -101,12 +101,11 @@ var (
 //
 // # What it is
 //
-// Twenty-nine RPCs. Sixteen are writes, and each is exactly one call into
-// identity.Service — which means each is one transaction with the consumer's
-// own Hooks running inside it. Thirteen are reads on identity.Store, on the
-// client's reader, and twelve of them are one call; the thirteenth,
-// ListInvitationsForEmailAddress, reads the caller's user row first to learn
-// the address, which is the price of not taking one from the request. There is
+// Every write is exactly one call into identity.Service — which means each is
+// one transaction with the consumer's own Hooks running inside it. Every read is
+// on identity.Store, on the client's reader, and each is one call except
+// ListInvitationsForEmailAddress, which reads the caller's user row first to
+// learn the address, which is the price of not taking one from the request. There is
 // no orchestration here: a method on this type converts, calls one thing, and
 // converts back. That is deliberate, and it is what makes this file reviewable
 // — anything that had to happen in a transaction happened one layer down, where

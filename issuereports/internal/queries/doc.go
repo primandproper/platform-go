@@ -47,18 +47,19 @@ archived_at IS NOT NULL as a match of its own. That makes the read-back an
 assertion rather than a second lookup: a guard that touched nothing cannot be
 read back as a live row.
 
-# The four lists
+# The paged lists
 
-There are four paged lists — the scope's whole queue, one status, one reporter,
-one subject — and each is rendered in both directions, because a direction is
+There is a paged list per way a queue is read — the scope's whole queue, one
+status, one reporter, a kind of subject, one subject — and each is rendered in
+both directions, because a direction is
 which way the ORDER BY runs and which way the cursor comparison points, and
 those are statement text rather than a bound value on all three engines.
 
-They are four statements rather than one carrying optional predicates.
+They are separate statements rather than one carrying optional predicates.
 [querygen.OptionalNarrowing] exists and would have collapsed them into one, at
 the cost of a statement whose predicates a server discovers per execution and
 whose plan therefore cannot be the one the schema's indexes were written for.
-What four statements cost is text, and nobody writes this text by hand.
+What separate statements cost is text, and nobody writes this text by hand.
 
 # The counts that are not statements
 

@@ -13,13 +13,13 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The catalog half of the surface: six RPCs over the lists in the caller's
-// tenant, five behind a permission and one behind none.
+// The catalog half of the surface: the RPCs over the lists in the caller's
+// tenant, all but one behind a permission.
 //
 // The writes open their own transaction with Client.WithTransaction, because
 // waitlists.Store's writes take a database.Tx and an RPC handler is precisely
 // the caller that method's documentation describes: one with nothing of its own
-// to join. Each of the three answers with the row the store handed it, read on
+// to join. Each of them answers with the row the store handed it, read on
 // that transaction by the store itself — so the response carries the timestamps
 // the database stamped rather than the ones the request sent, and this package
 // makes no read of its own to get them.

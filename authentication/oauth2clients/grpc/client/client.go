@@ -21,9 +21,9 @@ Both idioms work on what comes back:
 	if errors.Is(err, oauth2clients.ErrClientNotFound) { ... }  // std errors, matches
 	if status.Code(err) == codes.NotFound { ... }               // and so does the code
 
-It matters here because three of this service's refusals share PermissionDenied
-and four share InvalidArgument, so the code alone frequently does not say which
-field to fix.
+It matters here because several of this service's refusals share
+PermissionDenied and several more share InvalidArgument, so the code alone
+frequently does not say which field to fix.
 
 # Why there is no idempotency interceptor
 

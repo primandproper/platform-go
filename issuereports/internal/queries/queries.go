@@ -172,13 +172,13 @@ func writes(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// reads is the get, the read-back the archive answers with, and the four paged
-// lists, each list in both directions because a paged list is two statements.
+// reads is the get, the read-back the archive answers with, and the paged lists,
+// each list in both directions because a paged list is two statements.
 //
-// The four lists are four statements rather than one with optional predicates,
+// The lists are separate statements rather than one with optional predicates,
 // which is the reading notifications' unread list already takes: querygen's
 // optional narrowing exists and would collapse them, but each of these
-// predicates is an equality a caller either wants or does not, and four
+// predicates is an equality a caller either wants or does not, and separate
 // statements whose plans a server can see beats one whose predicates it has to
 // discover per execution. What they cost is text nobody hand-writes.
 func reads(g *querygen.Generator) []*querygen.Query {

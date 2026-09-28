@@ -195,24 +195,6 @@ func (s *Session) NeedsAction(t *testing.T, present bool, what string) {
 	}
 }
 
-// NeedsExclusiveDatabase skips the test unless the suite is the only writer.
-func (s *Session) NeedsExclusiveDatabase(t *testing.T, what string) {
-	t.Helper()
-
-	if !s.seams.ExclusiveDatabase {
-		t.Skipf("conformance: %s can only be asserted against a database this run owns, and this subject did not claim one", what)
-	}
-}
-
-// NeedsControlledTime skips the test unless the subject's clock can be moved.
-func (s *Session) NeedsControlledTime(t *testing.T, what string) {
-	t.Helper()
-
-	if !s.seams.ControlledTime {
-		t.Skipf("conformance: %s needs a clock this run can move, and a deployed service has none", what)
-	}
-}
-
 // Run asserts every suite the subject mounted a surface for.
 //
 // A suite whose surface is absent is skipped and said so, which is the

@@ -38,7 +38,7 @@ it would be proving a service nobody could run.
     rule working, not a gap in it.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
-  - The extractor, and the four authorizers that surfaces refuse to mount
+  - The extractor, and the authorizers that surfaces refuse to mount
     without. The extractor is signingrpc's, registered as the
     *signingrpc.PrincipalExtractor that service falls back to when Transports
     names none, so a subject's credential is a token the sign-in service minted
@@ -48,7 +48,7 @@ it would be proving a service nobody could run.
     than a yes, because a permissive authorizer would let every later
     confinement assertion pass on the strength of the rule being absent.
   - The role policy, on the extractor through signingrpc.WithGrants, which is
-    what the seven surfaces that ask inside a handler read to decide whether
+    what the surfaces that ask inside a handler read to decide whether
     include_archived is honored and whether a reserved setting may be written.
     An administrator holds a service role the extractor keeps only on an
     administrative token: a member holds every permission those surfaces'

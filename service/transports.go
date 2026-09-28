@@ -61,17 +61,17 @@ var (
 	// way to tell who is calling.
 	//
 	// It is refused here rather than passed along, unlike a nil authorizer,
-	// because four of the surfaces take a narrower seam than an extractor and
+	// because some of the surfaces take a narrower seam than an extractor and
 	// this is where those are derived. Handing them a derivation over no
-	// extractor would mount four surfaces that refuse every request, which is
+	// extractor would mount surfaces that refuse every request, which is
 	// the shape of hole this whole registration exists to close.
 	ErrNilPrincipalExtractor = platformerrors.Wrap(
 		platformerrors.ErrNilInputParameter,
 		"nil principal extractor for the mounted transport surfaces",
 	)
 
-	// ErrNoPrincipal is a request to one of the four surfaces whose seam is
-	// derived from the extractor, arriving with nobody on it.
+	// ErrNoPrincipal is a request to one of the surfaces whose seam is derived
+	// from the extractor, arriving with nobody on it.
 	//
 	// The surfaces that take the extractor directly answer this themselves, and
 	// each words it for the RPC it refused. This one is for the derivation:
@@ -80,7 +80,7 @@ var (
 	// reading of nobody.
 	//
 	// It wraps callers.ErrNoPrincipal, whose mappers answer it Unauthenticated
-	// and 401. Without that, each of the four answered with the code it falls
+	// and 401. Without that, each of them answered with the code it falls
 	// back to for a resolver that failed — InvalidArgument from audit, a 500 from
 	// mediaregistry — which is the right answer to a request a consumer's
 	// resolver could not place and the wrong one to a request with nobody on it.
@@ -242,7 +242,7 @@ type Transports struct {
 	// cleared and every reserved write is refused — which is a server that
 	// withholds features rather than one that mounts open, so a deployment
 	// that has not wired grants loses nothing it was relying on. It is passed
-	// to the seven surfaces only when it is set, for the reason an optional
+	// to those surfaces only when it is set, for the reason an optional
 	// authorizer is: the absence rule is theirs.
 	Grants authorization.GrantsExtractor
 
@@ -263,9 +263,9 @@ type Transports struct {
 
 // Authorizers is the second seam, one field per surface that takes one.
 //
-// Four are required: a surface configured without them does not mount open, it
+// Some are required: a surface configured without them does not mount open, it
 // fails the startup that configured it, under the surface's own sentinel rather
-// than one invented here. Three have a default their own package documents and
+// than one invented here. The rest have a default their own package documents and
 // a nil field leaves that default in place, because the default is a decision
 // that package already made and this one has no standing to overrule.
 //
@@ -318,10 +318,10 @@ type Authorizers struct {
 //
 // # What mounts
 //
-// Eleven gRPC surfaces — audit, oauth2clients, signin, billing, comments,
-// identity, issuereports, notifications, settings, waitlists and webhooks — and
-// three HTTP ones — dataprivacy, mediaregistry and operations. sessions/http is
-// not among them; see the package documentation for why.
+// The gRPC surfaces — audit, oauth2clients, passwordreset, signin, billing,
+// comments, identity, issuereports, notifications, settings, waitlists and
+// webhooks — and three HTTP ones — dataprivacy, mediaregistry and operations.
+// sessions/http is not among them; see the package documentation for why.
 //
 // A surface mounts when everything it is built from resolves, and the reading
 // of "resolves" is the one the rest of this package already uses: nobody
@@ -1096,10 +1096,10 @@ func (m *mount) settings() {
 // passwordReset mounts the way back in for somebody who cannot sign in.
 //
 // It takes no principal extractor, and it is the only surface here that does not:
-// all three of its RPCs are for a caller who has not signed in and cannot, so
+// every one of its RPCs is for a caller who has not signed in and cannot, so
 // there is nobody to extract. Its scope resolver is left at the package's own
 // default for sign-in's reason, with no exception to make — every RPC on it
-// arrives with nobody on it, not just six of them.
+// arrives with nobody on it, not just some of them.
 //
 // Config.PasswordReset registers the *passwordreset.Service this mounts over,
 // and it stays absent for a service that configured none. What that service
@@ -1127,7 +1127,7 @@ func (m *mount) passwordReset() {
 // signIn mounts the sign-in surface.
 //
 // Its scope resolver is left at signin/grpc's own default rather than derived:
-// six of its RPCs are the ones a caller reaches before there is anybody to
+// several of its RPCs are the ones a caller reaches before there is anybody to
 // extract, so a resolver that refuses a request with no principal would refuse
 // the act of signing in — and, since registration landed here, the act of
 // finishing one.
@@ -1157,7 +1157,7 @@ func (m *mount) signIn() {
 
 // waitlists mounts the signup surface. Its authorizer is required, and its
 // scope resolver is left defaulted for the reason sign-in's is: the public
-// signup page is five RPCs that arrive with nobody on them by design.
+// signup page's RPCs arrive with nobody on them by design.
 //
 // The confirmation loop mounts when the application registered a
 // waitlistsgrpc.ConfirmationMailer, which is presence as the switch for the
@@ -1358,8 +1358,9 @@ func (m *mount) mediaRegistry() {
 // operations mounts the long-running operation surface.
 //
 // The watcher is resolved optionally and passed when it is there, because it is
-// what gates the event stream: without one, operations/http mounts three routes
-// rather than four rather than mounting a subscription with nothing behind it.
+// what gates the event stream: without one, operations/http mounts without its
+// subscription route rather than mounting a subscription with nothing behind
+// it.
 func (m *mount) operations() {
 	svc, ok := need[operations.Service](m)
 	if !ok {

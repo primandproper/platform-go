@@ -4,8 +4,8 @@ Package client is a typed client for the audit log's gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be three functions that can drift
-from the schema, to gain nothing.
+shutdown. A client that wrapped each RPC would be a function per RPC that can
+drift from the schema, to gain nothing.
 
 It is imported as auditclient.
 
@@ -29,7 +29,7 @@ interceptor is what makes it so.
 
 identity's client applies one because a retried write that mints a second account
 is the failure it exists to prevent. There are no writes here: this service is
-three reads, and a retried read is the same read.
+all reads, and a retried read is the same read.
 
 # What a caller still owes
 
@@ -152,7 +152,7 @@ func Wrap(conn grpc.ClientConnInterface) *Client {
 // It is exported so a caller assembling one connection for several services can
 // install the same chain rather than approximating it. Note that it is not
 // identity's client's chain, which also carries idempotency — see this package's
-// documentation for why three reads need none.
+// documentation for why reads need none.
 func DefaultInterceptors() grpc.DialOption { return defaultInterceptors() }
 
 func defaultInterceptors() grpc.DialOption {

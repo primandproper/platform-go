@@ -78,7 +78,7 @@ import (
 // a write over one row, and the rows it destroys are destroyed rather than
 // moved.
 //
-// # Thirteen of these are on the wire and one is not
+// # All but one of these are on the wire
 //
 // settings/grpc serves both halves of this interface: the catalog, which is an
 // operator's, and the answers stored against it, which are a person's own. It
@@ -103,8 +103,8 @@ type Store interface {
 // documentation on why a definition and the values against it share a scope.
 //
 // [DeclareDefinitions] is the composition root's way in, and it is a function
-// over this interface rather than a fifteenth method on it. It needs three of
-// the five methods here and nothing else — the read by name, the create and the
+// over this interface rather than one more method on it. It needs three of the
+// methods here and nothing else — the read by name, the create and the
 // edit — so it works against the SQL store, against a mock, and against any
 // other backing, and the question of what belongs on settings/grpc's wire is
 // left to the methods that actually persist something.

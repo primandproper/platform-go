@@ -27,11 +27,11 @@ routing.Get is generic over its handler's input and output types, so the typed
 registration has to happen where those types are still known. That is here, and
 per-route methods are the whole of the choice that leaves.
 
-# Why this domain is on HTTP when three others are on gRPC
+# Why this domain is on HTTP when the others are on gRPC
 
 identity/grpc, authentication/signin/grpc and authentication/oauth2clients/grpc
-are the module's other domain surfaces, and gRPC is the house default. What the
-three have in common is written down once in identity/grpc's documentation, and
+are among the module's other domain surfaces, and gRPC is the house default.
+What they have in common is written down once in identity/grpc's documentation, and
 this package holds to all of it — the subject binds off the caller rather than
 off a request field, the writes that belong inside somebody else's transaction
 stay in-process, and the mapper pair is registered at the composition root. The
@@ -59,7 +59,7 @@ finished.
 
 A gRPC surface would put submit, confirm and cancel on one protocol while the
 confirm click, the progress stream and the download all lived on another — one
-flow split across two protocols, to match three surfaces that had no such
+flow split across two protocols, to match surfaces that had no such
 constraint.
 
 # The subject is resolved, never sent
@@ -123,11 +123,11 @@ loses is the second thoughts — the subject who submitted an erasure and change
 their mind before clicking, and who now has a Cancel to reach for instead.
 
 A deployment that wants a human click keeps this route unmounted, mounts the
-other four, and puts its own page in front: render an interstitial at the URL in
+rest, and puts its own page in front: render an interstitial at the URL in
 the mail and call dataprivacy.Service.Confirm from the form's POST. That is the
 same shape as the start endpoint operations/http deliberately does not ship — the
 consumer's page, over this module's service — and it is why the mounts here are
-five methods rather than one.
+a method per route rather than one.
 
 Confirming twice is a conflict rather than a second confirmation. The second
 request finds the row no longer awaiting one and reports
@@ -147,7 +147,7 @@ disagree. See Receipt.
 No download route. The artifact reaches the subject as the expiring URL in the
 notification, and dataprivacy.Service.Download and Open remain in-process calls
 for a consumer's own route to make. Serving the bytes is a different kind of
-endpoint from the five here — a content type, a range request, a stream — and
+endpoint from the ones here — a content type, a range request, a stream — and
 the module's Transports section files that kind under mediaregistry rather than
 under a domain's resource surface.
 

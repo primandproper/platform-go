@@ -28,7 +28,7 @@ import (
 //
 // # Every write answers with the row it moved
 //
-// All three of them, and none of them touches the [Client] it was handed. A
+// Every one of them, and none of them touches the [Client] it was handed. A
 // write that reported only an error left its caller describing the registration
 // as it stood a statement earlier: an audit entry for a revision named fields
 // the statement may not have kept, and one for a withdrawal written from the id

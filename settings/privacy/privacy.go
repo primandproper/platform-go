@@ -22,8 +22,8 @@ Both halves take a [settings.ValueStore] rather than a [settings.Store]. The
 definition catalog is administrative — a definition is a setting an operator
 declared, not an answer a person gave — so it holds nothing about a subject,
 appears in no export and survives every erasure. Taking the composed interface
-would make a deployment hand this package six methods it must not call in order
-to reach the two it must.
+would make a deployment hand this package the catalog's methods, which it must
+not call, in order to reach the two it must.
 
 # Why the erasure deletes
 

@@ -171,7 +171,7 @@ const (
 	SweepLinksQuery         = "SweepLinks"
 )
 
-// Render returns the canonical sqlc input for d: the five statements this store
+// Render returns the canonical sqlc input for d: the statements this store
 // executes, in one file's worth of text.
 //
 // It is what links/database/internal/queriesgen writes to the .sql files beside

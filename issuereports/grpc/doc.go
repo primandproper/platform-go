@@ -37,9 +37,9 @@ client-safe sentinel. Its text says the caller was refused, and half of what
 this package does with it is answer as though the row were absent — see
 [ReportAuthorizer] for the two shapes and which RPCs take each.
 
-# Ten of eleven
+# Every store method but one
 
-issuereports.Store has eleven methods and this service serves ten. The absence is
+This service serves all but one of issuereports.Store's methods. The absence is
 DeleteReportsByReporter, which destroys every report one person filed, and it is
 the shape identity/grpc's pattern names first: a write whose caller is already
 inside the process's own transaction is not an RPC. It runs on the caller's
@@ -93,9 +93,9 @@ clears the field on every read, which is the fail-closed default and serves the
 live queue to everybody rather than the archived rows to anybody. archived.go
 carries the ruling.
 
-The other eight RPCs are not row-gated, and that is a ruling rather than an
-omission. CreateReport files in the caller's own name. The four queue listings
-and the three lifecycle writes are the triager's, and their target is the queue
+The rest of the RPCs are not row-gated, and that is a ruling rather than an
+omission. CreateReport files in the caller's own name. The queue listings and
+the lifecycle writes are the triager's, and their target is the queue
 rather than a person — a grant to page every report in the tenant is the answer
 to "whose", spelled where a consumer's policy can audit it.
 

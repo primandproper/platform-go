@@ -102,7 +102,7 @@
 // travels to the person it is about, in mail the consumer sends from inside the
 // transaction that wrote the row -- it is never handed back to whoever called
 // Register, who is a client rather than the subject. It arrives back here only
-// as a request field on the two RPCs that answer a link, which is identity's
+// as a request field on the RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
 // No passkeys and no password reset. Each is a flow of its own over an engine

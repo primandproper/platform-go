@@ -2,7 +2,7 @@
 Package issuereports is the report queue's promises, assertable against any
 subject that mounts it.
 
-Ten RPCs, and two audiences for them: the person who filed a report, and
+Two audiences for this surface: the person who filed a report, and
 whoever triages the queue. What a consumer needs verified about each is
 different, so the assertions say which one they are about.
 

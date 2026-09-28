@@ -48,7 +48,7 @@ var (
 	ErrNilConfig = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset store config")
 )
 
-// The sentinels the flow over the store adds. All six are arguments Service
+// The sentinels the flow over the store adds. All of them are arguments Service
 // refuses rather than outcomes a person meets — the three token outcomes a
 // person meets are the three above, and the flow returns them unchanged. The
 // fourth outcome, a refused password, is ErrPasswordRefused below.

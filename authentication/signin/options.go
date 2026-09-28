@@ -380,7 +380,7 @@ func WithAdminRefreshTokenTTL(ttl time.Duration) ServiceOption {
 //
 // Naming none — which is the default — is what "this service issues one token
 // per sign-in" means: the two token doors mint no refresh token, SignIn.Token is
-// the whole credential, and the three refresh doors refuse with
+// the whole credential, and the refresh doors refuse with
 // ErrRefreshTokensNotConfigured. That shape is deliberate rather than
 // vestigial. A consumer using Service.Authenticate as a credential check owes no
 // table, and this package held no schema at all before rotation existed.
@@ -518,7 +518,7 @@ func WithRegistrar(registrar Registrar) ServiceOption {
 // Service.CompleteVerification. A nil value is ignored, leaving none, and each
 // of the three then refuses with ErrVerificationsNotConfigured.
 //
-// identity's Store satisfies it. It is a second option rather than three more
+// identity's Store satisfies it. It is a second option rather than more
 // methods on Directory because Directory is the interface the component holding
 // everybody's passwords depends on, and because a consumer implementing that
 // one themselves should not have to grow it for a flow they do not run.

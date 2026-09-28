@@ -14,7 +14,7 @@ import (
 
 // The one-time half: what an account bought outright.
 //
-// Three reads and one administrative write. billing.PurchaseStore's two other
+// Reads and an administrative archive. billing.PurchaseStore's two other
 // writes are absent: CreatePurchase is the checkout handler's, written when the
 // attempt starts in the same transaction that records the payment intent, and
 // CompletePurchase is the processor callback's — it stamps the provider's own

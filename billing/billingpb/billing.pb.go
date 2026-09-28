@@ -61,8 +61,8 @@
 // interceptor put on the context. See identity.proto, which says this at
 // greater length.
 //
-// No write that a payment processor's callback makes. Seven of billing's thirty
-// store methods are absent from this service: CreateSubscription,
+// No write that a payment processor's callback makes. Seven of billing's store
+// methods are absent from this service: CreateSubscription,
 // UpdateSubscription, SetSubscriptionStatus, CreatePurchase, CompletePurchase,
 // RecordTransaction and SetTransactionStatus. Their caller is not a client. It
 // is a Stripe or RevenueCat receiver the consumer owns, or the checkout handler

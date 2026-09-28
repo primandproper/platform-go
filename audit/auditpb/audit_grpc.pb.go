@@ -91,7 +91,8 @@ const (
 // AuditService is the audit log on the wire: read one, page them, verify the
 // chain.
 //
-// Three RPCs, all reads, all against the one scope the connection resolved.
+// Every RPC is a read, and every one is against the one scope the connection
+// resolved.
 // What is absent is the recording -- see this file's documentation for why a
 // write that belongs inside the caller's transaction cannot be an RPC.
 type AuditServiceClient interface {
@@ -156,7 +157,8 @@ func (c *auditServiceClient) VerifyChain(ctx context.Context, in *VerifyChainReq
 // AuditService is the audit log on the wire: read one, page them, verify the
 // chain.
 //
-// Three RPCs, all reads, all against the one scope the connection resolved.
+// Every RPC is a read, and every one is against the one scope the connection
+// resolved.
 // What is absent is the recording -- see this file's documentation for why a
 // write that belongs inside the caller's transaction cannot be an RPC.
 type AuditServiceServer interface {

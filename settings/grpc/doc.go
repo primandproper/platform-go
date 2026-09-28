@@ -39,7 +39,7 @@ sentinel: every RPC here answers it with codes.PermissionDenied at the call
 site, so it needs no mapper, and its text is about the caller rather than about
 anything they can correct.
 
-# Thirteen RPCs, two audiences, and one absence
+# Two audiences, and one absence
 
 The catalog half is an operator's: CreateDefinition, GetDefinition,
 GetDefinitionByName, ListDefinitions, UpdateDefinition, ArchiveDefinition, and
@@ -50,16 +50,16 @@ screen every consumer ships, and [Server.Resolve] is the method this package
 exists for — a stored value falling back to the definition's default, so that
 anyone who has not chosen gets an answer rather than a missing row.
 
-The fourteenth method of settings.Store is DeleteValuesForSubject and it is not
-here. It destroys everything one subject answered, cleared answers included, and
-it is erasure machinery — a dataprivacy.Eraser or a retention sweep calling on a
+The one method of settings.Store that is not here is DeleteValuesForSubject. It
+destroys everything one subject answered, cleared answers included, and it is
+erasure machinery — a dataprivacy.Eraser or a retention sweep calling on a
 subject's behalf, from inside the transaction that removes the rest of them.
 Moved onto a wire the write lands in a transaction of its own, at a moment the
 caller does not choose, and what is left is a person erased from one table and
 present in the others. The absence is recorded three times, which is once per
 reader: on settings.Store's own method, in settings.proto's service comment, and
-in the roster in this package's tests, which fails if a fifteenth store method
-is in neither the service nor the list of absences.
+in the roster in this package's tests, which fails if a new store method is in
+neither the service nor the list of absences.
 
 # The typed value, which is this surface's one real design decision
 
@@ -141,7 +141,7 @@ authorization/grpc's interceptor from the full method name and the caller's
 grants, before the request body has been looked at.
 
 [SubjectAuthorizer] is the second, and it is here because it cannot be there.
-Six of these RPCs take a settings.Subject out of the request, and a grant on
+Some of these RPCs take a settings.Subject out of the request, and a grant on
 SetValue is not a grant to write anybody's settings — within one tenant that
 would make "may change their own notification preferences" mean "may change
 everybody's". So the question is asked inside the handler, after the request has

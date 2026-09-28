@@ -17,9 +17,9 @@ import (
 // somewhere that is not a SQL database should not have to fork the package to
 // keep them.
 //
-// What an implementation owes its callers is not "these six methods". It is
-// the three properties the methods exist to hold, none of which the signatures
-// can state:
+// What an implementation owes its callers is not "these methods". It is the
+// three properties the methods exist to hold, none of which the signatures can
+// state:
 //
 // The secret is never stored. Issue mints it, returns it once, and persists
 // something a reader cannot reverse into it.
@@ -39,7 +39,7 @@ import (
 //
 // # The transaction is the caller's
 //
-// The four writes take a database.Tx and the two reads take the wider
+// The writes take a database.Tx and the reads take the wider
 // database.SQLQueryExecutor, which is the module's store convention rather than
 // anything this package invented — but this is the package where the reason for
 // it is a security property rather than a bookkeeping one. Consume decides who

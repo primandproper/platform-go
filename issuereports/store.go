@@ -220,7 +220,7 @@ type Store interface {
 	//
 	// It returns the row because this is the write whose result no ordinary read
 	// here can reach. GetReport cannot see an archived report at all — that is
-	// what archiving means — and the five lists reach it only for a caller who
+	// what archiving means — and the lists reach it only for a caller who
 	// set QueryFilter.IncludeArchived and then pages for it, which is a
 	// different question from "what did I just remove". The details somebody
 	// wrote are what a moderator's entry has to name, and the alternative is the
@@ -246,7 +246,7 @@ type Store interface {
 	// or roll back together.
 	//
 	// That is also why it is the one method here that issuereports/grpc does not
-	// serve. The other ten are on the wire; this is erasure machinery, and the
+	// serve. Every other one is on the wire; this is erasure machinery, and the
 	// clause above is the whole of the reason — an RPC moves the delete into a
 	// transaction of its own, at a moment the caller does not choose, so an
 	// erasure run that failed halfway leaves a subject who has been told they

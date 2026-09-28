@@ -19,7 +19,7 @@ import (
 // [github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes],
 // together with the DDL it needs.
 //
-// What an implementation owes its callers is not "these four methods". It is the
+// What an implementation owes its callers is not "these methods". It is the
 // properties they exist to hold, none of which the signatures can state:
 //
 // The codes are never stored. Replace mints them, returns them once, and persists

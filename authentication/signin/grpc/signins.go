@@ -18,7 +18,7 @@ import (
 //
 // It is an optional interface, declared here where it is needed and asserted
 // for at the call site, which is callers.Principal's rule for anything past its
-// three methods. A consumer whose principal already carries the claim satisfies
+// own methods. A consumer whose principal already carries the claim satisfies
 // it by adding the method; one whose does not keeps compiling, and ListSignIns
 // marks no entry as the current one rather than guessing which it is.
 type FamilyIdentifier interface {

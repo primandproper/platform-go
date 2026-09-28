@@ -79,7 +79,7 @@ site. Seeding a deployment below is the step it is for.
 Writes take an executor rather than a database.Tx, which is a carve-out from the
 module's rule that every exported store write takes one — an enumerated
 exception, granted for the reason below rather than claimed by resembling one of
-the five other packages that hold one. Roles are deployment-global: no tenancy
+the other packages that hold one. Roles are deployment-global: no tenancy
 column, no subject, nothing a consumer holds on somebody else's behalf. And the
 writes are seed-time, run by whatever migrates and bootstraps a deployment,
 which hands over a plain Client.Writer() as often as it hands over a

@@ -174,8 +174,8 @@ var notSkipped = querygen.Match{Column: StateColumn, Arg: SkippedStateArg, Exclu
 // happen, the id breaking a tie.
 var byScheduledAt = []querygen.Order{{Column: ScheduledAtColumn}, {Column: querygen.IDColumn}}
 
-// Render returns the canonical sqlc input for d: the sixteen statements this
-// store executes, in one file's worth of text.
+// Render returns the canonical sqlc input for d: the statements this store
+// executes, in one file's worth of text.
 //
 // There is no StandardCRUD call. Neither table pages by the filter window — a
 // series listing resumes after an id and an occurrence listing is a window of

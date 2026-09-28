@@ -39,7 +39,7 @@ grants, before the request body has been looked at. It answers whether this
 caller may perform this kind of call at all.
 
 [TargetAuthorizer] is the second, and it is here because it cannot be there.
-Eleven RPCs take their target from the request — an account_id, a user_id, an
+Some RPCs take their target from the request — an account_id, a user_id, an
 invitation_id — and asking whether the caller has any standing in that row means
 reading it, which an interceptor holding the request and the grants has no handle
 to do. So it is asked inside the handler, where the store already is, after the
@@ -47,10 +47,11 @@ request has been found well formed and before anything reads or writes.
 
 The default, [MembershipAuthorizer], permits an account the caller holds a live
 membership in, a user they share one with, and an invitation they sent or whose
-account they are in. A consumer with a different rule supplies it with
-[WithTargetAuthorizer]; a consumer who says nothing gets a directory that is
-closed on other people's accounts rather than one where a grant is
-directory-wide.
+account they are in. GetInvitation also admits the invitation's recipient, by
+the verified address on their own row, whatever the authorizer answered. A
+consumer with a different rule supplies it with [WithTargetAuthorizer]; a
+consumer who says nothing gets a directory that is closed on other people's
+accounts rather than one where a grant is directory-wide.
 
 [github.com/primandproper/platform-go/v14/identity/config] assembles all three
 layers from environment configuration and registers them with an injector, which
@@ -81,11 +82,11 @@ particular.
 
 # The shape
 
-Twenty-nine RPCs. Sixteen writes, each exactly one call into identity.Service,
-which is one transaction with the consumer's hooks inside it. Thirteen reads on
-identity.Store, on the client's reader — twelve of them one call, and the one
-that lists what the caller has been sent reading the caller's row first for the
-address it will not take from the request. No method here orchestrates
+Every write is exactly one call into identity.Service, which is one transaction
+with the consumer's hooks inside it. Every read is on identity.Store, on the
+client's reader, and each is one call — except the one that lists what the
+caller has been sent, which reads the caller's row first for the address it will
+not take from the request. No method here orchestrates
 anything: it converts, calls one thing, and converts back. Anything that had to
 happen atomically happened a layer down, where the transaction is.
 
@@ -162,7 +163,7 @@ recover it by reading all three, so what the three have in common is written
 down here and cited from there — audit/grpc is the first to have done so.
 
 A write whose caller is already inside the process's own transaction is not an
-RPC. billing's four status moves, settings.DeleteValuesForSubject,
+RPC. billing's status moves, settings.DeleteValuesForSubject,
 issuereports.DeleteReportsByReporter, webhooks.Enqueue,
 notifications.CreateNotification and audit.Record are the instances, and
 audit.Recorder states the reason best: an audit entry that can commit while the
@@ -204,13 +205,13 @@ schema reserves the name "scope" in every request message, so the field is one
 protoc refuses rather than one a reviewer has to notice. A surface whose Go type
 has a selector this dangerous should do the same.
 
-Every one of the eleven now does, this file's own schema included. It was the
+Every one of them now does, this file's own schema included. It was the
 last of the three to, along with signin.proto and oauth2clients.proto, and the
 three were the ones a consumer forks first — so the rule stated here was being
 stated by the file least able to point at itself. Reserving a name no field uses
 changes no descriptor a client depends on, so the crossing was not a wire break
 and could not become one. What it bought is that the schema test the lane
-promises is now eleven of eleven, and each package's grpc/ asserts it off
+promises now passes for every schema, and each package's grpc/ asserts it off
 MessageDescriptor.ReservedNames rather than off a comment. The reservation
 covers every request message, the inputs a request is built from, and the
 messages a response is built from; the response wrappers hold nothing but those
@@ -230,7 +231,7 @@ tags against descriptors — which is to say the pinning was a side effect of
 being checked rather than a decision anybody took per file. The check that
 notices is not one a package can make about itself: the disagreement is between
 a Go tag in one package and a descriptor in another. internal/protoconvention is
-where all eleven are checked at once, as an equality rather than as "an id field
+where every schema is checked at once, as an equality rather than as "an id field
 carries some override", so a wrong spelling and a gratuitous one fail alongside
 a missing one. It had a deadline the reservation above did not: adding a
 json_name to a field that has shipped changes the wire spelling for every
@@ -241,8 +242,8 @@ A surface owes a mapper pair beside its sentinels, an entry in
 errormappers.Register, and rows in internal/sentinelmatrix, which reds until
 every exported Err in the package is recorded as mapped, platform or unhandled.
 Of the ten, dataprivacy had the pair before the lane opened and audit grew one
-crossing; the eight still to cross owe theirs. Refusals whose
-wording is meant for the person reading them go to
+crossing; every surface that crossed after it grew its own the same way.
+Refusals whose wording is meant for the person reading them go to
 grpcerrors.RegisterClientSafeSentinels as well, or gRPC sends the code's name in
 place of the sentence.
 
@@ -259,8 +260,8 @@ the scope and the owner together — rather than in a guard ahead of it.
 # The two seams grow in opposite directions
 
 [github.com/primandproper/platform-go/v14/callers.Principal]'s method set is
-final: three methods, and there will not be a fourth. Ten gRPC surfaces in this
-module name the type, so it is not this package's interface and is no longer
+final: three methods, and there will not be a fourth. Every gRPC surface in this
+module names the type, so it is not this package's interface and is no longer
 declared here — it lives in a leaf package of its own, which is what stops a
 consumer wiring only settings from linking the directory to compile it. It is
 the one shape every consumer of every gRPC surface in this module has

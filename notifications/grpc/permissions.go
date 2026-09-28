@@ -24,10 +24,10 @@ import (
 // when it withdrew a self-service half reachable behind no permission at all:
 // owning the row answers which rows, not whether this deployment offers the
 // call. A build with no mobile client grants nobody the device permissions and
-// the three device RPCs are closed, which is a decision in the policy rather
+// the device RPCs are closed, which is a decision in the policy rather
 // than an interceptor that has to be told to skip them.
 //
-// Six of them over nine RPCs, and the two collapses are deliberate. Each read
+// There are fewer of them than RPCs, and the two collapses are deliberate. Each read
 // and its list share one grant, because they answer the same question at two
 // cardinalities and a grant that separated them would let a consumer allow
 // enumeration while forbidding the read it enumerates into. A consumer who wants
@@ -40,7 +40,7 @@ const (
 	// It is the grant a bell icon needs and the one every signed-in caller in a
 	// typical policy holds. What it discloses is what somebody was told, which is
 	// bounded by the principal on the connection: it never reaches another
-	// person's inbox, on any of the three RPCs it covers.
+	// person's inbox, on any of the RPCs it covers.
 	PermissionReadInbox authorization.Permission = "notifications.inbox.read"
 
 	// PermissionMarkInboxRead covers stamping one notification read and stamping
