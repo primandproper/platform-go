@@ -13,6 +13,7 @@ import (
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func users(t *testing.T, s *conformance.Session) {
@@ -366,6 +367,29 @@ func users(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, caller.UserID, principal.GetUser().GetId())
 		test.EqOp(t, caller.AccountID, principal.GetActiveAccountId())
 		test.SliceNotEmpty(t, principal.GetMemberships())
+	})
+
+	// The active account comes back with the principal, and it is the account
+	// GetAccount reads: the same row, not a projection of it. An owner, because
+	// an owner is who may also make the GetAccount this is compared against.
+	t.Run("the principal read returns the active account GetAccount reads", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(getPrincipal, getAccount))
+		needsAccount(t, caller)
+
+		response, err := caller.Surfaces.Identity.GetPrincipal(caller.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+		must.NoError(t, err)
+
+		found, err := caller.Surfaces.Identity.GetAccount(caller.Context(t.Context()),
+			&identitypb.GetAccountRequest{AccountId: caller.AccountID})
+		must.NoError(t, err)
+
+		active := response.GetActiveAccount()
+		must.NotNil(t, active)
+		test.EqOp(t, caller.AccountID, active.GetId())
+		test.True(t, proto.Equal(found.GetAccount(), active),
+			test.Sprintf("GetPrincipal's active account %v differs from GetAccount's %v", active, found.GetAccount()))
 	})
 
 	t.Run("the principal read refuses a caller who has been banned", func(t *testing.T) {

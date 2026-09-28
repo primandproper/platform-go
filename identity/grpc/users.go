@@ -288,7 +288,25 @@ func (s *Server) GetPrincipal(
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading the calling principal")
 	}
 
-	return &identitypb.GetPrincipalResponse{Principal: PrincipalToProto(resolved)}, nil
+	response := &identitypb.GetPrincipalResponse{Principal: PrincipalToProto(resolved)}
+
+	// The active account rides along because "which account am I in" is the
+	// question a client asks next, and GetAccount answers it only for a caller
+	// holding a directory grant. The store has just checked the caller is a live
+	// member of this account, and that check is the authorization for reading
+	// it. A caller with no memberships resolved no account, and gets none.
+	if resolved.ActiveAccountID != "" {
+		var account *identity.Account
+
+		account, err = s.store.GetAccount(ctx, s.client.Reader(), scopeOf(principal), resolved.ActiveAccountID)
+		if err != nil {
+			return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading the calling principal's active account")
+		}
+
+		response.ActiveAccount = AccountToProto(account)
+	}
+
+	return response, nil
 }
 
 // GetUser reads one user.
