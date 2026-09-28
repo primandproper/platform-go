@@ -227,11 +227,10 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		test.False(t, ok, test.Sprint("a context nothing resolved has no grants"))
 		test.True(t, grants.IsEmpty())
 
-		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "Bearer "+h.issue(t, h.admin, false).Token))
-		grants, ok = e.Grants(ctx)
-		must.True(t, ok)
-		test.True(t, grants.Has(memberGrant))
-		test.False(t, grants.Has(operatorGrant))
+		saw := serveThrough(t, e, "Bearer "+h.issue(t, h.admin, false).Token)
+		must.True(t, saw.granted)
+		test.True(t, saw.grants.Has(memberGrant))
+		test.False(t, saw.grants.Has(operatorGrant))
 
 		// The directory still holds the role; only the request's copy lacks it.
 		user, err := h.store.GetUser(t.Context(), h.db.Reader(), testScope, h.admin.User.ID)
@@ -313,26 +312,70 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 	})
 }
 
+// seen is what a handler behind HTTPMiddleware read off its request.
+type seen struct {
+	principal callers.Principal
+	grants    authorization.Grants
+	code      int
+	granted   bool
+}
+
+// serveThrough runs one request carrying the given Authorization header through
+// e's HTTPMiddleware, and reports what Extract and Grants answered inside it.
+func serveThrough(t *testing.T, e *signingrpc.PrincipalExtractor, header string) seen {
+	t.Helper()
+
+	var saw seen
+
+	handler := e.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		saw.principal, _ = e.Extract(r.Context())
+		saw.grants, saw.granted = e.Grants(r.Context())
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+	if header != "" {
+		req.Header.Set("Authorization", header)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	saw.code = rec.Code
+
+	return saw
+}
+
 func TestPrincipalExtractor_Extract(T *testing.T) {
 	T.Parallel()
 
 	h := newExtractorHarness(T)
 
-	T.Run("reads the bearer token off the incoming metadata without an interceptor", func(t *testing.T) {
+	// Extract reads no credential of its own. A good token on a request that
+	// neither the interceptor nor the middleware saw is a server that installed
+	// neither, and it sees nobody rather than resolving the token per call.
+	T.Run("names nobody on a request nothing resolved, whatever token it carries", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "bearer "+h.issue(t, h.member, false).Token))
+		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "Bearer "+h.issue(t, h.member, false).Token))
 
-		principal, ok := h.extractor(t).Extract(ctx)
-		must.True(t, ok)
-		test.EqOp(t, h.member.User.ID, principal.UserID())
+		_, ok := h.extractor(t).Extract(ctx)
+		test.False(t, ok)
+	})
+
+	T.Run("answers with the caller the middleware resolved", func(t *testing.T) {
+		t.Parallel()
+
+		saw := serveThrough(t, h.extractor(t), "bearer "+h.issue(t, h.member, false).Token)
+		must.NotNil(t, saw.principal)
+		test.EqOp(t, h.member.User.ID, saw.principal.UserID())
 	})
 
 	T.Run("a request with no token carries nobody", func(t *testing.T) {
 		t.Parallel()
 
-		_, ok := h.extractor(t).Extract(t.Context())
-		test.False(t, ok)
+		saw := serveThrough(t, h.extractor(t), "")
+		test.Nil(t, saw.principal)
 	})
 
 	T.Run("the fallback answers for a request with no token, and for a token that is not ours", func(t *testing.T) {
@@ -341,14 +384,13 @@ func TestPrincipalExtractor_Extract(T *testing.T) {
 		other := &testPrincipal{userID: "legacy", scope: tenancy.Global()}
 		e := h.extractor(t, signingrpc.WithFallback(func(context.Context) (callers.Principal, bool) { return other, true }))
 
-		principal, ok := e.Extract(t.Context())
-		must.True(t, ok)
-		test.EqOp(t, "legacy", principal.UserID())
+		saw := serveThrough(t, e, "")
+		must.NotNil(t, saw.principal)
+		test.EqOp(t, "legacy", saw.principal.UserID())
 
-		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "Bearer an-opaque-oauth2-token"))
-		principal, ok = e.Extract(ctx)
-		must.True(t, ok)
-		test.EqOp(t, "legacy", principal.UserID())
+		saw = serveThrough(t, e, "Bearer an-opaque-oauth2-token")
+		must.NotNil(t, saw.principal)
+		test.EqOp(t, "legacy", saw.principal.UserID())
 	})
 
 	T.Run("the fallback is not a second opinion on a user the directory refuses", func(t *testing.T) {
@@ -368,18 +410,17 @@ func TestPrincipalExtractor_Extract(T *testing.T) {
 			return &testPrincipal{userID: "legacy"}, true
 		}))
 
-		_, ok := e.Extract(metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "Bearer "+issued.Token)))
-		test.False(t, ok)
+		saw := serveThrough(t, e, "Bearer "+issued.Token)
+		test.EqOp(t, http.StatusForbidden, saw.code)
 		test.False(t, consulted)
 	})
 
 	T.Run("grants report nothing without a policy", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "Bearer "+h.issue(t, h.member, false).Token))
-
-		_, ok := h.extractor(t).Grants(ctx)
-		test.False(t, ok)
+		saw := serveThrough(t, h.extractor(t), "Bearer "+h.issue(t, h.member, false).Token)
+		must.NotNil(t, saw.principal)
+		test.False(t, saw.granted)
 	})
 }
 
@@ -388,28 +429,15 @@ func TestPrincipalExtractor_HTTPMiddleware(T *testing.T) {
 
 	h := newExtractorHarness(T)
 
-	serve := func(t *testing.T, e *signingrpc.PrincipalExtractor, authorization string) (int, string) {
+	serve := func(t *testing.T, e *signingrpc.PrincipalExtractor, header string) (int, string) {
 		t.Helper()
 
-		var seen string
-
-		handler := e.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if principal, ok := e.Extract(r.Context()); ok {
-				seen = principal.UserID()
-			}
-
-			w.WriteHeader(http.StatusNoContent)
-		}))
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
-		if authorization != "" {
-			req.Header.Set("Authorization", authorization)
+		saw := serveThrough(t, e, header)
+		if saw.principal == nil {
+			return saw.code, ""
 		}
 
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-
-		return rec.Code, seen
+		return saw.code, saw.principal.UserID()
 	}
 
 	T.Run("puts the caller a bearer token names on the request", func(t *testing.T) {

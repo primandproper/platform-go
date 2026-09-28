@@ -177,14 +177,12 @@ func (c *Caller) Identity() *identity.Principal { return c.principal }
 //
 // # How it reaches a request
 //
-// Extract is a callers.PrincipalExtractor, and works on its own: handed a gRPC
-// request context, it reads the bearer token off the incoming metadata. The
-// interceptors are what a deployment installs in front of it — they resolve the
-// caller once per request, enforce an AuthenticationRequirements table, and
-// answer an unusable credential with the honest code rather than leaving each
-// surface to report codes.Unauthenticated for a directory outage. HTTPMiddleware
-// is the router's counterpart; an HTTP request has no metadata, so over HTTP it
-// is the only way the caller arrives.
+// Extract is a callers.PrincipalExtractor, and answers only for a request the
+// interceptors or HTTPMiddleware resolved; a deployment installs them in front
+// of it. The interceptors resolve the caller once per request, enforce an
+// AuthenticationRequirements table, and answer an unusable credential with the
+// honest code — Unavailable for a directory outage rather than
+// codes.Unauthenticated. HTTPMiddleware is the router's counterpart.
 type PrincipalExtractor struct {
 	verifier  TokenVerifier
 	client    database.Client
@@ -473,24 +471,21 @@ func withResolved(ctx context.Context, principal callers.Principal) context.Cont
 // Extract is the callers.PrincipalExtractor: who is calling this request, if
 // anybody.
 //
-// A request an interceptor or HTTPMiddleware already resolved is answered from
-// what they found. One neither saw — a server that installed neither — is
-// resolved here, from the gRPC metadata's bearer token, every time it is asked;
-// installing the interceptor is what makes that once per request. Any failure
-// on this path reports nobody, which every surface answers with
-// codes.Unauthenticated: an extractor cannot return an error, and that is the
-// reason the interceptor exists.
+// It answers from what the interceptor or HTTPMiddleware resolved, and from
+// nothing else. A request neither saw names nobody, whatever token it carries:
+// Extract reads no credential of its own. Resolving one here would verify the
+// token and read the directory again on every call, and would have to report a
+// directory outage as nobody, since an extractor cannot return an error — the
+// two things the interceptor exists to get right. A server that installed
+// neither therefore sees every caller as anonymous, and a method that needs a
+// caller refuses them all.
 func (e *PrincipalExtractor) Extract(ctx context.Context) (callers.Principal, bool) {
-	if r, ok := ctx.Value(resolvedKey{}).(*resolved); ok {
-		return r.principal, r.principal != nil
-	}
-
-	principal, err := e.resolve(ctx, bearerFromMetadata(ctx))
-	if err != nil || principal == nil {
+	r, ok := ctx.Value(resolvedKey{}).(*resolved)
+	if !ok || r.principal == nil {
 		return nil, false
 	}
 
-	return principal, true
+	return r.principal, true
 }
 
 // Grants is the authorization.GrantsExtractor: what the caller on this request
