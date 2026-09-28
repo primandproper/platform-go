@@ -115,6 +115,71 @@ func definitions(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
+	// A default is held to the rule a value is, because a default is the value
+	// every subject who has not chosen resolves to: one the setting would
+	// refuse from a subject is one it may not hand them either.
+	for name, row := range map[string]struct {
+		input   func(name string) *settingspb.SettingDefinitionInput
+		wording string
+	}{
+		"a default outside the enumeration is refused and defines nothing": {
+			input: func(name string) *settingspb.SettingDefinitionInput {
+				return &settingspb.SettingDefinitionInput{
+					Name:         name,
+					Kind:         settingspb.SettingKind_SETTING_KIND_STRING,
+					DefaultValue: new("hourly"),
+					Enumeration:  []string{optionDaily, optionNever, optionWeekly},
+				}
+			},
+			// Registered as client-safe, so the sentence names what the
+			// setting admits rather than leaving a console to guess.
+			wording: "admits",
+		},
+		"a default of the wrong kind is refused and defines nothing": {
+			input: func(name string) *settingspb.SettingDefinitionInput {
+				return &settingspb.SettingDefinitionInput{
+					Name:         name,
+					Kind:         settingspb.SettingKind_SETTING_KIND_INTEGER,
+					DefaultValue: new("ninety"),
+				}
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			op := s.Subject(t, conformance.Making(createDefinition, getDefinitionByName))
+			c := names()
+
+			// Standing first: a caller who may not define skips here, rather
+			// than reading PermissionDenied below as the refusal.
+			define(t, op, &settingspb.SettingDefinitionInput{Name: c.channel, Kind: settingspb.SettingKind_SETTING_KIND_STRING})
+
+			_, err := op.Surfaces.Settings.CreateDefinition(op.Context(t.Context()),
+				&settingspb.CreateDefinitionRequest{Definition: row.input(c.digest)})
+			must.Error(t, err, must.Sprint("a default the setting would not admit was accepted"))
+			test.EqOp(t, codes.InvalidArgument, status.Code(err))
+			if row.wording != "" {
+				test.StrContains(t, status.Convert(err).Message(), row.wording)
+			}
+
+			_, err = op.Surfaces.Settings.GetDefinitionByName(op.Context(t.Context()),
+				&settingspb.GetDefinitionByNameRequest{Name: c.digest})
+			must.Error(t, err, must.Sprint("a refused definition was readable"))
+			test.EqOp(t, codes.NotFound, status.Code(err))
+
+			// And the name is still free: a stored name stays claimed, archived
+			// or not, so this going through is the second proof that nothing
+			// was stored as well as the positive control.
+			define(t, op, &settingspb.SettingDefinitionInput{
+				Name:         c.digest,
+				Kind:         settingspb.SettingKind_SETTING_KIND_STRING,
+				DefaultValue: new(optionWeekly),
+				Enumeration:  []string{optionDaily, optionNever, optionWeekly},
+			})
+		})
+	}
+
 	t.Run("a name already defined is refused as taken, and says so", func(t *testing.T) {
 		t.Parallel()
 

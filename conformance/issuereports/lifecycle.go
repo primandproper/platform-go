@@ -85,6 +85,76 @@ func revisions(t *testing.T, s *conformance.Session) {
 			test.Sprint("a refused revision changed the report anyway"))
 	})
 
+	t.Run("a revision that omits the optional fields clears them rather than keeping them", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(createReport, updateReport, getReport))
+
+		filed := fileOne(t, mine)
+		must.StrNotEqFold(t, "", filed.GetSubjectType(),
+			must.Sprint("a filed report carried no subject; clearing one cannot be observed"))
+
+		// A revision replaces what the report says: every field is written
+		// whether it was set or not, so one naming only the details blanks the
+		// subject rather than keeping it.
+		response, err := mine.Surfaces.IssueReports.UpdateReport(mine.Context(t.Context()),
+			&issuereportspb.UpdateReportRequest{
+				ReportId: filed.GetId(),
+				Input:    &issuereportspb.IssueReportUpdateInput{Kind: kindBug, Details: "only the details"},
+			})
+		must.NoError(t, err)
+
+		// The response, and then the stored row: a handler that answered with
+		// the input while writing something else would pass the first alone.
+		for source, report := range map[string]*issuereportspb.IssueReport{
+			"the response":   response.GetResult(),
+			"the stored row": read(t, mine, filed.GetId()),
+		} {
+			test.EqOp(t, kindBug, report.GetKind(), test.Sprintf("%s's kind", source))
+			test.EqOp(t, "only the details", report.GetDetails(), test.Sprintf("%s's details", source))
+			test.EqOp(t, "", report.GetSubjectType(), test.Sprintf("%s kept a subject type the revision omitted", source))
+			test.EqOp(t, "", report.GetSubjectId(), test.Sprintf("%s kept a subject id the revision omitted", source))
+		}
+	})
+
+	// The store's refusals again, on the way in through a revision: replace
+	// semantics make an omitted required field an emptied one, and the report
+	// is refused whole rather than written with the rest of the input.
+	for name, input := range map[string]*issuereportspb.IssueReportUpdateInput{
+		"a revision that would empty the kind is refused and writes nothing":    {Details: revised},
+		"a revision that would empty the details is refused and writes nothing": {Kind: revised},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			mine := s.Subject(t, conformance.Making(createReport, updateReport, getReport))
+			filed := fileOne(t, mine)
+
+			// The positive control: a whole revision reaches another of the
+			// caller's reports, so the refusal below is the input's.
+			other := fileOne(t, mine)
+			_, err := mine.Surfaces.IssueReports.UpdateReport(mine.Context(t.Context()),
+				&issuereportspb.UpdateReportRequest{
+					ReportId: other.GetId(),
+					Input:    &issuereportspb.IssueReportUpdateInput{Kind: revised, Details: revised},
+				})
+			must.NoError(t, err, must.Sprint("the caller cannot revise its own report; the refusal below proves nothing"))
+
+			_, err = mine.Surfaces.IssueReports.UpdateReport(mine.Context(t.Context()),
+				&issuereportspb.UpdateReportRequest{ReportId: filed.GetId(), Input: input})
+			must.Error(t, err)
+			test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+			// All four, not only the one under test: a revision applied before
+			// it was validated would have blanked the subject on the way.
+			stored := read(t, mine, filed.GetId())
+			test.EqOp(t, kindBug, stored.GetKind())
+			test.EqOp(t, detailsBug, stored.GetDetails())
+			test.EqOp(t, filed.GetSubjectType(), stored.GetSubjectType())
+			test.EqOp(t, filed.GetSubjectId(), stored.GetSubjectId())
+		})
+	}
+
 	t.Run("a report in another tenant cannot be revised from here", func(t *testing.T) {
 		t.Parallel()
 
@@ -92,7 +162,7 @@ func revisions(t *testing.T, s *conformance.Session) {
 
 		own := fileOne(t, mine)
 		neighbor := fileOne(t, theirs)
-		input := &issuereportspb.IssueReportUpdateInput{Kind: "revised", Details: "revised from here"}
+		input := &issuereportspb.IssueReportUpdateInput{Kind: revised, Details: "revised from here"}
 
 		// The positive control: the same revision reaches the caller's own.
 		_, err := mine.Surfaces.IssueReports.UpdateReport(mine.Context(t.Context()),
