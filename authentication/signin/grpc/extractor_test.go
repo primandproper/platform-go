@@ -22,6 +22,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	"github.com/primandproper/primitives-go/v2/authentication/tokens/jwt"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -800,7 +801,55 @@ func TestPrincipalExtractor_interceptor(T *testing.T) {
 		_, err = dial(t, e, signInReqs).GetSelf(bearer(t.Context(), h.issue(t, h.member, false).Token), &signinpb.GetSelfRequest{})
 		test.EqOp(t, codes.Unavailable, status.Code(err))
 	})
+
+	// A token naming its login and no token ID is one a check that refuses
+	// superseded tokens has nothing to compare against: a bad credential,
+	// never the outage a check that could not answer is.
+	T.Run("a token with no ID, under a check refusing superseded tokens, is unauthenticated, not unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+			signin.WithRefreshTokenStore(h.refresh),
+			signin.WithSupersededTokenRefusal(),
+		)
+		must.NoError(t, err)
+
+		e, err := signingrpc.NewPrincipalExtractor(noTokenIDVerifier{h.signer}, h.db, h.store, signingrpc.WithSignInCheck(refusing))
+		must.NoError(t, err)
+
+		issued := h.issue(t, h.member, false)
+
+		_, err = e.Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+		test.ErrorIs(t, err, signin.ErrEmptyTokenID)
+
+		_, err = dial(t, e, signInReqs).GetSelf(bearer(t.Context(), issued.Token), &signinpb.GetSelfRequest{})
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+
+		saw := serveThrough(t, e, "Bearer "+issued.Token)
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+	})
 }
+
+// noTokenIDVerifier verifies with the harness's signer and hands back claims
+// with no "jti", which is the token a consumer's claims builder mints when it
+// leaves the ID out.
+type noTokenIDVerifier struct{ signingrpc.TokenVerifier }
+
+func (v noTokenIDVerifier) ParseToken(ctx context.Context, token string) (tokens.Claims, error) {
+	claims, err := v.TokenVerifier.ParseToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return noTokenIDClaims{claims}, nil
+}
+
+// noTokenIDClaims is a token's claims with its "jti" left out.
+type noTokenIDClaims struct{ tokens.Claims }
+
+func (noTokenIDClaims) JTI() string { return "" }
 
 // failingDirectory is a directory that cannot be read.
 type failingDirectory struct{}

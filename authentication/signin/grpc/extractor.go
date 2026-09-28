@@ -90,7 +90,10 @@ type PrincipalDirectory interface {
 // It is signin.Service.CheckSignIn, and a *signin.Service satisfies it. nil is
 // a login that is going; an error wrapping signin.ErrInvalidCredentials is one
 // that has ended or, on a service that refuses them, an access token the login
-// has replaced; any other error is a read that could not be made.
+// has replaced; an error wrapping signin.ErrEmptyTokenID is a token with no ID
+// for a service that refuses superseded tokens to compare, and is refused as a
+// token the sign-in service did not mint; any other error is a read that could
+// not be made.
 type SignInChecker interface {
 	CheckSignIn(ctx context.Context, scope tenancy.Scope, familyID, tokenID string) error
 }
@@ -447,6 +450,15 @@ func (e *PrincipalExtractor) checkSignIn(ctx context.Context, scope tenancy.Scop
 
 	if errors.Is(err, signin.ErrInvalidCredentials) {
 		return platformerrors.Join(ErrUnauthenticated, err)
+	}
+
+	// A token with no "jti" is refused for the reason one with no family claim
+	// is: a checker that refuses superseded tokens compares the token's ID, and
+	// a token that carries none is not one signin.DefaultClaims' issuer minted.
+	// It is the checker that says so rather than this method, because only a
+	// checker that refuses superseded tokens reads the ID at all.
+	if errors.Is(err, signin.ErrEmptyTokenID) {
+		return platformerrors.Join(platformerrors.Wrap(ErrNotASignInToken, "no \"jti\" claim"), err)
 	}
 
 	return err
