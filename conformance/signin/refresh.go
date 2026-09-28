@@ -362,4 +362,42 @@ func refresh(t *testing.T, s *conformance.Session) {
 		_, err = exchange(t.Context(), anon, theirs.GetRefreshToken())
 		test.NoError(t, err, test.Sprint("a caller ended somebody else's login by naming it"))
 	})
+
+	// "Sign out my other devices": the login the request came through is kept,
+	// read off the caller's own token, and every other one the caller holds
+	// ends. A deployment whose principal cannot say which login is asking must
+	// refuse rather than end them all — so that answer is asserted too, as
+	// ending nothing, before the rest is skipped.
+	t.Run("ending the other logins keeps the one asking and ends the rest", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
+		who := signInAs(t, s, anon)
+
+		other := rotating(t, anon, who.username, password)
+		asking := loggedIn(t, anon, who.username, password)
+		must.NotEqOp(t, other.GetFamilyId(), asking.GetFamilyId(), must.Sprint("two sign-ins were one login"))
+
+		sub := caller(t, s, asking, endOtherSignIns)
+
+		_, err := sub.Surfaces.SignIn.EndOtherSignIns(sub.Context(t.Context()), &signinpb.EndOtherSignInsRequest{})
+		if status.Code(err) == codes.FailedPrecondition {
+			refused(t, s, err, codes.FailedPrecondition, reasonSignInNotIdentified)
+
+			for _, alive := range []*signinpb.IssuedToken{other, asking} {
+				_, exchangeErr := exchange(t.Context(), anon, alive.GetRefreshToken())
+				test.NoError(t, exchangeErr, test.Sprint("a refused sign-out of the other logins ended one"))
+			}
+
+			t.Skip("conformance: this deployment's principal does not name the login a request came through, so there is no login to keep; the refusal is asserted and the rest skipped")
+		}
+
+		must.NoError(t, err)
+
+		_, err = exchange(t.Context(), anon, other.GetRefreshToken())
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = exchange(t.Context(), anon, asking.GetRefreshToken())
+		test.NoError(t, err, test.Sprint("ending the other logins ended the one asking"))
+	})
 }

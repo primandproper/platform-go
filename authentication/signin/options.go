@@ -785,8 +785,28 @@ func WithMagicLinkTTL(ttl time.Duration) ServiceOption {
 	}
 }
 
-// WithVerificationLinkTTL sets how long the verification link minted at
-// registration stays answerable. A non-positive duration is ignored, leaving
+// WithVerificationMailer attaches what delivers a verification link that
+// Service.RequestVerificationEmail mints, which is what turns that door on. A
+// nil value is ignored, leaving none, and the door refuses with
+// ErrVerificationMailerNotConfigured.
+//
+// It is a mailer of its own rather than a reuse of MagicLinkMailer, for the
+// reason the two doors are separate: a consumer implements only the mail for the
+// doors they mount, and a verification link and a sign-in link are different
+// messages with different URLs. Registration does not use it — Register hands
+// its link back on Registered, since a registration has already told its caller
+// the account exists.
+func WithVerificationMailer(mailer VerificationMailer) ServiceOption {
+	return func(s *Service) {
+		if mailer != nil {
+			s.verificationMailer = mailer
+		}
+	}
+}
+
+// WithVerificationLinkTTL sets how long a verification link stays answerable,
+// the one minted at registration and every one RequestVerificationEmail mints
+// after it. A non-positive duration is ignored, leaving
 // DefaultVerificationLinkTTL.
 //
 // It is the service's rather than the store's, for the reason WithMagicLinkTTL

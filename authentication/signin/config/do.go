@@ -39,7 +39,10 @@ import (
 //
 // signin.Hooks, signin.PasswordPolicy, signin.AccountPasswordPolicy,
 // signin.RegistrationPolicy and signin.ClaimsBuilder are used if the application registered them, and the
-// service's own defaults apply otherwise. Only absence is absorbed, as
+// service's own defaults apply otherwise. So is a signin.VerificationMailer,
+// whose absence leaves RequestVerificationEmail refusing with
+// signin.ErrVerificationMailerNotConfigured: it is the one door no config block
+// turns on, because it needs nothing but the mailer. Only absence is absorbed, as
 // identitycfg absorbs it for identity.Hooks. One that is registered and fails to
 // build is returned.
 func RegisterService(i do.Injector) {
@@ -126,8 +129,8 @@ func RegisterService(i do.Injector) {
 	})
 }
 
-// optionalServiceOptions resolves the four things an application may register
-// and need not, and turns each one it registered into the option that attaches
+// optionalServiceOptions resolves the things an application may register and
+// need not, and turns each one it registered into the option that attaches
 // it.
 func optionalServiceOptions(i do.Injector) ([]signin.ServiceOption, error) {
 	var opts []signin.ServiceOption
@@ -166,6 +169,15 @@ func optionalServiceOptions(i do.Injector) ([]signin.ServiceOption, error) {
 
 	if registrationPolicy != nil {
 		opts = append(opts, signin.WithRegistrationPolicy(registrationPolicy))
+	}
+
+	verificationMailer, err := injection.InvokeOptional[signin.VerificationMailer](i)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "invoking sign-in verification mailer")
+	}
+
+	if verificationMailer != nil {
+		opts = append(opts, signin.WithVerificationMailer(verificationMailer))
 	}
 
 	claims, err := injection.InvokeOptional[signin.ClaimsBuilder](i)

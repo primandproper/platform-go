@@ -321,7 +321,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		)
 	})
 
-	t.Run("drops the proof when a fresh link is issued", func(t *testing.T) {
+	t.Run("refuses a fresh link for a proven address and keeps the proof", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
@@ -332,17 +332,29 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
 
-		// A row holding both a stamp and an outstanding link is two answers to
-		// one question, and which one a reader believes comes down to which
-		// column it consulted. Issuing a link says the address wants proving,
-		// so the column saying otherwise is the one that goes.
-		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "prove-it-again"))
-
-		reissued, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		proven, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
-		test.False(t, reissued.EmailAddressVerified())
-		test.EqOp(t, tokenDigest("prove-it-again"), reissued.EmailAddressVerificationTokenDigest)
+		must.NotNil(t, proven.EmailAddressVerifiedAt)
 
+		// A row may not hold both a stamp and an outstanding link, and asking
+		// for a link is not a statement that the address stopped being proven,
+		// so the link is refused rather than minted by withdrawing the proof.
+		must.ErrorIs(t,
+			env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "prove-it-again"),
+			ErrEmailAddressAlreadyVerified,
+		)
+
+		kept, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		must.NotNil(t, kept.EmailAddressVerifiedAt)
+		test.EqOp(t, *proven.EmailAddressVerifiedAt, *kept.EmailAddressVerifiedAt)
+		test.EqOp(t, "", kept.EmailAddressVerificationTokenDigest)
+		test.Nil(t, kept.EmailAddressVerificationTokenExpiresAt)
+
+		// Once the proof is withdrawn on purpose, a link is exactly what the
+		// address wants, and the same call mints one.
+		must.NoError(t, env.markUserEmailAddressUnverifiedErr(t, store, testScope, user.ID))
+		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "prove-it-again"))
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "prove-it-again"))
 
 		reverified, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)

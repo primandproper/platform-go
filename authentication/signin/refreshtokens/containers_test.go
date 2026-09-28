@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/mysql"
 	"github.com/primandproper/primitives-go/v2/database/postgres"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
@@ -117,13 +118,16 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 
 		test.Eq(t, []string{"family_list_phone"}, familyIDs(listSignIns(t, store, testScope(), "user_list", 1)))
 
-		revoked, revokeErr := revokeFamilyForSubject(t, store, testScope(), "user_other", "family_list_phone")
-		must.NoError(t, revokeErr)
-		test.EqOp(t, 0, revoked)
+		ended, endErr := endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: "user_other", FamilyID: "family_list_phone"})
+		must.NoError(t, endErr)
+		test.SliceEmpty(t, ended)
 
-		revoked, revokeErr = revokeFamilyForSubject(t, store, testScope(), "user_list", "family_list_phone")
-		must.NoError(t, revokeErr)
-		test.EqOp(t, 2, revoked)
+		ended, endErr = endSignIns(t, store, testScope(),
+			signin.SignInSelector{SubjectID: "user_list", FamilyID: "family_list_phone"})
+		must.NoError(t, endErr)
+		test.Eq(t, []string{"family_list_phone"}, endedFamilies(ended))
+		test.EqOp(t, 2, endedRevoked(ended))
 
 		test.Eq(t, []string{"family_list_laptop"}, familyIDs(listSignIns(t, store, testScope(), "user_list", 10)))
 	})
@@ -316,11 +320,14 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.NoError(t, redeemErr)
 	})
 
-	// The two revocations, which differ in one column and must not reach each
-	// other's rows.
-	t.Run("revokes one login, and one person's every login", func(t *testing.T) {
+	// The revocations, which must not reach each other's rows, and which report
+	// only what was live when they ran. The locking reads carry FOR UPDATE on
+	// both of these engines, which is a clause sqlc accepts after a LIMIT and the
+	// server has to as well.
+	t.Run("revokes one login, and one person's every login, reporting what ended", func(t *testing.T) {
 		mine := mint(t, "family_revoke_a", "user_revoke", time.Hour)
 		alsoMine := mint(t, "family_revoke_b", "user_revoke", time.Hour)
+		operated := mint(t, "family_revoke_d", "user_revoke", time.Hour)
 		theirs := mint(t, "family_revoke_c", "user_neighbor", time.Hour)
 
 		revoked, revokeErr := revokeFamily(t, store, testScope(), "family_revoke_a")
@@ -330,15 +337,42 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		_, redeemErr := redeem(t, store, testScope(), mine.Secret)
 		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
 
-		revoked, revokeErr = revokeForSubject(t, store, testScope(), "user_revoke")
-		must.NoError(t, revokeErr)
-		test.EqOp(t, int64(1), revoked, test.Sprintf("the already-revoked row is spared"))
+		ended, endErr := endSignIns(t, store, testScope(), signin.SignInSelector{FamilyID: "family_revoke_d"})
+		must.NoError(t, endErr)
+		must.SliceLen(t, 1, ended)
+		test.EqOp(t, "user_revoke", ended[0].SubjectID)
+
+		_, redeemErr = redeem(t, store, testScope(), operated.Secret)
+		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
+
+		ended, endErr = endSignIns(t, store, testScope(), signin.SignInSelector{SubjectID: "user_revoke"})
+		must.NoError(t, endErr)
+		test.Eq(t, []string{"family_revoke_b"}, endedFamilies(ended), test.Sprintf("the already-ended logins are spared"))
+		test.EqOp(t, int64(1), endedRevoked(ended))
 
 		_, redeemErr = redeem(t, store, testScope(), alsoMine.Secret)
 		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
 
 		_, redeemErr = redeem(t, store, testScope(), theirs.Secret)
 		test.NoError(t, redeemErr)
+	})
+
+	// A reuse reports the family it ended, and whether it was live to end.
+	t.Run("a reuse names the family it ended", func(t *testing.T) {
+		first := mint(t, "family_reuse", "user_reuse", time.Hour)
+		rotate(t, store, testScope(), first.Secret)
+
+		_, redeemErr := redeem(t, store, testScope(), first.Secret)
+
+		var reused *signin.RefreshTokenReusedError
+		must.True(t, platformerrors.As(redeemErr, &reused))
+		test.EqOp(t, "family_reuse", reused.FamilyID)
+		test.EqOp(t, "user_reuse", reused.SubjectID)
+		test.True(t, reused.Ended)
+
+		_, redeemErr = redeem(t, store, testScope(), first.Secret)
+		must.True(t, platformerrors.As(redeemErr, &reused))
+		test.False(t, reused.Ended, test.Sprintf("a second replay ends nothing"))
 	})
 
 	// A prefix is not decoration: it renders a second table, and both the DDL and

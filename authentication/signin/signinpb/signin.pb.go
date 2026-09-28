@@ -1290,6 +1290,95 @@ func (*EndSignInResponse) Descriptor() ([]byte, []int) {
 	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{17}
 }
 
+// EndOtherSignInsRequest ends every login the calling user holds except the one
+// the request was made through: "sign out my other devices".
+//
+// It names nobody and no login. The subject is the caller, and the login it
+// keeps is read off the caller's access token -- its "sid" claim, the family_id
+// ListSignIns marks current -- rather than taken from a field, so a request
+// cannot keep a login other than its own. A caller whose token names no login is
+// refused with FAILED_PRECONDITION and the reason SIGN_IN_NOT_IDENTIFIED rather
+// than having every login ended: that is SignOutEverywhere, which is a request a
+// client makes on purpose.
+//
+// It is one revocation on the server rather than ListSignIns followed by an
+// EndSignIn for each entry, and that is what it is for. The loop decides which
+// logins are "other" a round trip before it ends them, so one made in between
+// survives; here the decision and the revocation are the same statement.
+type EndOtherSignInsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndOtherSignInsRequest) Reset() {
+	*x = EndOtherSignInsRequest{}
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndOtherSignInsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndOtherSignInsRequest) ProtoMessage() {}
+
+func (x *EndOtherSignInsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndOtherSignInsRequest.ProtoReflect.Descriptor instead.
+func (*EndOtherSignInsRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{18}
+}
+
+// EndOtherSignInsResponse is empty -- see SignOutResponse. A client that wants
+// to show what is left calls ListSignIns.
+type EndOtherSignInsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndOtherSignInsResponse) Reset() {
+	*x = EndOtherSignInsResponse{}
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndOtherSignInsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndOtherSignInsResponse) ProtoMessage() {}
+
+func (x *EndOtherSignInsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndOtherSignInsResponse.ProtoReflect.Descriptor instead.
+func (*EndOtherSignInsResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{19}
+}
+
 // GetAuthStatusRequest names nobody. The subject is whoever is calling, and a
 // field naming somebody else would be a directory read wearing a whoami's
 // clothes.
@@ -1301,7 +1390,7 @@ type GetAuthStatusRequest struct {
 
 func (x *GetAuthStatusRequest) Reset() {
 	*x = GetAuthStatusRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[18]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1313,7 +1402,7 @@ func (x *GetAuthStatusRequest) String() string {
 func (*GetAuthStatusRequest) ProtoMessage() {}
 
 func (x *GetAuthStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[18]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1326,7 +1415,7 @@ func (x *GetAuthStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetAuthStatusRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{18}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{20}
 }
 
 type GetAuthStatusResponse struct {
@@ -1343,7 +1432,7 @@ type GetAuthStatusResponse struct {
 
 func (x *GetAuthStatusResponse) Reset() {
 	*x = GetAuthStatusResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[19]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1355,7 +1444,7 @@ func (x *GetAuthStatusResponse) String() string {
 func (*GetAuthStatusResponse) ProtoMessage() {}
 
 func (x *GetAuthStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[19]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1368,7 +1457,7 @@ func (x *GetAuthStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetAuthStatusResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{19}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetAuthStatusResponse) GetAuthenticated() bool {
@@ -1393,7 +1482,7 @@ type GetSelfRequest struct {
 
 func (x *GetSelfRequest) Reset() {
 	*x = GetSelfRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[20]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1405,7 +1494,7 @@ func (x *GetSelfRequest) String() string {
 func (*GetSelfRequest) ProtoMessage() {}
 
 func (x *GetSelfRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[20]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1418,7 +1507,7 @@ func (x *GetSelfRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSelfRequest.ProtoReflect.Descriptor instead.
 func (*GetSelfRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{20}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{22}
 }
 
 type GetSelfResponse struct {
@@ -1430,7 +1519,7 @@ type GetSelfResponse struct {
 
 func (x *GetSelfResponse) Reset() {
 	*x = GetSelfResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[21]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1442,7 +1531,7 @@ func (x *GetSelfResponse) String() string {
 func (*GetSelfResponse) ProtoMessage() {}
 
 func (x *GetSelfResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[21]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1455,7 +1544,7 @@ func (x *GetSelfResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSelfResponse.ProtoReflect.Descriptor instead.
 func (*GetSelfResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{21}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetSelfResponse) GetUser() *identitypb.User {
@@ -1486,7 +1575,7 @@ type UpdatePasswordRequest struct {
 
 func (x *UpdatePasswordRequest) Reset() {
 	*x = UpdatePasswordRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[22]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1498,7 +1587,7 @@ func (x *UpdatePasswordRequest) String() string {
 func (*UpdatePasswordRequest) ProtoMessage() {}
 
 func (x *UpdatePasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[22]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1511,7 +1600,7 @@ func (x *UpdatePasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePasswordRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePasswordRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{22}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UpdatePasswordRequest) GetCurrentPassword() string {
@@ -1546,7 +1635,7 @@ type UpdatePasswordResponse struct {
 
 func (x *UpdatePasswordResponse) Reset() {
 	*x = UpdatePasswordResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[23]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1558,7 +1647,7 @@ func (x *UpdatePasswordResponse) String() string {
 func (*UpdatePasswordResponse) ProtoMessage() {}
 
 func (x *UpdatePasswordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[23]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1571,7 +1660,7 @@ func (x *UpdatePasswordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePasswordResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePasswordResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{23}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{25}
 }
 
 // RefreshTOTPSecretRequest asks for a new second-factor secret for the calling
@@ -1592,7 +1681,7 @@ type RefreshTOTPSecretRequest struct {
 
 func (x *RefreshTOTPSecretRequest) Reset() {
 	*x = RefreshTOTPSecretRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[24]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1604,7 +1693,7 @@ func (x *RefreshTOTPSecretRequest) String() string {
 func (*RefreshTOTPSecretRequest) ProtoMessage() {}
 
 func (x *RefreshTOTPSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[24]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1617,7 +1706,7 @@ func (x *RefreshTOTPSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTOTPSecretRequest.ProtoReflect.Descriptor instead.
 func (*RefreshTOTPSecretRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{24}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RefreshTOTPSecretRequest) GetCurrentPassword() string {
@@ -1654,7 +1743,7 @@ type RefreshTOTPSecretResponse struct {
 
 func (x *RefreshTOTPSecretResponse) Reset() {
 	*x = RefreshTOTPSecretResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[25]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1666,7 +1755,7 @@ func (x *RefreshTOTPSecretResponse) String() string {
 func (*RefreshTOTPSecretResponse) ProtoMessage() {}
 
 func (x *RefreshTOTPSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[25]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1679,7 +1768,7 @@ func (x *RefreshTOTPSecretResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTOTPSecretResponse.ProtoReflect.Descriptor instead.
 func (*RefreshTOTPSecretResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{25}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *RefreshTOTPSecretResponse) GetSecret() string {
@@ -1708,7 +1797,7 @@ type VerifyTOTPSecretRequest struct {
 
 func (x *VerifyTOTPSecretRequest) Reset() {
 	*x = VerifyTOTPSecretRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[26]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1720,7 +1809,7 @@ func (x *VerifyTOTPSecretRequest) String() string {
 func (*VerifyTOTPSecretRequest) ProtoMessage() {}
 
 func (x *VerifyTOTPSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[26]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1733,7 +1822,7 @@ func (x *VerifyTOTPSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTOTPSecretRequest.ProtoReflect.Descriptor instead.
 func (*VerifyTOTPSecretRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{26}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *VerifyTOTPSecretRequest) GetTotpCode() string {
@@ -1752,7 +1841,7 @@ type VerifyTOTPSecretResponse struct {
 
 func (x *VerifyTOTPSecretResponse) Reset() {
 	*x = VerifyTOTPSecretResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[27]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1764,7 +1853,7 @@ func (x *VerifyTOTPSecretResponse) String() string {
 func (*VerifyTOTPSecretResponse) ProtoMessage() {}
 
 func (x *VerifyTOTPSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[27]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1777,7 +1866,7 @@ func (x *VerifyTOTPSecretResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTOTPSecretResponse.ProtoReflect.Descriptor instead.
 func (*VerifyTOTPSecretResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{27}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{29}
 }
 
 // NoPassword is the registrant who will hold no password: an arrival who will
@@ -1794,7 +1883,7 @@ type NoPassword struct {
 
 func (x *NoPassword) Reset() {
 	*x = NoPassword{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[28]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1806,7 +1895,7 @@ func (x *NoPassword) String() string {
 func (*NoPassword) ProtoMessage() {}
 
 func (x *NoPassword) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[28]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1819,7 +1908,7 @@ func (x *NoPassword) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoPassword.ProtoReflect.Descriptor instead.
 func (*NoPassword) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{28}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{30}
 }
 
 // RegistrationInvitation names the invitation a registration answers.
@@ -1845,7 +1934,7 @@ type RegistrationInvitation struct {
 
 func (x *RegistrationInvitation) Reset() {
 	*x = RegistrationInvitation{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[29]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1857,7 +1946,7 @@ func (x *RegistrationInvitation) String() string {
 func (*RegistrationInvitation) ProtoMessage() {}
 
 func (x *RegistrationInvitation) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[29]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1870,7 +1959,7 @@ func (x *RegistrationInvitation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistrationInvitation.ProtoReflect.Descriptor instead.
 func (*RegistrationInvitation) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{29}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *RegistrationInvitation) GetInvitationId() string {
@@ -1934,7 +2023,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[30]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1946,7 +2035,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[30]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1959,7 +2048,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{30}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *RegisterRequest) GetUser() *identitypb.UserRegistrationInput {
@@ -2061,7 +2150,7 @@ type TOTPEnrollment struct {
 
 func (x *TOTPEnrollment) Reset() {
 	*x = TOTPEnrollment{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[31]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2073,7 +2162,7 @@ func (x *TOTPEnrollment) String() string {
 func (*TOTPEnrollment) ProtoMessage() {}
 
 func (x *TOTPEnrollment) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[31]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2086,7 +2175,7 @@ func (x *TOTPEnrollment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TOTPEnrollment.ProtoReflect.Descriptor instead.
 func (*TOTPEnrollment) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{31}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *TOTPEnrollment) GetSecret() string {
@@ -2125,7 +2214,7 @@ type Registered struct {
 
 func (x *Registered) Reset() {
 	*x = Registered{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[32]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2137,7 +2226,7 @@ func (x *Registered) String() string {
 func (*Registered) ProtoMessage() {}
 
 func (x *Registered) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[32]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2150,7 +2239,7 @@ func (x *Registered) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Registered.ProtoReflect.Descriptor instead.
 func (*Registered) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{32}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Registered) GetUser() *identitypb.User {
@@ -2197,7 +2286,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[33]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2209,7 +2298,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[33]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2222,7 +2311,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{33}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *RegisterResponse) GetRegistration() *Registered {
@@ -2259,7 +2348,7 @@ type AttachPasswordRequest struct {
 
 func (x *AttachPasswordRequest) Reset() {
 	*x = AttachPasswordRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[34]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2271,7 +2360,7 @@ func (x *AttachPasswordRequest) String() string {
 func (*AttachPasswordRequest) ProtoMessage() {}
 
 func (x *AttachPasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[34]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2284,7 +2373,7 @@ func (x *AttachPasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachPasswordRequest.ProtoReflect.Descriptor instead.
 func (*AttachPasswordRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{34}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *AttachPasswordRequest) GetToken() string {
@@ -2310,7 +2399,7 @@ type AttachPasswordResponse struct {
 
 func (x *AttachPasswordResponse) Reset() {
 	*x = AttachPasswordResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[35]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2322,7 +2411,7 @@ func (x *AttachPasswordResponse) String() string {
 func (*AttachPasswordResponse) ProtoMessage() {}
 
 func (x *AttachPasswordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[35]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2335,7 +2424,7 @@ func (x *AttachPasswordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachPasswordResponse.ProtoReflect.Descriptor instead.
 func (*AttachPasswordResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{35}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{37}
 }
 
 // VerifyEmailAddressRequest answers a verification link.
@@ -2357,7 +2446,7 @@ type VerifyEmailAddressRequest struct {
 
 func (x *VerifyEmailAddressRequest) Reset() {
 	*x = VerifyEmailAddressRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[36]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2369,7 +2458,7 @@ func (x *VerifyEmailAddressRequest) String() string {
 func (*VerifyEmailAddressRequest) ProtoMessage() {}
 
 func (x *VerifyEmailAddressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[36]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2382,7 +2471,7 @@ func (x *VerifyEmailAddressRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyEmailAddressRequest.ProtoReflect.Descriptor instead.
 func (*VerifyEmailAddressRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{36}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *VerifyEmailAddressRequest) GetToken() string {
@@ -2401,7 +2490,7 @@ type VerifyEmailAddressResponse struct {
 
 func (x *VerifyEmailAddressResponse) Reset() {
 	*x = VerifyEmailAddressResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[37]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2413,7 +2502,7 @@ func (x *VerifyEmailAddressResponse) String() string {
 func (*VerifyEmailAddressResponse) ProtoMessage() {}
 
 func (x *VerifyEmailAddressResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[37]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2426,7 +2515,185 @@ func (x *VerifyEmailAddressResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyEmailAddressResponse.ProtoReflect.Descriptor instead.
 func (*VerifyEmailAddressResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{37}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{39}
+}
+
+// RequestVerificationEmailRequest asks for a fresh link proving the calling
+// user's address, mailed to it, and retires the link they were sent before.
+//
+// It requires a caller and names nobody, for SignOutEverywhereRequest's reason:
+// the subject is whoever is calling, and a field naming somebody else would be a
+// way to mail strangers from this deployment's domain. An address that is
+// already proven is refused as EMAIL_ADDRESS_ALREADY_VERIFIED and keeps its
+// proof, so asking again can never un-verify anybody.
+//
+// Rate limiting is the deployment's, in front of it: every request sends mail.
+type RequestVerificationEmailRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestVerificationEmailRequest) Reset() {
+	*x = RequestVerificationEmailRequest{}
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestVerificationEmailRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestVerificationEmailRequest) ProtoMessage() {}
+
+func (x *RequestVerificationEmailRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestVerificationEmailRequest.ProtoReflect.Descriptor instead.
+func (*RequestVerificationEmailRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{40}
+}
+
+// RequestVerificationEmailResponse is empty. The link goes to the address and
+// never back to the caller -- a response carrying it would let whoever holds a
+// session prove an inbox they have never seen.
+type RequestVerificationEmailResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestVerificationEmailResponse) Reset() {
+	*x = RequestVerificationEmailResponse{}
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestVerificationEmailResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestVerificationEmailResponse) ProtoMessage() {}
+
+func (x *RequestVerificationEmailResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestVerificationEmailResponse.ProtoReflect.Descriptor instead.
+func (*RequestVerificationEmailResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{41}
+}
+
+// RequestVerificationEmailByAddressRequest asks for a fresh verification link
+// mailed to an address, from somebody who cannot sign in to ask: a registrant
+// whose first link never arrived, told USER_UNVERIFIED at the password door.
+//
+// It is anonymous, and so it is answered identically whoever holds the address
+// -- nobody, a registrant it mailed, somebody already proven, somebody whose
+// standing admits no mail -- and held to the magic-link door's timing floor, for
+// RequestMagicLinkRequest's reason. A client renders "if that address is waiting
+// on a link, we sent another" and nothing that depends on the answer.
+//
+// Rate limiting is the deployment's, in front of it: anybody can send it.
+type RequestVerificationEmailByAddressRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EmailAddress  string                 `protobuf:"bytes,1,opt,name=email_address,json=emailAddress,proto3" json:"email_address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestVerificationEmailByAddressRequest) Reset() {
+	*x = RequestVerificationEmailByAddressRequest{}
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestVerificationEmailByAddressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestVerificationEmailByAddressRequest) ProtoMessage() {}
+
+func (x *RequestVerificationEmailByAddressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestVerificationEmailByAddressRequest.ProtoReflect.Descriptor instead.
+func (*RequestVerificationEmailByAddressRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *RequestVerificationEmailByAddressRequest) GetEmailAddress() string {
+	if x != nil {
+		return x.EmailAddress
+	}
+	return ""
+}
+
+// RequestVerificationEmailByAddressResponse is empty, and the same for every
+// address -- see RequestMagicLinkResponse.
+type RequestVerificationEmailByAddressResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestVerificationEmailByAddressResponse) Reset() {
+	*x = RequestVerificationEmailByAddressResponse{}
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestVerificationEmailByAddressResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestVerificationEmailByAddressResponse) ProtoMessage() {}
+
+func (x *RequestVerificationEmailByAddressResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestVerificationEmailByAddressResponse.ProtoReflect.Descriptor instead.
+func (*RequestVerificationEmailByAddressResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{43}
 }
 
 // RequestMagicLinkRequest asks for a link that signs the holder of an address
@@ -2447,7 +2714,7 @@ type RequestMagicLinkRequest struct {
 
 func (x *RequestMagicLinkRequest) Reset() {
 	*x = RequestMagicLinkRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[38]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2459,7 +2726,7 @@ func (x *RequestMagicLinkRequest) String() string {
 func (*RequestMagicLinkRequest) ProtoMessage() {}
 
 func (x *RequestMagicLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[38]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2472,7 +2739,7 @@ func (x *RequestMagicLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestMagicLinkRequest.ProtoReflect.Descriptor instead.
 func (*RequestMagicLinkRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{38}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RequestMagicLinkRequest) GetEmailAddress() string {
@@ -2502,7 +2769,7 @@ type RequestMagicLinkResponse struct {
 
 func (x *RequestMagicLinkResponse) Reset() {
 	*x = RequestMagicLinkResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[39]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2514,7 +2781,7 @@ func (x *RequestMagicLinkResponse) String() string {
 func (*RequestMagicLinkResponse) ProtoMessage() {}
 
 func (x *RequestMagicLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[39]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2527,7 +2794,7 @@ func (x *RequestMagicLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestMagicLinkResponse.ProtoReflect.Descriptor instead.
 func (*RequestMagicLinkResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{39}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{45}
 }
 
 // RedeemMagicLinkRequest answers a sign-in link.
@@ -2566,7 +2833,7 @@ type RedeemMagicLinkRequest struct {
 
 func (x *RedeemMagicLinkRequest) Reset() {
 	*x = RedeemMagicLinkRequest{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[40]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2578,7 +2845,7 @@ func (x *RedeemMagicLinkRequest) String() string {
 func (*RedeemMagicLinkRequest) ProtoMessage() {}
 
 func (x *RedeemMagicLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[40]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2591,7 +2858,7 @@ func (x *RedeemMagicLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RedeemMagicLinkRequest.ProtoReflect.Descriptor instead.
 func (*RedeemMagicLinkRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{40}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *RedeemMagicLinkRequest) GetToken() string {
@@ -2627,7 +2894,7 @@ type RedeemMagicLinkResponse struct {
 
 func (x *RedeemMagicLinkResponse) Reset() {
 	*x = RedeemMagicLinkResponse{}
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[41]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2639,7 +2906,7 @@ func (x *RedeemMagicLinkResponse) String() string {
 func (*RedeemMagicLinkResponse) ProtoMessage() {}
 
 func (x *RedeemMagicLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[41]
+	mi := &file_primandproper_platform_signin_v1_signin_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2652,7 +2919,7 @@ func (x *RedeemMagicLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RedeemMagicLinkResponse.ProtoReflect.Descriptor instead.
 func (*RedeemMagicLinkResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{41}
+	return file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RedeemMagicLinkResponse) GetToken() *IssuedToken {
@@ -2727,7 +2994,9 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\bsign_ins\x18\x01 \x03(\v2..primandproper.platform.signin.v1.ActiveSignInR\asignIns\"6\n" +
 	"\x10EndSignInRequest\x12\x1b\n" +
 	"\tfamily_id\x18\x01 \x01(\tR\bfamilyIDR\x05scope\"\x13\n" +
-	"\x11EndSignInResponse\"\x1d\n" +
+	"\x11EndSignInResponse\"\x1f\n" +
+	"\x16EndOtherSignInsRequestR\x05scope\"\x19\n" +
+	"\x17EndOtherSignInsResponse\"\x1d\n" +
 	"\x14GetAuthStatusRequestR\x05scope\"\x83\x01\n" +
 	"\x15GetAuthStatusResponse\x12$\n" +
 	"\rauthenticated\x18\x01 \x01(\bR\rauthenticated\x12D\n" +
@@ -2794,7 +3063,12 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\x16AttachPasswordResponse\"8\n" +
 	"\x19VerifyEmailAddressRequest\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05tokenR\x05scope\"\x1c\n" +
-	"\x1aVerifyEmailAddressResponse\"E\n" +
+	"\x1aVerifyEmailAddressResponse\"(\n" +
+	"\x1fRequestVerificationEmailRequestR\x05scope\"\"\n" +
+	" RequestVerificationEmailResponse\"V\n" +
+	"(RequestVerificationEmailByAddressRequest\x12#\n" +
+	"\remail_address\x18\x01 \x01(\tR\femailAddressR\x05scope\"+\n" +
+	")RequestVerificationEmailByAddressResponse\"E\n" +
 	"\x17RequestMagicLinkRequest\x12#\n" +
 	"\remail_address\x18\x01 \x01(\tR\femailAddressR\x05scope\"\x1a\n" +
 	"\x18RequestMagicLinkResponse\"~\n" +
@@ -2803,11 +3077,13 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\ttotp_code\x18\x02 \x01(\tR\btotpCode\x12*\n" +
 	"\x11active_account_id\x18\x03 \x01(\tR\x0factiveAccountIDR\x05scope\"^\n" +
 	"\x17RedeemMagicLinkResponse\x12C\n" +
-	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token2\xe1\x11\n" +
+	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token2\xcd\x15\n" +
 	"\rSignInService\x12q\n" +
 	"\bRegister\x121.primandproper.platform.signin.v1.RegisterRequest\x1a2.primandproper.platform.signin.v1.RegisterResponse\x12\x83\x01\n" +
 	"\x0eAttachPassword\x127.primandproper.platform.signin.v1.AttachPasswordRequest\x1a8.primandproper.platform.signin.v1.AttachPasswordResponse\x12\x8f\x01\n" +
-	"\x12VerifyEmailAddress\x12;.primandproper.platform.signin.v1.VerifyEmailAddressRequest\x1a<.primandproper.platform.signin.v1.VerifyEmailAddressResponse\x12\x89\x01\n" +
+	"\x12VerifyEmailAddress\x12;.primandproper.platform.signin.v1.VerifyEmailAddressRequest\x1a<.primandproper.platform.signin.v1.VerifyEmailAddressResponse\x12\xa1\x01\n" +
+	"\x18RequestVerificationEmail\x12A.primandproper.platform.signin.v1.RequestVerificationEmailRequest\x1aB.primandproper.platform.signin.v1.RequestVerificationEmailResponse\x12\xbc\x01\n" +
+	"!RequestVerificationEmailByAddress\x12J.primandproper.platform.signin.v1.RequestVerificationEmailByAddressRequest\x1aK.primandproper.platform.signin.v1.RequestVerificationEmailByAddressResponse\x12\x89\x01\n" +
 	"\x10RequestMagicLink\x129.primandproper.platform.signin.v1.RequestMagicLinkRequest\x1a:.primandproper.platform.signin.v1.RequestMagicLinkResponse\x12\x86\x01\n" +
 	"\x0fRedeemMagicLink\x128.primandproper.platform.signin.v1.RedeemMagicLinkRequest\x1a9.primandproper.platform.signin.v1.RedeemMagicLinkResponse\x12\x80\x01\n" +
 	"\rLoginForToken\x126.primandproper.platform.signin.v1.LoginForTokenRequest\x1a7.primandproper.platform.signin.v1.LoginForTokenResponse\x12\x8f\x01\n" +
@@ -2816,7 +3092,8 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\aSignOut\x120.primandproper.platform.signin.v1.SignOutRequest\x1a1.primandproper.platform.signin.v1.SignOutResponse\x12\x8c\x01\n" +
 	"\x11SignOutEverywhere\x12:.primandproper.platform.signin.v1.SignOutEverywhereRequest\x1a;.primandproper.platform.signin.v1.SignOutEverywhereResponse\x12z\n" +
 	"\vListSignIns\x124.primandproper.platform.signin.v1.ListSignInsRequest\x1a5.primandproper.platform.signin.v1.ListSignInsResponse\x12t\n" +
-	"\tEndSignIn\x122.primandproper.platform.signin.v1.EndSignInRequest\x1a3.primandproper.platform.signin.v1.EndSignInResponse\x12\x80\x01\n" +
+	"\tEndSignIn\x122.primandproper.platform.signin.v1.EndSignInRequest\x1a3.primandproper.platform.signin.v1.EndSignInResponse\x12\x86\x01\n" +
+	"\x0fEndOtherSignIns\x128.primandproper.platform.signin.v1.EndOtherSignInsRequest\x1a9.primandproper.platform.signin.v1.EndOtherSignInsResponse\x12\x80\x01\n" +
 	"\rGetAuthStatus\x126.primandproper.platform.signin.v1.GetAuthStatusRequest\x1a7.primandproper.platform.signin.v1.GetAuthStatusResponse\x12n\n" +
 	"\aGetSelf\x120.primandproper.platform.signin.v1.GetSelfRequest\x1a1.primandproper.platform.signin.v1.GetSelfResponse\x12\x83\x01\n" +
 	"\x0eUpdatePassword\x127.primandproper.platform.signin.v1.UpdatePasswordRequest\x1a8.primandproper.platform.signin.v1.UpdatePasswordResponse\x12\x8c\x01\n" +
@@ -2835,122 +3112,134 @@ func file_primandproper_platform_signin_v1_signin_proto_rawDescGZIP() []byte {
 	return file_primandproper_platform_signin_v1_signin_proto_rawDescData
 }
 
-var file_primandproper_platform_signin_v1_signin_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_primandproper_platform_signin_v1_signin_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
 var file_primandproper_platform_signin_v1_signin_proto_goTypes = []any{
-	(*Credentials)(nil),                      // 0: primandproper.platform.signin.v1.Credentials
-	(*IssuedToken)(nil),                      // 1: primandproper.platform.signin.v1.IssuedToken
-	(*AuthStatus)(nil),                       // 2: primandproper.platform.signin.v1.AuthStatus
-	(*LoginForTokenRequest)(nil),             // 3: primandproper.platform.signin.v1.LoginForTokenRequest
-	(*LoginForTokenResponse)(nil),            // 4: primandproper.platform.signin.v1.LoginForTokenResponse
-	(*AdminLoginForTokenRequest)(nil),        // 5: primandproper.platform.signin.v1.AdminLoginForTokenRequest
-	(*AdminLoginForTokenResponse)(nil),       // 6: primandproper.platform.signin.v1.AdminLoginForTokenResponse
-	(*ExchangeRefreshTokenRequest)(nil),      // 7: primandproper.platform.signin.v1.ExchangeRefreshTokenRequest
-	(*ExchangeRefreshTokenResponse)(nil),     // 8: primandproper.platform.signin.v1.ExchangeRefreshTokenResponse
-	(*SignOutRequest)(nil),                   // 9: primandproper.platform.signin.v1.SignOutRequest
-	(*SignOutResponse)(nil),                  // 10: primandproper.platform.signin.v1.SignOutResponse
-	(*SignOutEverywhereRequest)(nil),         // 11: primandproper.platform.signin.v1.SignOutEverywhereRequest
-	(*SignOutEverywhereResponse)(nil),        // 12: primandproper.platform.signin.v1.SignOutEverywhereResponse
-	(*ActiveSignIn)(nil),                     // 13: primandproper.platform.signin.v1.ActiveSignIn
-	(*ListSignInsRequest)(nil),               // 14: primandproper.platform.signin.v1.ListSignInsRequest
-	(*ListSignInsResponse)(nil),              // 15: primandproper.platform.signin.v1.ListSignInsResponse
-	(*EndSignInRequest)(nil),                 // 16: primandproper.platform.signin.v1.EndSignInRequest
-	(*EndSignInResponse)(nil),                // 17: primandproper.platform.signin.v1.EndSignInResponse
-	(*GetAuthStatusRequest)(nil),             // 18: primandproper.platform.signin.v1.GetAuthStatusRequest
-	(*GetAuthStatusResponse)(nil),            // 19: primandproper.platform.signin.v1.GetAuthStatusResponse
-	(*GetSelfRequest)(nil),                   // 20: primandproper.platform.signin.v1.GetSelfRequest
-	(*GetSelfResponse)(nil),                  // 21: primandproper.platform.signin.v1.GetSelfResponse
-	(*UpdatePasswordRequest)(nil),            // 22: primandproper.platform.signin.v1.UpdatePasswordRequest
-	(*UpdatePasswordResponse)(nil),           // 23: primandproper.platform.signin.v1.UpdatePasswordResponse
-	(*RefreshTOTPSecretRequest)(nil),         // 24: primandproper.platform.signin.v1.RefreshTOTPSecretRequest
-	(*RefreshTOTPSecretResponse)(nil),        // 25: primandproper.platform.signin.v1.RefreshTOTPSecretResponse
-	(*VerifyTOTPSecretRequest)(nil),          // 26: primandproper.platform.signin.v1.VerifyTOTPSecretRequest
-	(*VerifyTOTPSecretResponse)(nil),         // 27: primandproper.platform.signin.v1.VerifyTOTPSecretResponse
-	(*NoPassword)(nil),                       // 28: primandproper.platform.signin.v1.NoPassword
-	(*RegistrationInvitation)(nil),           // 29: primandproper.platform.signin.v1.RegistrationInvitation
-	(*RegisterRequest)(nil),                  // 30: primandproper.platform.signin.v1.RegisterRequest
-	(*TOTPEnrollment)(nil),                   // 31: primandproper.platform.signin.v1.TOTPEnrollment
-	(*Registered)(nil),                       // 32: primandproper.platform.signin.v1.Registered
-	(*RegisterResponse)(nil),                 // 33: primandproper.platform.signin.v1.RegisterResponse
-	(*AttachPasswordRequest)(nil),            // 34: primandproper.platform.signin.v1.AttachPasswordRequest
-	(*AttachPasswordResponse)(nil),           // 35: primandproper.platform.signin.v1.AttachPasswordResponse
-	(*VerifyEmailAddressRequest)(nil),        // 36: primandproper.platform.signin.v1.VerifyEmailAddressRequest
-	(*VerifyEmailAddressResponse)(nil),       // 37: primandproper.platform.signin.v1.VerifyEmailAddressResponse
-	(*RequestMagicLinkRequest)(nil),          // 38: primandproper.platform.signin.v1.RequestMagicLinkRequest
-	(*RequestMagicLinkResponse)(nil),         // 39: primandproper.platform.signin.v1.RequestMagicLinkResponse
-	(*RedeemMagicLinkRequest)(nil),           // 40: primandproper.platform.signin.v1.RedeemMagicLinkRequest
-	(*RedeemMagicLinkResponse)(nil),          // 41: primandproper.platform.signin.v1.RedeemMagicLinkResponse
-	(*timestamppb.Timestamp)(nil),            // 42: google.protobuf.Timestamp
-	(*identitypb.User)(nil),                  // 43: primandproper.platform.identity.v1.User
-	(*identitypb.UserRegistrationInput)(nil), // 44: primandproper.platform.identity.v1.UserRegistrationInput
-	(*identitypb.AccountCreationInput)(nil),  // 45: primandproper.platform.identity.v1.AccountCreationInput
-	(identitypb.Agreement)(0),                // 46: primandproper.platform.identity.v1.Agreement
-	(*identitypb.Account)(nil),               // 47: primandproper.platform.identity.v1.Account
-	(*identitypb.Membership)(nil),            // 48: primandproper.platform.identity.v1.Membership
-	(*identitypb.Invitation)(nil),            // 49: primandproper.platform.identity.v1.Invitation
+	(*Credentials)(nil),                               // 0: primandproper.platform.signin.v1.Credentials
+	(*IssuedToken)(nil),                               // 1: primandproper.platform.signin.v1.IssuedToken
+	(*AuthStatus)(nil),                                // 2: primandproper.platform.signin.v1.AuthStatus
+	(*LoginForTokenRequest)(nil),                      // 3: primandproper.platform.signin.v1.LoginForTokenRequest
+	(*LoginForTokenResponse)(nil),                     // 4: primandproper.platform.signin.v1.LoginForTokenResponse
+	(*AdminLoginForTokenRequest)(nil),                 // 5: primandproper.platform.signin.v1.AdminLoginForTokenRequest
+	(*AdminLoginForTokenResponse)(nil),                // 6: primandproper.platform.signin.v1.AdminLoginForTokenResponse
+	(*ExchangeRefreshTokenRequest)(nil),               // 7: primandproper.platform.signin.v1.ExchangeRefreshTokenRequest
+	(*ExchangeRefreshTokenResponse)(nil),              // 8: primandproper.platform.signin.v1.ExchangeRefreshTokenResponse
+	(*SignOutRequest)(nil),                            // 9: primandproper.platform.signin.v1.SignOutRequest
+	(*SignOutResponse)(nil),                           // 10: primandproper.platform.signin.v1.SignOutResponse
+	(*SignOutEverywhereRequest)(nil),                  // 11: primandproper.platform.signin.v1.SignOutEverywhereRequest
+	(*SignOutEverywhereResponse)(nil),                 // 12: primandproper.platform.signin.v1.SignOutEverywhereResponse
+	(*ActiveSignIn)(nil),                              // 13: primandproper.platform.signin.v1.ActiveSignIn
+	(*ListSignInsRequest)(nil),                        // 14: primandproper.platform.signin.v1.ListSignInsRequest
+	(*ListSignInsResponse)(nil),                       // 15: primandproper.platform.signin.v1.ListSignInsResponse
+	(*EndSignInRequest)(nil),                          // 16: primandproper.platform.signin.v1.EndSignInRequest
+	(*EndSignInResponse)(nil),                         // 17: primandproper.platform.signin.v1.EndSignInResponse
+	(*EndOtherSignInsRequest)(nil),                    // 18: primandproper.platform.signin.v1.EndOtherSignInsRequest
+	(*EndOtherSignInsResponse)(nil),                   // 19: primandproper.platform.signin.v1.EndOtherSignInsResponse
+	(*GetAuthStatusRequest)(nil),                      // 20: primandproper.platform.signin.v1.GetAuthStatusRequest
+	(*GetAuthStatusResponse)(nil),                     // 21: primandproper.platform.signin.v1.GetAuthStatusResponse
+	(*GetSelfRequest)(nil),                            // 22: primandproper.platform.signin.v1.GetSelfRequest
+	(*GetSelfResponse)(nil),                           // 23: primandproper.platform.signin.v1.GetSelfResponse
+	(*UpdatePasswordRequest)(nil),                     // 24: primandproper.platform.signin.v1.UpdatePasswordRequest
+	(*UpdatePasswordResponse)(nil),                    // 25: primandproper.platform.signin.v1.UpdatePasswordResponse
+	(*RefreshTOTPSecretRequest)(nil),                  // 26: primandproper.platform.signin.v1.RefreshTOTPSecretRequest
+	(*RefreshTOTPSecretResponse)(nil),                 // 27: primandproper.platform.signin.v1.RefreshTOTPSecretResponse
+	(*VerifyTOTPSecretRequest)(nil),                   // 28: primandproper.platform.signin.v1.VerifyTOTPSecretRequest
+	(*VerifyTOTPSecretResponse)(nil),                  // 29: primandproper.platform.signin.v1.VerifyTOTPSecretResponse
+	(*NoPassword)(nil),                                // 30: primandproper.platform.signin.v1.NoPassword
+	(*RegistrationInvitation)(nil),                    // 31: primandproper.platform.signin.v1.RegistrationInvitation
+	(*RegisterRequest)(nil),                           // 32: primandproper.platform.signin.v1.RegisterRequest
+	(*TOTPEnrollment)(nil),                            // 33: primandproper.platform.signin.v1.TOTPEnrollment
+	(*Registered)(nil),                                // 34: primandproper.platform.signin.v1.Registered
+	(*RegisterResponse)(nil),                          // 35: primandproper.platform.signin.v1.RegisterResponse
+	(*AttachPasswordRequest)(nil),                     // 36: primandproper.platform.signin.v1.AttachPasswordRequest
+	(*AttachPasswordResponse)(nil),                    // 37: primandproper.platform.signin.v1.AttachPasswordResponse
+	(*VerifyEmailAddressRequest)(nil),                 // 38: primandproper.platform.signin.v1.VerifyEmailAddressRequest
+	(*VerifyEmailAddressResponse)(nil),                // 39: primandproper.platform.signin.v1.VerifyEmailAddressResponse
+	(*RequestVerificationEmailRequest)(nil),           // 40: primandproper.platform.signin.v1.RequestVerificationEmailRequest
+	(*RequestVerificationEmailResponse)(nil),          // 41: primandproper.platform.signin.v1.RequestVerificationEmailResponse
+	(*RequestVerificationEmailByAddressRequest)(nil),  // 42: primandproper.platform.signin.v1.RequestVerificationEmailByAddressRequest
+	(*RequestVerificationEmailByAddressResponse)(nil), // 43: primandproper.platform.signin.v1.RequestVerificationEmailByAddressResponse
+	(*RequestMagicLinkRequest)(nil),                   // 44: primandproper.platform.signin.v1.RequestMagicLinkRequest
+	(*RequestMagicLinkResponse)(nil),                  // 45: primandproper.platform.signin.v1.RequestMagicLinkResponse
+	(*RedeemMagicLinkRequest)(nil),                    // 46: primandproper.platform.signin.v1.RedeemMagicLinkRequest
+	(*RedeemMagicLinkResponse)(nil),                   // 47: primandproper.platform.signin.v1.RedeemMagicLinkResponse
+	(*timestamppb.Timestamp)(nil),                     // 48: google.protobuf.Timestamp
+	(*identitypb.User)(nil),                           // 49: primandproper.platform.identity.v1.User
+	(*identitypb.UserRegistrationInput)(nil),          // 50: primandproper.platform.identity.v1.UserRegistrationInput
+	(*identitypb.AccountCreationInput)(nil),           // 51: primandproper.platform.identity.v1.AccountCreationInput
+	(identitypb.Agreement)(0),                         // 52: primandproper.platform.identity.v1.Agreement
+	(*identitypb.Account)(nil),                        // 53: primandproper.platform.identity.v1.Account
+	(*identitypb.Membership)(nil),                     // 54: primandproper.platform.identity.v1.Membership
+	(*identitypb.Invitation)(nil),                     // 55: primandproper.platform.identity.v1.Invitation
 }
 var file_primandproper_platform_signin_v1_signin_proto_depIdxs = []int32{
-	42, // 0: primandproper.platform.signin.v1.IssuedToken.expires_at:type_name -> google.protobuf.Timestamp
-	42, // 1: primandproper.platform.signin.v1.IssuedToken.refresh_token_expires_at:type_name -> google.protobuf.Timestamp
-	43, // 2: primandproper.platform.signin.v1.AuthStatus.user:type_name -> primandproper.platform.identity.v1.User
+	48, // 0: primandproper.platform.signin.v1.IssuedToken.expires_at:type_name -> google.protobuf.Timestamp
+	48, // 1: primandproper.platform.signin.v1.IssuedToken.refresh_token_expires_at:type_name -> google.protobuf.Timestamp
+	49, // 2: primandproper.platform.signin.v1.AuthStatus.user:type_name -> primandproper.platform.identity.v1.User
 	0,  // 3: primandproper.platform.signin.v1.LoginForTokenRequest.credentials:type_name -> primandproper.platform.signin.v1.Credentials
 	1,  // 4: primandproper.platform.signin.v1.LoginForTokenResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
 	0,  // 5: primandproper.platform.signin.v1.AdminLoginForTokenRequest.credentials:type_name -> primandproper.platform.signin.v1.Credentials
 	1,  // 6: primandproper.platform.signin.v1.AdminLoginForTokenResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
 	1,  // 7: primandproper.platform.signin.v1.ExchangeRefreshTokenResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
-	42, // 8: primandproper.platform.signin.v1.ActiveSignIn.signed_in_at:type_name -> google.protobuf.Timestamp
-	42, // 9: primandproper.platform.signin.v1.ActiveSignIn.last_refreshed_at:type_name -> google.protobuf.Timestamp
-	42, // 10: primandproper.platform.signin.v1.ActiveSignIn.expires_at:type_name -> google.protobuf.Timestamp
+	48, // 8: primandproper.platform.signin.v1.ActiveSignIn.signed_in_at:type_name -> google.protobuf.Timestamp
+	48, // 9: primandproper.platform.signin.v1.ActiveSignIn.last_refreshed_at:type_name -> google.protobuf.Timestamp
+	48, // 10: primandproper.platform.signin.v1.ActiveSignIn.expires_at:type_name -> google.protobuf.Timestamp
 	13, // 11: primandproper.platform.signin.v1.ListSignInsResponse.sign_ins:type_name -> primandproper.platform.signin.v1.ActiveSignIn
 	2,  // 12: primandproper.platform.signin.v1.GetAuthStatusResponse.status:type_name -> primandproper.platform.signin.v1.AuthStatus
-	43, // 13: primandproper.platform.signin.v1.GetSelfResponse.user:type_name -> primandproper.platform.identity.v1.User
-	44, // 14: primandproper.platform.signin.v1.RegisterRequest.user:type_name -> primandproper.platform.identity.v1.UserRegistrationInput
-	45, // 15: primandproper.platform.signin.v1.RegisterRequest.account:type_name -> primandproper.platform.identity.v1.AccountCreationInput
-	28, // 16: primandproper.platform.signin.v1.RegisterRequest.no_password:type_name -> primandproper.platform.signin.v1.NoPassword
-	29, // 17: primandproper.platform.signin.v1.RegisterRequest.invitation:type_name -> primandproper.platform.signin.v1.RegistrationInvitation
-	46, // 18: primandproper.platform.signin.v1.RegisterRequest.agreements:type_name -> primandproper.platform.identity.v1.Agreement
-	43, // 19: primandproper.platform.signin.v1.Registered.user:type_name -> primandproper.platform.identity.v1.User
-	47, // 20: primandproper.platform.signin.v1.Registered.account:type_name -> primandproper.platform.identity.v1.Account
-	48, // 21: primandproper.platform.signin.v1.Registered.membership:type_name -> primandproper.platform.identity.v1.Membership
-	49, // 22: primandproper.platform.signin.v1.Registered.invitation:type_name -> primandproper.platform.identity.v1.Invitation
-	31, // 23: primandproper.platform.signin.v1.Registered.totp_enrollment:type_name -> primandproper.platform.signin.v1.TOTPEnrollment
-	32, // 24: primandproper.platform.signin.v1.RegisterResponse.registration:type_name -> primandproper.platform.signin.v1.Registered
+	49, // 13: primandproper.platform.signin.v1.GetSelfResponse.user:type_name -> primandproper.platform.identity.v1.User
+	50, // 14: primandproper.platform.signin.v1.RegisterRequest.user:type_name -> primandproper.platform.identity.v1.UserRegistrationInput
+	51, // 15: primandproper.platform.signin.v1.RegisterRequest.account:type_name -> primandproper.platform.identity.v1.AccountCreationInput
+	30, // 16: primandproper.platform.signin.v1.RegisterRequest.no_password:type_name -> primandproper.platform.signin.v1.NoPassword
+	31, // 17: primandproper.platform.signin.v1.RegisterRequest.invitation:type_name -> primandproper.platform.signin.v1.RegistrationInvitation
+	52, // 18: primandproper.platform.signin.v1.RegisterRequest.agreements:type_name -> primandproper.platform.identity.v1.Agreement
+	49, // 19: primandproper.platform.signin.v1.Registered.user:type_name -> primandproper.platform.identity.v1.User
+	53, // 20: primandproper.platform.signin.v1.Registered.account:type_name -> primandproper.platform.identity.v1.Account
+	54, // 21: primandproper.platform.signin.v1.Registered.membership:type_name -> primandproper.platform.identity.v1.Membership
+	55, // 22: primandproper.platform.signin.v1.Registered.invitation:type_name -> primandproper.platform.identity.v1.Invitation
+	33, // 23: primandproper.platform.signin.v1.Registered.totp_enrollment:type_name -> primandproper.platform.signin.v1.TOTPEnrollment
+	34, // 24: primandproper.platform.signin.v1.RegisterResponse.registration:type_name -> primandproper.platform.signin.v1.Registered
 	1,  // 25: primandproper.platform.signin.v1.RedeemMagicLinkResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
-	30, // 26: primandproper.platform.signin.v1.SignInService.Register:input_type -> primandproper.platform.signin.v1.RegisterRequest
-	34, // 27: primandproper.platform.signin.v1.SignInService.AttachPassword:input_type -> primandproper.platform.signin.v1.AttachPasswordRequest
-	36, // 28: primandproper.platform.signin.v1.SignInService.VerifyEmailAddress:input_type -> primandproper.platform.signin.v1.VerifyEmailAddressRequest
-	38, // 29: primandproper.platform.signin.v1.SignInService.RequestMagicLink:input_type -> primandproper.platform.signin.v1.RequestMagicLinkRequest
-	40, // 30: primandproper.platform.signin.v1.SignInService.RedeemMagicLink:input_type -> primandproper.platform.signin.v1.RedeemMagicLinkRequest
-	3,  // 31: primandproper.platform.signin.v1.SignInService.LoginForToken:input_type -> primandproper.platform.signin.v1.LoginForTokenRequest
-	5,  // 32: primandproper.platform.signin.v1.SignInService.AdminLoginForToken:input_type -> primandproper.platform.signin.v1.AdminLoginForTokenRequest
-	7,  // 33: primandproper.platform.signin.v1.SignInService.ExchangeRefreshToken:input_type -> primandproper.platform.signin.v1.ExchangeRefreshTokenRequest
-	9,  // 34: primandproper.platform.signin.v1.SignInService.SignOut:input_type -> primandproper.platform.signin.v1.SignOutRequest
-	11, // 35: primandproper.platform.signin.v1.SignInService.SignOutEverywhere:input_type -> primandproper.platform.signin.v1.SignOutEverywhereRequest
-	14, // 36: primandproper.platform.signin.v1.SignInService.ListSignIns:input_type -> primandproper.platform.signin.v1.ListSignInsRequest
-	16, // 37: primandproper.platform.signin.v1.SignInService.EndSignIn:input_type -> primandproper.platform.signin.v1.EndSignInRequest
-	18, // 38: primandproper.platform.signin.v1.SignInService.GetAuthStatus:input_type -> primandproper.platform.signin.v1.GetAuthStatusRequest
-	20, // 39: primandproper.platform.signin.v1.SignInService.GetSelf:input_type -> primandproper.platform.signin.v1.GetSelfRequest
-	22, // 40: primandproper.platform.signin.v1.SignInService.UpdatePassword:input_type -> primandproper.platform.signin.v1.UpdatePasswordRequest
-	24, // 41: primandproper.platform.signin.v1.SignInService.RefreshTOTPSecret:input_type -> primandproper.platform.signin.v1.RefreshTOTPSecretRequest
-	26, // 42: primandproper.platform.signin.v1.SignInService.VerifyTOTPSecret:input_type -> primandproper.platform.signin.v1.VerifyTOTPSecretRequest
-	33, // 43: primandproper.platform.signin.v1.SignInService.Register:output_type -> primandproper.platform.signin.v1.RegisterResponse
-	35, // 44: primandproper.platform.signin.v1.SignInService.AttachPassword:output_type -> primandproper.platform.signin.v1.AttachPasswordResponse
-	37, // 45: primandproper.platform.signin.v1.SignInService.VerifyEmailAddress:output_type -> primandproper.platform.signin.v1.VerifyEmailAddressResponse
-	39, // 46: primandproper.platform.signin.v1.SignInService.RequestMagicLink:output_type -> primandproper.platform.signin.v1.RequestMagicLinkResponse
-	41, // 47: primandproper.platform.signin.v1.SignInService.RedeemMagicLink:output_type -> primandproper.platform.signin.v1.RedeemMagicLinkResponse
-	4,  // 48: primandproper.platform.signin.v1.SignInService.LoginForToken:output_type -> primandproper.platform.signin.v1.LoginForTokenResponse
-	6,  // 49: primandproper.platform.signin.v1.SignInService.AdminLoginForToken:output_type -> primandproper.platform.signin.v1.AdminLoginForTokenResponse
-	8,  // 50: primandproper.platform.signin.v1.SignInService.ExchangeRefreshToken:output_type -> primandproper.platform.signin.v1.ExchangeRefreshTokenResponse
-	10, // 51: primandproper.platform.signin.v1.SignInService.SignOut:output_type -> primandproper.platform.signin.v1.SignOutResponse
-	12, // 52: primandproper.platform.signin.v1.SignInService.SignOutEverywhere:output_type -> primandproper.platform.signin.v1.SignOutEverywhereResponse
-	15, // 53: primandproper.platform.signin.v1.SignInService.ListSignIns:output_type -> primandproper.platform.signin.v1.ListSignInsResponse
-	17, // 54: primandproper.platform.signin.v1.SignInService.EndSignIn:output_type -> primandproper.platform.signin.v1.EndSignInResponse
-	19, // 55: primandproper.platform.signin.v1.SignInService.GetAuthStatus:output_type -> primandproper.platform.signin.v1.GetAuthStatusResponse
-	21, // 56: primandproper.platform.signin.v1.SignInService.GetSelf:output_type -> primandproper.platform.signin.v1.GetSelfResponse
-	23, // 57: primandproper.platform.signin.v1.SignInService.UpdatePassword:output_type -> primandproper.platform.signin.v1.UpdatePasswordResponse
-	25, // 58: primandproper.platform.signin.v1.SignInService.RefreshTOTPSecret:output_type -> primandproper.platform.signin.v1.RefreshTOTPSecretResponse
-	27, // 59: primandproper.platform.signin.v1.SignInService.VerifyTOTPSecret:output_type -> primandproper.platform.signin.v1.VerifyTOTPSecretResponse
-	43, // [43:60] is the sub-list for method output_type
-	26, // [26:43] is the sub-list for method input_type
+	32, // 26: primandproper.platform.signin.v1.SignInService.Register:input_type -> primandproper.platform.signin.v1.RegisterRequest
+	36, // 27: primandproper.platform.signin.v1.SignInService.AttachPassword:input_type -> primandproper.platform.signin.v1.AttachPasswordRequest
+	38, // 28: primandproper.platform.signin.v1.SignInService.VerifyEmailAddress:input_type -> primandproper.platform.signin.v1.VerifyEmailAddressRequest
+	40, // 29: primandproper.platform.signin.v1.SignInService.RequestVerificationEmail:input_type -> primandproper.platform.signin.v1.RequestVerificationEmailRequest
+	42, // 30: primandproper.platform.signin.v1.SignInService.RequestVerificationEmailByAddress:input_type -> primandproper.platform.signin.v1.RequestVerificationEmailByAddressRequest
+	44, // 31: primandproper.platform.signin.v1.SignInService.RequestMagicLink:input_type -> primandproper.platform.signin.v1.RequestMagicLinkRequest
+	46, // 32: primandproper.platform.signin.v1.SignInService.RedeemMagicLink:input_type -> primandproper.platform.signin.v1.RedeemMagicLinkRequest
+	3,  // 33: primandproper.platform.signin.v1.SignInService.LoginForToken:input_type -> primandproper.platform.signin.v1.LoginForTokenRequest
+	5,  // 34: primandproper.platform.signin.v1.SignInService.AdminLoginForToken:input_type -> primandproper.platform.signin.v1.AdminLoginForTokenRequest
+	7,  // 35: primandproper.platform.signin.v1.SignInService.ExchangeRefreshToken:input_type -> primandproper.platform.signin.v1.ExchangeRefreshTokenRequest
+	9,  // 36: primandproper.platform.signin.v1.SignInService.SignOut:input_type -> primandproper.platform.signin.v1.SignOutRequest
+	11, // 37: primandproper.platform.signin.v1.SignInService.SignOutEverywhere:input_type -> primandproper.platform.signin.v1.SignOutEverywhereRequest
+	14, // 38: primandproper.platform.signin.v1.SignInService.ListSignIns:input_type -> primandproper.platform.signin.v1.ListSignInsRequest
+	16, // 39: primandproper.platform.signin.v1.SignInService.EndSignIn:input_type -> primandproper.platform.signin.v1.EndSignInRequest
+	18, // 40: primandproper.platform.signin.v1.SignInService.EndOtherSignIns:input_type -> primandproper.platform.signin.v1.EndOtherSignInsRequest
+	20, // 41: primandproper.platform.signin.v1.SignInService.GetAuthStatus:input_type -> primandproper.platform.signin.v1.GetAuthStatusRequest
+	22, // 42: primandproper.platform.signin.v1.SignInService.GetSelf:input_type -> primandproper.platform.signin.v1.GetSelfRequest
+	24, // 43: primandproper.platform.signin.v1.SignInService.UpdatePassword:input_type -> primandproper.platform.signin.v1.UpdatePasswordRequest
+	26, // 44: primandproper.platform.signin.v1.SignInService.RefreshTOTPSecret:input_type -> primandproper.platform.signin.v1.RefreshTOTPSecretRequest
+	28, // 45: primandproper.platform.signin.v1.SignInService.VerifyTOTPSecret:input_type -> primandproper.platform.signin.v1.VerifyTOTPSecretRequest
+	35, // 46: primandproper.platform.signin.v1.SignInService.Register:output_type -> primandproper.platform.signin.v1.RegisterResponse
+	37, // 47: primandproper.platform.signin.v1.SignInService.AttachPassword:output_type -> primandproper.platform.signin.v1.AttachPasswordResponse
+	39, // 48: primandproper.platform.signin.v1.SignInService.VerifyEmailAddress:output_type -> primandproper.platform.signin.v1.VerifyEmailAddressResponse
+	41, // 49: primandproper.platform.signin.v1.SignInService.RequestVerificationEmail:output_type -> primandproper.platform.signin.v1.RequestVerificationEmailResponse
+	43, // 50: primandproper.platform.signin.v1.SignInService.RequestVerificationEmailByAddress:output_type -> primandproper.platform.signin.v1.RequestVerificationEmailByAddressResponse
+	45, // 51: primandproper.platform.signin.v1.SignInService.RequestMagicLink:output_type -> primandproper.platform.signin.v1.RequestMagicLinkResponse
+	47, // 52: primandproper.platform.signin.v1.SignInService.RedeemMagicLink:output_type -> primandproper.platform.signin.v1.RedeemMagicLinkResponse
+	4,  // 53: primandproper.platform.signin.v1.SignInService.LoginForToken:output_type -> primandproper.platform.signin.v1.LoginForTokenResponse
+	6,  // 54: primandproper.platform.signin.v1.SignInService.AdminLoginForToken:output_type -> primandproper.platform.signin.v1.AdminLoginForTokenResponse
+	8,  // 55: primandproper.platform.signin.v1.SignInService.ExchangeRefreshToken:output_type -> primandproper.platform.signin.v1.ExchangeRefreshTokenResponse
+	10, // 56: primandproper.platform.signin.v1.SignInService.SignOut:output_type -> primandproper.platform.signin.v1.SignOutResponse
+	12, // 57: primandproper.platform.signin.v1.SignInService.SignOutEverywhere:output_type -> primandproper.platform.signin.v1.SignOutEverywhereResponse
+	15, // 58: primandproper.platform.signin.v1.SignInService.ListSignIns:output_type -> primandproper.platform.signin.v1.ListSignInsResponse
+	17, // 59: primandproper.platform.signin.v1.SignInService.EndSignIn:output_type -> primandproper.platform.signin.v1.EndSignInResponse
+	19, // 60: primandproper.platform.signin.v1.SignInService.EndOtherSignIns:output_type -> primandproper.platform.signin.v1.EndOtherSignInsResponse
+	21, // 61: primandproper.platform.signin.v1.SignInService.GetAuthStatus:output_type -> primandproper.platform.signin.v1.GetAuthStatusResponse
+	23, // 62: primandproper.platform.signin.v1.SignInService.GetSelf:output_type -> primandproper.platform.signin.v1.GetSelfResponse
+	25, // 63: primandproper.platform.signin.v1.SignInService.UpdatePassword:output_type -> primandproper.platform.signin.v1.UpdatePasswordResponse
+	27, // 64: primandproper.platform.signin.v1.SignInService.RefreshTOTPSecret:output_type -> primandproper.platform.signin.v1.RefreshTOTPSecretResponse
+	29, // 65: primandproper.platform.signin.v1.SignInService.VerifyTOTPSecret:output_type -> primandproper.platform.signin.v1.VerifyTOTPSecretResponse
+	46, // [46:66] is the sub-list for method output_type
+	26, // [26:46] is the sub-list for method input_type
 	26, // [26:26] is the sub-list for extension type_name
 	26, // [26:26] is the sub-list for extension extendee
 	0,  // [0:26] is the sub-list for field type_name
@@ -2961,7 +3250,7 @@ func file_primandproper_platform_signin_v1_signin_proto_init() {
 	if File_primandproper_platform_signin_v1_signin_proto != nil {
 		return
 	}
-	file_primandproper_platform_signin_v1_signin_proto_msgTypes[30].OneofWrappers = []any{
+	file_primandproper_platform_signin_v1_signin_proto_msgTypes[32].OneofWrappers = []any{
 		(*RegisterRequest_Password)(nil),
 		(*RegisterRequest_NoPassword)(nil),
 	}
@@ -2971,7 +3260,7 @@ func file_primandproper_platform_signin_v1_signin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_signin_v1_signin_proto_rawDesc), len(file_primandproper_platform_signin_v1_signin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   42,
+			NumMessages:   48,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

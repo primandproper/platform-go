@@ -92,10 +92,38 @@ every request, so banning an operator ends their impersonations as it ends
 their own logins. Which operators may cross into which scopes is the
 deployment's [ImpersonationPolicy] to decide; this package compares none.
 
-A person's live families are what [Service.ListSignIns] answers and what
-[Service.EndSignIn] ends one of, for a "where you're signed in" screen. Each
+A person's live families are what [Service.ListSignIns] answers, what
+[Service.EndSignIn] ends one of, and what [Service.EndOtherSignIns] ends all but
+one of, for a "where you're signed in" screen. Each
 entry carries the family, so a consumer that records a device per login from
 [Hooks.AfterIssueToken] joins it on that.
+
+# Ending a login, and the hook that records it
+
+Every door that ends a login runs [Hooks.AfterRevokeSignIns] in the transaction
+that ended it, with a [Revocation] naming each family it ended, whose they were,
+who asked and which door it was: [Service.SignOut], [Service.SignOutEverywhere],
+[Service.EndSignIn] and [Service.EndOtherSignIns] for the person themselves,
+[Service.RevokeRefreshTokenFamily] and [Service.RevokeRefreshTokensForSubject]
+for an operator — with [RevokedBy]
+naming who — and the family revocation a detected reuse performs, from
+[Service.ExchangeRefreshToken] or from a sign-out presenting a spent token. A
+hook that refuses rolls the revocation back, and with it the sign-out.
+
+It does not run when nothing ended: a sign-out presenting a token that names no
+live login, EndSignIn for a family that is somebody else's or never existed, a
+revocation of a person with no live login, a replay of a token whose family was
+already over. A login that lapsed on its own is over already and is not reported
+by whatever ends it afterwards. That silence is the anti-enumeration answer those
+doors already give, kept intact: a hook that ran on every call would be the
+oracle the answer refuses to be.
+
+What it is handed is what the store ended rather than what was asked for.
+[RefreshTokenStore.EndSignIns] locks the live logins it selects and then revokes
+exactly those, so a login that commits between the read and the revocation is
+neither ended nor reported, and an exchange racing it waits and finds its token
+revoked. A reuse reaches the hook through [RefreshTokenReusedError], which names
+the family the store ended in answer to it.
 
 # A lost authenticator, and the door that is not a support ticket
 
@@ -281,5 +309,16 @@ every registration asks for an email address to be proven, and a consumer who
 proved a phone number, a payment or an operator's approval says so with it. What
 may be proven that way is theirs to decide, which is exactly why there is no RPC:
 the check is one only they can make.
+
+Two doors resend a verification link. [Service.RequestVerificationEmailByAddress]
+is anonymous and names an address, for a registrant: an unproven registration is
+refused at the password door with [ErrUserUnverified], so they are never signed
+in to ask, and the door answers the same way whoever holds the address.
+[Service.RequestVerificationEmail] requires a caller, for somebody signed in
+whose address changed. Each mints a fresh link, retires the outstanding one, and
+hands the secret to the [VerificationMailer] and nothing else. An address that is already proven is
+refused with [ErrEmailAddressAlreadyVerified] by the signed-in door and silently
+by the anonymous one, and keeps its proof either way, so a resend can never
+un-verify anybody.
 */
 package signin

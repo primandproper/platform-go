@@ -120,10 +120,10 @@ func DirectoryPasswordChange(client database.Client, directory PasswordChangeDir
 //     a reset clears the flag too and a person who forgot the password they
 //     were told to change has no other way to change it.
 //   - To get rid of a credential they no longer trust. SignOut,
-//     SignOutEverywhere, ListSignIns and EndSignIn, because the reason an
-//     operator forces a change is so often a credential somebody else holds,
-//     and ending that somebody's logins is exactly the remedy a gate must not
-//     stand in front of.
+//     SignOutEverywhere, ListSignIns, EndSignIn and EndOtherSignIns, because
+//     the reason an operator forces a change is so often a credential somebody
+//     else holds, and ending that somebody's logins is exactly the remedy a
+//     gate must not stand in front of.
 //   - To sign in at all. Every anonymous door, because what they present is
 //     their own authority and not the caller the gate refuses: a flagged
 //     person has to be able to sign in, renew their token and follow a mailed
@@ -139,6 +139,7 @@ func PasswordChangeMethods() []string {
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
 		signinpb.SignInService_ListSignIns_FullMethodName,
 		signinpb.SignInService_EndSignIn_FullMethodName,
+		signinpb.SignInService_EndOtherSignIns_FullMethodName,
 		identitypb.IdentityService_GetPrincipal_FullMethodName,
 		passwordresetpb.PasswordResetService_RequestPasswordReset_FullMethodName,
 		passwordresetpb.PasswordResetService_VerifyPasswordResetToken_FullMethodName,

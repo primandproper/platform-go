@@ -3,6 +3,7 @@ package assembled_test
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -36,6 +37,18 @@ func (r *invitationTokens) AfterRegisterWithInvitation(
 
 	return nil
 }
+
+// SendVerification is the consumer's sign-in VerificationMailer, which is where
+// a resent link goes. It replaces whatever was remembered for the address, so
+// the VerificationToken action answers with the newest link — the one that
+// still works.
+func (r *invitationTokens) SendVerification(_ context.Context, mail *signin.VerificationMail) error {
+	r.rememberVerification(mail.User, mail.Token)
+
+	return nil
+}
+
+var _ signin.VerificationMailer = (*invitationTokens)(nil)
 
 func (r *invitationTokens) rememberVerification(user *identity.User, token string) {
 	if user == nil || token == "" {

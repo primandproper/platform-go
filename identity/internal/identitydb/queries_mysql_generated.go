@@ -1713,11 +1713,11 @@ WHERE archived_at IS NULL
 const setUserEmailAddressVerificationTokenMySQL = `UPDATE {{prefix}}identity_users SET
 	email_address_verification_token_digest = ?,
 	email_address_verification_token_expires_at = ?,
-	email_address_verified_at = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = ?
-	AND scope = ?`
+	AND scope = ?
+	AND email_address_verified_at IS NULL`
 
 const setUserRequiresPasswordChangeMySQL = `UPDATE {{prefix}}identity_users SET
 	requires_password_change = ?,
@@ -4395,7 +4395,6 @@ func (q *mysqlQueries) SetUserEmailAddressVerificationToken(ctx context.Context,
 	result, err := db.ExecContext(ctx, q.setUserEmailAddressVerificationToken,
 		arg.EmailAddressVerificationTokenDigest,
 		arg.EmailAddressVerificationTokenExpiresAt,
-		arg.EmailAddressVerifiedAt,
 		arg.ID,
 		arg.Scope,
 	)
@@ -5717,7 +5716,6 @@ var (
 	_ = struct {
 		EmailAddressVerificationTokenDigest    string
 		EmailAddressVerificationTokenExpiresAt *time.Time
-		EmailAddressVerifiedAt                 *time.Time
 		ID                                     string
 		Scope                                  tenancy.Scope
 	}(SetUserEmailAddressVerificationTokenParams{})

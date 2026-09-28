@@ -181,6 +181,20 @@ var (
 	// is mapped for it, so it is a 500, which is what it is.
 	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
 
+	// ErrRefreshTokenStoreContractViolated indicates a RefreshTokenStore that
+	// reported a reuse with ErrRefreshTokenReused bare, rather than as a
+	// *RefreshTokenReusedError naming the family it ended.
+	//
+	// The store's revocation is still committed — it is the response to a theft,
+	// and losing it would leave the thief's successor token working — but
+	// Hooks.AfterRevokeSignIns cannot be told what ended, so the reuse is
+	// reported as the wiring failure it is instead of as the refusal a client
+	// would read past. It deliberately does not wrap ErrRefreshTokenReused or
+	// ErrInvalidCredentials: no status is mapped for it, so it is a 500 and is
+	// logged as one, which is how a broken store is found on its first reuse
+	// rather than in an incident review.
+	ErrRefreshTokenStoreContractViolated = platformerrors.New("refresh token store reported a reuse without naming the family it ended")
+
 	// ErrPasswordAlreadySet indicates Service.AttachPassword against somebody who
 	// already holds a password.
 	//
@@ -196,6 +210,16 @@ var (
 	// subject, so it tells them nothing about anybody else — the reading
 	// ErrNoPasswordCredential already takes from the other direction.
 	ErrPasswordAlreadySet = platformerrors.New("user already holds a password credential")
+
+	// ErrEmailAddressAlreadyVerified indicates Service.RequestVerificationEmail
+	// for somebody whose address is already proven.
+	//
+	// It is the refusal that keeps a resend from un-verifying anybody: a link and
+	// a proof may not stand on one row together, and the proof is the one that
+	// stays. It is the specific answer rather than a silent success because the
+	// caller is signed in as the person it is about, so it tells them nothing
+	// about anybody else — and "there is nothing to verify" is the remedy.
+	ErrEmailAddressAlreadyVerified = platformerrors.New("email address is already proven; no link was sent")
 
 	// ErrInvalidVerificationToken indicates a verification link that named
 	// nobody: expired, already answered, never issued, or simply wrong.
@@ -278,6 +302,13 @@ var (
 	// registration on a service built without WithVerifications. It is a wiring
 	// failure, and is a 500 for the reason above.
 	ErrVerificationsNotConfigured = platformerrors.New("no verifications directory is configured")
+
+	// ErrVerificationMailerNotConfigured indicates
+	// Service.RequestVerificationEmail on a service built without
+	// WithVerificationMailer: a link minted and never sent is a link nobody can
+	// answer, and one minted anyway would retire the link the person already
+	// has. It is a wiring failure, and is a 500 for the reason above.
+	ErrVerificationMailerNotConfigured = platformerrors.New("no verification mailer is configured")
 
 	// ErrMagicLinksNotConfigured indicates one of the two sign-in link doors on a
 	// service built without WithMagicLinkStore — or, for the request door,
@@ -421,6 +452,22 @@ var (
 	// guess that missed, and answering it with a refusal would put a database
 	// round trip behind every empty request a bot sends.
 	ErrEmptyVerificationToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email verification token")
+
+	// ErrSignInNotIdentified indicates Service.EndOtherSignIns asked to keep a
+	// login it did not name.
+	//
+	// It is a refusal rather than ErrEmptyFamilyID because what it refuses is
+	// a request the caller cannot correct by sending another: the login to keep
+	// is the one the request came through, read off the access token, and a
+	// token that carries no "sid" claim has none to offer. What must not happen
+	// instead is the reading an empty keep invites — keep nothing, end every
+	// login — because that turns "sign out my other devices" into "sign out
+	// everywhere" for exactly the callers who cannot tell which device they are.
+	// SignOutEverywhere is the door for that, and it is a different request.
+	//
+	// It is client-safe, and so is its reason: the caller is the subject, and the
+	// only thing it discloses is that their own token names no sign-in.
+	ErrSignInNotIdentified = platformerrors.New("the sign-in this request came through cannot be identified")
 
 	// ErrEmptyFamilyID indicates a revocation that named no login.
 	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")

@@ -102,10 +102,12 @@ var ClientSafeSentinels = []error{
 	ErrImpersonationDisabled,
 	ErrNoPasswordCredential,
 	ErrPasswordAlreadySet,
+	ErrEmailAddressAlreadyVerified,
 	ErrNoCredentialNamed,
 	ErrPasswordRefused,
 	ErrRegistrationRefused,
 	ErrPasswordChangeRequired,
+	ErrSignInNotIdentified,
 }
 
 // ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
@@ -195,10 +197,12 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrImpersonationDisabled, Reason: "IMPERSONATION_UNAVAILABLE", Domain: ClientReasonDomain},
 	{Err: ErrNoPasswordCredential, Reason: "NO_PASSWORD_CREDENTIAL", Domain: ClientReasonDomain},
 	{Err: ErrPasswordAlreadySet, Reason: "PASSWORD_ALREADY_SET", Domain: ClientReasonDomain},
+	{Err: ErrEmailAddressAlreadyVerified, Reason: "EMAIL_ADDRESS_ALREADY_VERIFIED", Domain: ClientReasonDomain},
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordChangeRequired, Reason: "PASSWORD_CHANGE_REQUIRED", Domain: ClientReasonDomain},
+	{Err: ErrSignInNotIdentified, Reason: "SIGN_IN_NOT_IDENTIFIED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -268,8 +272,8 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrImpersonationDisabled):
 		return httperrors.ErrUserIsNotAuthorized, "impersonation is not available", true
 
-	// The three states an act is refused from rather than forbidden. Each is
-	// fixable, in a specific order, and the message says which act comes first.
+	// The states an act is refused from rather than forbidden. Each is
+	// fixable, or already done, and the message says which act comes first.
 	case errors.Is(err, ErrSecondFactorNotEnrolled):
 		return httperrors.ErrResourceConflict, "a second factor must be enrolled first", true
 	case errors.Is(err, ErrUserUnverified):
@@ -278,6 +282,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrResourceConflict, "account holds no password to change", true
 	case errors.Is(err, ErrPasswordAlreadySet):
 		return httperrors.ErrResourceConflict, "account already holds a password", true
+	case errors.Is(err, ErrEmailAddressAlreadyVerified):
+		return httperrors.ErrResourceConflict, "email address is already verified", true
+
+	// Ending every login but this one, from a request whose token names no
+	// login. It is the credential's state rather than the caller's input, and
+	// the remedy is signing in again with a client that carries one.
+	case errors.Is(err, ErrSignInNotIdentified):
+		return httperrors.ErrResourceConflict, "the sign-in this request came through cannot be identified", true
 
 	// Proven, admitted, and held at one door until the password changes. A 403
 	// rather than a conflict, because what is refused is the caller rather than
@@ -338,7 +350,9 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrUserUnverified),
 		errors.Is(err, ErrNoPasswordCredential),
 		errors.Is(err, ErrPasswordAlreadySet),
-		errors.Is(err, ErrPasswordChangeRequired):
+		errors.Is(err, ErrEmailAddressAlreadyVerified),
+		errors.Is(err, ErrPasswordChangeRequired),
+		errors.Is(err, ErrSignInNotIdentified):
 		return codes.FailedPrecondition, true
 
 	// A registration that named no credential is a request to correct rather

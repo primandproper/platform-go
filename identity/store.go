@@ -303,9 +303,13 @@ type CredentialStore interface {
 	// SetUserEmailAddressVerificationToken stores the digest of the token a
 	// verification link will carry and the deadline it stops being answerable
 	// at, replacing any outstanding one — so re-sending a verification email
-	// invalidates the previous link rather than leaving two live — and dropping
-	// any proof the address already had, so the row never says both "proven" and
-	// "a link is outstanding".
+	// invalidates the previous link rather than leaving two live.
+	//
+	// An address that is already proven is refused with
+	// ErrEmailAddressAlreadyVerified and left proven, so the row never says both
+	// "proven" and "a link is outstanding" and no caller that can mint a link can
+	// un-verify somebody by minting one. The proof comes off only where the
+	// address changes, which is UpdateUser's to do — see below.
 	//
 	// The token itself is never stored. A caller mails the value it passed in,
 	// and no read of this Store can hand it back.

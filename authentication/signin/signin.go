@@ -114,14 +114,16 @@ const (
 	opSignOut              = "sign_out"
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
+	opSignOutEverywhere    = "sign_out_everywhere"
 	opUpdatePassword       = "update_password"
 
 	// Listing a person's logins and ending one of them are two series of their
 	// own. Ending one is not folded into revoke_refresh_token_family for the
 	// reason signing out is not: it is a person's decision, and that series is
 	// where a detected reuse's alarm lands.
-	opListSignIns = "list_sign_ins"
-	opEndSignIn   = "end_sign_in"
+	opListSignIns     = "list_sign_ins"
+	opEndSignIn       = "end_sign_in"
+	opEndOtherSignIns = "end_other_sign_ins"
 
 	// Checking a login is a series of its own, and the one a deployment that
 	// makes it on every request will see dwarf the rest: what a dashboard asks
@@ -137,6 +139,13 @@ const (
 	opAttachPassword       = "attach_password"
 	opVerifyEmailAddress   = "verify_email_address"
 	opCompleteVerification = "complete_verification"
+	// Asking for another verification link is a series of its own rather than
+	// part of registering, because what a dashboard asks of it is how often a
+	// mailed link failed to arrive or to be answered.
+	opRequestVerificationEmail = "request_verification_email"
+	// The anonymous resend, a series apart from the signed-in one because a
+	// dashboard watching for a stranger filling somebody's inbox watches it.
+	opRequestVerificationEmailByAddress = "request_verification_email_by_address"
 	// The passwordless door, both halves. It is a series of its own for the
 	// reason registering is: what a dashboard asks of it is how many people
 	// arrive without a password, which is a different question from how often
@@ -466,6 +475,12 @@ type Service struct {
 	// TOTP code and nothing else, and the two recovery code doors refuse with
 	// ErrRecoveryCodesNotConfigured.
 	recoveryCodes RecoveryCodeStore
+
+	// verificationMailer is nil until WithVerificationMailer names one, and nil
+	// means RequestVerificationEmail refuses with
+	// ErrVerificationMailerNotConfigured. Registration needs none: it hands its
+	// link back on Registered.
+	verificationMailer VerificationMailer
 
 	// magicLinkMailer is nil until WithMagicLinkMailer names one. The request
 	// door needs both it and the store, because a link that is minted and not

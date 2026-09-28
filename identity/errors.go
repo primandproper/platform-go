@@ -194,6 +194,17 @@ var (
 	// resolve a link, and records the specific reason on the operation's span.
 	ErrEmailVerificationLinkExpired = platformerrors.New("email address verification link has expired")
 
+	// ErrEmailAddressAlreadyVerified indicates a verification link asked for an
+	// address that is already proven. Store.SetUserEmailAddressVerificationToken
+	// refuses it rather than dropping the proof to make room for the link, so
+	// no caller that can mint a link can un-verify somebody by doing so.
+	//
+	// It is told apart from ErrUserNotFound, and it discloses nothing by being
+	// told apart: the write is addressed by user ID, so whoever reaches it
+	// already names a row, and whether that row's address is proven is a fact
+	// about the caller's own account at the one door that exposes it.
+	ErrEmailAddressAlreadyVerified = platformerrors.New("email address is already verified")
+
 	// ErrInvalidEmailAddress indicates an address net/mail cannot parse. It
 	// wraps errors.ErrUnrecognizedInputValue, so a caller may check either.
 	ErrInvalidEmailAddress = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "invalid email address")

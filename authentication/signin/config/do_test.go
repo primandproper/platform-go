@@ -173,6 +173,47 @@ func TestRegisterService(T *testing.T) {
 		test.ErrorIs(t, svc.RequestMagicLink(t.Context(), tenancy.Of("tenant"), ""), signin.ErrEmptyHandle)
 	})
 
+	T.Run("no verification mailer leaves the resend door refusing", func(t *testing.T) {
+		t.Parallel()
+
+		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		err = svc.RequestVerificationEmail(t.Context(), tenancy.Of("tenant"), "someone")
+		test.ErrorIs(t, err, signin.ErrVerificationMailerNotConfigured)
+	})
+
+	T.Run("a registered verification mailer is attached", func(t *testing.T) {
+		t.Parallel()
+
+		// Built by hand rather than from base, because the directory has to
+		// answer: a proven address is the one refusal reachable without a
+		// transaction's worth of rows, and it is past the mailer check.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[identity.Store](i, &identitymock.StoreMock{
+			GetUserFunc: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, string) (*identity.User, error) {
+				return &identity.User{ID: "someone", EmailAddressVerifiedAt: pointer.To(time.Now())}, nil
+			},
+		})
+		do.ProvideValue[tokens.Issuer](i, stubTokenIssuer{})
+		do.ProvideValue(i, &Config{})
+		withRegistrar(withAuthenticator(i))
+		do.ProvideValue[signin.VerificationMailer](i,
+			signin.VerificationMailerFunc(func(context.Context, *signin.VerificationMail) error { return nil }))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		err = svc.RequestVerificationEmail(t.Context(), tenancy.Of("tenant"), "someone")
+		test.ErrorIs(t, err, signin.ErrEmailAddressAlreadyVerified)
+	})
+
 	T.Run("a registered password policy is attached", func(t *testing.T) {
 		t.Parallel()
 
