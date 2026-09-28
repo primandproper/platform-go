@@ -229,6 +229,19 @@ type Seams struct {
 	// say here, and one that supplied a wider rule says so rather than having
 	// the suite guess which rule it wrote.
 	MediaObjectsShared bool
+
+	// InvitationTokenReturned says the deployment's identity server was built
+	// with identitygrpc.WithInvitationTokenReturned, so Invite answers the
+	// sender with the token beside the invitation and the sender can copy the
+	// link. True asserts that reading — the token comes back, it is the one the
+	// deployment delivered, and a copied link registers the addressed person
+	// into the inviting account and nobody else — in place of the default's,
+	// that it does not come back at all.
+	//
+	// False is the server's default, and so it is the zero value: a deployment
+	// that never opted in has nothing to say here, and one that did says so
+	// rather than having the suite accept either answer.
+	InvitationTokenReturned bool
 }
 
 // Subject is one caller, and the clients it calls through.
@@ -406,10 +419,12 @@ type Actions struct {
 	// InvitationToken reports the token the deployment delivered to an
 	// invitation's recipient — the secret in the link a real invitee clicks.
 	//
-	// There is no RPC that returns it, and that is the point of the design:
+	// By default no RPC returns it, and that is the point of the design:
 	// identity's Invite answers the sender with a redacted invitation, and the
 	// token reaches the recipient through whatever the deployment's AfterInvite
-	// hook queues. A consumer implements this by reading the mail their
+	// hook queues. A deployment that returns it to the sender (see
+	// Seams.InvitationTokenReturned) still delivers it this way, and the suite
+	// checks the two agree. A consumer implements this by reading the mail their
 	// deployment sent; this module's harnesses by a hook that remembers what it
 	// was handed. Either way the token is the deployment's, which is what makes
 	// accepting with it a real acceptance.

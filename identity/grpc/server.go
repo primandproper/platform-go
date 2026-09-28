@@ -159,6 +159,8 @@ type Server struct {
 
 	invitationTTL    time.Duration
 	maxInvitationTTL time.Duration
+
+	returnInvitationToken bool
 }
 
 var _ identitypb.IdentityServiceServer = (*Server)(nil)
