@@ -998,7 +998,12 @@ type ActiveSignIn struct {
 	// through. It is false on every entry when the server cannot tell -- a
 	// consumer whose principal does not carry the access token's "sid" -- which
 	// is the answer that marks nothing rather than guessing.
-	Current       bool `protobuf:"varint,7,opt,name=current,proto3" json:"current,omitempty"`
+	Current bool `protobuf:"varint,7,opt,name=current,proto3" json:"current,omitempty"`
+	// actor_id is the operator signed in as this person through this login --
+	// an impersonation an operator surface began -- and empty for a login of the
+	// person's own. A client shows it, because "somebody else is signed in as
+	// you" is a thing a person is owed the chance to see and end.
+	ActorId       string `protobuf:"bytes,8,opt,name=actor_id,json=actorID,proto3" json:"actor_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1080,6 +1085,13 @@ func (x *ActiveSignIn) GetCurrent() bool {
 		return x.Current
 	}
 	return false
+}
+
+func (x *ActiveSignIn) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
 }
 
 // ListSignInsRequest asks for the calling user's live logins, most recently
@@ -2697,7 +2709,7 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshTokenR\x05scope\"\x11\n" +
 	"\x0fSignOutResponse\"!\n" +
 	"\x18SignOutEverywhereRequestR\x05scope\"\x1b\n" +
-	"\x19SignOutEverywhereResponse\"\xe1\x02\n" +
+	"\x19SignOutEverywhereResponse\"\xfc\x02\n" +
 	"\fActiveSignIn\x12\x1b\n" +
 	"\tfamily_id\x18\x01 \x01(\tR\bfamilyID\x12<\n" +
 	"\fsigned_in_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -2707,7 +2719,8 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12*\n" +
 	"\x11active_account_id\x18\x05 \x01(\tR\x0factiveAccountID\x12&\n" +
 	"\x0eadministrative\x18\x06 \x01(\bR\x0eadministrative\x12\x18\n" +
-	"\acurrent\x18\a \x01(\bR\acurrentR\x05scope\"1\n" +
+	"\acurrent\x18\a \x01(\bR\acurrent\x12\x19\n" +
+	"\bactor_id\x18\b \x01(\tR\aactorIDR\x05scope\"1\n" +
 	"\x12ListSignInsRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\rR\x05limitR\x05scope\"`\n" +
 	"\x13ListSignInsResponse\x12I\n" +

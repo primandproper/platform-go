@@ -6,3 +6,8 @@
 -- everywhere else.
 ALTER TABLE {{PREFIX}}signin_refresh_tokens
     ADD COLUMN access_token_id TEXT;
+
+-- actor_id: see postgres_v4.sql. SQLite's ADD COLUMN takes one column at a
+-- time, so it is a statement of its own here as everywhere.
+ALTER TABLE {{PREFIX}}signin_refresh_tokens
+    ADD COLUMN actor_id TEXT;

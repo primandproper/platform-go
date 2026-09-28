@@ -111,6 +111,7 @@ func ActiveSignInToProto(s *signin.ActiveSignIn) *signinpb.ActiveSignIn {
 		ExpiresAt:       timestamppb.New(s.ExpiresAt),
 		ActiveAccountId: s.ActiveAccountID,
 		Administrative:  s.Administrative,
+		ActorId:         s.ActorID,
 	}
 }
 

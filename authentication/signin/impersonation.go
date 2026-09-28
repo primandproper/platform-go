@@ -89,10 +89,23 @@ type ImpersonationPolicy func(ctx context.Context, operator, subject *identity.U
 // and the subject did not come through that door.
 //
 // It lives [DefaultImpersonationTokenTTL] unless [WithImpersonationTokenTTL]
-// says otherwise, and no refresh token is minted behind it. An impersonation
-// should end when the operator stops rather than when somebody signs it out,
-// and a refresh token would turn fifteen minutes of support work into a
-// thirty-day login the subject cannot see in their own session list.
+// says otherwise, and nothing can extend it. An impersonation should end when
+// the operator stops, and a refresh token would turn fifteen minutes of support
+// work into a thirty-day login.
+//
+// # The login it records
+//
+// On a service built with [WithRefreshTokenStore] it is still a login, and the
+// store holds a row for it: one that expires with the access token, names the
+// operator as [RefreshTokenRequest.ActorID], and whose secret is thrown away the
+// moment it is minted, so nobody can ever exchange it. That row is what makes an
+// impersonation a login like any other everywhere a login is read.
+// [Service.CheckSignIn] finds it live, so a deployment that checks every request
+// accepts the token; the subject's [Service.ListSignIns] shows it with the
+// operator named on [ActiveSignIn.ActorID], so a person can see somebody is
+// signed in as them; and [Service.EndSignIn], [Service.SignOutEverywhere] and an
+// operator's revocation end it early, reported to [Hooks.AfterRevokeSignIns] as
+// they report any other.
 //
 // # The record
 //
@@ -199,9 +212,24 @@ func (s *Service) IssueImpersonationToken(
 		ActorScope:     operatorScope,
 	}
 
-	// Service.issueForPrincipal's transaction, minus the refresh token: there is
-	// none behind an impersonation.
+	// Service.issueForPrincipal's transaction, with the login's row minted
+	// unexchangeable in place of a refresh token.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if s.refreshTokens != nil {
+			// The secret is dropped here and exists nowhere else: the row is
+			// the login's record, not a credential anybody holds.
+			if _, mintErr := s.refreshTokens.Issue(ctx, tx, scope, &RefreshTokenRequest{
+				TTL:             s.impersonationTokenTTL,
+				FamilyID:        familyID,
+				SubjectID:       principal.User.ID,
+				ActiveAccountID: principal.ActiveAccountID,
+				AccessTokenID:   signIn.TokenID,
+				ActorID:         operator.ID,
+			}); mintErr != nil {
+				return platformerrors.Wrap(mintErr, "recording an impersonation's login")
+			}
+		}
+
 		if hookErr := s.hooks.AfterAuthenticate(ctx, tx, scope, auth); hookErr != nil {
 			return hookErr
 		}

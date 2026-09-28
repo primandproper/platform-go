@@ -105,6 +105,11 @@ const (
 	// check tells a login's current access token from one the login has since
 	// replaced.
 	AccessTokenIDColumn = "access_token_id"
+	// ActorIDColumn is the operator acting as the subject on a login an
+	// impersonation began, and NULL on every other row. It is written by the
+	// mint and read by the listing, so a person's list of where they are signed
+	// in can say which login is not theirs.
+	ActorIDColumn = "actor_id"
 )
 
 // The arguments the two clock comparisons bind, named for the comparison rather
@@ -161,6 +166,7 @@ var Columns = []string{
 	RedeemedWithKeyColumn,
 	SuccessorHashColumn,
 	AccessTokenIDColumn,
+	ActorIDColumn,
 }
 
 // RecordColumns is what the read projects, in the order the generated row type
@@ -190,6 +196,7 @@ var RecordColumns = []string{
 	RedeemedAtColumn,
 	RevokedAtColumn,
 	AccessTokenIDColumn,
+	ActorIDColumn,
 }
 
 // InsertColumns is what a mint writes: every column but the two stamps, which
@@ -211,6 +218,7 @@ var InsertColumns = []string{
 	ExpiresAtColumn,
 	PurgeAfterColumn,
 	AccessTokenIDColumn,
+	ActorIDColumn,
 }
 
 // FamilyColumns is what the listing of a person's live logins projects: one
@@ -229,6 +237,7 @@ var FamilyColumns = []string{
 	IssuedAtColumn,
 	SignedInAtColumn,
 	ExpiresAtColumn,
+	ActorIDColumn,
 }
 
 // RedeemColumns is what the exchange assigns, which is the stamp and nothing

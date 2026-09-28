@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -127,10 +128,12 @@ func TestService_IssueImpersonationToken(T *testing.T) {
 		test.EqOp(t, "", signedIn.RefreshToken)
 		test.True(t, signedIn.RefreshTokenExpiresAt.IsZero())
 
+		// One row, recording the login and no credential: nothing handed out
+		// can exchange it.
 		var rows int
 		must.NoError(t, e.client.Writer().QueryRowContext(t.Context(),
 			"SELECT COUNT(*) FROM "+refreshTable(t, e)).Scan(&rows))
-		test.EqOp(t, 0, rows)
+		test.EqOp(t, 1, rows)
 
 		// The record, in the mint's transaction.
 		test.Eq(t, []string{"authenticate", "issue"}, e.hooks.calls)
@@ -289,4 +292,35 @@ func TestService_IssueImpersonationToken(T *testing.T) {
 		test.EqOp(t, "", signedIn.ActorID)
 		test.Eq(t, map[string]any{"kept": true}, e.issuer.claims)
 	})
+}
+
+// An impersonation is a login everywhere one is read: the per-request check
+// accepts it, the subject sees it named as somebody else's, and ending it ends
+// it at once.
+func TestService_IssueImpersonationToken_IsALogin(T *testing.T) {
+	T.Parallel()
+
+	e := newRefreshEnv(T, signin.WithImpersonationPolicy(admitAll))
+	operator := e.newOperator(T)
+
+	signedIn, err := e.svc.IssueImpersonationToken(T.Context(), testScope, operator.ID, testScope, e.user.ID, "")
+	must.NoError(T, err)
+
+	must.NoError(T, e.svc.CheckSignIn(T.Context(), testScope, signedIn.FamilyID, signedIn.TokenID),
+		must.Sprint("a deployment checking every request refused a live impersonation"))
+
+	signIns, err := e.svc.ListSignIns(T.Context(), testScope, e.user.ID, 0)
+	must.NoError(T, err)
+	must.SliceLen(T, 1, signIns)
+	test.EqOp(T, signedIn.FamilyID, signIns[0].FamilyID)
+	test.EqOp(T, operator.ID, signIns[0].ActorID, test.Sprint("the subject's list did not say who was signed in as them"))
+	test.EqOp(T, signin.DefaultImpersonationTokenTTL,
+		signIns[0].ExpiresAt.Sub(signIns[0].SignedInAt).Round(time.Minute))
+
+	// The subject ends it from their own list, and the operator's token stops
+	// on its next request.
+	_, err = e.svc.EndSignIn(T.Context(), testScope, e.user.ID, signedIn.FamilyID)
+	must.NoError(T, err)
+
+	test.ErrorIs(T, e.svc.CheckSignIn(T.Context(), testScope, signedIn.FamilyID, signedIn.TokenID), signin.ErrSignInEnded)
 }
