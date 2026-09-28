@@ -172,6 +172,20 @@ var (
 	// is mapped for it, so it is a 500, which is what it is.
 	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
 
+	// ErrRefreshTokenStoreContractViolated indicates a RefreshTokenStore that
+	// reported a reuse with ErrRefreshTokenReused bare, rather than as a
+	// *RefreshTokenReusedError naming the family it ended.
+	//
+	// The store's revocation is still committed — it is the response to a theft,
+	// and losing it would leave the thief's successor token working — but
+	// Hooks.AfterRevokeSignIns cannot be told what ended, so the reuse is
+	// reported as the wiring failure it is instead of as the refusal a client
+	// would read past. It deliberately does not wrap ErrRefreshTokenReused or
+	// ErrInvalidCredentials: no status is mapped for it, so it is a 500 and is
+	// logged as one, which is how a broken store is found on its first reuse
+	// rather than in an incident review.
+	ErrRefreshTokenStoreContractViolated = platformerrors.New("refresh token store reported a reuse without naming the family it ended")
+
 	// ErrPasswordAlreadySet indicates Service.AttachPassword against somebody who
 	// already holds a password.
 	//

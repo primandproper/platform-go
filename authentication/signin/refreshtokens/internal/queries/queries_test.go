@@ -157,8 +157,9 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		RecordSuccessorQuery,
 		RevokeTokenQuery,
 		RevokeFamilyQuery,
-		RevokeSubjectFamilyQuery,
-		RevokeTokensForSubjectQuery,
+		LockFamilyQuery,
+		LockSubjectFamilyQuery,
+		LockFamiliesForSubjectQuery,
 		ListLiveFamiliesQuery,
 		GetLiveTokenQuery,
 		SweepTokensQuery,
@@ -180,16 +181,16 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 			test.SliceEqFunc(t, want, names, func(a, b string) bool { return a == b })
 
 			// Nothing archives one of these rows, and nothing pages through
-			// them: the one listing is a bounded read of a person's live
-			// logins, so there is no cursor, no filter window and no
-			// descending variant — and the limit is that listing's alone.
+			// them: the listing and the three locking reads are bounded reads
+			// of a person's live logins, so there is no cursor, no filter
+			// window and no descending variant — and the limit is theirs alone.
 			test.StrNotContains(t, rendered, querygen.ArchivedAtColumn)
 			test.StrNotContains(t, rendered, "page_cursor")
 			test.StrNotContains(t, rendered, "filtered_count")
 			test.StrNotContains(t, rendered, querygen.DescendingSuffix)
 
 			for _, named := range statements(rendered) {
-				if named.name == ListLiveFamiliesQuery {
+				if slices.Contains(boundedReads, named.name) {
 					continue
 				}
 
@@ -294,14 +295,54 @@ func TestRender_ExchangeRepeatsEveryRowStateTestItsAnswerRestsOn(T *testing.T) {
 	}
 }
 
-// TestRender_RevocationsDifferOnlyInTheirKey pins the two writes that cannot be
-// assembled out of one another.
+// boundedReads is every statement here that carries a LIMIT.
+var boundedReads = []string{
+	LockFamilyQuery,
+	LockSubjectFamilyQuery,
+	LockFamiliesForSubjectQuery,
+	ListLiveFamiliesQuery,
+}
+
+// TestRender_RevocationIsKeyedOnTheFamily pins the one family revocation left:
+// every door that ends a login revokes by the family it locked, and none by the
+// subject, because a revocation keyed on the subject cannot say which logins it
+// ended.
+func TestRender_RevocationIsKeyedOnTheFamily(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			revoke := statement(t, Render(d), RevokeFamilyQuery)
+
+			test.StrContains(t, revoke, "UPDATE "+TokensTable)
+			test.StrContains(t, revoke, RevokedAtColumn+" = sqlc.arg("+RevokedAtColumn+")")
+			test.StrContains(t, revoke, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
+			test.StrContains(t, revoke, FamilyIDColumn+" = sqlc.arg("+FamilyIDColumn+")")
+			test.StrNotContains(t, revoke, SubjectIDColumn)
+
+			// The guard that makes revoking idempotent: a second call matches
+			// nothing and reports zero rather than moving the stamp, so the
+			// record still says when the login actually ended.
+			test.StrContains(t, revoke, RevokedAtColumn+" IS NULL")
+
+			// And no liveness predicate. A row that lapsed on its own and one
+			// somebody withdrew both end up revoked, which after a detected
+			// reuse is the more useful of the two true sentences.
+			test.StrNotContains(t, revoke, ExpiresAtColumn)
+		})
+	}
+}
+
+// TestRender_LocksOnlyWhatAnExchangeWouldAccept pins the three locking reads to
+// the exchange's reading of "live", to their keys, and to the lock itself.
 //
-// A family is one login and a subject is every login a person has. A caller
-// holding only a subject identifier cannot enumerate that person's families, and
-// a loop over family revocations would leave live whatever was issued while it
-// ran — so the two are one statement each, differing in one column.
-func TestRender_RevocationsDifferOnlyInTheirKey(T *testing.T) {
+// What they lock is what a revocation reports as ended, so a guard dropped here
+// would report a spent or lapsed login as one somebody signed out of. The
+// subject predicate on the self-service read is the whole of what keeps a
+// borrowed family id from reaching somebody else's login.
+func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 	T.Parallel()
 
 	for _, d := range everyDialect {
@@ -311,53 +352,45 @@ func TestRender_RevocationsDifferOnlyInTheirKey(T *testing.T) {
 			rendered := Render(d)
 
 			for name, keys := range map[string][]string{
-				RevokeFamilyQuery:           {FamilyIDColumn},
-				RevokeSubjectFamilyQuery:    {SubjectIDColumn, FamilyIDColumn},
-				RevokeTokensForSubjectQuery: {SubjectIDColumn},
+				LockFamilyQuery:             {FamilyIDColumn},
+				LockSubjectFamilyQuery:      {SubjectIDColumn, FamilyIDColumn},
+				LockFamiliesForSubjectQuery: {SubjectIDColumn},
 			} {
-				revoke := statement(t, rendered, name)
+				read := statement(t, rendered, name)
 
-				test.StrContains(t, revoke, "UPDATE "+TokensTable)
-				test.StrContains(t, revoke, RevokedAtColumn+" = sqlc.arg("+RevokedAtColumn+")")
-				test.StrContains(t, revoke, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
+				test.StrContains(t, read, "SELECT")
+				test.StrContains(t, read, ScopeColumn+" = sqlc.arg("+ScopeColumn+")")
 
 				for _, key := range keys {
-					test.StrContains(t, revoke, key+" = sqlc.arg("+key+")", test.Sprintf("%s key %q", name, key))
+					test.StrContains(t, read, key+" = sqlc.arg("+key+")", test.Sprintf("%s key %q", name, key))
 				}
 
-				// The guard that makes revoking idempotent: a second call
-				// matches nothing and reports zero rather than moving the stamp,
-				// so the record still says when the login actually ended.
-				test.StrContains(t, revoke, RevokedAtColumn+" IS NULL")
+				if !slices.Contains(keys, SubjectIDColumn) {
+					test.StrNotContains(t, read, SubjectIDColumn+" = sqlc.arg(", test.Sprintf("%s is keyed on the family alone", name))
+				}
 
-				// And no liveness predicate. A row that lapsed on its own and
-				// one somebody withdrew both end up revoked, which after a
-				// detected reuse is the more useful of the two true sentences.
-				test.StrNotContains(t, revoke, ExpiresAtColumn)
+				test.StrContains(t, read, RedeemedAtColumn+" IS NULL")
+				test.StrContains(t, read, RevokedAtColumn+" IS NULL")
+				test.StrContains(t, read, ExpiresAtColumn+" > sqlc.arg("+NowArg+")")
+
+				// Locked where the engine locks, and on SQLite — one writer at
+				// a time — not at all.
+				if d == dialect.SQLite {
+					test.StrNotContains(t, read, exclusiveLock)
+				} else {
+					test.StrContains(t, read, "\n"+exclusiveLock+";")
+				}
+
+				projection, _, found := strings.Cut(read, "FROM")
+				must.True(t, found)
+
+				test.StrNotContains(t, projection, HashColumn)
+
+				for _, column := range LockColumns {
+					test.StrContains(t, projection, querygen.Qualify(TokensTable, column),
+						test.Sprintf("%s column %q", name, column))
+				}
 			}
-		})
-	}
-}
-
-// TestRender_RevokingAFamilyForItsOwnerIsKeyedOnTheOwner pins the one thing
-// that makes ending a login by its family id safe to offer a signed-in caller.
-//
-// A family id is not a secret, so the statement a self-service door runs has to
-// be unable to reach a family that is not the caller's. The subject predicate
-// is that inability; without it the statement is RevokeRefreshTokenFamily, which
-// ends whichever login the id names.
-func TestRender_RevokingAFamilyForItsOwnerIsKeyedOnTheOwner(T *testing.T) {
-	T.Parallel()
-
-	for _, d := range everyDialect {
-		T.Run(string(d), func(t *testing.T) {
-			t.Parallel()
-
-			rendered := Render(d)
-
-			test.StrContains(t, statement(t, rendered, RevokeSubjectFamilyQuery),
-				SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
-			test.StrNotContains(t, statement(t, rendered, RevokeFamilyQuery), SubjectIDColumn)
 		})
 	}
 }

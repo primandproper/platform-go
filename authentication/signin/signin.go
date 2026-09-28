@@ -101,6 +101,7 @@ const (
 	opSignOut              = "sign_out"
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
+	opSignOutEverywhere    = "sign_out_everywhere"
 	opUpdatePassword       = "update_password"
 
 	// Listing a person's logins and ending one of them are two series of their

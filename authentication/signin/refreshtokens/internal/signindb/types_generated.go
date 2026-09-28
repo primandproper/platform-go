@@ -109,6 +109,49 @@ type ListLiveRefreshTokenFamiliesRow struct {
 	ExpiresAt       time.Time
 }
 
+// LockLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockLiveRefreshTokenFamiliesForSubject.
+type LockLiveRefreshTokenFamiliesForSubjectParams struct {
+	Scope       tenancy.Scope
+	SubjectID   string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamiliesForSubjectRow is one row of LockLiveRefreshTokenFamiliesForSubject's result.
+type LockLiveRefreshTokenFamiliesForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
+// LockLiveRefreshTokenFamilyParams are the arguments to LockLiveRefreshTokenFamily.
+type LockLiveRefreshTokenFamilyParams struct {
+	Scope       tenancy.Scope
+	FamilyID    string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamilyRow is one row of LockLiveRefreshTokenFamily's result.
+type LockLiveRefreshTokenFamilyRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
+// LockLiveRefreshTokenFamilyForSubjectParams are the arguments to LockLiveRefreshTokenFamilyForSubject.
+type LockLiveRefreshTokenFamilyForSubjectParams struct {
+	Scope       tenancy.Scope
+	SubjectID   string
+	FamilyID    string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamilyForSubjectRow is one row of LockLiveRefreshTokenFamilyForSubject's result.
+type LockLiveRefreshTokenFamilyForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
 // RecordRefreshTokenSuccessorParams are the arguments to RecordRefreshTokenSuccessor.
 type RecordRefreshTokenSuccessorParams struct {
 	SuccessorHash *string
@@ -145,21 +188,6 @@ type RevokeRefreshTokenFamilyParams struct {
 	RevokedAt *time.Time
 	Scope     tenancy.Scope
 	FamilyID  string
-}
-
-// RevokeRefreshTokenFamilyForSubjectParams are the arguments to RevokeRefreshTokenFamilyForSubject.
-type RevokeRefreshTokenFamilyForSubjectParams struct {
-	RevokedAt *time.Time
-	Scope     tenancy.Scope
-	SubjectID string
-	FamilyID  string
-}
-
-// RevokeRefreshTokensForSubjectParams are the arguments to RevokeRefreshTokensForSubject.
-type RevokeRefreshTokensForSubjectParams struct {
-	RevokedAt *time.Time
-	Scope     tenancy.Scope
-	SubjectID string
 }
 
 // SweepRefreshTokensParams are the arguments to SweepRefreshTokens.

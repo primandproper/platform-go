@@ -106,6 +106,43 @@ WHERE {{prefix}}signin_refresh_tokens.scope = ?1
 ORDER BY {{prefix}}signin_refresh_tokens.issued_at DESC, {{prefix}}signin_refresh_tokens.family_id ASC
 LIMIT COALESCE(?4, 50)`
 
+const lockLiveRefreshTokenFamiliesForSubjectSQLite = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?1
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?2
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?3
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT COALESCE(?4, 50)`
+
+const lockLiveRefreshTokenFamilySQLite = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?1
+	AND {{prefix}}signin_refresh_tokens.family_id = ?2
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?3
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT COALESCE(?4, 50)`
+
+const lockLiveRefreshTokenFamilyForSubjectSQLite = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?1
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?2
+	AND {{prefix}}signin_refresh_tokens.family_id = ?3
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?4
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT COALESCE(?5, 50)`
+
 const recordRefreshTokenSuccessorSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
 	successor_hash = ?1
 WHERE hash = ?2
@@ -140,58 +177,47 @@ WHERE scope = ?2
 	AND family_id = ?3
 	AND revoked_at IS NULL`
 
-const revokeRefreshTokenFamilyForSubjectSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
-	revoked_at = ?1
-WHERE scope = ?2
-	AND subject_id = ?3
-	AND family_id = ?4
-	AND revoked_at IS NULL`
-
-const revokeRefreshTokensForSubjectSQLite = `UPDATE {{prefix}}signin_refresh_tokens SET
-	revoked_at = ?1
-WHERE scope = ?2
-	AND subject_id = ?3
-	AND revoked_at IS NULL`
-
 const sweepRefreshTokensSQLite = `DELETE FROM {{prefix}}signin_refresh_tokens
 WHERE purge_after <= ?1`
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
-	claimRefreshTokenRemint            string
-	getLiveRefreshTokenForFamily       string
-	getRefreshToken                    string
-	getRefreshTokenRedemption          string
-	insertRefreshToken                 string
-	listLiveRefreshTokenFamilies       string
-	recordRefreshTokenSuccessor        string
-	redeemRefreshToken                 string
-	redeemRefreshTokenWithKey          string
-	revokeRefreshToken                 string
-	revokeRefreshTokenFamily           string
-	revokeRefreshTokenFamilyForSubject string
-	revokeRefreshTokensForSubject      string
-	sweepRefreshTokens                 string
+	claimRefreshTokenRemint                string
+	getLiveRefreshTokenForFamily           string
+	getRefreshToken                        string
+	getRefreshTokenRedemption              string
+	insertRefreshToken                     string
+	listLiveRefreshTokenFamilies           string
+	lockLiveRefreshTokenFamiliesForSubject string
+	lockLiveRefreshTokenFamily             string
+	lockLiveRefreshTokenFamilyForSubject   string
+	recordRefreshTokenSuccessor            string
+	redeemRefreshToken                     string
+	redeemRefreshTokenWithKey              string
+	revokeRefreshToken                     string
+	revokeRefreshTokenFamily               string
+	sweepRefreshTokens                     string
 }
 
 // newSQLite returns the sqlite querier with prefix substituted into every
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
-		claimRefreshTokenRemint:            strings.ReplaceAll(claimRefreshTokenRemintSQLite, prefixMarker, prefix),
-		getLiveRefreshTokenForFamily:       strings.ReplaceAll(getLiveRefreshTokenForFamilySQLite, prefixMarker, prefix),
-		getRefreshToken:                    strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
-		getRefreshTokenRedemption:          strings.ReplaceAll(getRefreshTokenRedemptionSQLite, prefixMarker, prefix),
-		insertRefreshToken:                 strings.ReplaceAll(insertRefreshTokenSQLite, prefixMarker, prefix),
-		listLiveRefreshTokenFamilies:       strings.ReplaceAll(listLiveRefreshTokenFamiliesSQLite, prefixMarker, prefix),
-		recordRefreshTokenSuccessor:        strings.ReplaceAll(recordRefreshTokenSuccessorSQLite, prefixMarker, prefix),
-		redeemRefreshToken:                 strings.ReplaceAll(redeemRefreshTokenSQLite, prefixMarker, prefix),
-		redeemRefreshTokenWithKey:          strings.ReplaceAll(redeemRefreshTokenWithKeySQLite, prefixMarker, prefix),
-		revokeRefreshToken:                 strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
-		revokeRefreshTokenFamily:           strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
-		revokeRefreshTokenFamilyForSubject: strings.ReplaceAll(revokeRefreshTokenFamilyForSubjectSQLite, prefixMarker, prefix),
-		revokeRefreshTokensForSubject:      strings.ReplaceAll(revokeRefreshTokensForSubjectSQLite, prefixMarker, prefix),
-		sweepRefreshTokens:                 strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
+		claimRefreshTokenRemint:                strings.ReplaceAll(claimRefreshTokenRemintSQLite, prefixMarker, prefix),
+		getLiveRefreshTokenForFamily:           strings.ReplaceAll(getLiveRefreshTokenForFamilySQLite, prefixMarker, prefix),
+		getRefreshToken:                        strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
+		getRefreshTokenRedemption:              strings.ReplaceAll(getRefreshTokenRedemptionSQLite, prefixMarker, prefix),
+		insertRefreshToken:                     strings.ReplaceAll(insertRefreshTokenSQLite, prefixMarker, prefix),
+		listLiveRefreshTokenFamilies:           strings.ReplaceAll(listLiveRefreshTokenFamiliesSQLite, prefixMarker, prefix),
+		lockLiveRefreshTokenFamiliesForSubject: strings.ReplaceAll(lockLiveRefreshTokenFamiliesForSubjectSQLite, prefixMarker, prefix),
+		lockLiveRefreshTokenFamily:             strings.ReplaceAll(lockLiveRefreshTokenFamilySQLite, prefixMarker, prefix),
+		lockLiveRefreshTokenFamilyForSubject:   strings.ReplaceAll(lockLiveRefreshTokenFamilyForSubjectSQLite, prefixMarker, prefix),
+		recordRefreshTokenSuccessor:            strings.ReplaceAll(recordRefreshTokenSuccessorSQLite, prefixMarker, prefix),
+		redeemRefreshToken:                     strings.ReplaceAll(redeemRefreshTokenSQLite, prefixMarker, prefix),
+		redeemRefreshTokenWithKey:              strings.ReplaceAll(redeemRefreshTokenWithKeySQLite, prefixMarker, prefix),
+		revokeRefreshToken:                     strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
+		revokeRefreshTokenFamily:               strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
+		sweepRefreshTokens:                     strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
 	}
 }
 
@@ -371,6 +397,115 @@ func (q *sqliteQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db DBT
 	return items, nil
 }
 
+// LockLiveRefreshTokenFamiliesForSubject runs the :many query against sqlite.
+func (q *sqliteQueries) LockLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamiliesForSubjectParams) ([]LockLiveRefreshTokenFamiliesForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamiliesForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		timeText(arg.Now),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []LockLiveRefreshTokenFamiliesForSubjectRow
+
+	for rows.Next() {
+		var i LockLiveRefreshTokenFamiliesForSubjectRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// LockLiveRefreshTokenFamily runs the :many query against sqlite.
+func (q *sqliteQueries) LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyParams) ([]LockLiveRefreshTokenFamilyRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamily,
+		arg.Scope,
+		arg.FamilyID,
+		timeText(arg.Now),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []LockLiveRefreshTokenFamilyRow
+
+	for rows.Next() {
+		var i LockLiveRefreshTokenFamilyRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// LockLiveRefreshTokenFamilyForSubject runs the :many query against sqlite.
+func (q *sqliteQueries) LockLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyForSubjectParams) ([]LockLiveRefreshTokenFamilyForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamilyForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		arg.FamilyID,
+		timeText(arg.Now),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []LockLiveRefreshTokenFamilyForSubjectRow
+
+	for rows.Next() {
+		var i LockLiveRefreshTokenFamilyForSubjectRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // RecordRefreshTokenSuccessor runs the :execrows query against sqlite.
 func (q *sqliteQueries) RecordRefreshTokenSuccessor(ctx context.Context, db DBTX, arg RecordRefreshTokenSuccessorParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordRefreshTokenSuccessor,
@@ -436,35 +571,6 @@ func (q *sqliteQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBTX, a
 		timeTextPtr(arg.RevokedAt),
 		arg.Scope,
 		arg.FamilyID,
-	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
-}
-
-// RevokeRefreshTokenFamilyForSubject runs the :execrows query against sqlite.
-func (q *sqliteQueries) RevokeRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenFamilyForSubjectParams) (int64, error) {
-	result, err := db.ExecContext(ctx, q.revokeRefreshTokenFamilyForSubject,
-		timeTextPtr(arg.RevokedAt),
-		arg.Scope,
-		arg.SubjectID,
-		arg.FamilyID,
-	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
-}
-
-// RevokeRefreshTokensForSubject runs the :execrows query against sqlite.
-func (q *sqliteQueries) RevokeRefreshTokensForSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokensForSubjectParams) (int64, error) {
-	result, err := db.ExecContext(ctx, q.revokeRefreshTokensForSubject,
-		timeTextPtr(arg.RevokedAt),
-		arg.Scope,
-		arg.SubjectID,
 	)
 	if err != nil {
 		return 0, err
@@ -571,6 +677,37 @@ var (
 		ExpiresAt       time.Time
 	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
+		Scope       tenancy.Scope
+		SubjectID   string
+		Now         time.Time
+		ResultLimit int64
+	}(LockLiveRefreshTokenFamiliesForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(LockLiveRefreshTokenFamiliesForSubjectRow{})
+	_ = struct {
+		Scope       tenancy.Scope
+		FamilyID    string
+		Now         time.Time
+		ResultLimit int64
+	}(LockLiveRefreshTokenFamilyParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(LockLiveRefreshTokenFamilyRow{})
+	_ = struct {
+		Scope       tenancy.Scope
+		SubjectID   string
+		FamilyID    string
+		Now         time.Time
+		ResultLimit int64
+	}(LockLiveRefreshTokenFamilyForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(LockLiveRefreshTokenFamilyForSubjectRow{})
+	_ = struct {
 		SuccessorHash *string
 		Hash          string
 		Scope         tenancy.Scope
@@ -598,17 +735,6 @@ var (
 		Scope     tenancy.Scope
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
-	_ = struct {
-		RevokedAt *time.Time
-		Scope     tenancy.Scope
-		SubjectID string
-		FamilyID  string
-	}(RevokeRefreshTokenFamilyForSubjectParams{})
-	_ = struct {
-		RevokedAt *time.Time
-		Scope     tenancy.Scope
-		SubjectID string
-	}(RevokeRefreshTokensForSubjectParams{})
 	_ = struct {
 		PurgeBefore time.Time
 	}(SweepRefreshTokensParams{})

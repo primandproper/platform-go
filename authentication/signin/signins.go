@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
@@ -68,7 +67,7 @@ type ActiveSignIn struct {
 // takes it off the caller, so a person sees their own logins and nobody
 // else's; an operator's surface takes it from a request and stands its own
 // authorization in front of the call. That split is the one
-// [Service.RevokeRefreshTokensForSubject] already has with SignOutEverywhere,
+// [Service.RevokeRefreshTokensForSubject] already has with [Service.SignOutEverywhere],
 // and this package holds no grant for the second half because it decides
 // nothing about who may act for whom.
 //
@@ -125,7 +124,10 @@ func (s *Service) ListSignIns(
 // family that is not userID's — guessed, borrowed, or somebody else's — is
 // zero and no error, as are one that never existed and one already ended, and
 // the three are not told apart: a door that refused only the first would be an
-// oracle for which family identifiers are live.
+// oracle for which family identifiers are live. A lapsed login is a fourth, and
+// is zero the same way. None of the four runs [Hooks.AfterRevokeSignIns], which
+// is told [RevocationEndSignIn] only when a login actually ended — a hook that
+// ran on every call would be the oracle the answer refuses to be.
 //
 // Ending the family the caller is signed in through is allowed and is a
 // sign-out. What it does not do is stop an access token already in somebody's
@@ -164,13 +166,8 @@ func (s *Service) EndSignIn(
 		return 0, op.Error(ErrEmptyFamilyID, "reading the sign-in to end")
 	}
 
-	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		var txErr error
-
-		revoked, txErr = s.refreshTokens.RevokeFamilyForSubject(ctx, tx, scope, userID, familyID)
-
-		return txErr
-	}); err != nil {
+	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{SubjectID: userID, FamilyID: familyID},
+		RevocationEndSignIn, userID); err != nil {
 		return 0, op.Error(err, "ending a sign-in")
 	}
 

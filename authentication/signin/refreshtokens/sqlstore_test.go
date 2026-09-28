@@ -2,6 +2,7 @@ package refreshtokens
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -214,6 +215,13 @@ func TestSQLStore_Redeem(T *testing.T) {
 		test.Nil(t, spent)
 		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
 
+		// It names the login it ended, for the hook the service runs with it.
+		var reused *signin.RefreshTokenReusedError
+		must.True(t, platformerrors.As(err, &reused))
+		test.EqOp(t, testFamilyID, reused.FamilyID)
+		test.EqOp(t, testSubject, reused.SubjectID)
+		test.True(t, reused.Ended)
+
 		// And the whole login is over: the successor whoever holds the other
 		// copy is carrying no longer works either.
 		_, err = redeem(t, store, testScope(), successor.Secret)
@@ -244,6 +252,28 @@ func TestSQLStore_Redeem(T *testing.T) {
 			"SELECT COUNT(*) FROM signin_refresh_tokens WHERE revoked_at IS NOT NULL").Scan(&revoked))
 
 		test.EqOp(t, 1, revoked)
+	})
+
+	// A replay of a login already over is still a reuse, and ends nothing: the
+	// family was signed out, or ended by an earlier replay, before this one.
+	T.Run("a reuse of a family already ended reports ending nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		issuance := issue(t, store)
+		rotate(t, store, testScope(), issuance.Secret)
+
+		_, err := redeem(t, store, testScope(), issuance.Secret)
+
+		var reused *signin.RefreshTokenReusedError
+		must.True(t, platformerrors.As(err, &reused))
+		test.True(t, reused.Ended)
+
+		_, err = redeem(t, store, testScope(), issuance.Secret)
+		must.True(t, platformerrors.As(err, &reused))
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+		test.False(t, reused.Ended)
 	})
 
 	// Every refusal that is not a replay is the same one, for the reason the
@@ -396,17 +426,16 @@ func TestSQLStore_RevokeFamily(T *testing.T) {
 	})
 }
 
-func TestSQLStore_RevokeForSubject(T *testing.T) {
+func TestSQLStore_EndSignIns_Subject(T *testing.T) {
 	T.Parallel()
 
-	// The statement that cannot be assembled out of family revocations: a caller
-	// holding a subject identifier cannot enumerate that person's logins.
-	T.Run("ends every login one person holds", func(t *testing.T) {
+	T.Run("ends every live login one person holds, and names each", func(t *testing.T) {
 		t.Parallel()
 
 		store, _ := newTestStore(t)
 
 		first := issue(t, store)
+		rotated := rotate(t, store, testScope(), first.Secret)
 
 		second, err := issueFor(t, store, testScope(), &signin.RefreshTokenRequest{
 			TTL:       testTTL,
@@ -422,17 +451,66 @@ func TestSQLStore_RevokeForSubject(T *testing.T) {
 		})
 		must.NoError(t, err)
 
-		revoked, err := revokeForSubject(t, store, testScope(), testSubject)
+		ended, err := endSignIns(t, store, testScope(), signin.SignInSelector{SubjectID: testSubject})
 		must.NoError(t, err)
-		test.EqOp(t, int64(2), revoked)
+		test.Eq(t, []string{testFamilyID, "family_02"}, endedFamilies(ended))
 
-		for _, issuance := range []*signin.RefreshTokenIssuance{first, second} {
-			_, redeemErr := redeem(t, store, testScope(), issuance.Secret)
+		// The rotated family's spent row goes with its live one.
+		test.EqOp(t, int64(3), endedRevoked(ended))
+
+		for _, e := range ended {
+			test.EqOp(t, testSubject, e.SubjectID)
+		}
+
+		for _, secret := range []string{rotated.Secret, second.Secret} {
+			_, redeemErr := redeem(t, store, testScope(), secret)
 			test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
 		}
 
 		_, err = redeem(t, store, testScope(), somebodyElse.Secret)
 		test.NoError(t, err)
+	})
+
+	// Only live logins are reported, so an audit entry per ended family is an
+	// entry per login somebody could still have used.
+	T.Run("leaves out a login that had already lapsed", func(t *testing.T) {
+		t.Parallel()
+
+		store, clk := newTestStore(t)
+
+		issue(t, store)
+		clk.advance(testTTL + time.Second)
+
+		fresh := mintInto(t, store, testScope(), "family_fresh", testSubject)
+
+		ended, err := endSignIns(t, store, testScope(), signin.SignInSelector{SubjectID: testSubject})
+		must.NoError(t, err)
+		test.Eq(t, []string{"family_fresh"}, endedFamilies(ended))
+
+		_, err = redeem(t, store, testScope(), fresh.Secret)
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+	})
+
+	// A pass locks at most endBatch families; a full pass is followed by
+	// another, so a person with more logins than that is still signed out of
+	// every one of them.
+	T.Run("ends more logins than one pass locks", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		const logins = int(endBatch) + 3
+
+		for i := range logins {
+			mintInto(t, store, testScope(), fmt.Sprintf("family_%04d", i), testSubject)
+		}
+
+		ended, err := endSignIns(t, store, testScope(), signin.SignInSelector{SubjectID: testSubject})
+		must.NoError(t, err)
+		test.SliceLen(t, logins, ended)
+		test.EqOp(t, int64(logins), endedRevoked(ended))
+
+		test.SliceEmpty(t, listSignIns(t, store, testScope(), testSubject, 10))
 	})
 
 	// Confining it to the scope excludes nothing that exists, because a subject
@@ -445,28 +523,19 @@ func TestSQLStore_RevokeForSubject(T *testing.T) {
 
 		issue(t, store)
 
-		revoked, err := revokeForSubject(t, store, tenancy.Of("tenant_b"), testSubject)
+		ended, err := endSignIns(t, store, tenancy.Of("tenant_b"), signin.SignInSelector{SubjectID: testSubject})
 		must.NoError(t, err)
-		test.EqOp(t, int64(0), revoked)
+		test.SliceEmpty(t, ended)
 	})
 
-	T.Run("refuses a revocation that named nobody", func(t *testing.T) {
+	T.Run("a person who never signed in is nothing and no error", func(t *testing.T) {
 		t.Parallel()
 
 		store, _ := newTestStore(t)
 
-		_, err := revokeForSubject(t, store, testScope(), "")
-		test.ErrorIs(t, err, ErrEmptySubjectID)
-	})
-
-	T.Run("a person who never signed in is zero and no error", func(t *testing.T) {
-		t.Parallel()
-
-		store, _ := newTestStore(t)
-
-		revoked, err := revokeForSubject(t, store, testScope(), "nobody")
+		ended, err := endSignIns(t, store, testScope(), signin.SignInSelector{SubjectID: "nobody"})
 		must.NoError(t, err)
-		test.EqOp(t, int64(0), revoked)
+		test.SliceEmpty(t, ended)
 	})
 }
 

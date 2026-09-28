@@ -539,6 +539,10 @@ type recordingHooks struct {
 	refreshErr    error
 	verifyTOTPErr error
 
+	// revokeErr fails the revocation hook, so a test can prove the revocation
+	// it follows rolls back with it.
+	revokeErr error
+
 	// verified is the user the second-factor hook was handed: the row the
 	// directory's write answered with, rather than the copy read before it.
 	verified *identity.User
@@ -549,6 +553,7 @@ type recordingHooks struct {
 	failures        []*signin.FailedSignIn
 	attached        []*identity.User
 	verifieds       []*signin.Verification
+	revocations     []*signin.Revocation
 
 	signin.NoopHooks
 
@@ -628,6 +633,18 @@ func (h *recordingHooks) AfterVerifyTOTPSecret(
 	h.verified = user
 
 	return h.verifyTOTPErr
+}
+
+func (h *recordingHooks) AfterRevokeSignIns(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	revocation *signin.Revocation,
+) error {
+	h.calls = append(h.calls, "revoke")
+	h.revocations = append(h.revocations, revocation)
+
+	return h.revokeErr
 }
 
 // stubAuthenticator is an Authenticator with no argon2 behind it, for the tests

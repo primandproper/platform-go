@@ -1,6 +1,8 @@
 package queries
 
 import (
+	"strings"
+
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/querygen"
 )
@@ -86,7 +88,7 @@ const (
 	// rather than of whoever read the row first.
 	RedeemedAtColumn = "redeemed_at"
 	// RevokedAtColumn is when the token was revoked, and NULL until it is. A
-	// family revocation and a subject-wide revocation both write it.
+	// family revocation and a single-token revocation both write it.
 	RevokedAtColumn = "revoked_at"
 	// RedeemedWithKeyColumn is the idempotency key the exchange that spent this
 	// row presented, and NULL both before the row is spent and when it is spent
@@ -231,6 +233,18 @@ var FamilyColumns = []string{
 	ExpiresAtColumn,
 }
 
+// LockColumns is what the three locking reads project: whose login each
+// locked row is and which one, and nothing a revocation keyed on the family
+// has any use for.
+//
+// The subject is projected even by the reads that bind it, so the three answer
+// in one row shape; the family-only read is the one that needs it, because an
+// operator ending a login by its id is not told whose it is.
+var LockColumns = []string{
+	SubjectIDColumn,
+	FamilyIDColumn,
+}
+
 // RedeemColumns is what the exchange assigns, which is the stamp and nothing
 // else.
 var RedeemColumns = []string{RedeemedAtColumn}
@@ -253,7 +267,7 @@ var SuccessorColumns = []string{SuccessorHashColumn}
 
 // RevokeColumns is what both revocations assign.
 //
-// The family revocation and the subject-wide one share the list rather than each
+// The single-token revocation and the family one share the list rather than each
 // naming its own, because they can race for one row and the row has to end up in
 // one shape whichever wins.
 var RevokeColumns = []string{RevokedAtColumn}
@@ -272,11 +286,20 @@ const (
 	RecordSuccessorQuery        = "RecordRefreshTokenSuccessor"
 	RevokeTokenQuery            = "RevokeRefreshToken"
 	RevokeFamilyQuery           = "RevokeRefreshTokenFamily"
-	RevokeSubjectFamilyQuery    = "RevokeRefreshTokenFamilyForSubject"
-	RevokeTokensForSubjectQuery = "RevokeRefreshTokensForSubject"
+	LockFamilyQuery             = "LockLiveRefreshTokenFamily"
+	LockSubjectFamilyQuery      = "LockLiveRefreshTokenFamilyForSubject"
+	LockFamiliesForSubjectQuery = "LockLiveRefreshTokenFamiliesForSubject"
 	ListLiveFamiliesQuery       = "ListLiveRefreshTokenFamilies"
 	SweepTokensQuery            = "SweepRefreshTokens"
 )
+
+// exclusiveLock is the clause the three locking reads carry, and it is the same
+// text on both dialects that have row locking at all.
+//
+// It is a constant rather than a literal in the statements for the reason the
+// column names above are: this package's tests read the clause instead of
+// spelling it a second time.
+const exclusiveLock = "FOR UPDATE"
 
 // Render returns the canonical sqlc input for d: the statements this store
 // executes, in one file's worth of text.
@@ -290,10 +313,10 @@ const (
 // The order is the order a token goes through: minted, read — twice, since the
 // idempotent path reads what the ordinary one does not — exchanged, with or
 // without a key, and then the two writes a retry of that exchange makes; or
-// revoked, alone, as one of a family's — named by the token or by its owner —
-// or as one of a subject's; listed, while it is the live one of its login, or
-// read as that one by its family; and finally collected once its purge deadline
-// has passed.
+// revoked, alone or as one of a family's; locked, while it is the live one of
+// its login, by the family or by its owner, so that a revocation can say what it
+// ended; listed, while it is still that, or read as that one by its family; and
+// finally collected once its purge deadline has passed.
 //
 // # The five statements the idempotent path adds
 //
@@ -373,8 +396,9 @@ func Render(d dialect.Dialect) string {
 		recordSuccessor(g),
 		revoke(g),
 		revokeFamily(g),
-		revokeSubjectFamily(g),
-		revokeForSubject(g),
+		lockFamily(g),
+		lockSubjectFamily(g),
+		lockFamiliesForSubject(g),
 		listLiveFamilies(g),
 		readLive(g),
 		sweep(g),
@@ -589,45 +613,101 @@ func revokeFamily(g *querygen.Generator) *querygen.Query {
 	)
 }
 
-// revokeForSubject ends every login one person holds: "disable this account",
-// "sign out everywhere", and the erasure a dataprivacy run performs.
+// lockFamily is the live row of one login, locked, named by its family alone.
 //
-// It is [revokeFamily]'s statement keyed one column over, and neither is
-// expressible as the other. A family is one login; a caller holding only a
-// subject identifier cannot enumerate that person's families without a read this
-// corpus does not have, and revoking family by family would leave live whatever
-// was issued between the enumeration and the last revocation.
-//
-// It is confined to one scope, which excludes nothing that exists: a subject id
-// is already scope-unique, since identity_users is unique on (scope, username)
-// and a user id belongs to exactly one directory. That is where this parts
-// company with links' subject-wide revoke, which crosses tenants deliberately
-// because its subjects are opaque identifiers it cannot resolve.
-func revokeForSubject(g *querygen.Generator) *querygen.Query {
-	return g.UpdateQuery(RevokeTokensForSubjectQuery, TokensTable, Columns, RevokeColumns, nil,
+// It is the first half of every revocation that has to say what it ended — an
+// operator's by family id, and the one a detected reuse performs — and the
+// second half is [revokeFamily], keyed on the family it read. See
+// [lockFamiliesForSubject] for why the lock comes first.
+func lockFamily(g *querygen.Generator) *querygen.Query {
+	return lockLive(g, LockFamilyQuery,
 		querygen.Match{Column: ScopeColumn},
-		querygen.Match{Column: SubjectIDColumn},
-		unrevoked(),
+		querygen.Match{Column: FamilyIDColumn},
 	)
 }
 
-// revokeSubjectFamily ends one login, named by its family, on behalf of the
-// person it belongs to.
+// lockSubjectFamily is [lockFamily] with the subject in the key, which is what
+// a self-service door ending one login by its id runs.
 //
-// It is [revokeFamily] with the subject added to the key, and the extra
-// predicate is the whole of its authorization. A family identifier is not a
-// secret — it is on every issued token, and identifiers.New's values carry a
-// timestamp and a counter — so a door ending a family by id for a signed-in
-// caller must not be able to reach anybody else's. Keyed on the caller's subject
-// as well, a guessed or borrowed family id matches nothing and reports zero,
-// exactly as a family already ended does, and the two are not told apart.
-func revokeSubjectFamily(g *querygen.Generator) *querygen.Query {
-	return g.UpdateQuery(RevokeSubjectFamilyQuery, TokensTable, Columns, RevokeColumns, nil,
+// The subject predicate is the whole of that door's authorization. A family
+// identifier is not a secret — it is on every issued token, and identifiers.New's
+// values carry a timestamp and a counter — so the read a signed-in caller's
+// request reaches must be unable to lock anybody else's login. Keyed on the
+// caller's subject as well, a guessed or borrowed family id locks nothing, and
+// the revocation keyed on what it locked ends nothing, exactly as for a family
+// already ended.
+func lockSubjectFamily(g *querygen.Generator) *querygen.Query {
+	return lockLive(g, LockSubjectFamilyQuery,
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: SubjectIDColumn},
 		querygen.Match{Column: FamilyIDColumn},
-		unrevoked(),
 	)
+}
+
+// lockFamiliesForSubject is the live row of every login one person holds,
+// locked: "sign out everywhere", "disable this account", and the erasure a
+// dataprivacy run performs.
+//
+// # Why a locked read and then a revocation by id
+//
+// A revocation keyed on the subject cannot say which logins it ended, and MySQL
+// has no RETURNING to make it — so the read comes first, on every engine, and
+// the revocation is then keyed on each family the read returned. Unlocked, that
+// is two races. A login committed between the read and the revocation would be
+// ended without being reported, which a revocation keyed on the subject would
+// do; revoking by the ids read instead leaves it live and unreported, which is
+// consistent. And an exchange racing the revocation could spend the row the
+// read saw and mint a successor the revocation's snapshot never sees, carrying
+// the login past a sign-out that reported it ended. The lock closes the second:
+// the exchange's guarded write waits on the row, and finds it revoked.
+//
+// SQLite has no FOR UPDATE and needs none — one writer at a time is that
+// engine's whole storage model, so the interleaving the lock excludes is
+// unreachable there. It renders the same statement without the clause, which is
+// what keeps the roster of statement names from varying by dialect.
+//
+// It is bounded, as every sweep is, and the store runs it until a pass comes
+// back short: a revoked family is no longer live, so the next pass locks the
+// ones the last pass did not reach. The order is the family, which is total
+// over live rows because a login has exactly one, and which makes two
+// concurrent revocations of one person lock in the same order.
+func lockFamiliesForSubject(g *querygen.Generator) *querygen.Query {
+	return lockLive(g, LockFamiliesForSubjectQuery,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: SubjectIDColumn},
+	)
+}
+
+// lockLive renders one of the three locking reads: the live rows key matches,
+// under the three guards the exchange carries, projected to [LockColumns] and
+// locked where the dialect locks.
+//
+// The guards are the listing's, and so the exchange's, rather than a second
+// spelling of them: what these lock is exactly what an exchange would still
+// accept, which is what "this revocation ended a login" has to mean.
+func lockLive(g *querygen.Generator, name string, key ...querygen.Match) *querygen.Query {
+	read := g.SweepQuery(name, TokensTable, Columns,
+		querygen.Sweep{
+			Order:      []querygen.Order{{Column: FamilyIDColumn}},
+			Projection: LockColumns,
+		},
+		append(key, unredeemed(), unrevoked(), stillLive())...,
+	)
+
+	if g.Dialect() != dialect.SQLite {
+		lock(read, exclusiveLock)
+	}
+
+	return read
+}
+
+// lock puts a locking clause on a rendered read, ahead of its terminator.
+//
+// A sweep's content carries no terminator of its own — Query.Render supplies
+// one — but a clause after a semicolon would not be a clause on that statement
+// at all, so one that is there is moved rather than written around.
+func lock(q *querygen.Query, clause string) {
+	q.Content = strings.TrimSuffix(q.Content, ";") + "\n" + clause + ";"
 }
 
 // listLiveFamilies is a person's live logins: one row per family, which is the
