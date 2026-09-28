@@ -46,6 +46,9 @@ var _ identity.Store = &StoreMock{}
 //			CreateUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error) {
 //				panic("mock out the CreateUser method")
 //			},
+//			DeleteAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
+//				panic("mock out the DeleteAccount method")
+//			},
 //			EraseInvitationsForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (identity.InvitationErasure, error) {
 //				panic("mock out the EraseInvitationsForSubject method")
 //			},
@@ -211,6 +214,9 @@ type StoreMock struct {
 
 	// CreateUserFunc mocks the CreateUser method.
 	CreateUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error)
+
+	// DeleteAccountFunc mocks the DeleteAccount method.
+	DeleteAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error)
 
 	// EraseInvitationsForSubjectFunc mocks the EraseInvitationsForSubject method.
 	EraseInvitationsForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (identity.InvitationErasure, error)
@@ -434,6 +440,17 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// User is the user argument value.
 			User *identity.User
+		}
+		// DeleteAccount holds details about calls to the DeleteAccount method.
+		DeleteAccount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// AccountID is the accountID argument value.
+			AccountID string
 		}
 		// EraseInvitationsForSubject holds details about calls to the EraseInvitationsForSubject method.
 		EraseInvitationsForSubject []struct {
@@ -1011,6 +1028,7 @@ type StoreMock struct {
 	lockCreateInvitation                     sync.RWMutex
 	lockCreateMembership                     sync.RWMutex
 	lockCreateUser                           sync.RWMutex
+	lockDeleteAccount                        sync.RWMutex
 	lockEraseInvitationsForSubject           sync.RWMutex
 	lockEraseUser                            sync.RWMutex
 	lockGetAccount                           sync.RWMutex
@@ -1376,6 +1394,50 @@ func (mock *StoreMock) CreateUserCalls() []struct {
 	mock.lockCreateUser.RLock()
 	calls = mock.calls.CreateUser
 	mock.lockCreateUser.RUnlock()
+	return calls
+}
+
+// DeleteAccount calls DeleteAccountFunc.
+func (mock *StoreMock) DeleteAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
+	if mock.DeleteAccountFunc == nil {
+		panic("StoreMock.DeleteAccountFunc: method is nil but Store.DeleteAccount was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		AccountID string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		AccountID: accountID,
+	}
+	mock.lockDeleteAccount.Lock()
+	mock.calls.DeleteAccount = append(mock.calls.DeleteAccount, callInfo)
+	mock.lockDeleteAccount.Unlock()
+	return mock.DeleteAccountFunc(ctx, tx, scope, accountID)
+}
+
+// DeleteAccountCalls gets all the calls that were made to DeleteAccount.
+// Check the length with:
+//
+//	len(mockedStore.DeleteAccountCalls())
+func (mock *StoreMock) DeleteAccountCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	AccountID string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		AccountID string
+	}
+	mock.lockDeleteAccount.RLock()
+	calls = mock.calls.DeleteAccount
+	mock.lockDeleteAccount.RUnlock()
 	return calls
 }
 

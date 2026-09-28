@@ -5,7 +5,6 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
-	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
@@ -1045,50 +1044,28 @@ func (s *Service) ArchiveAccount(ctx context.Context, scope tenancy.Scope, accou
 // members are not bounded by anything, which is why the roster is paged in the
 // first place — so an archival that asked for one page would end memberships it
 // never told the hook about, and the members missing from that list are the
-// ones a consumer's roster would keep forever.
+// ones a consumer's roster would keep forever. The walk itself is
+// ListAllAccountMembers, so this package and its consumers page one way.
 //
 // It runs on the archival's own transaction, so what it reads is what the write
 // beside it is about to end.
-//
-// The pages are asked for at the largest size the filter allows rather than at
-// the default fifty, since the caller is draining rather than rendering.
 func (s *Service) accountRoster(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	accountID string,
 ) ([]*Membership, error) {
-	filter := filtering.DefaultQueryFilter()
-	filter.MaxResponseSize = new(filtering.MaxQueryFilterLimit)
-
-	var (
-		roster []*Membership
-		cursor string
-	)
-
-	for {
-		page, err := s.store.ListAccountMembers(ctx, tx, scope, accountID, filter)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, member := range page.Data {
-			roster = append(roster, &member.Membership)
-		}
-
-		// A page shorter than the one asked for is the last one. The second
-		// test is the guard beside it rather than a restatement of it: a page
-		// whose cursor has not moved reaches nothing new, which is what ends the
-		// walk against a result that reports no page size — including the first
-		// page, where an empty roster answers with the empty cursor this starts
-		// from.
-		if len(page.Data) < int(page.MaxResponseSize) || page.Cursor == cursor {
-			return roster, nil
-		}
-
-		cursor = page.Cursor
-		filter.Cursor = &cursor
+	members, err := ListAllAccountMembers(ctx, tx, scope, s.store, accountID)
+	if err != nil {
+		return nil, err
 	}
+
+	roster := make([]*Membership, 0, len(members))
+	for _, member := range members {
+		roster = append(roster, &member.Membership)
+	}
+
+	return roster, nil
 }
 
 // UpdateUserAccountStatus moves a user between statuses and reports what they

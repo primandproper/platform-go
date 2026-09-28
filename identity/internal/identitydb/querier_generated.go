@@ -95,6 +95,11 @@ type Querier interface {
 	CreateInvitation(ctx context.Context, db DBTX, arg CreateInvitationParams) error
 	// CreateUser runs the :exec query.
 	CreateUser(ctx context.Context, db DBTX, arg CreateUserParams) error
+	// DeleteAccount runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	DeleteAccount(ctx context.Context, db DBTX, arg DeleteAccountParams) (int64, error)
 	// DeleteInvitationRoles runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -127,6 +132,8 @@ type Querier interface {
 	EraseUser(ctx context.Context, db DBTX, arg EraseUserParams) (int64, error)
 	// GetAccount runs the :one query.
 	GetAccount(ctx context.Context, db DBTX, arg GetAccountParams) (GetAccountRow, error)
+	// GetAccountIncludingArchived runs the :one query.
+	GetAccountIncludingArchived(ctx context.Context, db DBTX, arg GetAccountIncludingArchivedParams) (GetAccountIncludingArchivedRow, error)
 	// GetArchivedAccount runs the :one query.
 	GetArchivedAccount(ctx context.Context, db DBTX, arg GetArchivedAccountParams) (GetArchivedAccountRow, error)
 	// GetArchivedUser runs the :one query.

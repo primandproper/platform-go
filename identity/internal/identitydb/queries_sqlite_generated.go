@@ -191,6 +191,10 @@ INSERT INTO {{prefix}}identity_users (
 	?19
 )`
 
+const deleteAccountSQLite = `DELETE FROM {{prefix}}identity_accounts
+WHERE id = ?1
+	AND scope = ?2`
+
 const deleteInvitationRolesSQLite = `DELETE FROM {{prefix}}identity_invitation_roles
 WHERE invitation_id = ?1`
 
@@ -235,6 +239,30 @@ const getAccountSQLite = `SELECT
 FROM {{prefix}}identity_accounts
 WHERE {{prefix}}identity_accounts.archived_at IS NULL
 	AND {{prefix}}identity_accounts.id = ?1
+	AND {{prefix}}identity_accounts.scope = ?2`
+
+const getAccountIncludingArchivedSQLite = `SELECT
+	{{prefix}}identity_accounts.id,
+	{{prefix}}identity_accounts.scope,
+	{{prefix}}identity_accounts.name,
+	{{prefix}}identity_accounts.owner_user_id,
+	{{prefix}}identity_accounts.billing_status,
+	{{prefix}}identity_accounts.subscription_plan_id,
+	{{prefix}}identity_accounts.payment_processor_customer_id,
+	{{prefix}}identity_accounts.last_payment_provider_synced_at,
+	{{prefix}}identity_accounts.address_line1,
+	{{prefix}}identity_accounts.address_line2,
+	{{prefix}}identity_accounts.address_city,
+	{{prefix}}identity_accounts.address_state,
+	{{prefix}}identity_accounts.address_postal_code,
+	{{prefix}}identity_accounts.address_country,
+	{{prefix}}identity_accounts.address_phone,
+	{{prefix}}identity_accounts.time_zone,
+	{{prefix}}identity_accounts.created_at,
+	{{prefix}}identity_accounts.last_updated_at,
+	{{prefix}}identity_accounts.archived_at
+FROM {{prefix}}identity_accounts
+WHERE {{prefix}}identity_accounts.id = ?1
 	AND {{prefix}}identity_accounts.scope = ?2`
 
 const getArchivedAccountSQLite = `SELECT
@@ -1793,6 +1821,7 @@ type sqliteQueries struct {
 	createAccount                            string
 	createInvitation                         string
 	createUser                               string
+	deleteAccount                            string
 	deleteInvitationRoles                    string
 	deleteMembershipRoles                    string
 	deleteUserRoles                          string
@@ -1800,6 +1829,7 @@ type sqliteQueries struct {
 	eraseInvitationsToUser                   string
 	eraseUser                                string
 	getAccount                               string
+	getAccountIncludingArchived              string
 	getArchivedAccount                       string
 	getArchivedUser                          string
 	getInvitation                            string
@@ -1881,6 +1911,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		createAccount:                            strings.ReplaceAll(createAccountSQLite, prefixMarker, prefix),
 		createInvitation:                         strings.ReplaceAll(createInvitationSQLite, prefixMarker, prefix),
 		createUser:                               strings.ReplaceAll(createUserSQLite, prefixMarker, prefix),
+		deleteAccount:                            strings.ReplaceAll(deleteAccountSQLite, prefixMarker, prefix),
 		deleteInvitationRoles:                    strings.ReplaceAll(deleteInvitationRolesSQLite, prefixMarker, prefix),
 		deleteMembershipRoles:                    strings.ReplaceAll(deleteMembershipRolesSQLite, prefixMarker, prefix),
 		deleteUserRoles:                          strings.ReplaceAll(deleteUserRolesSQLite, prefixMarker, prefix),
@@ -1888,6 +1919,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		eraseInvitationsToUser:                   strings.ReplaceAll(eraseInvitationsToUserSQLite, prefixMarker, prefix),
 		eraseUser:                                strings.ReplaceAll(eraseUserSQLite, prefixMarker, prefix),
 		getAccount:                               strings.ReplaceAll(getAccountSQLite, prefixMarker, prefix),
+		getAccountIncludingArchived:              strings.ReplaceAll(getAccountIncludingArchivedSQLite, prefixMarker, prefix),
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountSQLite, prefixMarker, prefix),
 		getArchivedUser:                          strings.ReplaceAll(getArchivedUserSQLite, prefixMarker, prefix),
 		getInvitation:                            strings.ReplaceAll(getInvitationSQLite, prefixMarker, prefix),
@@ -2197,6 +2229,19 @@ func (q *sqliteQueries) CreateUser(ctx context.Context, db DBTX, arg CreateUserP
 	return err
 }
 
+// DeleteAccount runs the :execrows query against sqlite.
+func (q *sqliteQueries) DeleteAccount(ctx context.Context, db DBTX, arg DeleteAccountParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteAccount,
+		arg.ID,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // DeleteInvitationRoles runs the :execrows query against sqlite.
 func (q *sqliteQueries) DeleteInvitationRoles(ctx context.Context, db DBTX, arg DeleteInvitationRolesParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.deleteInvitationRoles,
@@ -2280,6 +2325,40 @@ func (q *sqliteQueries) GetAccount(ctx context.Context, db DBTX, arg GetAccountP
 	)
 
 	var i GetAccountRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.OwnerUserID,
+		&i.BillingStatus,
+		&i.SubscriptionPlanID,
+		&i.PaymentProcessorCustomerID,
+		&i.LastPaymentProviderSyncedAt,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.AddressPhone,
+		&i.TimeZone,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetAccountIncludingArchived runs the :one query against sqlite.
+func (q *sqliteQueries) GetAccountIncludingArchived(ctx context.Context, db DBTX, arg GetAccountIncludingArchivedParams) (GetAccountIncludingArchivedRow, error) {
+	row := db.QueryRowContext(ctx, q.getAccountIncludingArchived,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetAccountIncludingArchivedRow
 
 	err := row.Scan(
 		&i.ID,
@@ -4456,6 +4535,10 @@ var (
 		LastAcceptedPrivacyPolicy              *time.Time
 	}(CreateUserParams{})
 	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(DeleteAccountParams{})
+	_ = struct {
 		InvitationID string
 	}(DeleteInvitationRolesParams{})
 	_ = struct {
@@ -4501,6 +4584,31 @@ var (
 		LastUpdatedAt               *time.Time
 		ArchivedAt                  *time.Time
 	}(GetAccountRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetAccountIncludingArchivedParams{})
+	_ = struct {
+		ID                          string
+		Scope                       tenancy.Scope
+		Name                        string
+		OwnerUserID                 string
+		BillingStatus               string
+		SubscriptionPlanID          *string
+		PaymentProcessorCustomerID  string
+		LastPaymentProviderSyncedAt *time.Time
+		AddressLine1                string
+		AddressLine2                string
+		AddressCity                 string
+		AddressState                string
+		AddressPostalCode           string
+		AddressCountry              string
+		AddressPhone                string
+		TimeZone                    string
+		CreatedAt                   time.Time
+		LastUpdatedAt               *time.Time
+		ArchivedAt                  *time.Time
+	}(GetAccountIncludingArchivedRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

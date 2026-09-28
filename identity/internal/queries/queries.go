@@ -494,6 +494,7 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, fieldWrites(g)...)
 	rendered = append(rendered, userErasure(g))
 	rendered = append(rendered, subjectErasure(g)...)
+	rendered = append(rendered, accountDeletion(g)...)
 	rendered = append(rendered, roleWrites(g)...)
 	rendered = append(rendered, membershipUpsert(g))
 	rendered = append(rendered, membershipWrites(g)...)
@@ -635,6 +636,38 @@ func subjectErasure(g *querygen.Generator) []*querygen.Query {
 			Invitations.Nullable,
 			scope,
 			querygen.Match{Column: InvitationFromUserColumn, Arg: erasedFromUserArg}),
+	}
+}
+
+// accountDeletion is the hard delete of an account and the read that runs
+// ahead of it: the account gone rather than archived, for the consumer whose
+// policy says an account nobody is left in stops existing.
+//
+// Both are keyed on the id and the scope and on nothing else, for the reason
+// userErasure is. A delete that excluded archived rows could not remove an
+// account archived first, which is what a retention sweep deletes; and the read
+// is the row the delete is about to destroy, so it has to reach whatever the
+// delete reaches. Each is rendered from no column list, the trick subjectReads
+// plays, so querygen derives no archived predicate from one.
+//
+// The read runs first because nothing describes the row afterwards. The delete's
+// own count is what refuses an account that went between the two.
+//
+// What the account's rows take with them is the schema's: the memberships, the
+// roles hanging off those, the invitations into the account and their roles all
+// cascade from identity_accounts through ON DELETE CASCADE. No statement here
+// clears them, and none needs to.
+func accountDeletion(g *querygen.Generator) []*querygen.Query {
+	var (
+		id    = querygen.Match{Column: querygen.IDColumn}
+		scope = querygen.Match{Column: ScopeColumn}
+	)
+
+	return []*querygen.Query{
+		g.ReadQuery("GetAccountIncludingArchived", AccountsTable, nil,
+			querygen.Read{Projection: Accounts.Columns}, id, scope),
+
+		g.DeleteQuery("DeleteAccount", AccountsTable, nil, id, scope),
 	}
 }
 

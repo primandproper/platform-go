@@ -415,6 +415,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 
 				return err
 			}},
+			{name: "DeleteAccount", run: func() error {
+				_, err := store.DeleteAccount(t.Context(), nil, testScope, "a")
+
+				return err
+			}},
 			{name: "RecordAccountSubscription", run: func() error {
 				return store.RecordAccountSubscription(t.Context(), nil, testScope, "a", BillingPaid, "plan")
 			}},
