@@ -26,6 +26,13 @@ type Roles struct {
 	// "operator".
 	Service string
 
+	// Administrator is a service role the deployment's administrative sign-in
+	// door admits. Empty skips the assertions that sign somebody in through
+	// that door, with the reason printed, and has no literal: which role is
+	// administrative is exactly what a deployment's door is configured with,
+	// and a guess that missed would read as a door refusing an administrator.
+	Administrator string
+
 	// Membership is two account roles an account's owner may assign a member.
 	// Two, and distinct, because "setting a member's roles replaces rather
 	// than merges" is only observable by setting one where both were held.
@@ -43,24 +50,26 @@ const (
 var defaultMembershipRoles = [2]string{"support", "billing"}
 
 // resolved is r with each empty field replaced by its literal.
-func (r Roles) resolved() Roles {
-	if r.Owner == "" {
-		r.Owner = defaultOwnerRole
+func (r *Roles) resolved() Roles {
+	out := *r
+
+	if out.Owner == "" {
+		out.Owner = defaultOwnerRole
 	}
 
-	if r.Service == "" {
-		r.Service = defaultServiceRole
+	if out.Service == "" {
+		out.Service = defaultServiceRole
 	}
 
-	if r.Membership == [2]string{} {
-		r.Membership = defaultMembershipRoles
+	if out.Membership == [2]string{} {
+		out.Membership = defaultMembershipRoles
 	}
 
-	return r
+	return out
 }
 
 // problem is why Run refuses r, or empty where it does not.
-func (r Roles) problem() string {
+func (r *Roles) problem() string {
 	switch first, second := r.Membership[0], r.Membership[1]; {
 	case first == "" && second == "":
 		return ""
@@ -74,7 +83,7 @@ func (r Roles) problem() string {
 }
 
 // checkRoles fails the run on a vocabulary no assertion could be made with.
-func checkRoles(t *testing.T, roles Roles) {
+func checkRoles(t *testing.T, roles *Roles) {
 	t.Helper()
 
 	if problem := roles.problem(); problem != "" {

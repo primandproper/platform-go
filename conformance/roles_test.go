@@ -48,25 +48,25 @@ func TestRoles_problem(t *testing.T) {
 	t.Run("the zero value is accepted", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, "", Roles{}.problem())
+		test.EqOp(t, "", (&Roles{}).problem())
 	})
 
 	t.Run("two distinct membership roles are accepted", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, "", Roles{Membership: [2]string{"proprietor", "patron"}}.problem())
+		test.EqOp(t, "", (&Roles{Membership: [2]string{"proprietor", "patron"}}).problem())
 	})
 
 	t.Run("half a pair is refused rather than spliced onto a literal", func(t *testing.T) {
 		t.Parallel()
 
-		test.StrContains(t, Roles{Membership: [2]string{"patron", ""}}.problem(), "names one role and not the other")
-		test.StrContains(t, Roles{Membership: [2]string{"", "patron"}}.problem(), "names one role and not the other")
+		test.StrContains(t, (&Roles{Membership: [2]string{"patron", ""}}).problem(), "names one role and not the other")
+		test.StrContains(t, (&Roles{Membership: [2]string{"", "patron"}}).problem(), "names one role and not the other")
 	})
 
 	t.Run("the same role twice is refused, since nothing could be replaced", func(t *testing.T) {
 		t.Parallel()
 
-		test.StrContains(t, Roles{Membership: [2]string{"patron", "patron"}}.problem(), "twice")
+		test.StrContains(t, (&Roles{Membership: [2]string{"patron", "patron"}}).problem(), "twice")
 	})
 }
