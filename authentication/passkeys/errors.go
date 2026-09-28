@@ -109,4 +109,63 @@ var (
 	// answer: silently clamping would hand clone detection a counter that never
 	// moves, which is the exact failure this table exists to prevent.
 	ErrSignCountOutOfRange = platformerrors.New("stored passkey sign count is outside the range of a WebAuthn signature counter")
+
+	// ErrNilRelyingParty indicates a nil webauthn.RelyingParty handed to
+	// NewService.
+	ErrNilRelyingParty = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey relying party")
+
+	// ErrNilUserSource indicates a nil UserSource handed to NewService.
+	ErrNilUserSource = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey user source")
+
+	// ErrNoEnrollmentGate indicates a Service built without WithEnrollmentGate.
+	//
+	// There is no default gate, because the question it answers — has the
+	// person asking to add a passkey proved who they are recently enough — is
+	// one only the consumer's sessions can answer, and every answer this
+	// package could assume is wrong for somebody. Admitting every signed-in
+	// caller is the unlocked-laptop hazard; refusing every one is a feature
+	// that looks configured and never works. A deployment that has decided a
+	// live session is enough says so by passing AdmitEveryEnrollment.
+	ErrNoEnrollmentGate = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "passkey service has no enrollment gate")
+
+	// ErrNoUsernameResolver indicates a named login on a Service built without
+	// WithUsernameResolver. The discoverable login needs none.
+	ErrNoUsernameResolver = platformerrors.New("passkey service has no username resolver")
+
+	// ErrUnknownUsername is what a UsernameResolver answers for a username
+	// that names nobody, and the one resolver error a named login does not
+	// surface — see Service.BeginLogin. A resolver may wrap it.
+	ErrUnknownUsername = platformerrors.New("passkey login username names nobody")
+
+	// ErrEmptyUsername indicates a named login that named nobody. It is the
+	// calling code being wrong rather than a guess about who exists, so it is
+	// refused rather than answered like an unknown username.
+	ErrEmptyUsername = platformerrors.New("passkey login username is required")
+
+	// ErrEmptyCeremonyResponse indicates a ceremony finished without the
+	// client's response.
+	ErrEmptyCeremonyResponse = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty passkey ceremony response")
+
+	// ErrHandleMismatch indicates a UserResolver that answered a registration's
+	// handle with a different user than the one the registration was for.
+	// Either the resolver or the handle the caller derived is wrong, and a
+	// passkey filed under whichever of the two won would sign somebody into
+	// the other's account.
+	ErrHandleMismatch = platformerrors.New("passkey user handle resolves to a different user")
+
+	// ErrLoginFailed indicates a login ceremony that proved nobody. Every
+	// refusal of Service.FinishLogin and Service.FinishDiscoverableLogin wraps
+	// it, whatever refused the ceremony, so a transport answers them alike —
+	// a caller told which check failed is a caller told which usernames exist.
+	ErrLoginFailed = platformerrors.New("passkey login failed")
+
+	// ErrSignCountRegressed indicates an assertion whose signature counter did
+	// not advance past the stored one: two authenticators answering for one
+	// credential, which is a cloned key. The login is refused and the stored
+	// count is left alone. It is always wrapped with ErrLoginFailed.
+	ErrSignCountRegressed = platformerrors.New("passkey sign count did not advance")
+
+	// ErrLastCredential indicates an archive that would leave a user with no
+	// passkey and no other way in. See Service.ArchiveCredential.
+	ErrLastCredential = platformerrors.New("passkey is the user's last way to sign in")
 )

@@ -51,3 +51,70 @@ func WithMetricsProvider(metricsProvider metrics.Provider) SQLStoreOption {
 func WithPillars(p *observability.Pillars) SQLStoreOption {
 	return func(s *SQLStore) { s.logger, s.tracerProvider, s.metricsProvider = p.Deps() }
 }
+
+// ServiceOption configures a [Service] at construction.
+type ServiceOption func(*Service)
+
+// WithHooks sets what runs inside each write's transaction. Absent, hooks are
+// [NoopHooks].
+func WithHooks(hooks Hooks) ServiceOption {
+	return func(s *Service) {
+		if hooks != nil {
+			s.hooks = hooks
+		}
+	}
+}
+
+// WithEnrollmentGate sets the check a registration must pass before a passkey
+// is added to somebody's account. It is required: see [EnrollmentGate] and
+// ErrNoEnrollmentGate.
+func WithEnrollmentGate(gate EnrollmentGate) ServiceOption {
+	return func(s *Service) { s.gate = gate }
+}
+
+// WithUsernameResolver enables the named login, where a person types who they
+// are before their authenticator proves it. Absent, [Service.BeginLogin] and
+// [Service.FinishLogin] answer ErrNoUsernameResolver and the discoverable login
+// is the only one there is.
+func WithUsernameResolver(resolve UsernameResolver) ServiceOption {
+	return func(s *Service) { s.usernames = resolve }
+}
+
+// WithAlternativeSignIn tells the last-credential guard how to learn whether a
+// user has a way in other than their passkeys — a password, usually. Absent,
+// the guard assumes they have none and refuses to archive anybody's last live
+// passkey. See [Service.ArchiveCredential].
+func WithAlternativeSignIn(check AlternativeSignIn) ServiceOption {
+	return func(s *Service) { s.alternative = check }
+}
+
+// WithoutLastCredentialGuard turns the last-credential guard off, so a user may
+// archive every passkey they hold whatever else they have. It is the named opt
+// out for a deployment whose recovery flow is the answer to a locked-out user;
+// see [Service.ArchiveCredential].
+func WithoutLastCredentialGuard() ServiceOption {
+	return func(s *Service) { s.unguarded = true }
+}
+
+// WithServiceLogger sets the service's logger. An absent logger logs nowhere.
+func WithServiceLogger(logger logging.Logger) ServiceOption {
+	return func(s *Service) { s.logger = logger }
+}
+
+// WithServiceTracerProvider sets the service's tracer provider. An absent
+// provider traces nowhere.
+func WithServiceTracerProvider(tracerProvider tracing.Provider) ServiceOption {
+	return func(s *Service) { s.tracerProvider = tracerProvider }
+}
+
+// WithServiceMetricsProvider sets the service's metrics provider. An absent
+// provider records nothing.
+func WithServiceMetricsProvider(metricsProvider metrics.Provider) ServiceOption {
+	return func(s *Service) { s.metricsProvider = metricsProvider }
+}
+
+// WithServicePillars sets the service's logger, tracer provider and metrics
+// provider at once. A nil Pillars attaches nothing.
+func WithServicePillars(p *observability.Pillars) ServiceOption {
+	return func(s *Service) { s.logger, s.tracerProvider, s.metricsProvider = p.Deps() }
+}

@@ -49,6 +49,30 @@ func TestSQLStore_RealServers(T *testing.T) {
 	})
 }
 
+// TestService_RealServers runs the ceremony suite SQLite runs, against real
+// servers: a login's sign-count write in a transaction of its own, and a
+// registration and an archive on the caller's, are what a second connection
+// can see or not.
+func TestService_RealServers(T *testing.T) {
+	T.Parallel()
+
+	T.Run("postgres", func(t *testing.T) {
+		t.Parallel()
+
+		runWithPostgres(t, func(_ context.Context, client database.Client) {
+			runServiceSuite(t, &storeEnv{client: client, dialect: dialect.Postgres})
+		})
+	})
+
+	T.Run("mysql", func(t *testing.T) {
+		t.Parallel()
+
+		runWithMySQL(t, func(_ context.Context, client database.Client) {
+			runServiceSuite(t, &storeEnv{client: client, dialect: dialect.MySQL})
+		})
+	})
+}
+
 // TestMigrations_RealServers proves the shipped DDL is accepted verbatim by each
 // server, independent of whether the store then exercises every column.
 func TestMigrations_RealServers(T *testing.T) {
