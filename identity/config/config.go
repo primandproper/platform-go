@@ -199,6 +199,30 @@ func NewService(
 	return identity.NewService(client, store, append(base, options.service...)...)
 }
 
+// ServerOptions is the server half of the config, as the identitygrpc options
+// that carry it: the two invitation lifetimes and whether a sender gets an
+// invitation's token back.
+//
+// It is the one place that mapping is written. NewServer reads it, and so does
+// any composition root that builds identitygrpc.NewServer itself from a Config
+// it was handed; a field added to the server half lands here and reaches both,
+// rather than reaching whichever copy of the mapping somebody remembered to
+// update. It reads the config as it stands, so a caller that has not run
+// EnsureDefaults passes zero lifetimes through, which the server resolves to
+// its own defaults.
+func (cfg *Config) ServerOptions() []identitygrpc.Option {
+	opts := []identitygrpc.Option{
+		identitygrpc.WithInvitationTTL(cfg.InvitationTTL),
+		identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
+	}
+
+	if cfg.ReturnInvitationToken {
+		opts = append(opts, identitygrpc.WithInvitationTokenReturned())
+	}
+
+	return opts
+}
+
 // NewServer builds the gRPC surface over a Service and a Store.
 //
 // The dependencies read in the order identitygrpc.NewServer takes them, which
@@ -250,13 +274,9 @@ func NewServer(
 		identitygrpc.WithLogger(options.logger),
 		identitygrpc.WithTracerProvider(options.tracerProvider),
 		identitygrpc.WithMetricsProvider(options.metricsProvider),
-		identitygrpc.WithInvitationTTL(cfg.InvitationTTL),
-		identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
 	}
 
-	if cfg.ReturnInvitationToken {
-		base = append(base, identitygrpc.WithInvitationTokenReturned())
-	}
+	base = append(base, cfg.ServerOptions()...)
 
 	return identitygrpc.NewServer(svc, store, client, principals, append(base, options.server...)...)
 }

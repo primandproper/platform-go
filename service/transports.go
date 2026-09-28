@@ -886,17 +886,11 @@ func (m *mount) identity() {
 
 	// The config block is what Register provided for Config.Identity, and the
 	// server half of it — the invitation lifetimes and whether a sender gets
-	// the token back — is read here, where the server is built. Absent, the
-	// server's own defaults stand.
+	// the token back — is read here, where the server is built, through the
+	// same ServerOptions identitycfg.NewServer reads. Absent, the server's own
+	// defaults stand.
 	if cfg, found := need[*identitycfg.Config](m); found {
-		opts = append(opts,
-			identitygrpc.WithInvitationTTL(cfg.InvitationTTL),
-			identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
-		)
-
-		if cfg.ReturnInvitationToken {
-			opts = append(opts, identitygrpc.WithInvitationTokenReturned())
-		}
+		opts = append(opts, cfg.ServerOptions()...)
 	} else if m.err != nil {
 		return
 	}
