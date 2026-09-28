@@ -362,28 +362,70 @@ func (s bareReuseStore) Redeem(
 	return token, err
 }
 
-// A reuse the hooks never hear about is an audit trail silently missing its
-// most important entry, so a store that cannot say what it ended is refused
-// loudly — as a failure, not as the refusal a client would read past.
-func TestService_AfterRevokeSignIns_RefusesAStoreThatCannotNameTheFamily(t *testing.T) {
-	t.Parallel()
+// A store that reports a reuse bare has still revoked the family into the
+// caller's transaction, and that revocation is the one thing about the refusal
+// that must not be lost: the transaction commits it, the hook — which cannot be
+// told what ended — does not run, and the caller is answered with a failure
+// naming the broken contract rather than with the refusal a client would read
+// past. Both doors that capture a reuse take that path.
+func TestService_AfterRevokeSignIns_RefusesAStoreThatCannotNameTheFamily(T *testing.T) {
+	T.Parallel()
 
-	e := newRefreshEnv(t)
+	// replay signs in, exchanges once, and hands back the spent token with the
+	// service that will be presented it and the successor it was exchanged for.
+	replay := func(t *testing.T) (e *env, svc *signin.Service, spent, successor string) {
+		t.Helper()
 
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
-		signin.WithHooks(e.hooks),
-		signin.WithRefreshTokenStore(bareReuseStore{SQLStore: e.refresh}),
-	)
-	must.NoError(t, err)
+		e = newRefreshEnv(t)
 
-	first, err := svc.LoginForToken(t.Context(), testScope, e.credentials())
-	must.NoError(t, err)
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+			signin.WithHooks(e.hooks),
+			signin.WithRefreshTokenStore(bareReuseStore{SQLStore: e.refresh}),
+		)
+		must.NoError(t, err)
 
-	_, err = svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
-	must.NoError(t, err)
+		first, err := svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
 
-	_, err = svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
-	must.Error(t, err)
-	test.False(t, platformerrors.Is(err, signin.ErrInvalidCredentials))
-	test.SliceEmpty(t, e.hooks.revocations)
+		next, err := svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		return e, svc, first.RefreshToken, next.RefreshToken
+	}
+
+	// requireCommitted asserts the family the replay ended stayed ended: the
+	// successor is refused, and the login is gone from the person's list.
+	requireCommitted := func(t *testing.T, e *env, svc *signin.Service, successor string) {
+		t.Helper()
+
+		_, err := svc.ExchangeRefreshToken(t.Context(), testScope, successor)
+		must.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.EqOp(t, 0, liveSignIns(t, e))
+	}
+
+	T.Run("an exchange commits the revocation and fails loudly", func(t *testing.T) {
+		t.Parallel()
+
+		e, svc, spent, successor := replay(t)
+
+		_, err := svc.ExchangeRefreshToken(t.Context(), testScope, spent)
+		must.ErrorIs(t, err, signin.ErrRefreshTokenStoreContractViolated)
+		test.False(t, platformerrors.Is(err, signin.ErrInvalidCredentials))
+		test.SliceEmpty(t, e.hooks.revocations)
+
+		requireCommitted(t, e, svc, successor)
+	})
+
+	T.Run("a sign-out commits the revocation and fails loudly", func(t *testing.T) {
+		t.Parallel()
+
+		e, svc, spent, successor := replay(t)
+
+		err := svc.SignOut(t.Context(), testScope, spent)
+		must.ErrorIs(t, err, signin.ErrRefreshTokenStoreContractViolated)
+		test.False(t, platformerrors.Is(err, signin.ErrInvalidCredentials))
+		test.SliceEmpty(t, e.hooks.revocations)
+
+		requireCommitted(t, e, svc, successor)
+	})
 }

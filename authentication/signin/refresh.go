@@ -351,8 +351,11 @@ type RefreshTokenStore interface {
 	// two are one act: a reuse reported without the revocation is a theft detected
 	// and then allowed to continue. It is returned as a *RefreshTokenReusedError
 	// naming the family and whether it was live, which is what the service hands
-	// [Hooks.AfterRevokeSignIns]; a bare sentinel is refused as a store that
-	// cannot say what it ended.
+	// [Hooks.AfterRevokeSignIns]. A bare sentinel still has its revocation
+	// committed — the service does not let a broken report undo the response to
+	// a theft — but no hook runs, since nothing says what ended, and the caller
+	// is answered with [ErrRefreshTokenStoreContractViolated]: a 500, logged, in
+	// place of the refusal.
 	//
 	// That puts one obligation on the caller, and it is the only place in this
 	// module where an error arrives with work attached. The revocation is written
@@ -658,6 +661,10 @@ func (s *Service) ExchangeRefreshToken(
 	}
 
 	if reuse != nil {
+		if contractErr := reuseAnswer(reuse); contractErr != nil {
+			return nil, op.Error(contractErr, "reading the reuse a refresh token store reported")
+		}
+
 		return nil, op.Error(reuse, "exchanging a refresh token")
 	}
 
@@ -713,6 +720,11 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 		return op.Error(ErrEmptyRefreshToken, "reading the refresh token a sign-out presented")
 	}
 
+	// The reuse, if the presented token draws one, held for after the commit so
+	// a store that reported it bare can be named as broken once its revocation
+	// has landed. See reuseAnswer.
+	var reuse error
+
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		spent, txErr := s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
 		if txErr != nil {
@@ -724,6 +736,8 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 			// spent, so it was not this caller's login that it ended.
 			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
 				op.SpanOnly(signOutNothingToEndKey, true)
+
+				reuse = txErr
 
 				return s.afterReuse(ctx, tx, scope, txErr)
 			}
@@ -761,6 +775,12 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 		})
 	}); err != nil {
 		return op.Error(err, "signing out")
+	}
+
+	if reuse != nil {
+		if contractErr := reuseAnswer(reuse); contractErr != nil {
+			return op.Error(contractErr, "reading the reuse a refresh token store reported")
+		}
 	}
 
 	return nil
@@ -1001,17 +1021,13 @@ func (s *Service) afterRevoke(
 // return it — see [RefreshTokenStore.Redeem] — and its error is returned out of
 // that transaction, so a hook that refuses rolls the revocation back with it.
 //
-// A store that reported the sentinel bare, without the family, is refused here
-// rather than passed over. A reuse the hooks never hear about is an audit trail
-// that is silently missing its most important entry, and the wiring that
-// produced it is found on the first reuse rather than in an incident review.
+// A store that reported the sentinel bare, without the family, gets nil here
+// and no hook: the revocation it wrote into tx is the response to a theft and
+// must commit whatever else is wrong, and a hook cannot be told what ended.
+// The door reports the broken contract after the commit — see [reuseAnswer].
 func (s *Service) afterReuse(ctx context.Context, tx database.Tx, scope tenancy.Scope, reuse error) error {
 	var reused *RefreshTokenReusedError
-	if !platformerrors.As(reuse, &reused) {
-		return platformerrors.New("refresh token store reported a reuse without naming the family it ended")
-	}
-
-	if !reused.Ended {
+	if !platformerrors.As(reuse, &reused) || !reused.Ended {
 		return nil
 	}
 
@@ -1020,6 +1036,24 @@ func (s *Service) afterReuse(ctx context.Context, tx database.Tx, scope tenancy.
 		SubjectID: reused.SubjectID,
 		FamilyIDs: []string{reused.FamilyID},
 	})
+}
+
+// reuseAnswer is what a door says, once its transaction has committed, about a
+// reuse the store reported: nil for one that named its family, and
+// [ErrRefreshTokenStoreContractViolated] for one reported bare.
+//
+// The bare case is refused loudly rather than passed over. A reuse the hooks
+// never hear about is an audit trail silently missing its most important entry,
+// and answering it as the ordinary refusal would hide the wiring that produced
+// it; as a 500 it is logged and found on the first reuse rather than in an
+// incident review.
+func reuseAnswer(reuse error) error {
+	var reused *RefreshTokenReusedError
+	if platformerrors.As(reuse, &reused) {
+		return nil
+	}
+
+	return ErrRefreshTokenStoreContractViolated
 }
 
 // resolveRevocation applies an operator door's options in order.

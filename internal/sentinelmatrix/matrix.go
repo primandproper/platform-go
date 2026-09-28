@@ -650,6 +650,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrRefreshTokenTTLTooShort":    {Err: signin.ErrRefreshTokenTTLTooShort, Is: Unhandled},
 		"ErrRefreshTokensNotConfigured": {Err: signin.ErrRefreshTokensNotConfigured, Is: Unhandled},
 
+		// A refresh token store that reported a reuse without naming the family
+		// it ended. The revocation commits; what fails is the store's contract,
+		// which is wiring rather than anything a caller sent, so a 500.
+		"ErrRefreshTokenStoreContractViolated": {Err: signin.ErrRefreshTokenStoreContractViolated, Is: Unhandled},
+
 		// The listing doors on a service whose store mints refresh tokens and
 		// cannot enumerate them. Wiring again, and nothing a caller sent.
 
