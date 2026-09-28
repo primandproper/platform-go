@@ -327,7 +327,7 @@ the three readings a read's scope has and why they need a pointer to hold them.
 The fan-out follows the same rule: Collector.Collect and Eraser.Erase are handed
 the confinement beside the subject, so a domain that scopes its rows narrows by
 a value it was passed rather than one it dug out. The privacy adapters this
-module ships — authentication/grants/privacy, authentication/oauth2clients/privacy,
+module ships — audit/privacy, authentication/grants/privacy, authentication/oauth2clients/privacy,
 authentication/passkeys/privacy, authentication/passwordreset/privacy,
 authentication/phonecodes/privacy,
 authentication/signin/recoverycodes/privacy, billing/privacy, comments/privacy, identity/privacy, issuereports/privacy,
@@ -344,10 +344,16 @@ somebody's export. The resolver they take is [ScopeResolver], which each of them
 aliases rather than redeclaring — see that type for why the alias is
 load-bearing.
 
-Two of them ship one half rather than two, and each says why on its own package.
+Three of them ship one half rather than two, and each says why on its own package.
 billing/privacy has no Eraser, because a subscription and a ledger row are
 financial records every jurisdiction requires kept — metering makes the same
 ruling for the tables an invoice is computed from, and ships neither half.
+audit/privacy has no Eraser either, and dataprivacy/auditerasure has no
+Collector: they are the audit log's two halves, shipped from two packages under
+one key. Deleting or rewriting an entry in the middle of a hash chain reads as
+tampering, so the only erasure the log permits — a subject's own scopes, whole —
+is auditerasure's, and every other entry naming the subject is kept, reported as
+retained, and exported by audit/privacy.
 mediaregistry/privacy has both, but its Eraser withdraws the rows and reports the
 objects retained: nothing in that package opens the byte path, and the withdrawn
 row is the only record of the key the surviving bytes are at.

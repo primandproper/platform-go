@@ -35,6 +35,14 @@ it into the request record, so "we kept some audit entries, on this basis" is
 something the subject is told and a regulator can read, instead of something
 discovered later.
 
+# The other half
+
+This package ships no Collector. The access half of the audit log is
+audit/privacy, which exports every entry naming the subject as actor or resource
+— the same predicate the retained count here is taken over, so the entries a
+subject is told were kept are the entries an export shows them. It registers
+under the same key as this eraser.
+
 # Turning it off
 
 An operator whose jurisdiction or policy says the audit log must not be touched

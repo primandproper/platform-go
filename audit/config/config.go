@@ -32,6 +32,14 @@ With the recorder attached, the entry accounting for that sweep is written to
 the log the sweep just pruned. That is the intended reading and not an
 accident: until now the one deletion this module performed against the audit log
 was the one deletion nothing recorded.
+
+# The privacy seam is not here
+
+audit/privacy's collector needs a ScopeResolver, which is a mapping from a
+person to the tenants they belong to, and no environment variable can express
+one. A service that wants its audit entries in its subject access requests
+registers the collector itself, over the Reader this package built — through
+privacyadapters.Register, or by hand.
 */
 package auditcfg
 

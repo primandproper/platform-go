@@ -3,6 +3,8 @@ package privacyadapters
 import (
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/audit"
+	auditprivacy "github.com/primandproper/platform-go/v14/audit/privacy"
 	"github.com/primandproper/platform-go/v14/authentication/grants"
 	grantsprivacy "github.com/primandproper/platform-go/v14/authentication/grants/privacy"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
@@ -87,6 +89,7 @@ type Adapters struct {
 	Identity      *IdentityAdapter
 	Notifications *NotificationsAdapter
 	Billing       *BillingAdapter
+	Audit         *AuditAdapter
 	AuditErasure  *AuditErasureAdapter
 }
 
@@ -301,6 +304,28 @@ type BillingAdapter struct {
 	Resolve billingprivacy.AccountResolver
 }
 
+// AuditAdapter registers audit/privacy's collector.
+//
+// There is no eraser field, because the audit log's eraser is not that
+// package's: it is dataprivacy/auditerasure, which deletes a subject's own
+// scopes whole and reports every other entry naming them as retained, and it is
+// [AuditErasureAdapter] — or dataprivacycfg.RegisterAuditEraser — that
+// registers it. The two go in under the same key, one in each of the registry's
+// namespaces, so an export's audit section and an erasure outcome's audit line
+// describe the same log. Registering either without the other is allowed, and
+// is a deployment's decision to make.
+//
+// There is no BeforeErase field for the same reason: there is no eraser here
+// for one to precede.
+type AuditAdapter struct {
+	_ struct{} `json:"-" yaml:"-"`
+
+	// Log is the audit reader the collector lists entries through, built at
+	// the prefix the audit tables were rendered with.
+	Log     audit.Reader
+	Resolve dataprivacy.ScopeResolver
+}
+
 // AuditErasureAdapter registers dataprivacy/auditerasure's eraser.
 //
 // It is the one adapter whose seam is not a store: auditerasure.New renders
@@ -323,7 +348,7 @@ type AuditErasureAdapter struct {
 }
 
 // Register builds every adapter that adapters names and registers it under its
-// package's DefaultKey, returning the keys it registered, sorted.
+// package's DefaultKey, returning the keys it registered, sorted and each once.
 //
 // The keys come back so a deployment can log what its subject access requests
 // will actually cover. That is the question this package exists for: an export
@@ -378,9 +403,11 @@ func Register(registry *dataprivacy.Registry, adapters *Adapters) ([]string, err
 		keys = append(keys, entry.key)
 	}
 
+	// Compacted, because audit's two halves ship from two packages under one
+	// key, and a key is registered once however many packages supplied it.
 	slices.Sort(keys)
 
-	return keys, nil
+	return slices.Compact(keys), nil
 }
 
 // checkUnclaimed refuses the whole set if any of it is already spoken for.
@@ -573,6 +600,17 @@ func (a *Adapters) build() ([]registration, error) {
 		}
 
 		built = append(built, registration{key: billingprivacy.DefaultKey, collector: collector})
+	}
+
+	if a.Audit != nil {
+		// The collector alone. Its eraser is auditerasure's, registered below
+		// under the same key when the deployment names one.
+		collector, err := auditprivacy.NewCollector(a.Audit.Log, a.Reader, a.Audit.Resolve)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", auditprivacy.DefaultKey)
+		}
+
+		built = append(built, registration{key: auditprivacy.DefaultKey, collector: collector})
 	}
 
 	if a.AuditErasure != nil {
