@@ -498,7 +498,7 @@ func (s *Service) FinishLogin(
 
 	u, err := s.namedUser(ctx, s.client.Reader(), scope, username, parsed.flags)
 	if platformerrors.Is(err, ErrUnknownUsername) {
-		return nil, op.Error(s.refuse(ctx, scope, parsed, "", err), "finishing passkey login")
+		return nil, op.Error(s.refuse(ctx, op, scope, parsed, "", err), "finishing passkey login")
 	}
 
 	if err != nil {
@@ -509,10 +509,10 @@ func (s *Service) FinishLogin(
 
 	credential, err := s.rp.FinishLoginBody(ctx, u, bytes.NewReader(response))
 	if err != nil {
-		return nil, op.Error(s.refuse(ctx, scope, parsed, u.identity.UserID, err), "finishing passkey login")
+		return nil, op.Error(s.refuse(ctx, op, scope, parsed, u.identity.UserID, err), "finishing passkey login")
 	}
 
-	if proven, err = s.recordUse(ctx, scope, parsed, u.identity.UserID, credential); err != nil {
+	if proven, err = s.recordUse(ctx, op, scope, parsed, u.identity.UserID, credential); err != nil {
 		return nil, op.Error(err, "finishing passkey login")
 	}
 
@@ -555,12 +555,12 @@ func (s *Service) FinishDiscoverableLogin(
 
 	_, credential, err := s.rp.FinishDiscoverableLoginBody(ctx, handler, bytes.NewReader(response))
 	if err != nil {
-		return nil, op.Error(s.refuse(ctx, scope, parsed, claimed, err), "finishing discoverable passkey login")
+		return nil, op.Error(s.refuse(ctx, op, scope, parsed, claimed, err), "finishing discoverable passkey login")
 	}
 
 	op.Set(userKey, claimed)
 
-	if proven, err = s.recordUse(ctx, scope, parsed, claimed, credential); err != nil {
+	if proven, err = s.recordUse(ctx, op, scope, parsed, claimed, credential); err != nil {
 		return nil, op.Error(err, "finishing discoverable passkey login")
 	}
 
@@ -600,16 +600,29 @@ func parseAssertion(response []byte) (*parsedAssertion, error) {
 }
 
 // refuse runs the failed-login hook on a transaction of its own and answers
-// with the error the login returns: the refusal wrapped in ErrLoginFailed, or
-// the hook's own failure in its place.
+// with the error the login returns, or the hook's own failure in its place.
+//
+// What the login returns is concealed rather than the refusal itself. An
+// unknown username, a passkey that is somebody else's, and a user who holds no
+// passkey are refused by different checks, and a caller shown which one —
+// through the message or through errors.Is — is a caller told which usernames
+// exist and which of them have a passkey. So every refusal answers
+// ErrLoginFailed and nothing past it, and why it was refused goes to the
+// operation's log and span and to the hook's FailedLogin.Cause, which are the
+// deployment's and not the caller's. ErrSignCountRegressed is the one refusal
+// the caller is told, because it is reached only after the signature verified:
+// whoever made the attempt held the credential, and learns nothing about
+// anybody else from being told it looks cloned.
 func (s *Service) refuse(
 	ctx context.Context,
+	op observability.Operation,
 	scope tenancy.Scope,
 	parsed *parsedAssertion,
 	userID string,
 	cause error,
 ) error {
 	refusal := fmt.Errorf("%w: %w", ErrLoginFailed, cause)
+	op.Acknowledge(refusal, "refusing passkey login")
 
 	attempt := &FailedLogin{
 		Cause:        refusal,
@@ -623,20 +636,30 @@ func (s *Service) refuse(
 		return platformerrors.Wrap(err, "recording a failed passkey login")
 	}
 
-	return refusal
+	return concealed(cause)
+}
+
+// concealed is the refusal a login's caller is shown. See refuse.
+func concealed(cause error) error {
+	if platformerrors.Is(cause, ErrSignCountRegressed) {
+		return fmt.Errorf("%w: %w", ErrLoginFailed, ErrSignCountRegressed)
+	}
+
+	return ErrLoginFailed
 }
 
 // recordUse writes a verified credential's sign count back in a transaction
 // of its own, after refusing a counter that did not advance.
 func (s *Service) recordUse(
 	ctx context.Context,
+	op observability.Operation,
 	scope tenancy.Scope,
 	parsed *parsedAssertion,
 	userID string,
 	verified *webauthn.Credential,
 ) (*Credential, error) {
 	if verified.Authenticator.CloneWarning {
-		return nil, s.refuse(ctx, scope, parsed, userID, ErrSignCountRegressed)
+		return nil, s.refuse(ctx, op, scope, parsed, userID, ErrSignCountRegressed)
 	}
 
 	var proven *Credential

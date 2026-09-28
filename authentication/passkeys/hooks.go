@@ -52,7 +52,9 @@ type Hooks interface {
 type FailedLogin struct {
 	// Cause is why the ceremony was refused. It wraps ErrLoginFailed, and past
 	// that is whatever refused it: a signature that did not verify, a
-	// challenge nobody issued, ErrSignCountRegressed.
+	// challenge nobody issued, ErrUnknownUsername, ErrSignCountRegressed. It is
+	// told to the hook and not to the login's caller, who is answered
+	// ErrLoginFailed alone.
 	Cause error
 	// UserID is the account the attempt was made against, when one is known:
 	// the owner of the username a named login gave, or of the handle a

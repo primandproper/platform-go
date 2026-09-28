@@ -155,8 +155,10 @@ var (
 
 	// ErrLoginFailed indicates a login ceremony that proved nobody. Every
 	// refusal of Service.FinishLogin and Service.FinishDiscoverableLogin wraps
-	// it, whatever refused the ceremony, so a transport answers them alike —
-	// a caller told which check failed is a caller told which usernames exist.
+	// it, whatever refused the ceremony, and wraps nothing else past it but
+	// ErrSignCountRegressed — a caller told which check failed is a caller told
+	// which usernames exist. Why a login was refused is the failed-login
+	// hook's FailedLogin.Cause.
 	ErrLoginFailed = platformerrors.New("passkey login failed")
 
 	// ErrSignCountRegressed indicates an assertion whose signature counter did

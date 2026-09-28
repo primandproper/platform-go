@@ -456,11 +456,44 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		// username refusing her would be the oracle BeginLogin closed.
 		_, err := f.login(t, "nobody", device)
 		test.ErrorIs(t, err, ErrLoginFailed)
+		test.False(t, errors.Is(err, ErrUnknownUsername), test.Sprint("the caller is not told the username names nobody"))
 
 		failures := f.hooks.failures()
 		must.SliceLen(t, 1, failures)
 		test.EqOp(t, "", failures[0].UserID)
 		test.Eq(t, device.credentialID, failures[0].CredentialID)
+		test.ErrorIs(t, failures[0].Cause, ErrUnknownUsername)
+	})
+
+	// The refusals are made by different checks, and the finish is where the
+	// difference between them would reach a caller: the message and the chain
+	// are both what a transport might render or match. Alice's passkey offered
+	// against a username nobody holds, against Bob holding a passkey of his
+	// own, and against Bob holding none must read identically.
+	t.Run("every refused login answers its caller alike", func(t *testing.T) {
+		t.Parallel()
+
+		withBob := env.newService(t)
+		device, _ := withBob.mustRegister(t, aliceID)
+		withBob.mustRegister(t, bobID)
+
+		_, unknown := withBob.login(t, "nobody", device)
+		_, others := withBob.login(t, "bob", device)
+
+		passkeyless := env.newService(t)
+		device, _ = passkeyless.mustRegister(t, aliceID)
+
+		_, none := passkeyless.login(t, "bob", device)
+
+		for _, err := range []error{unknown, others, none} {
+			must.ErrorIs(t, err, ErrLoginFailed)
+			test.EqOp(t, unknown.Error(), err.Error())
+		}
+
+		causes := withBob.hooks.failures()
+		must.SliceLen(t, 2, causes)
+		test.ErrorIs(t, causes[0].Cause, ErrUnknownUsername)
+		test.False(t, errors.Is(causes[1].Cause, ErrUnknownUsername), test.Sprint("the hook is told why"))
 	})
 
 	t.Run("a passkey answering for somebody else is refused", func(t *testing.T) {
