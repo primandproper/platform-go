@@ -487,3 +487,211 @@ func (mock *StoreMock) RecordUseCalls() []struct {
 	mock.lockRecordUse.RUnlock()
 	return calls
 }
+
+// Ensure, that HooksMock does implement passkeys.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ passkeys.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of passkeys.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked passkeys.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchivePasskeyFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) error {
+//				panic("mock out the AfterArchivePasskey method")
+//			},
+//			AfterFailedPasskeyLoginFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, attempt *passkeys.FailedLogin) error {
+//				panic("mock out the AfterFailedPasskeyLogin method")
+//			},
+//			AfterRegisterPasskeyFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) error {
+//				panic("mock out the AfterRegisterPasskey method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires passkeys.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchivePasskeyFunc mocks the AfterArchivePasskey method.
+	AfterArchivePasskeyFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) error
+
+	// AfterFailedPasskeyLoginFunc mocks the AfterFailedPasskeyLogin method.
+	AfterFailedPasskeyLoginFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, attempt *passkeys.FailedLogin) error
+
+	// AfterRegisterPasskeyFunc mocks the AfterRegisterPasskey method.
+	AfterRegisterPasskeyFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchivePasskey holds details about calls to the AfterArchivePasskey method.
+		AfterArchivePasskey []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Credential is the credential argument value.
+			Credential *passkeys.Credential
+		}
+		// AfterFailedPasskeyLogin holds details about calls to the AfterFailedPasskeyLogin method.
+		AfterFailedPasskeyLogin []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Attempt is the attempt argument value.
+			Attempt *passkeys.FailedLogin
+		}
+		// AfterRegisterPasskey holds details about calls to the AfterRegisterPasskey method.
+		AfterRegisterPasskey []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Credential is the credential argument value.
+			Credential *passkeys.Credential
+		}
+	}
+	lockAfterArchivePasskey     sync.RWMutex
+	lockAfterFailedPasskeyLogin sync.RWMutex
+	lockAfterRegisterPasskey    sync.RWMutex
+}
+
+// AfterArchivePasskey calls AfterArchivePasskeyFunc.
+func (mock *HooksMock) AfterArchivePasskey(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) error {
+	if mock.AfterArchivePasskeyFunc == nil {
+		panic("HooksMock.AfterArchivePasskeyFunc: method is nil but Hooks.AfterArchivePasskey was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Credential *passkeys.Credential
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		Credential: credential,
+	}
+	mock.lockAfterArchivePasskey.Lock()
+	mock.calls.AfterArchivePasskey = append(mock.calls.AfterArchivePasskey, callInfo)
+	mock.lockAfterArchivePasskey.Unlock()
+	return mock.AfterArchivePasskeyFunc(ctx, tx, scope, credential)
+}
+
+// AfterArchivePasskeyCalls gets all the calls that were made to AfterArchivePasskey.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchivePasskeyCalls())
+func (mock *HooksMock) AfterArchivePasskeyCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	Credential *passkeys.Credential
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Credential *passkeys.Credential
+	}
+	mock.lockAfterArchivePasskey.RLock()
+	calls = mock.calls.AfterArchivePasskey
+	mock.lockAfterArchivePasskey.RUnlock()
+	return calls
+}
+
+// AfterFailedPasskeyLogin calls AfterFailedPasskeyLoginFunc.
+func (mock *HooksMock) AfterFailedPasskeyLogin(ctx context.Context, tx database.Tx, scope tenancy.Scope, attempt *passkeys.FailedLogin) error {
+	if mock.AfterFailedPasskeyLoginFunc == nil {
+		panic("HooksMock.AfterFailedPasskeyLoginFunc: method is nil but Hooks.AfterFailedPasskeyLogin was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Attempt *passkeys.FailedLogin
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Attempt: attempt,
+	}
+	mock.lockAfterFailedPasskeyLogin.Lock()
+	mock.calls.AfterFailedPasskeyLogin = append(mock.calls.AfterFailedPasskeyLogin, callInfo)
+	mock.lockAfterFailedPasskeyLogin.Unlock()
+	return mock.AfterFailedPasskeyLoginFunc(ctx, tx, scope, attempt)
+}
+
+// AfterFailedPasskeyLoginCalls gets all the calls that were made to AfterFailedPasskeyLogin.
+// Check the length with:
+//
+//	len(mockedHooks.AfterFailedPasskeyLoginCalls())
+func (mock *HooksMock) AfterFailedPasskeyLoginCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Attempt *passkeys.FailedLogin
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Attempt *passkeys.FailedLogin
+	}
+	mock.lockAfterFailedPasskeyLogin.RLock()
+	calls = mock.calls.AfterFailedPasskeyLogin
+	mock.lockAfterFailedPasskeyLogin.RUnlock()
+	return calls
+}
+
+// AfterRegisterPasskey calls AfterRegisterPasskeyFunc.
+func (mock *HooksMock) AfterRegisterPasskey(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) error {
+	if mock.AfterRegisterPasskeyFunc == nil {
+		panic("HooksMock.AfterRegisterPasskeyFunc: method is nil but Hooks.AfterRegisterPasskey was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Credential *passkeys.Credential
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		Credential: credential,
+	}
+	mock.lockAfterRegisterPasskey.Lock()
+	mock.calls.AfterRegisterPasskey = append(mock.calls.AfterRegisterPasskey, callInfo)
+	mock.lockAfterRegisterPasskey.Unlock()
+	return mock.AfterRegisterPasskeyFunc(ctx, tx, scope, credential)
+}
+
+// AfterRegisterPasskeyCalls gets all the calls that were made to AfterRegisterPasskey.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRegisterPasskeyCalls())
+func (mock *HooksMock) AfterRegisterPasskeyCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	Credential *passkeys.Credential
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Credential *passkeys.Credential
+	}
+	mock.lockAfterRegisterPasskey.RLock()
+	calls = mock.calls.AfterRegisterPasskey
+	mock.lockAfterRegisterPasskey.RUnlock()
+	return calls
+}
