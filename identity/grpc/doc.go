@@ -47,10 +47,11 @@ request has been found well formed and before anything reads or writes.
 
 The default, [MembershipAuthorizer], permits an account the caller holds a live
 membership in, a user they share one with, and an invitation they sent or whose
-account they are in. A consumer with a different rule supplies it with
-[WithTargetAuthorizer]; a consumer who says nothing gets a directory that is
-closed on other people's accounts rather than one where a grant is
-directory-wide.
+account they are in. GetInvitation also admits the invitation's recipient, by
+the verified address on their own row, whatever the authorizer answered. A
+consumer with a different rule supplies it with [WithTargetAuthorizer]; a
+consumer who says nothing gets a directory that is closed on other people's
+accounts rather than one where a grant is directory-wide.
 
 [github.com/primandproper/platform-go/v14/identity/config] assembles all three
 layers from environment configuration and registers them with an injector, which

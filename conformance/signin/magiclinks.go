@@ -58,6 +58,14 @@ func redeem(t *testing.T, anon signinpb.SignInServiceClient, token string) (*sig
 func magicLinks(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
+	// Once, up front, rather than only where a subtest reads a link: a
+	// deployment that supplies no MagicLinkToken mails no sign-in links, and
+	// every subtest here knocks on the passwordless doors before it would reach
+	// mailedLink. Against a deployment with no magic-link store those doors
+	// answer Internal, which is the honest answer from a door that was never
+	// configured and not a promise this suite may hold it to.
+	s.NeedsAction(t, s.Seams().Actions.MagicLinkToken != nil, "magic link token")
+
 	// The flow the passwordless door was added for: somebody arrives naming no
 	// password and gets in on one mail, from a client with nobody on it.
 	t.Run("somebody with no password signs in on one mailed link", func(t *testing.T) {

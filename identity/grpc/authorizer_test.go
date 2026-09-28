@@ -261,6 +261,22 @@ func TestARequestNamedTargetIsCheckedAgainstTheCaller(T *testing.T) {
 				return err
 			},
 		},
+		"GetInvitation": {
+			mine: func(n *neighborhood) error {
+				_, err := n.h.client.GetInvitation(n.ctx(), &identitypb.GetInvitationRequest{
+					InvitationId: n.myInvitation.GetId(),
+				})
+
+				return err
+			},
+			theirs: func(n *neighborhood) error {
+				_, err := n.h.client.GetInvitation(n.ctx(), &identitypb.GetInvitationRequest{
+					InvitationId: n.theirInvitation.GetId(),
+				})
+
+				return err
+			},
+		},
 		"GetAccount": {
 			mine: func(n *neighborhood) error {
 				_, err := n.h.client.GetAccount(n.ctx(),
@@ -605,5 +621,90 @@ func TestTheDefaultIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
 			callers.ErrTargetNotPermitted)
 		test.ErrorIs(t, rule.AuthorizeInvitation(t.Context(), caller, "an-invitation-nobody-sent"),
 			callers.ErrTargetNotPermitted)
+	})
+}
+
+// TestAnInvitationIsReadByItsAccountItsInviteeAndAnOperator pins the three
+// readers GetInvitation admits beside the sender, one subtest each, against a
+// caller in the same directory who holds the same permission and is none of
+// them.
+func TestAnInvitationIsReadByItsAccountItsInviteeAndAnOperator(T *testing.T) {
+	T.Parallel()
+
+	// read is GetInvitation as caller, against the neighbor's invitation.
+	read := func(n *neighborhood, caller string) (*identitypb.GetInvitationResponse, error) {
+		return n.h.client.GetInvitation(
+			n.h.as(&testPrincipal{userID: caller, scope: testScope}),
+			&identitypb.GetInvitationRequest{InvitationId: n.theirInvitation.GetId()})
+	}
+
+	T.Run("a member of the account it is into, who did not send it", func(t *testing.T) {
+		t.Parallel()
+
+		n := newNeighborhood(t)
+
+		got, err := read(n, n.theirOtherMember.ID)
+		must.NoError(t, err)
+		test.EqOp(t, n.theirs.User.ID, got.GetInvitation().GetFromUser())
+	})
+
+	T.Run("the invitee, by the verified address on their own row", func(t *testing.T) {
+		t.Parallel()
+
+		n := newNeighborhood(t)
+
+		// seedUser addresses a user as <username>@example.com, which is the
+		// address the neighborhood's invitation into theirs was sent to.
+		invitee := n.h.seedUser(t, testScope, "their-invitee")
+		must.EqOp(t, n.theirInvitation.GetToEmail(), invitee.EmailAddress)
+
+		// Unverified, the address is whatever the caller typed, and it earns
+		// nothing: the refusal is the row check's, the same one a stranger gets.
+		_, err := read(n, invitee.ID)
+		must.Error(t, err)
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.True(t, errors.Is(err, callers.ErrTargetNotPermitted))
+
+		n.h.verifyEmail(t, testScope, invitee.ID)
+
+		got, err := read(n, invitee.ID)
+		must.NoError(t, err)
+		test.EqOp(t, invitee.EmailAddress, got.GetInvitation().GetToEmail())
+	})
+
+	T.Run("an operator whose rule permits every invitation", func(t *testing.T) {
+		t.Parallel()
+
+		// The seam answering yes to every invitation is what a consumer's
+		// service-wide grant looks like from here: the handler asks nothing
+		// past it.
+		n := newNeighborhood(t, identitygrpc.WithTargetAuthorizer(permitEverything{}))
+
+		operator := n.h.seedUser(t, testScope, "operator")
+
+		got, err := read(n, operator.ID)
+		must.NoError(t, err)
+		test.EqOp(t, n.theirInvitation.GetId(), got.GetInvitation().GetId())
+	})
+
+	T.Run("and nobody else, whether or not the invitation is there", func(t *testing.T) {
+		t.Parallel()
+
+		n := newNeighborhood(t)
+
+		// A member of mine who is not the invitee, holding the same permission
+		// as every caller in this harness.
+		_, err := read(n, n.mine.User.ID)
+		must.Error(t, err)
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.True(t, errors.Is(err, callers.ErrTargetNotPermitted))
+
+		// An id nobody issued answers identically, so the refusal does not
+		// confirm which ids exist.
+		_, err = n.h.client.GetInvitation(n.ctx(),
+			&identitypb.GetInvitationRequest{InvitationId: "an-invitation-nobody-sent"})
+		must.Error(t, err)
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.True(t, errors.Is(err, callers.ErrTargetNotPermitted))
 	})
 }

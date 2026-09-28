@@ -133,9 +133,10 @@ const (
 
 	// PermissionReadInvitations covers reading one invitation by id.
 	//
-	// It is the one id-addressed grant with no row check behind it, because the
-	// reader it exists for includes the recipient — who is neither the sender nor
-	// a member of the account yet. GetInvitation says the same at more length.
+	// It is a grant on the method like every other here, and which invitation
+	// is [TargetAuthorizer]'s question — with the recipient admitted beside
+	// whatever it answers, since they are neither the sender nor a member of
+	// the account yet. GetInvitation says why at more length.
 	PermissionReadInvitations authorization.Permission = "identity.invitations.read"
 )
 

@@ -109,6 +109,71 @@ func products(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
+	// Each refused create is resent corrected under the same provider
+	// identifier. That identifier is unique and a second claim on it is a
+	// conflict, so the corrected create going through is both the positive
+	// control and the proof that the refused one stored nothing — with no
+	// count of a catalog the suite may not own.
+	t.Run("a product with no name is refused as malformed and claims nothing", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(createProduct))
+		ctx := mine.Context(t.Context())
+
+		input := productInput()
+		input.Name = ""
+
+		refused, err := mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
+		must.Error(t, err)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+		test.Nil(t, refused.GetResult())
+
+		input.Name = "a thing"
+		_, err = mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
+		must.NoError(t, err, must.Sprint("the corrected product was refused; the nameless one claimed its provider identifier"))
+	})
+
+	t.Run("a recurring product with no interval is refused, and one with an interval is stocked", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(createProduct))
+		ctx := mine.Context(t.Context())
+
+		// A recurring product with no interval would bill on a cadence nobody
+		// chose.
+		input := productInput()
+		input.Kind = billingpb.ProductKind_PRODUCT_KIND_RECURRING
+		input.BillingIntervalMonths = 0
+
+		_, err := mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
+		must.Error(t, err)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		input.BillingIntervalMonths = 1
+		created, err := mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
+		must.NoError(t, err, must.Sprint("the corrected product was refused; the intervalless one claimed its provider identifier"))
+		test.EqOp(t, billingpb.ProductKind_PRODUCT_KIND_RECURRING, created.GetResult().GetKind())
+		test.EqOp(t, int64(1), created.GetResult().GetBillingIntervalMonths())
+	})
+
+	t.Run("a one-time product carrying an interval is refused, and one without is stocked", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(createProduct))
+		ctx := mine.Context(t.Context())
+
+		input := productInput()
+		input.BillingIntervalMonths = 1
+
+		_, err := mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
+		must.Error(t, err)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		input.BillingIntervalMonths = 0
+		_, err = mine.Surfaces.Billing.CreateProduct(ctx, &billingpb.CreateProductRequest{Input: input})
+		must.NoError(t, err, must.Sprint("the corrected product was refused; the refused one claimed its provider identifier"))
+	})
+
 	t.Run("a currency that is not three characters is refused in words the caller can act on", func(t *testing.T) {
 		t.Parallel()
 

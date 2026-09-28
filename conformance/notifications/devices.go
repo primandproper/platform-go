@@ -111,21 +111,36 @@ func registrations(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
-	t.Run("a device listing holds the caller's own handsets and nothing from a colleague or another tenant", func(t *testing.T) {
+	// Two assertions rather than one, because they are owed by different
+	// deployments: the colleague half holds in a directory every caller shares,
+	// and the neighbor half skips there.
+	t.Run("a device listing holds the caller's own handsets and nothing from a colleague", func(t *testing.T) {
 		t.Parallel()
 
-		mine, neighbor := twoTenants(t, s, conformance.Making(registerDevice, listDevices))
+		mine := s.Subject(t, conformance.Making(registerDevice, listDevices))
 		other := colleague(t, s, mine, conformance.Making(registerDevice))
 
 		own := register(t, mine, freshToken())
 		colleagues := register(t, other, freshToken())
-		neighbors := register(t, neighbor, freshToken())
 
 		ids := devicesOf(t, mine)
 		test.SliceContains(t, ids, own.GetId(),
 			test.Sprint("the caller's own handset was missing from its devices"))
 		test.SliceNotContains(t, ids, colleagues.GetId(),
 			test.Sprint("a colleague's handset reached this caller's devices"))
+	})
+
+	t.Run("a device listing holds nothing from another tenant", func(t *testing.T) {
+		t.Parallel()
+
+		mine, neighbor := twoTenants(t, s, conformance.Making(registerDevice, listDevices))
+
+		own := register(t, mine, freshToken())
+		neighbors := register(t, neighbor, freshToken())
+
+		ids := devicesOf(t, mine)
+		test.SliceContains(t, ids, own.GetId(),
+			test.Sprint("the caller's own handset was missing from its devices"))
 		test.SliceNotContains(t, ids, neighbors.GetId(),
 			test.Sprint("a neighboring tenant's handset reached this caller's devices"))
 	})

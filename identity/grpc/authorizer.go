@@ -345,3 +345,68 @@ func (s *Server) authorizeInvitation(
 	return authorizeOutcome(op, s.targets.AuthorizeInvitation(ctx, caller, invitationID),
 		"authorizing the caller against invitation %q", invitationID)
 }
+
+// authorizeInvitationRead is GetInvitation's row check: the seam's answer, and
+// the invitee where the seam refused. See GetInvitation for why the invitee is
+// not the seam's question.
+func (s *Server) authorizeInvitationRead(
+	ctx context.Context,
+	op observability.Operation,
+	caller callers.Principal,
+	invitationID string,
+) error {
+	const description = "authorizing the caller against invitation %q"
+
+	refusal := s.targets.AuthorizeInvitation(ctx, caller, invitationID)
+	if !errors.Is(refusal, callers.ErrTargetNotPermitted) {
+		return authorizeOutcome(op, refusal, description, invitationID)
+	}
+
+	invitee, err := s.isInvitee(ctx, caller, invitationID)
+	if err != nil {
+		return authorizeOutcome(op, err, description, invitationID)
+	}
+
+	if invitee {
+		return nil
+	}
+
+	return authorizeOutcome(op, refusal, description, invitationID)
+}
+
+// isInvitee reports whether the caller's own user row carries a verified
+// address that is the one the invitation names. The comparison is exact,
+// because it is the one ListInvitationsForEmailAddress's read makes.
+//
+// An invitation or a caller this scope does not have is not an invitee rather
+// than an error, so the refusal that follows reads the same as any other.
+func (s *Server) isInvitee(ctx context.Context, caller callers.Principal, invitationID string) (bool, error) {
+	if caller == nil {
+		return false, nil
+	}
+
+	var (
+		scope  = caller.Scope()
+		reader = s.client.Reader()
+	)
+
+	invitation, err := s.store.GetInvitation(ctx, reader, scope, invitationID)
+	if err != nil {
+		if errors.Is(err, identity.ErrInvitationNotFound) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	user, err := s.store.GetUser(ctx, reader, scope, caller.UserID())
+	if err != nil {
+		if errors.Is(err, identity.ErrUserNotFound) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return user.EmailAddressVerified() && user.EmailAddress == invitation.ToEmail, nil
+}
