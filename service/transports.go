@@ -36,7 +36,6 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
-	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -162,23 +161,6 @@ type Transports struct {
 	//
 	// The one fact that derivation cannot always get right is the tenant — see
 	// TenantOf.
-	//
-	// Nil is not an error where sign-in is configured. A service whose
-	// signin.Service resolves and that names no extractor gets
-	// signingrpc.NewPrincipalExtractor over the Tokens block's issuer, the
-	// database client and identity's store: a request's bearer token, minted
-	// by that service, is the caller. RegisterTransports registers that
-	// extractor as a *signingrpc.PrincipalExtractor, so a composition root
-	// can reach it for what this package cannot install — the router
-	// middleware the HTTP surfaces need to see a caller at all, since an HTTP
-	// request carries no metadata the extractor could read, and the gRPC
-	// interceptor that resolves a caller once per request and answers an
-	// outage as one. A consumer that registers its own under that key has it
-	// used instead, which is how a role policy (signingrpc.WithGrants) or a
-	// second kind of token (signingrpc.WithFallback) joins the default.
-	//
-	// With no signin.Service there is no default, and a surface to mount with
-	// no extractor is still ErrNilPrincipalExtractor.
 	Extractor callers.PrincipalExtractor
 
 	// TenantOf reads the tenant a caller's rows belong to off the caller, for
@@ -232,10 +214,6 @@ type Transports struct {
 	// hands primitives-go's authorization/grpc enforcer, so the interceptor
 	// that decides whether a method may be called and the handler that decides
 	// which rows the answer may hold read one authority and cannot disagree.
-	//
-	// Nil where Extractor is defaulted reads the default's Grants, which is
-	// the role policy a registered *signingrpc.PrincipalExtractor was built
-	// with, and reports nothing for one built without.
 	//
 	// Nil is deliberately today's behavior rather than a startup error. Each
 	// surface's own absence rule is the fail-closed one — include_archived is
@@ -361,13 +339,6 @@ type Authorizers struct {
 // identitycfg.RegisterServer already says about the one surface it builds: a
 // mount is not a policy.
 //
-// Nor does it install an authentication interceptor. Where it defaults
-// Transports.Extractor, that extractor reads a gRPC request's bearer token on
-// its own, so the gRPC surfaces see their callers with nothing installed; the
-// HTTP surfaces see them only once the application puts the extractor's
-// HTTPMiddleware on the router, which must happen before anything mounts on
-// it and so before this call's surfaces do.
-//
 // Registration is lazy, as Register's is. Nothing here is built until something
 // invokes it, which for a service built through New is at startup.
 func RegisterTransports(i do.Injector, t *Transports) {
@@ -385,14 +356,6 @@ func RegisterTransports(i do.Injector, t *Transports) {
 	// call, which is the right place for it to.
 	taken := providedNames(i)
 	_, contested := taken[do.NameOf[[]grpcserver.RegistrationFunc]()]
-
-	// The default extractor, for a Transports that names none. Registered
-	// rather than built inline so that a composition root can invoke it to
-	// install the middleware and interceptor it ships, and skipped where the
-	// application registered its own, which is then the one used.
-	if _, own := taken[do.NameOf[*signingrpc.PrincipalExtractor]()]; t.Extractor == nil && !own {
-		do.Provide(i, provideSignInExtractor)
-	}
 
 	do.Provide(i, func(i do.Injector) (*mountedTransports, error) {
 		if contested {
@@ -446,8 +409,6 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 	}
 
 	m := &mount{i: i, pillars: pillars, t: t}
-
-	m.defaultExtractor()
 
 	m.audit()
 	m.billing()
@@ -517,65 +478,6 @@ func need[T any](m *mount) (T, bool) {
 	}
 
 	return v, true
-}
-
-// defaultExtractor fills in a Transports that names no extractor with the one
-// sign-in tokens resolve through, where a signin.Service resolves. The
-// caller's Transports is copied rather than edited: it is theirs.
-func (m *mount) defaultExtractor() {
-	if m.t.Extractor != nil {
-		return
-	}
-
-	if _, ok := need[*signin.Service](m); !ok {
-		return
-	}
-
-	extractor, ok := need[*signingrpc.PrincipalExtractor](m)
-	if !ok {
-		return
-	}
-
-	derived := *m.t
-	derived.Extractor = extractor.Extract
-
-	if derived.Grants == nil {
-		derived.Grants = extractor.Grants
-	}
-
-	m.t = &derived
-}
-
-// provideSignInExtractor builds the default extractor: sign-in's tokens, read
-// back with the Tokens block's issuer, resolved through identity's directory
-// on the service's database client.
-func provideSignInExtractor(i do.Injector) (*signingrpc.PrincipalExtractor, error) {
-	pillars, err := observability.InvokePillars(i)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking the observability pillars for the sign-in principal extractor")
-	}
-
-	issuer, err := do.Invoke[tokens.Issuer](i)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking the token issuer for the sign-in principal extractor")
-	}
-
-	client, err := do.Invoke[database.Client](i)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking the database client for the sign-in principal extractor")
-	}
-
-	store, err := do.Invoke[identity.Store](i)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking the identity store for the sign-in principal extractor")
-	}
-
-	extractor, err := signingrpc.NewPrincipalExtractor(issuer, client, store, signingrpc.WithExtractorPillars(pillars))
-	if err != nil {
-		return nil, err
-	}
-
-	return extractor, nil
 }
 
 // caller returns the extractor, refusing a surface that has arrived at the

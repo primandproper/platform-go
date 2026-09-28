@@ -39,11 +39,12 @@ it would be proving a service nobody could run.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
   - The extractor, and the authorizers that surfaces refuse to mount
-    without. The extractor is signingrpc's, registered as the
-    *signingrpc.PrincipalExtractor that service falls back to when Transports
-    names none, so a subject's credential is a token the sign-in service minted
-    for it — through the administrative door for an administrator — and not a
-    stand-in this harness reads back. The authorizers encode one rule — a
+    without. The extractor is signingrpc's, named to service.Transports as
+    both the extractor and the grants, and its interceptor and middleware are
+    installed by the harness, since service installs neither. A subject's
+    credential is therefore a token the sign-in service minted for it — through
+    the administrative door for an administrator — and not a stand-in this
+    harness reads back. The authorizers encode one rule — a
     caller has standing in their own user and their active account — rather
     than a yes, because a permissive authorizer would let every later
     confinement assertion pass on the strength of the rule being absent.

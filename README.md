@@ -346,8 +346,9 @@ default it keeps none. Grants come from the consumer's role policy, and a
 deployment that also accepts another kind of token chains its own extractor
 in behind this one. Its interceptors enforce a table of which methods need a
 caller. The table is built from each surface's own method lists, and a method
-nobody declared is refused. `service` uses this extractor whenever sign-in is
-configured and the application names none.
+nobody declared is refused. The application installs it: `service` builds no
+extractor, so a composition root names it to `service.Transports` and puts its
+interceptor in the gRPC chain and its middleware on the router.
 
 `audit` crosses too, and it is the one that ships **strictly narrower than its
 own interface**. `audit/grpc` serves the `Reader` and nothing else:

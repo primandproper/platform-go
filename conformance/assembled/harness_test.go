@@ -236,20 +236,17 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	if waitlists == confirmsWaitlists {
 		do.ProvideValue[waitlistsgrpc.ConfirmationMailer](i, waitlistMail)
 	}
-	// The sign-in extractor, registered under the key service defaults its
-	// extractor from, with this harness's role policy on it. Transports below
-	// names no extractor and no grants, so every surface reads callers and
-	// grants through this one — the path a consumer takes when all it adds to
-	// the default is its policy.
-	do.Provide(i, func(i do.Injector) (*signingrpc.PrincipalExtractor, error) {
-		return signingrpc.NewPrincipalExtractor(
-			do.MustInvoke[tokens.Issuer](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[identity.Store](i),
-			signingrpc.WithGrants(grantsOf),
-		)
-	})
-	extractor := do.MustInvoke[*signingrpc.PrincipalExtractor](i)
+	// The sign-in extractor, with this harness's role policy on it, installed
+	// the way a consumer's main installs it: its interceptor in the chain, its
+	// middleware on the router, and it named to Transports as the extractor
+	// and the grants every surface reads. service builds none of this.
+	extractor, err := signingrpc.NewPrincipalExtractor(
+		do.MustInvoke[tokens.Issuer](i),
+		do.MustInvoke[database.Client](i),
+		do.MustInvoke[identity.Store](i),
+		signingrpc.WithGrants(grantsOf),
+	)
+	must.NoError(t, err)
 
 	do.ProvideValue(i, []grpc.UnaryServerInterceptor{
 		grpcerrors.UnaryErrorEncodingInterceptor(),
@@ -263,6 +260,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	do.MustInvoke[*routing.Router](i).Use(extractor.HTTPMiddleware)
 
 	service.RegisterTransports(i, &service.Transports{
+		Extractor:   extractor.Extract,
+		Grants:      extractor.Grants,
 		Authorizers: authorizers(),
 	})
 
