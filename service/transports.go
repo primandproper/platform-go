@@ -19,6 +19,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	"github.com/primandproper/platform-go/v14/identity"
+	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
@@ -882,6 +883,24 @@ func (m *mount) identity() {
 	}
 
 	opts := []identitygrpc.Option{identitygrpc.WithPillars(m.pillars)}
+
+	// The config block is what Register provided for Config.Identity, and the
+	// server half of it — the invitation lifetimes and whether a sender gets
+	// the token back — is read here, where the server is built. Absent, the
+	// server's own defaults stand.
+	if cfg, found := need[*identitycfg.Config](m); found {
+		opts = append(opts,
+			identitygrpc.WithInvitationTTL(cfg.InvitationTTL),
+			identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
+		)
+
+		if cfg.ReturnInvitationToken {
+			opts = append(opts, identitygrpc.WithInvitationTokenReturned())
+		}
+	} else if m.err != nil {
+		return
+	}
+
 	if m.t.Authorizers.IdentityTargets != nil {
 		opts = append(opts, identitygrpc.WithTargetAuthorizer(m.t.Authorizers.IdentityTargets))
 	}

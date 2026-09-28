@@ -172,7 +172,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Audit:         &auditcfg.Config{Dialect: d, TablePrefix: prefix},
 		Billing:       &billingcfg.Config{TablePrefix: prefix},
 		Comments:      &commentscfg.Config{TablePrefix: prefix},
-		Identity:      &identitycfg.Config{TablePrefix: prefix},
+		Identity:      &identitycfg.Config{TablePrefix: prefix, ReturnInvitationToken: true},
 		IssueReports:  &issuereportscfg.Config{TablePrefix: prefix},
 		Notifications: &notificationscfg.Config{TablePrefix: prefix},
 		Settings:      &settingscfg.Config{TablePrefix: prefix},
@@ -463,6 +463,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 			// name a target without writing to it. Its writes go through
 			// CommentTarget, since the type checks that a target exists.
 			CommentTargetType: string(thingType),
+
+			// The identity block above returns an invitation's token to its
+			// sender, so the suites assert that reading here and the
+			// identity harness, built on the server's default, asserts the
+			// other.
+			InvitationTokenReturned: true,
 
 			Dialect: d,
 

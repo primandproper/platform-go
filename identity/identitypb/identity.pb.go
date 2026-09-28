@@ -48,10 +48,11 @@
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token
-// on Invitation -- an invitation's token appears only as a request field on the
+// on Invitation -- an invitation's token appears as a request field on the
 // RPCs that answer one, because that is where it arrives from, on a link.
 // A schema with no field for a secret is a stronger guarantee than a converter
-// that remembers to clear one.
+// that remembers to clear one. The one response that has such a field is
+// InviteResponse, and it is empty unless the deployment opted in: see there.
 //
 // No credential RPCs either: setting a password, enrolling a second factor and
 // verifying an email address are the sign-in service's, not the directory's,
@@ -979,7 +980,8 @@ func (x *MembershipWithUser) GetMembership() *Membership {
 //
 // It carries no token. The token is what a link holds, it is minted server-side
 // and it is cleared from every invitation this service returns; it appears in
-// this schema only as a request field on the RPCs that answer one.
+// this schema as a request field on the RPCs that answer one, and beside the
+// invitation on InviteResponse when the deployment opted in to that.
 type Invitation struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -2089,9 +2091,18 @@ func (x *InviteRequest) GetExpiresAt() *timestamppb.Timestamp {
 type InviteResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// invitation is redacted, as everything here is. The token it was minted with
-	// reached the recipient through whatever the consumer's AfterInvite hook
-	// queued, and is not returned to the sender.
-	Invitation    *Invitation `protobuf:"bytes,1,opt,name=invitation,proto3" json:"invitation,omitempty"`
+	// reaches the recipient through whatever the consumer's AfterInvite hook
+	// queued.
+	Invitation *Invitation `protobuf:"bytes,1,opt,name=invitation,proto3" json:"invitation,omitempty"`
+	// token is the secret in the invitation's link, returned to the sender so
+	// they can copy the link and hand it over themselves -- and it is empty
+	// unless the deployment built its server to return it. Off, the token
+	// reaches only the address it was minted for. On, the sender holds the same
+	// link the mail carries: acceptance is bound to the invited address, so the
+	// link admits the addressed person and nobody else, and a sender who could
+	// forward the mail learns nothing new. It is returned here, once, and never
+	// on any read, event or hook.
+	Token         string `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2131,6 +2142,13 @@ func (x *InviteResponse) GetInvitation() *Invitation {
 		return x.Invitation
 	}
 	return nil
+}
+
+func (x *InviteResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
 }
 
 type AcceptInvitationRequest struct {
@@ -4859,11 +4877,12 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x04note\x18\x04 \x01(\tR\x04note\x12\x14\n" +
 	"\x05roles\x18\x05 \x03(\tR\x05roles\x129\n" +
 	"\n" +
-	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAtR\x05scope\"`\n" +
+	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAtR\x05scope\"v\n" +
 	"\x0eInviteResponse\x12N\n" +
 	"\n" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
-	"invitation\"|\n" +
+	"invitation\x12\x14\n" +
+	"\x05token\x18\x02 \x01(\tR\x05token\"|\n" +
 	"\x17AcceptInvitationRequest\x12#\n" +
 	"\rinvitation_id\x18\x01 \x01(\tR\finvitationID\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1f\n" +

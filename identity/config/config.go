@@ -62,6 +62,12 @@ type Config struct {
 	// Without a ceiling the field above is only a default, and a client that
 	// names its own expiry is the way around it.
 	MaxInvitationTTL time.Duration `env:"MAX_INVITATION_TTL" json:"maxInvitationTTL,omitempty" yaml:"maxInvitationTTL,omitempty"`
+
+	// ReturnInvitationToken hands an invitation's token back to its sender on
+	// the response to Invite, so they can copy the link and pass it on
+	// themselves. Off by default; see identitygrpc.WithInvitationTokenReturned
+	// for why that is safe and why it is still a deployment's decision.
+	ReturnInvitationToken bool `env:"RETURN_INVITATION_TOKEN" json:"returnInvitationToken,omitempty" yaml:"returnInvitationToken,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
@@ -246,6 +252,10 @@ func NewServer(
 		identitygrpc.WithMetricsProvider(options.metricsProvider),
 		identitygrpc.WithInvitationTTL(cfg.InvitationTTL),
 		identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
+	}
+
+	if cfg.ReturnInvitationToken {
+		base = append(base, identitygrpc.WithInvitationTokenReturned())
 	}
 
 	return identitygrpc.NewServer(svc, store, client, principals, append(base, options.server...)...)
