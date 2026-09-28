@@ -19,6 +19,26 @@ WHERE hash = ?
 	AND scope = ?
 	AND redeemed_with_key = ?`
 
+const getLiveRefreshTokenForFamilyMySQL = `SELECT
+	{{prefix}}signin_refresh_tokens.scope,
+	{{prefix}}signin_refresh_tokens.family_id,
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.active_account_id,
+	{{prefix}}signin_refresh_tokens.administrative,
+	{{prefix}}signin_refresh_tokens.issued_at,
+	{{prefix}}signin_refresh_tokens.signed_in_at,
+	{{prefix}}signin_refresh_tokens.expires_at,
+	{{prefix}}signin_refresh_tokens.purge_after,
+	{{prefix}}signin_refresh_tokens.redeemed_at,
+	{{prefix}}signin_refresh_tokens.revoked_at,
+	{{prefix}}signin_refresh_tokens.access_token_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?
+	AND {{prefix}}signin_refresh_tokens.family_id = ?
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?`
+
 const getRefreshTokenMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.scope,
 	{{prefix}}signin_refresh_tokens.family_id,
@@ -30,7 +50,8 @@ const getRefreshTokenMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.expires_at,
 	{{prefix}}signin_refresh_tokens.purge_after,
 	{{prefix}}signin_refresh_tokens.redeemed_at,
-	{{prefix}}signin_refresh_tokens.revoked_at
+	{{prefix}}signin_refresh_tokens.revoked_at,
+	{{prefix}}signin_refresh_tokens.access_token_id
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = ?
 	AND {{prefix}}signin_refresh_tokens.scope = ?`
@@ -53,8 +74,10 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	issued_at,
 	signed_in_at,
 	expires_at,
-	purge_after
+	purge_after,
+	access_token_id
 ) VALUES (
+	?,
 	?,
 	?,
 	?,
@@ -136,6 +159,7 @@ WHERE purge_after <= ?`
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
 	claimRefreshTokenRemint            string
+	getLiveRefreshTokenForFamily       string
 	getRefreshToken                    string
 	getRefreshTokenRedemption          string
 	insertRefreshToken                 string
@@ -155,6 +179,7 @@ type mysqlQueries struct {
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
 		claimRefreshTokenRemint:            strings.ReplaceAll(claimRefreshTokenRemintMySQL, prefixMarker, prefix),
+		getLiveRefreshTokenForFamily:       strings.ReplaceAll(getLiveRefreshTokenForFamilyMySQL, prefixMarker, prefix),
 		getRefreshToken:                    strings.ReplaceAll(getRefreshTokenMySQL, prefixMarker, prefix),
 		getRefreshTokenRedemption:          strings.ReplaceAll(getRefreshTokenRedemptionMySQL, prefixMarker, prefix),
 		insertRefreshToken:                 strings.ReplaceAll(insertRefreshTokenMySQL, prefixMarker, prefix),
@@ -185,6 +210,34 @@ func (q *mysqlQueries) ClaimRefreshTokenRemint(ctx context.Context, db DBTX, arg
 	return result.RowsAffected()
 }
 
+// GetLiveRefreshTokenForFamily runs the :one query against mysql.
+func (q *mysqlQueries) GetLiveRefreshTokenForFamily(ctx context.Context, db DBTX, arg GetLiveRefreshTokenForFamilyParams) (GetLiveRefreshTokenForFamilyRow, error) {
+	row := db.QueryRowContext(ctx, q.getLiveRefreshTokenForFamily,
+		arg.Scope,
+		arg.FamilyID,
+		arg.Now,
+	)
+
+	var i GetLiveRefreshTokenForFamilyRow
+
+	err := row.Scan(
+		&i.Scope,
+		&i.FamilyID,
+		&i.SubjectID,
+		&i.ActiveAccountID,
+		&i.Administrative,
+		&i.IssuedAt,
+		&i.SignedInAt,
+		&i.ExpiresAt,
+		&i.PurgeAfter,
+		&i.RedeemedAt,
+		&i.RevokedAt,
+		&i.AccessTokenID,
+	)
+
+	return i, err
+}
+
 // GetRefreshToken runs the :one query against mysql.
 func (q *mysqlQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRefreshTokenParams) (GetRefreshTokenRow, error) {
 	row := db.QueryRowContext(ctx, q.getRefreshToken,
@@ -206,6 +259,7 @@ func (q *mysqlQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRefr
 		&i.PurgeAfter,
 		&i.RedeemedAt,
 		&i.RevokedAt,
+		&i.AccessTokenID,
 	)
 
 	return i, err
@@ -241,6 +295,7 @@ func (q *mysqlQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Inse
 		arg.SignedInAt,
 		arg.ExpiresAt,
 		arg.PurgeAfter,
+		arg.AccessTokenID,
 	)
 
 	return err
@@ -414,6 +469,25 @@ var (
 		ExpectedKey     *string
 	}(ClaimRefreshTokenRemintParams{})
 	_ = struct {
+		Scope    tenancy.Scope
+		FamilyID string
+		Now      time.Time
+	}(GetLiveRefreshTokenForFamilyParams{})
+	_ = struct {
+		Scope           tenancy.Scope
+		FamilyID        string
+		SubjectID       string
+		ActiveAccountID string
+		Administrative  bool
+		IssuedAt        time.Time
+		SignedInAt      time.Time
+		ExpiresAt       time.Time
+		PurgeAfter      time.Time
+		RedeemedAt      *time.Time
+		RevokedAt       *time.Time
+		AccessTokenID   *string
+	}(GetLiveRefreshTokenForFamilyRow{})
+	_ = struct {
 		Hash  string
 		Scope tenancy.Scope
 	}(GetRefreshTokenParams{})
@@ -429,6 +503,7 @@ var (
 		PurgeAfter      time.Time
 		RedeemedAt      *time.Time
 		RevokedAt       *time.Time
+		AccessTokenID   *string
 	}(GetRefreshTokenRow{})
 	_ = struct {
 		Hash  string
@@ -449,6 +524,7 @@ var (
 		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		PurgeAfter      time.Time
+		AccessTokenID   *string
 	}(InsertRefreshTokenParams{})
 	_ = struct {
 		Scope       tenancy.Scope

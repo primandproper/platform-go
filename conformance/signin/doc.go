@@ -68,6 +68,13 @@ Authorizer seam in docs/client-contract.md, and a skip where the subject
 supplies none. The caller is held to the calls it declares, as every minted
 caller is.
 
+A deployment that checks each access token's login on every request says so
+in Seams.ImmediateRevocation, and is then held to it: an access token stops
+working on the request after its login is ended by name, while another login
+the same person holds goes on working. A deployment that does not is one whose
+sign-out takes effect within one access-token lifetime, and the assertion
+skips.
+
 The administrative door is asserted the same way, once the registrant is
 granted Seams.Roles.Administrator, and skips where the subject names none.
 

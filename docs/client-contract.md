@@ -328,11 +328,13 @@ all of them with an empty `SignOutResponse`. So a client never shows an error fo
 and never needs to: pressing it twice, or pressing it on a session that had already lapsed, is
 the ordinary case.
 
-**What neither one stops is an access token already issued.** Nothing can — it is checked
-against the issuer's signature rather than against any table — so a sign-out takes effect
-within one access-token lifetime. A client should therefore `clear()` locally as well, which it
-was going to do anyway, and a deployment that needs the window shorter shortens the access
-token.
+**What neither one stops, by default, is an access token already issued.** It is checked
+against the issuer's signature rather than against any table, so a sign-out takes effect within
+one access-token lifetime. A deployment whose extractor checks each token's login on every
+request (`signin.Service.CheckSignIn`, through the extractor's `WithSignInCheck`) closes that
+window: the ended login's access token is `UNAUTHENTICATED` from its next request. A client
+cannot tell which deployment it is talking to, so it should `clear()` locally either way, which
+it was going to do anyway.
 
 **R17 — a `signOut()` that only clears local state is a lie on a shared device.** It is one
 extra call, it cannot fail in a way worth reporting, and without it the refresh token stays

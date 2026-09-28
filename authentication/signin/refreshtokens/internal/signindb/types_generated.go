@@ -19,6 +19,29 @@ type ClaimRefreshTokenRemintParams struct {
 	ExpectedKey     *string
 }
 
+// GetLiveRefreshTokenForFamilyParams are the arguments to GetLiveRefreshTokenForFamily.
+type GetLiveRefreshTokenForFamilyParams struct {
+	Scope    tenancy.Scope
+	FamilyID string
+	Now      time.Time
+}
+
+// GetLiveRefreshTokenForFamilyRow is one row of GetLiveRefreshTokenForFamily's result.
+type GetLiveRefreshTokenForFamilyRow struct {
+	Scope           tenancy.Scope
+	FamilyID        string
+	SubjectID       string
+	ActiveAccountID string
+	Administrative  bool
+	IssuedAt        time.Time
+	SignedInAt      time.Time
+	ExpiresAt       time.Time
+	PurgeAfter      time.Time
+	RedeemedAt      *time.Time
+	RevokedAt       *time.Time
+	AccessTokenID   *string
+}
+
 // GetRefreshTokenParams are the arguments to GetRefreshToken.
 type GetRefreshTokenParams struct {
 	Hash  string
@@ -38,6 +61,7 @@ type GetRefreshTokenRow struct {
 	PurgeAfter      time.Time
 	RedeemedAt      *time.Time
 	RevokedAt       *time.Time
+	AccessTokenID   *string
 }
 
 // GetRefreshTokenRedemptionParams are the arguments to GetRefreshTokenRedemption.
@@ -64,6 +88,7 @@ type InsertRefreshTokenParams struct {
 	SignedInAt      time.Time
 	ExpiresAt       time.Time
 	PurgeAfter      time.Time
+	AccessTokenID   *string
 }
 
 // ListLiveRefreshTokenFamiliesParams are the arguments to ListLiveRefreshTokenFamilies.

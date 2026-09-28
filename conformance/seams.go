@@ -191,6 +191,20 @@ type Seams struct {
 	// making it say so rather than making everybody else opt in.
 	ErrorReasonsStripped bool
 
+	// ImmediateRevocation says the deployment checks an access token's login on
+	// every request — signin.Service.CheckSignIn, which the sign-in extractor
+	// makes through its WithSignInCheck — so a login that ends stops its access
+	// token working at once rather than when it expires. True runs the
+	// assertion that it does; false skips it, with the reason printed.
+	//
+	// It is a declaration rather than something a suite could find out,
+	// because the default is the other answer and a legitimate one: an access
+	// token is a signed statement that stands until it expires, and a sign-out
+	// takes effect within one access-token lifetime. A deployment that bought
+	// the per-request read has promised its clients more than that, and this is
+	// where it says so and is held to it.
+	ImmediateRevocation bool
+
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
 	// ticket everybody assigned to it may open. True skips the assertion that
