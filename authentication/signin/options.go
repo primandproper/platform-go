@@ -308,6 +308,19 @@ func WithPasswordPolicy(policy PasswordPolicy) ServiceOption {
 	}
 }
 
+// WithAccountPasswordPolicy sets the rule a password must pass, knowing the
+// account, before it is written to one that already exists — on a change and
+// on an attachment. A nil policy is ignored, leaving none. It does not replace
+// [WithPasswordPolicy], which still runs first and is still the only rule
+// asked at registration. See [AccountPasswordPolicy].
+func WithAccountPasswordPolicy(policy AccountPasswordPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.accountPasswordPolicy = policy
+		}
+	}
+}
+
 // WithRegistrationPolicy sets what [Service.Register] asks before it writes
 // anybody: what the consumer's own registration adds to the request, and
 // whether it admits the registrant at all. A nil policy is ignored, leaving

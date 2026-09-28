@@ -247,3 +247,185 @@ func TestPasswordPolicy_onTheWire(T *testing.T) {
 		test.EqOp(t, "PASSWORD_REFUSED", reason.Reason)
 	})
 }
+
+// errSameAsCurrent is the rule the account-aware seam exists for: a new
+// password that is the one being replaced.
+var errSameAsCurrent = platformerrors.New("choose a password you are not already using")
+
+// notTheCurrent is a consumer's account-aware policy, keeping what it was
+// handed so a case can say what crossed the seam.
+type notTheCurrent struct {
+	seen []*signin.PasswordChange
+}
+
+func (p *notTheCurrent) policy(ctx context.Context, change *signin.PasswordChange) error {
+	p.seen = append(p.seen, change)
+
+	same, err := change.MatchesCurrent(ctx, change.NewPassword)
+	if err != nil {
+		return err
+	}
+
+	if same {
+		return errSameAsCurrent
+	}
+
+	return nil
+}
+
+func TestAccountPasswordPolicy_UpdatePassword(T *testing.T) {
+	T.Parallel()
+
+	T.Run("the current password can be refused as the new one", func(t *testing.T) {
+		t.Parallel()
+
+		p := &notTheCurrent{}
+		e := newEnv(t, signin.WithAccountPasswordPolicy(p.policy))
+
+		err := e.svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: e.password,
+			NewPassword:     e.password,
+		})
+		test.ErrorIs(t, err, signin.ErrPasswordRefused)
+		test.ErrorIs(t, err, errSameAsCurrent)
+		test.EqOp(t, 0, e.hooks.passwords)
+
+		must.NoError(t, e.svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: e.password,
+			NewPassword:     "something else entirely",
+		}))
+		test.EqOp(t, 1, e.hooks.passwords)
+		test.SliceLen(t, 2, p.seen)
+	})
+
+	T.Run("no password hash crosses the seam", func(t *testing.T) {
+		t.Parallel()
+
+		p := &notTheCurrent{}
+		e := newEnv(t, signin.WithAccountPasswordPolicy(p.policy))
+
+		must.NoError(t, e.svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: e.password,
+			NewPassword:     "something else entirely",
+		}))
+
+		must.SliceLen(t, 1, p.seen)
+		change := p.seen[0]
+		must.NotNil(t, change.User)
+		test.EqOp(t, e.user.ID, change.User.ID)
+		test.EqOp(t, "", change.User.HashedPassword)
+		test.EqOp(t, "", change.User.TwoFactorSecret)
+		test.EqOp(t, "something else entirely", change.NewPassword)
+	})
+
+	// The policy can ask whether a guess is the current password, so a caller
+	// who has not proven they know it must never reach it.
+	T.Run("after the current password is checked", func(t *testing.T) {
+		t.Parallel()
+
+		p := &notTheCurrent{}
+		e := newEnv(t, signin.WithAccountPasswordPolicy(p.policy))
+
+		err := e.svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: "not it",
+			NewPassword:     e.password,
+		})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.False(t, platformerrors.Is(err, signin.ErrPasswordRefused))
+		test.SliceEmpty(t, p.seen)
+	})
+
+	T.Run("after the plain policy, which is asked first", func(t *testing.T) {
+		t.Parallel()
+
+		plain := &minimumLength{}
+		account := &notTheCurrent{}
+		e := newEnv(t,
+			signin.WithPasswordPolicy(plain.policy),
+			signin.WithAccountPasswordPolicy(account.policy),
+		)
+
+		err := e.svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: e.password,
+			NewPassword:     "short",
+		})
+		test.ErrorIs(t, err, errTooShort)
+		test.EqOp(t, 1, plain.calls)
+		test.SliceEmpty(t, account.seen)
+	})
+
+	T.Run("nothing is hashed for a refused password", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		authenticator := &stubAuthenticator{result: true}
+
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer,
+			signin.WithAccountPasswordPolicy(func(context.Context, *signin.PasswordChange) error { return errSameAsCurrent }),
+		)
+		must.NoError(t, err)
+
+		err = svc.UpdatePassword(t.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+			CurrentPassword: e.password,
+			NewPassword:     e.password,
+		})
+		test.ErrorIs(t, err, signin.ErrPasswordRefused)
+		test.EqOp(t, 0, authenticator.hashes)
+	})
+}
+
+func TestAccountPasswordPolicy_AttachPassword(T *testing.T) {
+	T.Parallel()
+
+	p := &notTheCurrent{}
+	refuseOnce := true
+	e := newEnv(T, signin.WithAccountPasswordPolicy(func(ctx context.Context, change *signin.PasswordChange) error {
+		if err := p.policy(ctx, change); err != nil {
+			return err
+		}
+
+		if refuseOnce {
+			refuseOnce = false
+
+			return errSameAsCurrent
+		}
+
+		return nil
+	}))
+
+	registered, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.NoPassword()))
+	must.NoError(T, err)
+
+	err = e.svc.AttachPassword(T.Context(), testScope, &signin.PasswordAttachment{
+		Token:       registered.EmailAddressVerificationToken,
+		NewPassword: "long enough to pass",
+	})
+	test.ErrorIs(T, err, signin.ErrPasswordRefused)
+	test.SliceEmpty(T, e.hooks.attached)
+
+	// An account reaching this door holds no password, so nothing matches it.
+	must.SliceLen(T, 1, p.seen)
+	test.EqOp(T, registered.User.ID, p.seen[0].User.ID)
+
+	same, err := p.seen[0].MatchesCurrent(T.Context(), "long enough to pass")
+	must.NoError(T, err)
+	test.False(T, same)
+
+	// The link is exactly as live as it was.
+	must.NoError(T, e.svc.AttachPassword(T.Context(), testScope, &signin.PasswordAttachment{
+		Token:       registered.EmailAddressVerificationToken,
+		NewPassword: "long enough to pass",
+	}))
+	must.SliceLen(T, 1, e.hooks.attached)
+}
+
+func TestWithAccountPasswordPolicy_nilIsIgnored(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T, signin.WithAccountPasswordPolicy(nil))
+
+	must.NoError(T, e.svc.UpdatePassword(T.Context(), testScope, e.user.ID, &signin.PasswordUpdate{
+		CurrentPassword: e.password,
+		NewPassword:     e.password,
+	}))
+}

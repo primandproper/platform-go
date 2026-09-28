@@ -193,6 +193,39 @@ func TestRegisterService(T *testing.T) {
 		test.ErrorIs(t, err, refused)
 	})
 
+	T.Run("a registered account password policy is attached", func(t *testing.T) {
+		t.Parallel()
+
+		refused := errors.New("not your username")
+
+		hashed, err := argon2.NewArgon2Authenticator().HashPassword(t.Context(), "hunter2")
+		must.NoError(t, err)
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[identity.Store](i, &identitymock.StoreMock{
+			GetUserFunc: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, string) (*identity.User, error) {
+				return &identity.User{ID: "u", Username: "ada", HashedPassword: hashed}, nil
+			},
+		})
+		do.ProvideValue[tokens.Issuer](i, stubTokenIssuer{})
+		do.ProvideValue(i, &Config{})
+		withRegistrar(withAuthenticator(i))
+		do.ProvideValue(i, signin.AccountPasswordPolicy(func(context.Context, *signin.PasswordChange) error { return refused }))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		err = svc.UpdatePassword(t.Context(), tenancy.Of("tenant"), "u", &signin.PasswordUpdate{
+			CurrentPassword: "hunter2",
+			NewPassword:     "ada",
+		})
+		test.ErrorIs(t, err, signin.ErrPasswordRefused)
+		test.ErrorIs(t, err, refused)
+	})
+
 	T.Run("a registered registration policy is attached", func(t *testing.T) {
 		t.Parallel()
 
