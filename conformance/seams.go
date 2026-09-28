@@ -109,6 +109,12 @@ type Seams struct {
 	// "unknown".
 	VisitorScope *tenancy.Scope
 
+	// Roles is the deployment's role vocabulary, for the assertions that grant
+	// a role. The zero value is this package's own literals, which a deployment
+	// whose roles are open accepts; one whose roles are a closed vocabulary
+	// names the ones it declares. See Roles.
+	Roles Roles
+
 	// CommentTargetType is a target type the deployment's comments.Targets
 	// declares, for the reads that name a comment target. Which kinds of thing
 	// accept comments is the application's vocabulary, so no suite can guess
@@ -119,12 +125,6 @@ type Seams struct {
 	// type declared without an existence check accepts. A deployment whose
 	// types are checked supplies the action as well, and the action wins.
 	CommentTargetType string
-
-	// Roles is the deployment's role vocabulary, for the assertions that grant
-	// a role. The zero value is this package's own literals, which a deployment
-	// whose roles are open accepts; one whose roles are a closed vocabulary
-	// names the ones it declares. See Roles.
-	Roles Roles
 
 	// WebhookURL is an address the deployment's webhooks surface accepts an
 	// endpoint at, for the assertions that register one. Empty is not an
@@ -171,6 +171,20 @@ type Seams struct {
 	// authorization interceptor reads. Run checks only that each entry is
 	// spelled as a full method name.
 	OperatorMethods []string
+
+	// PasswordChangeGateDisabled says the deployment installs no gate holding a
+	// caller who owes a forced password change at the form — it built
+	// signin/grpc's PrincipalExtractor WithoutPasswordChangeGate, or
+	// authenticates through its own interceptor and installed no
+	// PasswordChangeGate behind it. True skips the assertion that
+	// such a caller's ordinary call is refused, with that printed; false, the
+	// zero value, asserts it, because the gate is on by default.
+	//
+	// It is a fact about the deployment rather than an action, and the only one
+	// the suite cannot find out for itself: a call that succeeds for a flagged
+	// caller is either a gate that is off or a gate that is broken, and only the
+	// deployment knows which it meant.
+	PasswordChangeGateDisabled bool
 
 	// ErrorReasonsStripped says the deployment's edge drops a refusal's
 	// client-safe reason before it reaches a client. True skips the reason half

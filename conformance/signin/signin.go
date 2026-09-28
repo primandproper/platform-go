@@ -100,6 +100,7 @@ const (
 	reasonAdminSignInUnavailable  = "ADMIN_SIGNIN_UNAVAILABLE"
 	reasonPasswordAlreadySet      = "PASSWORD_ALREADY_SET"
 	reasonNoCredentialNamed       = "NO_CREDENTIAL_NAMED" //nolint:gosec // G101: a refusal's name, not a credential.
+	reasonPasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
 )
 
 // password is what the registrations here choose, and newPassword is what a
