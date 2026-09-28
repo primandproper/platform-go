@@ -1,7 +1,7 @@
 /*
 Package queries is the outbox schema described as data — the canonical table
 name and its columns in the order every statement names them — together with the
-nine statements the Writer and the Relay execute, rendered from it.
+statements the Writer and the Relay execute, rendered from it.
 
 It exists because those facts had two consumers that must not disagree. The
 generator behind `make generate` renders this table into the canonical .sql
@@ -18,14 +18,14 @@ sqlc-gen-unison generates from them, in outbox/internal/outboxdb.
 
 # Rendered and authored
 
-Three of the nine come from database/querygen: the failure write, which assigns
-bound values to a row addressed by its id, and the reap, which is that package's
-bounded prune. The other six are written out here in full.
+A few come from database/querygen: the failure write, which assigns bound
+values to a row addressed by its id, and the reap, which is that package's
+bounded prune. The rest are written out here in full.
 
 The line between them is not effort, and it is not "querygen was not finished".
 querygen renders statements that assign *bound values* and address rows by
-equality, which is the shape a row-oriented store is nearly all of. The six are
-outside it, and each is outside it for a reason that would still be true if
+equality, which is the shape a row-oriented store is nearly all of. The rest
+are outside it, and each is outside it for a reason that would still be true if
 querygen grew:
 
   - Two read the outbox table through itself. The claim's ordering predicate is

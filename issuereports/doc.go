@@ -88,8 +88,8 @@ and why the alternative is worse.
 
 # The transport
 
-issuereports/grpc serves ten of the eleven store methods over gRPC — the filing,
-the reads, the four listings, the revision, the archive and the move — with the
+issuereports/grpc serves every store method but one over gRPC — the filing, the
+reads, the listings, the revision, the archive and the move — with the
 .proto they are described by, a typed client, and the permissions each one wants.
 [Store.TransitionReport] is why it is worth having: a compare-and-set is a better
 RPC than it is a method call, because over a wire the window between the read a

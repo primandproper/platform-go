@@ -1,14 +1,14 @@
 /*
 Package queries is the series schema described as data: the canonical table
-names, their columns in the order every read projects them, and the sixteen
-statements the store executes over them.
+names, their columns in the order every read projects them, and the statements
+the store executes over them.
 
 It exists because those facts have two consumers that must not disagree. The
 generator behind `make generate` renders them through database/querygen into the
 canonical .sql files sqlc is run over; the store reads the same names through the
 querier sqlc-gen-unison generates from those files.
 
-# The sixteen statements
+# The statements
 
   - CreateSeries, GetSeries and ListSeries write, read and page the rules.
   - EndSeries writes a rule's end date; SkipSeriesFrom is its sweep over the

@@ -13,11 +13,11 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The endpoint half of the surface: five RPCs over the endpoints registered in
+// The endpoint half of the surface: the RPCs over the endpoints registered in
 // the caller's tenant, each behind a permission.
 //
 // Every one of them takes the tenant off the caller's principal, and none of
-// them takes a scope at all. The three reads are one call each; the save, the
+// them takes a scope at all. The reads are one call each; the save, the
 // archive and the rotation are one call inside one transaction, because
 // webhooks.Dispatcher's writes take a database.Tx and an RPC handler is the
 // caller with nothing of its own to join.
@@ -192,7 +192,7 @@ func (s *Server) ListEndpoints(
 // It writes through the store rather than the dispatcher, which is the one write
 // on this surface that does. There is no Dispatcher.Unregister to call: nothing
 // about retiring an endpoint needs a URL checked or a catalog consulted, so the
-// gate the other three writes go through has nothing to say about this one.
+// gate the other writes go through has nothing to say about this one.
 //
 // The endpoint's delivery history is kept, and so are its subscriptions. An
 // archived endpoint is excluded from fan-out by its own archived_at, so

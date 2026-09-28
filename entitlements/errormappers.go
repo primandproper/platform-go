@@ -31,10 +31,10 @@ import (
 // here would be unreachable behind the platform mapper as well as a second copy
 // of a decision already made.
 //
-// What is left is one answer about an account, three nil arguments and fifteen
-// faults in the code around it, and internal/sentinelmatrix records which
-// sentinel is in which state. The three nil ones are the platform's to answer
-// for the same reason. The fifteen are a catalog being built — a feature
+// What is left is one answer about an account, the nil arguments and the faults
+// in the code around it, and internal/sentinelmatrix records which sentinel is
+// in which state. The nil ones are the platform's to answer for the same reason.
+// The faults are a catalog being built — a feature
 // registered twice, a key that is not an identifier, a quota feature with
 // nothing to count, a grant with a negative limit — or a Check naming a feature
 // nobody declared, which is a typo in the calling code rather than a claim about

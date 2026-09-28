@@ -2,7 +2,7 @@
 Package passwordreset is the way back in for somebody who cannot sign in, as
 promises assertable against any subject that mounts it.
 
-Three RPCs, all of them answered to nobody, and two promises that pull against
+Every RPC here is answered to nobody, and there are two promises that pull against
 each other. The first is the point of the surface: a link that was mailed
 restores a way in, once, and withdraws every other link its holder was sent.
 The second is the silence it owes everyone else — a request for an address

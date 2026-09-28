@@ -61,8 +61,8 @@
 // interceptor put on the context. See identity.proto, which says this at
 // greater length.
 //
-// No write that a payment processor's callback makes. Seven of billing's thirty
-// store methods are absent from this service: CreateSubscription,
+// No write that a payment processor's callback makes. Seven of billing's store
+// methods are absent from this service: CreateSubscription,
 // UpdateSubscription, SetSubscriptionStatus, CreatePurchase, CompletePurchase,
 // RecordTransaction and SetTransactionStatus. Their caller is not a client. It
 // is a Stripe or RevenueCat receiver the consumer owns, or the checkout handler
@@ -135,11 +135,11 @@ const (
 // BillingService serves the record of what a deployment sells and what its
 // customers paid.
 //
-// Eighteen RPCs over thirty store methods, and the shape of the subset is the
-// decision worth reading before the list. Twelve of the eighteen are reads,
-// because the writes on this table have a caller who is not a client: seven of
-// them are made by a processor callback or a checkout handler already inside the
-// consumer's own transaction, and they are named in this file's opening comment
+// A subset of the store's methods, and the shape of the subset is the decision
+// worth reading before the list. Most of it is reads, because the writes on this
+// table have a caller who is not a client: the ones left off are made by a
+// processor callback or a checkout handler already inside the consumer's own
+// transaction, and they are named in this file's opening comment
 // along with why an RPC would break them. What is left on the write side is
 // administrative -- stocking and revising the catalog, and withdrawing a row
 // from each of the four tables.
@@ -153,8 +153,8 @@ const (
 // permission of their own, so that a consumer can hand out "read my invoices"
 // without handing out the customer ledger.
 type BillingServiceClient interface {
-	// The catalog: two reads any member of the scope may make, and three
-	// administrative writes.
+	// The catalog: reads any member of the scope may make, and administrative
+	// writes.
 	CreateProduct(ctx context.Context, in *CreateProductRequest, opts ...grpc.CallOption) (*CreateProductResponse, error)
 	GetProduct(ctx context.Context, in *GetProductRequest, opts ...grpc.CallOption) (*GetProductResponse, error)
 	ListProducts(ctx context.Context, in *ListProductsRequest, opts ...grpc.CallOption) (*ListProductsResponse, error)
@@ -376,11 +376,11 @@ func (c *billingServiceClient) ArchiveTransaction(ctx context.Context, in *Archi
 // BillingService serves the record of what a deployment sells and what its
 // customers paid.
 //
-// Eighteen RPCs over thirty store methods, and the shape of the subset is the
-// decision worth reading before the list. Twelve of the eighteen are reads,
-// because the writes on this table have a caller who is not a client: seven of
-// them are made by a processor callback or a checkout handler already inside the
-// consumer's own transaction, and they are named in this file's opening comment
+// A subset of the store's methods, and the shape of the subset is the decision
+// worth reading before the list. Most of it is reads, because the writes on this
+// table have a caller who is not a client: the ones left off are made by a
+// processor callback or a checkout handler already inside the consumer's own
+// transaction, and they are named in this file's opening comment
 // along with why an RPC would break them. What is left on the write side is
 // administrative -- stocking and revising the catalog, and withdrawing a row
 // from each of the four tables.
@@ -394,8 +394,8 @@ func (c *billingServiceClient) ArchiveTransaction(ctx context.Context, in *Archi
 // permission of their own, so that a consumer can hand out "read my invoices"
 // without handing out the customer ledger.
 type BillingServiceServer interface {
-	// The catalog: two reads any member of the scope may make, and three
-	// administrative writes.
+	// The catalog: reads any member of the scope may make, and administrative
+	// writes.
 	CreateProduct(context.Context, *CreateProductRequest) (*CreateProductResponse, error)
 	GetProduct(context.Context, *GetProductRequest) (*GetProductResponse, error)
 	ListProducts(context.Context, *ListProductsRequest) (*ListProductsResponse, error)

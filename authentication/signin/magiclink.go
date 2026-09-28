@@ -22,7 +22,7 @@ import (
 // together with the DDL it needs, so adopting a passwordless door does not mean
 // writing this.
 //
-// What an implementation owes its callers is not "these three methods". It is
+// What an implementation owes its callers is not "these methods". It is
 // the properties they exist to hold, none of which the signatures can state:
 //
 // The secret is never stored. Issue mints it, returns it once, and persists
@@ -44,7 +44,7 @@ import (
 //
 // # The transaction is the caller's, and that is the decision
 //
-// All three take a database.Tx, which is this module's store convention — but
+// Every method takes a database.Tx, which is this module's store convention — but
 // this is a seam where the convention had a live alternative and lost on the
 // merits. links.Store, the other single-use link mechanism in this module,
 // deliberately takes no executor: its records are minted by one process and

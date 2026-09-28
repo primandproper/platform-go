@@ -8,7 +8,7 @@
 // Reporter is deliberately absent. It is the interface a Runner is handed, so a
 // test of a Runner wants to *observe* what the Runner reported rather than to
 // script what a Reporter returns — and the honest way to do that is a small
-// recording implementation the test owns, of six methods that only append to
+// recording implementation the test owns, whose methods only append to
 // slices. A generated mock of it would be more code than the thing it replaces.
 //
 // There is nothing here for the Worker or the Watcher either. Both are concrete

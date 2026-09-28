@@ -35,12 +35,12 @@ it would be proving a service nobody could run.
     rule working, not a gap in it.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
-  - The extractor, through service.Transports, and the four authorizers that
+  - The extractor, through service.Transports, and the authorizers that
     surfaces refuse to mount without. They encode one rule — a caller has
     standing in their own user and their active account — rather than a yes,
     because a permissive authorizer would let every later confinement assertion
     pass on the strength of the rule being absent.
-  - The grants extractor, through service.Transports, which is what the seven
+  - The grants extractor, through service.Transports, which is what the
     surfaces that ask inside a handler read to decide whether include_archived
     is honored and whether a reserved setting may be written. The stand-in
     credential carries a role: a member holds every permission those surfaces'

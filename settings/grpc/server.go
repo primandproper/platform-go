@@ -211,8 +211,8 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // operation to record on, whose catalog the request is against, and who is
 // asking.
 //
-// The caller is carried whole rather than as an identifier, because the six
-// value RPCs hand it to the [SubjectAuthorizer] — the rule about whose settings
+// The caller is carried whole rather than as an identifier, because the value
+// RPCs hand it to the [SubjectAuthorizer] — the rule about whose settings
 // this caller may reach is the consumer's, and it is given the principal they
 // built rather than a field of it this package chose.
 type request struct {

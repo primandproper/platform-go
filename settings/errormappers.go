@@ -30,14 +30,14 @@ import (
 // answer depend on which transport happened to ask.
 //
 // What is deliberately absent is everything that wraps a platform sentinel.
-// Thirteen of this package's twenty-three do — the nil arguments, the empty
-// ones, and the five that wrap errors.ErrUnrecognizedInputValue, which is where
+// Many of this package's sentinels do — the nil arguments, the empty ones, and
+// the ones that wrap errors.ErrUnrecognizedInputValue, which is where
 // a value of the wrong kind, a value outside its enumeration and a string too
 // long for the column holding it are already answered as bad requests. errors/http asks its platform mapper first, so a
 // case here for one of those would be unreachable, and internal/sentinelmatrix
 // fails a row that claims otherwise.
 //
-// That roster is where each of the twenty-three is recorded as mapped, platform
+// That roster is where each of them is recorded as mapped, platform
 // or unhandled, and it fails when one is in none of the three.
 var (
 	// HTTPMapper maps this package's sentinels onto HTTP error codes.
@@ -60,15 +60,15 @@ var (
 // name already defined and an id already carried are both codes.AlreadyExists;
 // and a name already defined and an edit that would strand values are both
 // about state the caller has to look at — so the code alone frequently does not
-// say which of two very different things happened. And two of the seven name
+// say which of two very different things happened. And two of them name
 // the row that stopped a write: ErrStrandedValues carries the subject and the value an
 // administrator has to clear before their edit can land, which is the one
 // message here that is a task rather than a diagnosis.
 //
 // The last two are already client-safe through the platform sentinel they wrap
 // — errors.ErrUnrecognizedInputValue is on errors/grpc's own list — and they
-// are named anyway, so that this set reads as the seven refusals a client is
-// meant to read rather than as the five that happened to need registering. A
+// are named anyway, so that this set reads as every refusal a client is meant
+// to read rather than as only the ones that happened to need registering. A
 // sentinel registered twice costs a second comparison and nothing else.
 //
 // Nothing else in this package is here. A nil executor, a stalled cursor, an

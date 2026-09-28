@@ -2,7 +2,7 @@
 Package notifications is the inbox and device surface's promises, assertable
 against any subject that mounts it.
 
-Nine RPCs, and every one of them is addressed by the caller rather than by the
+Every RPC here is addressed by the caller rather than by the
 request: the recipient of a notification and the owner of a handset come off
 the connection, and no message has a field for either. So what a consumer needs
 verified is one sentence, asserted from every angle the surface has — a caller

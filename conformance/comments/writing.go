@@ -74,8 +74,8 @@ func writing(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, about.GetId(), answer.GetTarget().GetId())
 	})
 
-	// The six refusals below this one are each a thing a person typed and can
-	// fix, and four of them share a code — so the message is the only part of
+	// The refusals below this one are each a thing a person typed and can fix,
+	// and most of them share a code — so the message is the only part of
 	// the answer that says which field to put a red border around, and it is
 	// asserted to arrive.
 	t.Run("a reply to a reply is refused, and the client is told why", func(t *testing.T) {

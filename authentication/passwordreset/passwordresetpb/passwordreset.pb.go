@@ -19,7 +19,7 @@
 // generates into. Numbers are never reused and never repurposed: a field that
 // goes away is reserved.
 //
-// # Why it is its own file rather than three RPCs on signin.proto
+// # Why it is its own file rather than more RPCs on signin.proto
 //
 // signin.proto says it, of this flow by name: passkeys, password reset and
 // session management are each "a flow of its own over an engine this module
@@ -27,8 +27,8 @@
 // The reason shows in the authority. Every request here carries a mailed secret
 // or an address and nothing else -- there is no caller, and there cannot be one,
 // because the whole premise is somebody who cannot sign in. Sign-in's schema has
-// six RPCs that need a principal, and a file where two thirds of the messages
-// answer to one and none of these do would be a file whose rules have to be
+// RPCs that need a principal, and a file where many of the messages answer to
+// one and none of these do would be a file whose rules have to be
 // restated per message.
 //
 // # The three refusals, and why they are told apart
@@ -59,7 +59,7 @@
 //
 // No token in any response. The secret this flow mints travels to the person it
 // is about, in mail the consumer sends; it arrives back here as a request field
-// on the two RPCs that answer a link, which is the one direction a token travels
+// on the RPCs that answer a link, which is the one direction a token travels
 // on any schema in this module.
 //
 // No user, anywhere. A reset names an address on the way in and nothing on the

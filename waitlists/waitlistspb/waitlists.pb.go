@@ -6,9 +6,9 @@
 // the three domain surfaces that came before it. Five RPCs are the signup page
 // — the open lists, the form, the confirmation link, and the two ways off the
 // list — and are reachable by somebody who has not signed in and frequently
-// does not have an account to sign in to. The other fourteen are whoever is
-// running the launch, and every one of them is behind a grant. See the service
-// comment at the bottom.
+// does not have an account to sign in to. The rest are whoever is running the
+// launch, and every one of them is behind a grant. See the service comment at
+// the bottom.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts
@@ -2015,7 +2015,7 @@ func (x *ConvertResponse) GetResult() *Signup {
 
 // WithdrawRequest is somebody asking to come off a list, at their own request.
 //
-// It is one of the five RPCs a caller reaches without a grant, and the only one
+// It is one of the RPCs a caller reaches without a grant, and the only one
 // of them that names a row. A grant on the method could not have said whose row
 // this is, and neither can a signup identifier, which is minted by the store and
 // is not a credential -- so the standing to withdraw this signup is asked of the

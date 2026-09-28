@@ -47,7 +47,7 @@ type Ack struct {
 // # Which methods take a scope, and which take neither
 //
 // The four a consumer calls — Insert, Get, GetMany and List — take a
-// tenancy.Scope, and the three reads take an executor beside it. There is no
+// tenancy.Scope, and the reads take an executor beside it. There is no
 // read here that omits the scope, because the caller who reaches for the
 // unscoped one is the caller who has not thought about tenancy, and what an
 // operation holds is the status of somebody's export.
@@ -56,7 +56,7 @@ type Ack struct {
 // and Reap — take neither, and each says so on itself. They are the component
 // servicing itself: a worker on a timer, holding an id a dispatch handed it,
 // running on the handle the store was built with. It is the carve-out
-// webhooks.Store names its seven for and metering's flush protocol takes, and it
+// webhooks.Store names its own for and metering's flush protocol takes, and it
 // is the same narrowness — a worker on a timer, not any method this package
 // finds convenient to keep to itself.
 //
@@ -190,7 +190,7 @@ type Store interface {
 	// Cancelling a terminal operation is not an error: the caller wanted it not
 	// running, and it is not running.
 	//
-	// It takes neither, and it is the one of the seven a consumer reaches
+	// It takes neither, and it is the one of them a consumer reaches
 	// through — Service.Cancel — so the omission is worth stating rather than
 	// only being true. The write is a conditional transition on the id and it
 	// reads the row back on the same handle; what confines it to a tenant is the

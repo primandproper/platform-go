@@ -155,7 +155,7 @@ same order and all four run [Hooks.AfterAuthenticate], so an access log cannot
 tell them apart by whether an entry appeared — only the second pair adds
 [Hooks.AfterIssueToken].
 
-The three credential writes are the same shape in reverse: read, verify and
+The credential writes are the same shape in reverse: read, verify and
 hash outside, and a transaction that holds the write and the hook together.
 Nothing here holds a write transaction open across a password hash.
 

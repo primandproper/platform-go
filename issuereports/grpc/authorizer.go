@@ -36,17 +36,17 @@ import (
 // store read filters on it, so nothing here crosses a deployment; this is the
 // check inside one.
 //
-// # The two RPCs that ask, and the eight that do not
+// # The two RPCs that ask, and the rest that do not
 //
 // GetReport asks after the read, holding the row, because whose report it is, is
 // a fact about the row rather than about the request. ListReportsByReporter asks
 // before it, holding the name the request supplied, because there is nothing to
 // read yet and the name is the thing being gated.
 //
-// The other eight do not ask, and that is a ruling rather than an omission.
+// The rest do not ask, and that is a ruling rather than an omission.
 // CreateReport files a report in the caller's own name — the reporter comes off
-// the principal, so there is no other person's row to name. The four queue
-// listings and the three lifecycle writes are the triager's, and their target is
+// the principal, so there is no other person's row to name. The queue listings
+// and the lifecycle writes are the triager's, and their target is
 // the queue rather than a person: a grant to page every report in the tenant is
 // the answer to "whose", spelled where a consumer's policy can audit it. A
 // deployment that wants a narrower triage right names a narrower grant.

@@ -446,7 +446,7 @@ func (s *SQLStore) rewriteDefinition(
 // retirement is worth.
 //
 // It answers with an error and nothing else, which is where it parts company
-// with the four writes around it. Those return because the row they describe is
+// with the other writes around it. Those return because the row they describe is
 // otherwise unreachable — [SQLStore.ClearValue]'s most sharply, since a cleared
 // answer is gone from every read on this interface once the transaction commits.
 // An archived definition is not gone: it is the row the caller named, still

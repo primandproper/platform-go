@@ -65,7 +65,7 @@ import (
 // transaction sees it. The signups counter is fed when the statement lands,
 // which is before the caller commits — see SQLStore.countSignups.
 //
-// # Ten writes answer with the row they wrote
+// # Every write but one answers with the row it wrote
 //
 // Every write here but one hands back a row: the two creates, the two updates,
 // the three transitions, the withdrawal and the two retirements. None of them

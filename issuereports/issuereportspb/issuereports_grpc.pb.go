@@ -142,14 +142,14 @@ const (
 // IssueReportsService is the report queue: what your users filed, and the
 // lifecycle a triager works it through.
 //
-// Ten methods, over the two audiences this table has. A reporter files, reads
+// Its methods serve the two audiences this table has. A reporter files, reads
 // what they filed, and reads their own list; a triager pages the queue by
 // status, by what a report is about, or whole, and moves, revises and archives.
 // Every method requires a grant -- see issuereports/grpc's Permissions -- and
 // the two whose target is a person or somebody's row ask a second question of
 // the consumer's own rule.
 //
-// The tenant is not among the ten's arguments, on any of them. It comes off the
+// The tenant is not among any method's arguments. It comes off the
 // principal the consumer's interceptor resolved, so there is no listing across
 // tenants here and no way to ask for one.
 type IssueReportsServiceClient interface {
@@ -280,14 +280,14 @@ func (c *issueReportsServiceClient) ArchiveReport(ctx context.Context, in *Archi
 // IssueReportsService is the report queue: what your users filed, and the
 // lifecycle a triager works it through.
 //
-// Ten methods, over the two audiences this table has. A reporter files, reads
+// Its methods serve the two audiences this table has. A reporter files, reads
 // what they filed, and reads their own list; a triager pages the queue by
 // status, by what a report is about, or whole, and moves, revises and archives.
 // Every method requires a grant -- see issuereports/grpc's Permissions -- and
 // the two whose target is a person or somebody's row ask a second question of
 // the consumer's own rule.
 //
-// The tenant is not among the ten's arguments, on any of them. It comes off the
+// The tenant is not among any method's arguments. It comes off the
 // principal the consumer's interceptor resolved, so there is no listing across
 // tenants here and no way to ask for one.
 type IssueReportsServiceServer interface {

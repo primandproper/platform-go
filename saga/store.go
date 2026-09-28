@@ -39,7 +39,7 @@ type ListScope struct {
 // for that reason, and a write that matched nothing returns an error rather
 // than silently succeeding.
 //
-// # Two of these take an executor and six take nothing
+// # Two of these take an executor and the rest take nothing
 //
 // The convention everywhere else in this module is that a store write reads
 // (ctx, tx database.Tx, scope tenancy.Scope, ...) and a store read reads
@@ -63,7 +63,7 @@ type ListScope struct {
 // the lease protocol's correctness is that a claim commits before a step runs —
 // a caller supplying a transaction would be choosing when that commit happens,
 // which is the one thing the protocol cannot let them choose. It is the
-// carve-out webhooks.Store names its seven for and metering's flush protocol
+// carve-out webhooks.Store names its own for and metering's flush protocol
 // takes, and it is the same narrowness: a worker on a timer, not any method
 // this package finds convenient to keep to itself.
 //

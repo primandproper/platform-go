@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The registry half of the surface: three RPCs whose caller is a handset.
+// The registry half of the surface: the RPCs whose caller is a handset.
 //
 // This is the strongest RPC case in the package, because the caller is
 // literally a remote device. A registration converges on (platform, token)
@@ -22,9 +22,9 @@ import (
 // description of a call being made from a phone rather than of a row a console
 // edits.
 //
-// The three of them together are also the whole of what a device screen needs:
+// Together they are also the whole of what a device screen needs:
 // this handset is here, these are my handsets, that one is not mine any more.
-// The two registry methods that are not here are machinery — see roster_test.go
+// The registry methods that are not here are machinery — see roster_test.go
 // and the Store methods themselves.
 //
 // RegisterDevice answers with the row the store handed it rather than with the

@@ -193,7 +193,7 @@ type Service struct {
 // NewService builds the reset flow.
 //
 // The five positional dependencies are the ones it genuinely cannot build. The
-// client, because the transaction the three writes share is opened on it. The
+// client, because the transaction the writes share is opened on it. The
 // token store, because this package ships one implementation and a consumer
 // keeping short-lived credentials elsewhere passes another. The directory,
 // because whose users these are is not this package's to decide. The

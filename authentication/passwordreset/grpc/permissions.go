@@ -6,7 +6,7 @@ import (
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )
 
-// AnonymousMethods are this service's RPCs, all three of them.
+// AnonymousMethods are this service's RPCs, every one of them.
 //
 // There is no second list, and that is the whole authorization story here: a
 // caller who could prove who they are would be changing their password through

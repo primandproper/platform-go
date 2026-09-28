@@ -164,8 +164,8 @@ var OptionColumns = []string{OptionDefinitionColumn, OptionValueColumn}
 // Emitted is the tables the canonical .sql covers with the standard set, in the
 // order they appear in it.
 //
-// One of the three. Values is deliberately absent and still contributes five
-// statements; the options table contributes three. The list is what gets a set,
+// One of the three. Values is deliberately absent and still contributes
+// statements, and so does the options table. The list is what gets a set,
 // not what gets a statement.
 var Emitted = []*Table{&Definitions}
 

@@ -68,7 +68,7 @@ func pageValue(row pageRow) *Comment { return row.value }
 // ORDER BY runs and which way the cursor comparison points — statement text, not
 // a bound value, on all three engines. database/querygen emits the pair and
 // filtering.QueryFilter.SortsDescending picks between them; this is where the
-// pick is made, once, rather than at each of the three paged reads. A read that
+// pick is made, once, rather than at each paged read. A read that
 // reached for the ascending statement while holding a descending filter would
 // answer in the order the client did not ask for, and nothing about the rows
 // that came back would say so.

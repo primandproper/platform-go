@@ -4,8 +4,8 @@ Package client is a typed client for the webhooks gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be nine functions that can drift
-from the schema, to gain nothing.
+shutdown. A client that wrapped each RPC would be a function per RPC that can
+drift from the schema, to gain nothing.
 
 It is imported as webhooksclient.
 
@@ -37,8 +37,8 @@ to. A store whose purpose is to hand the same bytes back a second time is not
 where a signing key's fingerprint should end up, and it is the same reading
 authentication/oauth2clients' client takes of a minted secret.
 
-The cost is smaller here than there, because nine of the eleven RPCs are naturally
-idempotent and the other two are convergent: a retried save writes the endpoint
+The cost is smaller here than there, because most of the RPCs are naturally
+idempotent and the rest are convergent: a retried save writes the endpoint
 the first one already wrote, and a retried rotation installs a key that is
 already current, which its own statement declines to demote anything for. What a
 retry costs is a duplicate write, not a duplicate row.
@@ -95,7 +95,7 @@ func WithDialOptions(opts ...grpc.DialOption) Option {
 //
 // The cost of using it is the one this package's documentation opens with: an
 // errors.Is against a webhooks sentinel then never matches, and the codes alone
-// do not tell six of the refusals apart.
+// do not tell several of the refusals apart.
 func WithoutDefaultInterceptors() Option {
 	return func(o *options) { o.skipInterceptors = true }
 }

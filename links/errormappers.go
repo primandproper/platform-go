@@ -40,13 +40,13 @@ var (
 // ClientSafeSentinels are the redemption outcomes whose own text a gRPC server
 // may return to a caller verbatim, handed to
 // errors/grpc.RegisterClientSafeSentinels by errormappers.Register alongside the
-// four mappers.
+// mappers.
 //
-// The four are separate sentinels rather than one for the reason errors.go
+// They are separate sentinels rather than one for the reason errors.go
 // gives — a 256-bit token is never guessed, so naming the outcome is not an
 // oracle — and that reasoning does not stop at the transport. gRPC derives its
 // status message from the code, so without this a client is told
-// "FailedPrecondition" for all four, which is the one thing the separation
+// "FailedPrecondition" for every one of them, which is the one thing the separation
 // exists to avoid, while an HTTP client is told which. ErrInvalidToken is here
 // for the same reason: "invalid action link token" is the whole of what a
 // caller needs and the whole of what this package knows.

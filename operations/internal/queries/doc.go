@@ -97,7 +97,7 @@ itself rather than an omission. A sweep that recovered one tenant's operations
 would leave every other tenant's stranded, a reap bounded by scope would be a
 retention policy that only ran for whoever asked for it, and the cancellation's
 read-back holds an id it has itself just written. None is reachable from a
-consumer: operations.Store exposes them as the seven methods that take neither
+consumer: operations.Store exposes them as the methods that take neither
 an executor nor a scope, and says so on each.
 */
 package queries

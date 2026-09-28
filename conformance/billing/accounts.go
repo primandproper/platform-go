@@ -16,11 +16,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// accountRead is one of the four RPCs whose request names the account, as a
+// accountRead is one of the RPCs whose request names the account, as a
 // call a caller makes.
 type accountRead func(ctx context.Context, sub *conformance.Subject, accountID string, filter *filteringpb.QueryFilter) error
 
-// accountReads are all four, so every property below is asserted about each
+// accountReads are all of them, so every property below is asserted about each
 // of them rather than about whichever one somebody wrote a test for.
 func accountReads() map[string]accountRead {
 	return map[string]accountRead{

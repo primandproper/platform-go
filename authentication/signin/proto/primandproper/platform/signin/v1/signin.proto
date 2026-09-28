@@ -102,7 +102,7 @@
 // travels to the person it is about, in mail the consumer sends from inside the
 // transaction that wrote the row -- it is never handed back to whoever called
 // Register, who is a client rather than the subject. It arrives back here only
-// as a request field on the two RPCs that answer a link, which is identity's
+// as a request field on the RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
 // No passkeys and no password reset. Each is a flow of its own over an engine
@@ -782,8 +782,8 @@ message RedeemMagicLinkResponse {
 
 // SignInService is sign-in.
 //
-// Nine of its RPCs are anonymous by definition and eight require a caller. What
-// none of them requires is a permission: there is no grant that would make
+// Some of its RPCs are anonymous by definition and the rest require a caller.
+// What none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and every authenticated one but Register takes its subject
 // from the caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an

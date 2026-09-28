@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The subscription half of the surface: four RPCs over the individually
+// The subscription half of the surface: the RPCs over the individually
 // archivable rows an endpoint's interests are kept as.
 //
 // They exist as RPCs of their own, rather than as a field of the endpoint a save

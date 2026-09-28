@@ -431,8 +431,8 @@ func (s *SQLStore) DeleteClientsForOwner(
 // It exists because a write's read-back must go where the write went: a row that
 // transaction has written and not committed is visible on no other connection,
 // so a registration read anywhere else would say it was never registered, or
-// never revised. Two of the three single-row writes answer through this; the
-// third is the archive, whose row is the one this read is written not to see.
+// never revised. Every single-row write but the archive answers through this;
+// the archive's row is the one this read is written not to see.
 //
 // An empty result is left unmapped rather than folded into ErrClientNotFound,
 // which is the reading [SQLStore.ArchiveClient] takes of its own read-back. Both

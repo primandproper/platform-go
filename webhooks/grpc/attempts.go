@@ -24,8 +24,8 @@ import (
 // reads give, and it is the store's: an attempts page is a page, and an empty
 // one is a well-formed answer rather than a refusal.
 //
-// It is the only method of the delivery pipeline on this surface. The seven the
-// worker drives, EndpointsForEvent and Enqueue are absent, and webhooks.Store
+// It is the only method of the delivery pipeline on this surface. The methods
+// the worker drives, EndpointsForEvent and Enqueue are absent, and webhooks.Store
 // says why on each — Enqueue's absence being the one that matters most, since
 // it is the only consumer-facing method here that must never be reachable over a
 // wire.

@@ -102,7 +102,7 @@ type ClaimedDispatch struct {
 // Enqueue is the proof that the shape works rather than an exception to it. An
 // outbound event enqueued in the same transaction as the row that caused it is
 // the entire reason that method takes a Tx, and it has taken one since this
-// package shipped; the four endpoint and subscription writes now say the same
+// package shipped; the endpoint and subscription writes now say the same
 // thing about the transaction they belong to.
 //
 // The read takes the wider type deliberately. EndpointsForEvent is the
@@ -160,7 +160,7 @@ type ClaimedDispatch struct {
 // and the rest a bare error, because each of them addresses a dispatch the
 // worker is already holding.
 //
-// # Ten of these are on the wire and nine are not
+// # Which of these are on the wire, and which are not
 //
 // webhooks/grpc serves endpoint management and delivery history: SaveEndpoint,
 // GetEndpoint, ListEndpoints, ArchiveEndpoint, RotateSecret, AddSubscription,
@@ -176,12 +176,13 @@ type ClaimedDispatch struct {
 // keyring, and a caller who must supply the outgoing key is a caller who must
 // have been able to read it.
 //
-// The seven above are the first group that stays off it, and the reason is the
-// paragraph they are already documented by: a caller supplying a transaction is
-// exactly what an RPC is, and it is the one thing the queue protocol cannot let
-// them supply. EndpointsForEvent and Enqueue are the other two, and each says so
-// on its own method — Enqueue is the sharp one, because it is the only method
-// here that is consumer-facing and still must not be reachable over a wire.
+// The delivery machinery above is the first group that stays off it, and the
+// reason is the paragraph they are already documented by: a caller supplying a
+// transaction is exactly what an RPC is, and it is the one thing the queue
+// protocol cannot let them supply. EndpointsForEvent and Enqueue are the other
+// two, and each says so on its own method — Enqueue is the sharp one, because
+// it is the only method here that is consumer-facing and still must not be
+// reachable over a wire.
 //
 // # The scope is an argument, on every consumer method
 //
@@ -204,7 +205,7 @@ type ClaimedDispatch struct {
 // span every scope, because one worker drains one queue for the whole
 // deployment, and MarkDelivered, RecordFailure, RecordAttempt and Requeue
 // address a dispatch the worker or an operator is already holding. Enqueue is
-// the eighth, and the one that does still write consumer data: it stores
+// the other exception, and the one that does still write consumer data: it stores
 // Delivery.Scope, because its only caller is Dispatcher.Dispatch, which took the
 // scope as an argument and settled it onto the delivery before resolving an
 // endpoint. The door a consumer goes through is Dispatch, and that one takes the
@@ -367,17 +368,18 @@ type Store interface {
 	// just derived, and would give a hand-written caller two places to disagree
 	// where the door meant for them has one.
 	//
-	// It is off the wire too, and it is the one absence here worth arguing about,
-	// because unlike the other eight it is consumer-facing: fanning an event out
-	// is something an application does on purpose. What it is not is separable
-	// from the transaction it is called in. That clause above — both commit with
-	// whatever else that transaction did — is the entire property, and an RPC
-	// moves the write into a transaction of its own, on the far side of a
-	// network, at a moment the caller does not choose. What you get back is a
-	// delivery for a row that rolled back, or a committed row nobody was ever
-	// told about, and no amount of retrying repairs either after the fact. It is
-	// the same fact audit.Recorder states about an audit entry and the reason
-	// that method takes a Tx as well.
+	// It is off the wire too, and it is the one absence here worth arguing
+	// about, because unlike the rest of the machinery it is
+	// consumer-facing: fanning an event out is something an application
+	// does on purpose. What it is not is separable from the transaction it
+	// is called in. That clause above — both commit with whatever else that
+	// transaction did — is the entire property, and an RPC moves the write
+	// into a transaction of its own, on the far side of a network, at a
+	// moment the caller does not choose. What you get back is a delivery
+	// for a row that rolled back, or a committed row nobody was ever told
+	// about, and no amount of retrying repairs either after the fact. It is
+	// the same fact audit.Recorder states about an audit entry and the
+	// reason that method takes a Tx as well.
 	//
 	// A process that wants to publish an event it did not cause is describing an
 	// RPC of its own — the one whose handler owns the transaction the write

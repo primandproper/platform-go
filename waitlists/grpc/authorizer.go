@@ -18,8 +18,8 @@ import (
 //
 // # Why it exists
 //
-// Withdraw is one of the five RPCs on this service that a caller reaches
-// without a grant, and it is the only one of the five that names a row — Confirm
+// Withdraw is one of the RPCs on this service that a caller reaches without a
+// grant, and it is the only one of them that names a row — Confirm
 // and Unsubscribe name a token, which is their own standing. That combination is
 // the whole reason this seam is here.
 //
@@ -97,7 +97,7 @@ type SignupAuthorizer interface {
 	// signups of the subject a request named.
 	//
 	// It exists because [PermissionReadSignups] cannot answer the question. That
-	// grant covers four reads at once, and the sharpest of them —
+	// grant covers several reads at once, and the sharpest of them —
 	// [Server.GetSignupByContact] — is an oracle over every address in the
 	// tenant, so a deployment grants it narrowly and correctly. The cost was
 	// that the one safe read went with it: a member asking where they are in a
@@ -134,7 +134,7 @@ type SignupAuthorizer interface {
 // a consumer who used it and then called ListSignupsForSubject discover the
 // refusal at runtime, from a type that looked complete. The finding that
 // produced AuthorizeSubjectRead was itself somebody not noticing that one grant
-// covered four reads, so a second way not to notice was the wrong thing to
+// covered several reads, so a second way not to notice was the wrong thing to
 // ship. Answering one question now means writing one field and leaving the
 // other, which is the same amount of typing and says what it is.
 type SignupAuthorizerFuncs struct {

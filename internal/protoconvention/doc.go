@@ -26,7 +26,7 @@ close enough to a split decision that neither half read as the exception. Each
 package's own grpc/ tests passed either way: a package that has never seen the
 other spelling has nothing to compare its own against, and the disagreement is
 between a Go tag in one package and a descriptor in another. The failure is only
-visible from somewhere that can see all eleven at once.
+visible from somewhere that can see every schema at once.
 
 It is also a failure with a deadline. A json_name added to a field that has
 shipped changes the JSON wire spelling for every transcoding client, and there is
@@ -40,7 +40,7 @@ Two sweeps, one per description, because the rule is an agreement between them
 and either alone can be right while they disagree.
 
 The first is over the schemas: every field of every message, nested messages
-included and map entries excluded, in all eleven files. The rule is asserted as
+included and map entries excluded, in every file. The rule is asserted as
 an equality rather than as "an id field carries some override", so it holds in
 both directions: an id field that pins nothing fails, and so does one that pins
 the wrong spelling or a field that pins a name protoc would have derived anyway.
@@ -55,17 +55,17 @@ something compared them pair by pair.
 
 Pairing is what identity/grpc and waitlists/grpc do, and it is the stronger check
 where it exists: it knows which field corresponds to which. It does not
-generalize to eleven schemas cheaply, because most of their messages are requests
+generalize to every schema cheaply, because most of their messages are requests
 and responses with no Go type to pair with, and a roster naming both halves of
 every pair is a roster that goes stale in the direction nobody notices. The
 two-sided rule covers every tag in the module instead, including the ones no
 message renders.
 
-"All eleven" is a claim, and a claim about a set is only checkable against an
+"Every schema" is a claim, and a claim about a set is only checkable against an
 enumeration of it. The roster in the test names each file by the path it sits at
 and maps it to the descriptor its bindings carry, and a second test walks the
 tree for .proto files and checks the two against each other in both directions. A
-twelfth schema fails here until somebody records it, rather than being the one
+new schema fails here until somebody records it, rather than being the one
 file nobody swept.
 */
 package protoconvention

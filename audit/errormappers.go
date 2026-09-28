@@ -22,7 +22,7 @@ import (
 // side effect a consumer cannot opt out of. The composition root registers the
 // domain tier, and for this module that is one call — errormappers.Register.
 //
-// # Why two sentinels are claimed and eleven are not
+// # Why two sentinels are claimed and the rest are not
 //
 // The reader is the only half of this package a client can reach, and of
 // everything it can raise exactly one is a fact about the request rather than

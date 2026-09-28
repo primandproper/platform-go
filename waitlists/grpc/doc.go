@@ -28,20 +28,20 @@ of a caller, and that package's documentation is where the ruling that keeps the
 method set at three lives.
 
 Unlike every other surface in this module, an extractor here reports "nobody" on
-requests that are working exactly as intended: five of this service's RPCs are a
+requests that are working exactly as intended: some of this service's RPCs are a
 signup page, and the person on it has not signed in. [NewServer] and the two
 sections below are where that lands.
 
-# Nineteen RPCs and no absences
+# No absences
 
 Every method of waitlists.Store is here, and one more: Unsubscribe, which is
 Withdraw's second door and the one RPC here that orchestrates rather than
 serves — roster_test.go names it as that, out loud. That is unusual on this lane — the
-other nine domains each carve something out — and it is why this one went first.
+other domains each carve something out — and it is why this one went first.
 The carve-outs elsewhere are all one test applied to different machinery: is the
 realistic caller a worker on a timer, a processor callback, or the consumer's
 own code inside its own transaction? A waitlist has no queue protocol, no
-fan-out and no provider callback. Every one of the eighteen is a form somebody
+fan-out and no provider callback. Every one of them is a form somebody
 submitted, a link somebody followed, or a console somebody is looking at, and roster_test.go is where a
 store method added later has to be classified rather than reflexively published.
 
@@ -77,12 +77,12 @@ call.
 # Two audiences, and that is the interesting half
 
 ListOpenLists, Join, Confirm, Withdraw and Unsubscribe are reachable without a
-grant. The other fourteen are behind one. No surface before this one had both,
+grant. The rest are behind one. No surface before this one had both,
 and three things follow from it.
 
 The first is that "public" is a declaration rather than an omission.
-[PublicMethods] names the five and [Require] declares them alongside the
-fourteen, because authorization/grpc is fail-closed and a method declared
+[PublicMethods] names them and [Require] declares them alongside the
+rest, because authorization/grpc is fail-closed and a method declared
 nowhere is denied — which nothing reports at wiring time. It is
 authentication/signin/grpc's arrangement, applied to a service where only part
 of the surface is public.
@@ -230,7 +230,7 @@ left in its place carries a value out of a WithTransaction closure. It matters
 most on the two transitions, because status_changed_at is the field a consumer
 schedules a reminder off and it is stamped from the store's clock.
 
-Seven answer with nothing, and six of those drop a row the store offered.
+The rest answer with nothing, and most of those drop a row the store offered.
 The two retirements drop it because the operator who sent the request already
 holds the row and what the store hands back is for a consumer's audit entry
 rather than for this wire. Withdraw and Unsubscribe drop it for a sharper

@@ -13,7 +13,7 @@ over SQL nobody executes.
 So it is spelled once, here. The .sql files beside this one are the generator's
 output — see [Render] and links/database/internal/queriesgen.
 
-# Four statements, and none of them standard
+# A handful of statements, and none of them standard
 
 querygen.Generator.StandardCRUD emits the set a conventional table gets, and
 this table gets none of it. Its id is the digest of a credential rather than a
@@ -24,8 +24,8 @@ the one write unable to reach the rows it exists for, and a last_updated_at
 would be a second copy of resolved_at, since resolution is the row's only
 mutation.
 
-What is left is four statements, each named for what it does to a link rather
-than for the shape it came from.
+What is left is a handful of statements, each named for what it does to a link
+rather than for the shape it came from.
 
   - InsertLink writes one mint. It is a plain INSERT, so a digest collision is a
     failed mint rather than a silently replaced row — and a replaced row would

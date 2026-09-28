@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The subject half of the surface: six RPCs about what one person answered and
+// The subject half of the surface: the RPCs about what one person answered and
 // what a setting resolves to for them, each behind a permission and each gated
 // by the [SubjectAuthorizer].
 //
@@ -27,7 +27,7 @@ import (
 // answered anything is refused by exactly the rule one who belongs to somebody
 // else is.
 //
-// Two of the six write, and both open their own transaction and read the
+// Two of them write, and both open their own transaction and read the
 // resolution back inside it. That is the property settings.Store's reads taking
 // a database.SQLQueryExecutor rather than a reader exists for, and it is the
 // package's own worked example: a service that saves somebody's preference and
@@ -414,7 +414,7 @@ func (r *request) setSubject(subject settings.Subject) {
 // the resolution and no value, is the silent one: a settings screen showing a
 // default the subject did not choose.
 //
-// It is a helper over three call sites because the part that can be got wrong
+// It is a helper over several call sites because the part that can be got wrong
 // is not the conversion, it is failing the call when the conversion fails.
 func (s *Server) renderResolution(
 	req *request,

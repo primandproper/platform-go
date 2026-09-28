@@ -17,9 +17,9 @@ consumer keeps its checkout flow and every judgement about what a status means;
 it does not keep a subscriptions table.
 
 It also no longer keeps the read side of a service over one.
-[github.com/primandproper/platform-go/v14/billing/grpc] serves eighteen of these
-thirty methods, and the last section here says what crossed, what did not, and
-why the checkout flow and the judgement are still in the first list.
+[github.com/primandproper/platform-go/v14/billing/grpc] serves a subset of these
+methods, and the last section here says what crossed, what did not, and why the
+checkout flow and the judgement are still in the first list.
 
 # This reverses a ruling, and the reasoning is worth stating
 
@@ -242,14 +242,14 @@ That package states the ruling in full.
 
 # There is a transport now, and it does not take the bargain back
 
-[github.com/primandproper/platform-go/v14/billing/grpc] serves eighteen of this
-store's thirty methods over gRPC, with billing.proto shipped inside the module and
-a typed client beside it. The line the module draws between what it stores and
+[github.com/primandproper/platform-go/v14/billing/grpc] serves a subset of this
+store's methods over gRPC, with billing.proto shipped inside the module and a
+typed client beside it. The line the module draws between what it stores and
 what it serves has moved for this package, and the README states where it now
 falls, under "Stores and Transports".
 
 What the bargain above said a consumer keeps, they still keep. The checkout flow
-is not on the wire and cannot be: seven writes here have a caller who is a
+is not on the wire and cannot be: the writes it makes have a caller who is a
 processor callback or the handler that created a payment intent, already holding
 the transaction that is writing an audit entry and an outbox event beside the
 billing row, and an RPC would move the write out of the transaction that was the
@@ -258,7 +258,7 @@ that schema that says whether an account is entitled, because that reading is th
 consumer's and billing/plans is the seam it already lives in. The surface hands
 back [Subscription.Status] and stops, exactly as this package does.
 
-What a consumer no longer writes is the eighteen: a catalog screen, "my
+What a consumer no longer writes is the served subset: a catalog screen, "my
 subscriptions", "my purchases", "my invoices", an operator's page over each, and
 the conversions and permission names underneath all of it. billing/grpc's own
 documentation carries the ruling on each absence, including the one on the

@@ -96,8 +96,8 @@ var (
 	//
 	// It is a refusal rather than a wiring failure: the extractor worked and
 	// there was nobody there. Unlike every other surface in this module, that is
-	// not by itself an error here — the five public RPCs answer such a request
-	// — so this sentinel names the fourteen that do not.
+	// not by itself an error here — the public RPCs answer such a request
+	// — so this sentinel names the rest, which do not.
 	ErrNoPrincipal = platformerrors.New("no principal on the waitlists request context")
 
 	// ErrNilListInput is a create or update that named no list at all.
@@ -242,7 +242,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // request is what every RPC here resolves before it does anything: the operation
 // to record on, whose catalog the request is against, and who is asking.
 //
-// The principal is carried and is nil on the five public RPCs, which is what
+// The principal is carried and is nil on the public RPCs, which is what
 // makes this service's request struct different from the ones next door. Join
 // reads it for the signup's subject, and [SignupAuthorizer] is handed it so that
 // a consumer whose unsubscribe page is behind a sign-in can answer from the
@@ -318,12 +318,12 @@ func (s *Server) visitor(ctx context.Context, method string) (
 
 // caller starts an administrative RPC: one that requires somebody to be calling.
 //
-// It is [Server.visitor] plus the refusal, because the fourteen it fronts differ
-// from the five only in that. The permission interceptor in front of them has
-// already refused an anonymous caller — a grant is a fact about somebody, and
-// authorization/grpc is fail-closed — so this is the second lock rather than the
-// first, and it is here because a consumer who declares this service's methods
-// themselves can get the first one wrong.
+// It is [Server.visitor] plus the refusal, because the administrative RPCs it
+// fronts differ from the public ones only in that. The permission interceptor
+// in front of them has already refused an anonymous caller — a grant is a fact
+// about somebody, and authorization/grpc is fail-closed — so this is the second
+// lock rather than the first, and it is here because a consumer who declares
+// this service's methods themselves can get the first one wrong.
 func (s *Server) caller(ctx context.Context, method string) (
 	context.Context, *request, func(err error), error,
 ) {

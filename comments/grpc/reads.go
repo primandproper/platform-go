@@ -33,7 +33,7 @@ import (
 // where nothing will list it, and the type that has been withdrawn from a
 // catalog is exactly the one whose rows an operator still needs to reach.
 //
-// All four paged reads gate on one thing they share: a request for archived
+// Every paged read gates on one thing they share: a request for archived
 // comments is honored only for a caller holding [PermissionArchiveComments],
 // and cleared for everybody else. archived.go is where that is argued.
 

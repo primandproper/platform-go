@@ -68,7 +68,7 @@ func pageValue(row pageRow) *Report { return row.value }
 // ORDER BY runs and which way the cursor comparison points — statement text, not
 // a bound value, on all three engines. database/querygen emits the pair and
 // filtering.QueryFilter.SortsDescending picks between them; this is where the
-// pick is made, once, rather than at each of the four paged reads. A read that
+// pick is made, once, rather than at each paged read. A read that
 // reached for the ascending statement while holding a descending filter would
 // answer in the order the client did not ask for, and nothing about the rows
 // that came back would say so.
@@ -180,11 +180,11 @@ func reportFromArchivedRow(r *issuereportsdb.GetArchivedReportRow) *Report {
 // reportPageRow is the one conversion from a list row, and every list converts
 // through it.
 //
-// The four lists are four nominally distinct row types over one projection — the
-// same SELECT with more predicates — so the other three convert to this one's
-// type first, in listPage below. That makes the identity of the projections the
-// compiler's assertion rather than four restatements that could come to disagree
-// about which column is which.
+// The lists are nominally distinct row types over one projection — the same
+// SELECT with more predicates — so the others convert to this one's type first,
+// in listPage below. That makes the identity of the projections the compiler's
+// assertion rather than a restatement per list that could come to disagree about
+// which column is which.
 func reportPageRow(r *issuereportsdb.ListReportsRow) pageRow {
 	return pageRow{
 		value: &Report{

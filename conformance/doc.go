@@ -4,8 +4,8 @@ against three different subjects.
 
 A surface here is tested twice today and the two tests prove different things.
 Each <pkg>/grpc package hand-builds its server, hands it a store and a test
-extractor, and asserts what the handler decides; that is 425 assertions across
-twelve surfaces and none of them has ever been through a composition root. A
+extractor, and asserts what the handler decides, and none of those assertions
+has ever been through a composition root. A
 consumer's integration suite boots a whole service and asserts the same things
 again, in the consumer's repository, in the consumer's assertion library,
 against the consumer's single dialect. Neither is wrong. What is wrong is that

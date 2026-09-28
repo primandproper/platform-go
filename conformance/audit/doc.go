@@ -2,7 +2,7 @@
 Package audit is the audit surface's promises, assertable against any subject
 that mounts it.
 
-Three reads, and what a consumer needs verified about them is one sentence: the
+The surface is reads, and what a consumer needs verified about them is one sentence: the
 chain a request reads is the one its session is in. Every assertion here is that
 sentence from a different angle — by identifier, by listing, by a query that
 names somebody else's actor — because the failure it guards against has no
@@ -34,7 +34,7 @@ implies.
 
 # What is here and what stayed behind
 
-The surface's own suite varies how the server was built: seven of its tests
+The surface's own suite varies how the server was built: several of its tests
 construct one WithChainsResolver and assert what changes. A deployed service was
 built once and cannot be rebuilt by the thing testing it, so those assertions
 are about construction rather than about behavior, and they stay in

@@ -25,15 +25,15 @@ import (
 // What the two switches claim is the ingest path and nothing else. Usage arrives
 // over a consumer's own endpoint — an HTTP handler behind a client that retries,
 // a queue consumer that redelivers — and Usage.validate is the boundary it
-// crosses, so the five refusals it raises and the one the registry raises for a
-// meter nobody declared are the six a client can produce and the six that get a
+// crosses, so the refusals it raises and the one the registry raises for a meter
+// nobody declared are the ones a client can produce and the ones that get a
 // status.
 //
 // Everything else is deliberately unclaimed, and internal/sentinelmatrix records
-// which sentinel is in which state. Seven wrap a platform sentinel the platform
+// which sentinel is in which state. Some wrap a platform sentinel the platform
 // mappers already answer, and a case here would be a second copy of a decision
-// already made, free to drift from it. The remaining ten are raised while the
-// component is wired up — two registrations under one name, a quota over a window
+// already made, free to drift from it. The rest are raised while the component
+// is wired up — two registrations under one name, a quota over a window
 // its meter does not bucket by, a plan limits table that cannot be served, a
 // billing period nothing can resolve — or inside the flusher's own goroutine,
 // where no client is waiting. A request that failed because the service was built

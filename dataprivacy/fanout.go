@@ -75,8 +75,8 @@ func FixedScopes(scopes ...tenancy.Scope) ScopeResolver {
 // The sentinel is an argument rather than one of this package's own, because
 // each adapter words its refusal for the table it is about — a consumer
 // matching that package's ErrUnscopedRequest is matching something it can read
-// in a log — and a shared sentinel would take that wording away from all ten at
-// once. A nil sentinel resolves to [ErrUnscopedRequest], so a caller that has
+// in a log — and a shared sentinel would take that wording away from all of
+// them at once. A nil sentinel resolves to [ErrUnscopedRequest], so a caller that has
 // no wording of its own still gets a refusal rather than a nil error beside an
 // empty slice.
 func RequestScopeOr(unscoped error) ScopeResolver {

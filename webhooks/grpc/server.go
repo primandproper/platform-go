@@ -48,7 +48,7 @@ const (
 var (
 	// ErrNilDispatcher is a server built over no dispatcher.
 	//
-	// The dispatcher rather than the store is what the three gated writes go
+	// The dispatcher rather than the store is what the gated writes go
 	// through, because the gates are its: Register validates the URL an
 	// authenticated request is about to be made to, and Subscribe checks the
 	// event type against the consumer's catalog. A surface that wrote through the

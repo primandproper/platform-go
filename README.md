@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/passwordreset`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `sessions`, `settings`, `shredding`, `waitlists` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all twenty in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those twenty has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/passwordreset`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `sessions`, `settings`, `shredding`, `waitlists` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all of them in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those packages has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -303,7 +303,7 @@ So the line moves, one domain at a time, and `identity` is the first across it.
 The paragraphs that follow are in the order they landed, and each names what
 its own crossing decided rather than its place in the queue: a domain that
 crosses next is a paragraph appended, not ten ordinals re-counted.
-`identity/grpc` serves the directory: twenty-nine RPCs, the `.proto` they are
+`identity/grpc` serves the directory: its RPCs, the `.proto` they are
 described by, a typed client, and the permissions each one wants. What it still
 does not ship is the policy — who is calling is an interface the consumer's own
 authentication interceptor satisfies, and what each method requires is a
@@ -319,7 +319,7 @@ and `identity` are used in,
 which is the code every application writes over those four and the code where
 their bugs live. The engines each do one thing and store nothing; the directory
 stores what they produce and never calls them; nothing joined them up. What it
-decides is the refusals, and it collapses four of them into one sentinel on
+decides is the refusals, and it collapses several of them into one sentinel on
 purpose, because telling an unknown handle from a wrong password is telling an
 attacker which half of the guess was right. What it refuses to decide is the
 rest: whether a second factor is mandatory, whether the administrative door
@@ -356,7 +356,7 @@ a remote device: a handset re-registers on every app launch and every token
 rotation, and the registration converges on (platform, token) rather than
 inserting, so a handset that changes hands has one owner.
 
-Three of its twelve store methods stay behind, and they are three different
+Three of its store methods stay behind, and they are three different
 shapes of machinery rather than three instances of one — which is why this is
 the package the distinction is worth reading in. `CreateNotification` is the
 transactional companion: it files a notification in the caller's transaction so
@@ -389,46 +389,45 @@ a grant on the method cannot answer, *whose* comment this is, and
 authors edit and archive their own words and nobody else's.
 
 `webhooks` is the one where the interesting half of the ruling is what stayed
-behind. Nine of its store's eighteen methods are on the wire — endpoint CRUD,
-subscription CRUD and the delivery log — which is endpoint management: the half
-of webhooks that is a resource rather than a protocol, and the only half a
-person ever touches. The other nine are the delivery pipeline, and `Enqueue` is
-the one worth naming here because it is the only absence that is genuinely
-consumer-facing. It writes a delivery and one dispatch per endpoint *in the
-caller's transaction*, so that both commit with whatever else that transaction
-did; an RPC moves the write into a transaction of its own, at a moment the
-caller does not choose, and what you get back is a delivery for a row that
-rolled back or a committed row nobody was told about. The other thing that does
-not cross is an endpoint's signing keys: they travel in on exactly one request
-and there is nowhere in the schema for a response to put them, because a key
-readable back over an administrative API is a key anyone who can read that API
-can forge deliveries with.
+behind. Endpoint CRUD, subscription CRUD and the delivery log are on the wire,
+which is endpoint management: the half of webhooks that is a resource rather
+than a protocol, and the only half a person ever touches. The rest of its store
+is the delivery pipeline, and `Enqueue` is the one worth naming here because it
+is the only absence that is genuinely consumer-facing. It writes a delivery and
+one dispatch per endpoint *in the caller's transaction*, so that both commit
+with whatever else that transaction did; an RPC moves the write into a
+transaction of its own, at a moment the caller does not choose, and what you get
+back is a delivery for a row that rolled back or a committed row nobody was told
+about. The other thing that does not cross is an endpoint's signing keys: they
+travel in on exactly one request and there is nowhere in the schema for a
+response to put them, because a key readable back over an administrative API is
+a key anyone who can read that API can forge deliveries with.
 
-`billing` crosses read-biased. Its store has thirty methods and `billing/grpc`
-serves eighteen: the catalog and its administration, an account's own
-subscriptions, purchases and ledger, an operator's page over each of those
-three, and the `Archive*` set. The twelve absences are the interesting half.
-Seven are writes whose caller is not a client at all — a Stripe or RevenueCat
-callback, or the checkout handler that created the payment intent, each already
-inside a transaction that is also writing an audit entry and an outbox event —
-and four are lookups by a payment provider's identifier, which belong to that
-same callback path; the twelfth is the existence check a write makes on its way
-to inserting. What the surface refuses to ship is a reading: there is no
-`GetAccountStanding` and no `is_active` field anywhere in `billing.proto`,
-because which reported status leaves an account entitled is your policy. Two
-packages beside the store are where it lives: `billing/plans` turns a set of
-subscriptions into the plan a caller is on, and `billing/standing` turns a
-status a processor reported into the standing `identity` stores. Each ships the
-strict reading as a value you pass rather than a default you inherit, so taking
-it is a deployment agreeing with it. `billing/sync` is the third package beside
-the store and the only one that writes: it is the order those store methods are
-called in when a processor delivery arrives — look the agreement up by the
-provider's identifier, open it or move its status and paid period, acknowledge a
-redelivery — on the handler's own transaction, taking the other two packages'
-readings as arguments rather than making either of them itself.
+`billing` crosses read-biased. `billing/grpc` serves part of its store: the
+catalog and its administration, an account's own subscriptions, purchases and
+ledger, an operator's page over each of those three, and the `Archive*` set. The
+absences are the interesting half. Most are writes whose caller is not a client
+at all — a Stripe or RevenueCat callback, or the checkout handler that created
+the payment intent, each already inside a transaction that is also writing an
+audit entry and an outbox event — and the lookups by a payment provider's
+identifier belong to that same callback path; the last is the existence check a
+write makes on its way to inserting. What the surface refuses to ship is a
+reading: there is no `GetAccountStanding` and no `is_active` field anywhere in
+`billing.proto`, because which reported status leaves an account entitled is
+your policy. Two packages beside the store are where it lives: `billing/plans`
+turns a set of subscriptions into the plan a caller is on, and
+`billing/standing` turns a status a processor reported into the standing
+`identity` stores. Each ships the strict reading as a value you pass rather than
+a default you inherit, so taking it is a deployment agreeing with it.
+`billing/sync` is the third package beside the store and the only one that
+writes: it is the order those store methods are called in when a processor
+delivery arrives — look the agreement up by the provider's identifier, open it
+or move its status and paid period, acknowledge a redelivery — on the handler's
+own transaction, taking the other two packages' readings as arguments rather
+than making either of them itself.
 
-`issuereports` is the one whose interesting half is a single method. Ten of its
-store's eleven are on the wire — the filing, the reads, the four queue
+`issuereports` is the one whose interesting half is a single method. All but one
+of its store's methods are on the wire — the filing, the reads, the queue
 listings, the revision, the archive and the move — and the move is why the
 surface is worth having. `TransitionReport` is a compare-and-set: it carries
 the status the caller believed the report held as well as the one it should
@@ -440,16 +439,17 @@ from microseconds to a screen and a person, so the conflict is the ordinary
 case there rather than the rare one, and `ErrStatusConflict` is a refusal a
 client acts on: re-read, and decide about the status it is in now.
 
-The eleventh is `DeleteReportsByReporter`, which destroys every report one person
-filed. It runs inside the caller's transaction so that a subject's reports and
-the rest of their footprint commit or roll back together, and an RPC is exactly a
-caller choosing when that commit happens. It is reached through
-`issuereports/privacy`, from your own erasure run. The other thing the surface
-does not carry is a reporter on any write: a report is filed by whoever is
-calling, and one a client could name is a report filed in somebody else's words.
+The one that stays behind is `DeleteReportsByReporter`, which destroys every
+report one person filed. It runs inside the caller's transaction so that a
+subject's reports and the rest of their footprint commit or roll back together,
+and an RPC is exactly a caller choosing when that commit happens. It is reached
+through `issuereports/privacy`, from your own erasure run. The other thing the
+surface does not carry is a reporter on any write: a report is filed by whoever
+is calling, and one a client could name is a report filed in somebody else's
+words.
 
 `settings` is the one where the interesting half of the ruling is a proto
-design decision. Thirteen of its store's fourteen methods are on the wire,
+design decision. All but one of its store's methods are on the wire,
 split into the two audiences the store already splits into: a catalog an
 operator administers, and the answers a person gives about themselves.
 `Resolve` is the point of it — a stored value falling back to the definition's
@@ -461,12 +461,12 @@ parse it with: putting the parse on the wire is putting the bug on the wire,
 one generated client at a time. The definition's default and its allowed values
 stay strings, because those are what a write is checked against byte for byte,
 and a typed round-trip would rewrite the bytes the check is made with. The
-fourteenth method, `DeleteValuesForSubject`, is erasure and stays behind for
+method that is not, `DeleteValuesForSubject`, is erasure and stays behind for
 the reason every erasure does: it commits inside the transaction that removes
 the rest of the person.
 
-`waitlists` is the one where nothing stayed behind. All eighteen of its
-store's methods are on the wire, which is unusual on this lane: every carve-out
+`waitlists` is the one where nothing stayed behind. Every one of its store's
+methods is on the wire, which is unusual on this lane: every carve-out
 elsewhere is one test applied to different machinery — is the realistic caller
 a worker on a timer, a processor callback, or your own code inside your own
 transaction — and a waitlist has no queue protocol, no fan-out and no provider
@@ -474,7 +474,7 @@ callback. What it has instead is two audiences. Five RPCs are the signup page
 — the open catalog, the form, the confirmation link, and the two ways off the
 list — and are reached by
 somebody who has not signed in and, on a pre-launch list, has nothing to sign
-in to; the other fourteen are whoever is running the launch. So the tenant
+in to; the rest are whoever is running the launch. So the tenant
 comes off the caller where there is one and off the connection where there is
 not, which is `authentication/signin/grpc`'s arrangement applied to half a
 surface. And `Withdraw` is public and names a row, which no grant on a method
@@ -497,11 +497,11 @@ is not uniform and neither is the subset of a store that crosses:
 | `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
 | `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
 | `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
-| `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
+| `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the delivery machinery its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
 | `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
-| `mediaregistry` | binding, not a resource surface | HTTP | all nine store methods; what ships is the guarded serve |
+| `mediaregistry` | binding, not a resource surface | HTTP | every store method; what ships is the guarded serve |
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
@@ -572,16 +572,17 @@ documentation heads a section *"Why the row is the access control"* — whether
 this caller may read this object is answered from the owner and the scope on the
 row, not from the bucket — and then declines to act on it, because nothing in
 that package opens, reads or removes an object. A metadata surface would have
-shipped seven flat methods and left you the guarded serve, which is the half that
-gets written wrong: an unguessable key as the only protection a private document
-has, and a key is not a secret. What crosses instead is one route and the guard
-in front of it, and the decisions that come with it are security properties
-rather than API design — the row is read before the bucket is opened, a refusal
-is indistinguishable from an absence, a content type a browser executes is never
-served inline, and nothing is cached by a shared proxy. There is no resource of
-yours in that either: what is on the wire is bytes and a content type.
+shipped the store's flat methods and left you the guarded serve, which is the
+half that gets written wrong: an unguessable key as the only protection a private
+document has, and a key is not a secret. What crosses instead is one route and
+the guard in front of it, and the decisions that come with it are security
+properties rather than API design — the row is read before the bucket is opened,
+a refusal is indistinguishable from an absence, a content type a browser executes
+is never served inline, and nothing is cached by a shared proxy. There is no
+resource of yours in that either: what is on the wire is bytes and a content
+type.
 
-The other fourteen are resource surfaces, and they get there by two routes.
+The rest are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
@@ -591,9 +592,9 @@ there. `identity/grpc`, `authentication/signin/grpc`,
 `dataprivacy/http`, `audit/grpc`, `notifications/grpc`, `comments/grpc`,
 `webhooks/grpc`, `billing/grpc`, `issuereports/grpc`, `settings/grpc` and
 `waitlists/grpc` are the other kind — a domain's own transport, shipped under the
-rule above rather than as an exception to it, and thirteen of the fourteen have
-crossed this way. Twelve of those thirteen are gRPC and the thirteenth is not,
-for the reason given above: `dataprivacy`'s flow was on HTTP before there was a
+rule above rather than as an exception to it, and every resource surface but
+`operations/http` has crossed this way. All of those are gRPC but one, for the
+reason given above: `dataprivacy`'s flow was on HTTP before there was a
 handler in it.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on

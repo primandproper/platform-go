@@ -159,7 +159,7 @@ var (
 
 // SubjectReader is the directory reads a collection makes.
 //
-// It is four methods of identity.Store rather than all fifty, for the reason
+// It is four methods of identity.Store rather than all of them, for the reason
 // that interface's own documentation gives: the narrow one is a statement about
 // reach, and it is checked by the compiler. A collector that held a Store could
 // ban a user.

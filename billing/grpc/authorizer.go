@@ -16,9 +16,9 @@ import (
 //
 // # Why it exists
 //
-// Seven of this service's RPCs are somebody's own money. Four name an account in
-// the request — the per-account subscription, current-subscription, purchase and
-// ledger pages — and three name a row that belongs to one. The permission
+// The account-keyed RPCs are somebody's own money. Some name an account in the
+// request — the per-account subscription, current-subscription, purchase and
+// ledger pages — and the rest name a row that belongs to one. The permission
 // fragment in front of them is a grant on the method: a holder of
 // billing.transactions.read may call ListTransactionsForAccount, and nothing in
 // a per-method check says whose. That is the whole of the reason this seam
@@ -42,8 +42,8 @@ import (
 // membership table and can answer the question itself; this one has no idea
 // what makes an account somebody's, and every default available to it is wrong
 // in a way nothing reports. One that permits everything hands one customer's
-// ledger to another. One that refuses everything makes six RPCs answer as
-// though nothing existed, which is discovered as a mystery rather than as a
+// ledger to another. One that refuses everything makes every account-keyed RPC
+// answer as though nothing existed, which is discovered as a mystery rather than as a
 // wiring failure. One that compares the account id in the request against
 // callers.Principal.ActiveAccountID compares a request field against a request
 // field, which is the reading MembershipAuthorizer's own documentation rejects.

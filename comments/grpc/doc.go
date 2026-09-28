@@ -8,9 +8,9 @@ It is imported as commentsgrpc.
 
 # The shape
 
-Eight RPCs over comments.Store's ten methods. Five reads, each one call on
-Client.Reader(); three writes, each one transaction this handler owns, because
-the store's writes take a database.Tx and an RPC handler is the caller with
+Every comments.Store method but the bulk erasures. Each read is one call on
+Client.Reader(); each write is one transaction this handler owns, because the
+store's writes take a database.Tx and an RPC handler is the caller with
 nothing of its own to join. No method here orchestrates anything: it converts,
 calls one thing, and converts back.
 
@@ -42,7 +42,7 @@ justify reaching somebody else's words.
 
 What each method requires is [Permissions], declared in one call by [Require]
 and evaluated by authorization/grpc's interceptor before the request body has
-been looked at. Five grants over eight RPCs.
+been looked at. Fewer grants than RPCs.
 
 Whose comments a caller may touch is [AuthorAuthorizer], and it is here because
 it cannot be there. A grant on the method says whether this caller may edit
@@ -108,11 +108,11 @@ alongside it.
 
 The code passed is a default, not an answer. The interceptor re-runs MapToGRPC
 over the preserved chain, so comments.GRPCMapper wins over whatever a method
-guessed, and that is why nothing here switches on a sentinel. Six of this
+guessed, and that is why nothing here switches on a sentinel. Several of this
 package's refusals are also registered as client-safe, so the sentence each
 carries reaches the client instead of the code's name — which matters most where
-the codes collide, since four of the six are InvalidArgument and a person told
-that six ways cannot tell which field to go back to.
+the codes collide, since most of them are InvalidArgument and a person told
+that the same way each time cannot tell which field to go back to.
 
 # Mounting it
 

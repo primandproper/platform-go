@@ -2,7 +2,7 @@
 Package comments is the discussion surface's promises, assertable against any
 subject that mounts it.
 
-Eight RPCs, and three questions a consumer needs answered about them. Does a
+Three questions a consumer needs answered about this surface. Does a
 comment go in the way it was written and come back the way it was stored, with
 its author taken from the connection rather than from anything the request
 said? Does a discussion hang together — a reply belongs to its parent's target,

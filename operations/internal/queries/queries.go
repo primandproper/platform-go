@@ -170,7 +170,7 @@ func renderPostgres() string {
 // GetOperation is the unscoped half, and it has exactly one caller: the
 // read-back at the end of RequestOperationCancel, which is machinery holding an
 // id it has just written and no scope to hold. It is not a variant a consumer
-// read may reach for, and Store does not expose one — see the seven methods
+// read may reach for, and Store does not expose one — see the methods
 // there that take neither an executor nor a scope, and why.
 func singleReads(g *querygen.Generator) []*querygen.Query {
 	return []*querygen.Query{

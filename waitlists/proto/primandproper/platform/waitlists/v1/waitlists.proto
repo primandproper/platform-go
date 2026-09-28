@@ -6,9 +6,9 @@
 // the three domain surfaces that came before it. Five RPCs are the signup page
 // — the open lists, the form, the confirmation link, and the two ways off the
 // list — and are reachable by somebody who has not signed in and frequently
-// does not have an account to sign in to. The other fourteen are whoever is
-// running the launch, and every one of them is behind a grant. See the service
-// comment at the bottom.
+// does not have an account to sign in to. The rest are whoever is running the
+// launch, and every one of them is behind a grant. See the service comment at
+// the bottom.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts
@@ -497,7 +497,7 @@ message ConvertResponse { Signup result = 1; }
 
 // WithdrawRequest is somebody asking to come off a list, at their own request.
 //
-// It is one of the five RPCs a caller reaches without a grant, and the only one
+// It is one of the RPCs a caller reaches without a grant, and the only one
 // of them that names a row. A grant on the method could not have said whose row
 // this is, and neither can a signup identifier, which is minted by the store and
 // is not a credential -- so the standing to withdraw this signup is asked of the
@@ -598,20 +598,20 @@ message ArchiveSignupRequest {
 }
 message ArchiveSignupResponse {}
 
-// WaitlistsService is the whole of waitlists on the wire: all eighteen methods
-// of waitlists.Store, split by who calls them, and the second door onto
+// WaitlistsService is the whole of waitlists on the wire: every method of
+// waitlists.Store, split by who calls them, and the second door onto
 // Withdraw that an unsubscribe link lands on.
 //
 // There are no absences, which is unusual on this lane and is the reason this
-// was the first of the ten domains to cross. Every other surface in the module
+// was the first domain to cross. Every other surface in the module
 // carves something out because its realistic caller is a worker on a timer, a
 // processor callback, or the consumer's own code inside its own transaction.
 // Nothing here has that shape: a waitlist has no queue protocol, no fan-out and
-// no provider callback, and every one of the eighteen is either a form
+// no provider callback, and every one of them is either a form
 // somebody submitted, a link somebody followed, or a console somebody is
 // looking at.
 //
-// # The public five
+// # The public methods
 //
 // ListOpenLists, Join, Confirm, Withdraw and Unsubscribe are reachable without a
 // grant, because the
@@ -630,7 +630,7 @@ message ArchiveSignupResponse {}
 // read a public caller gets is the catalog of open lists, which is what a signup
 // page publishes anyway.
 //
-// # The administrative fourteen
+// # The administrative methods
 //
 // List CRUD, the signup reads, the two operator transitions, the note, the
 // archive and the erasure. Each is behind a grant, and waitlists/grpc's

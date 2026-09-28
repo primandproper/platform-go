@@ -19,8 +19,8 @@ import (
 // rather than an enum because a consumer's policy is data — a YAML file, a table
 // of roles — and it has to be able to name one without importing Go.
 //
-// There are ten of them over fourteen RPCs, and the two collapses are the
-// ordinary one: each read covers a get and its list, because they answer the
+// There are fewer grants than RPCs, and the two collapses are the ordinary
+// one: each read covers a get and its list, because they answer the
 // same question at two cardinalities and a grant that separated them would let a
 // consumer allow enumeration while forbidding the read it enumerates into. A
 // consumer who wants the page behind a stronger grant than the get overrides the
@@ -64,7 +64,7 @@ const (
 	// one has not agreed to publish. That read is the reason the public half of
 	// this service stops at the open catalog.
 	//
-	// Covering four reads at once used to make that an all-or-nothing choice: a
+	// Covering several reads at once used to make that an all-or-nothing choice: a
 	// deployment granting it narrowly enough to contain the oracle also took
 	// away the one safe read, a member asking where they are in a queue. It no
 	// longer does. ListSignupsForSubject asks
@@ -169,9 +169,9 @@ func PublicMethods() []string {
 }
 
 // Permissions is the default map from method name to what it requires: the
-// fourteen administrative RPCs, and nothing else.
+// administrative RPCs, and nothing else.
 //
-// The five in [PublicMethods] are deliberately absent, and permissions_test.go
+// The ones in [PublicMethods] are deliberately absent, and permissions_test.go
 // reads the service descriptor rather than a list in order to check that every
 // method is in exactly one of the two — so an RPC added later and decided about
 // in neither fails there rather than being denied in somebody's production.
@@ -205,7 +205,7 @@ func Permissions() map[string][]authorization.Permission {
 }
 
 // Require declares every method of this service on a requirements builder: the
-// fourteen behind their grants and the five as public.
+// administrative ones behind their grants and the rest as public.
 //
 // It is the exported name rather than a paragraph asking a consumer to write the
 // loop, because authorization/grpc is fail-closed — a method declared nowhere is
@@ -213,7 +213,7 @@ func Permissions() map[string][]authorization.Permission {
 // service's method set changes.
 //
 // A method declared twice is ErrDuplicateMethod, so a consumer who wants one of
-// the public five gated after all declares the whole set themselves rather than
+// the public ones gated after all declares the whole set themselves rather than
 // calling this and amending it.
 //
 // A nil builder is tolerated and returns nil, so composing several domains'

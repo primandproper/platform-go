@@ -2,7 +2,7 @@
 Package oauth2clients is the administered half of the OAuth2 client registry's
 promises, assertable against any subject that mounts it.
 
-Four RPCs, and the property with the worst failure is the one a request cannot
+The property with the worst failure is the one a request cannot
 express: a registration minted here belongs to nobody. An administered
 registration is one any subject in the registry may authorize through, so its
 owner cannot come off the wire — a request that could name one mints a
@@ -40,7 +40,7 @@ conformance package documentation describes. Each caller declares the calls it
 makes and is held to them: a call it did not declare fails the test.
 
 The registry is the deployment's list of who may ask it for tokens, so a
-deployment plausibly reserves all four RPCs. A registry's confinement is
+deployment plausibly reserves every RPC. A registry's confinement is
 asserted between two callers in two tenants, whoever they are, and its being
 the tenant's rather than the registrar's between two in one, which a subject
 minting a single administrator per tenant cannot show and skips.

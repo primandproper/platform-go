@@ -22,7 +22,7 @@ import (
 // effect a consumer cannot opt out of. The composition root registers the domain
 // tier, and for this module that is one call — errormappers.Register.
 //
-// The sentinels absent from both switches are absent on purpose: the four
+// The sentinels absent from both switches are absent on purpose: the
 // nil-argument ones wrap platform sentinels the platform mappers already answer.
 // internal/sentinelmatrix records which sentinel is in which state, and fails
 // when one is in none.

@@ -53,17 +53,17 @@ import (
 // the registry servicing itself on a provider's word rather than answering a
 // consumer, and it says so on its own doc.
 //
-// # Nine of these fourteen are on the wire and five are not
+// # Which of these are on the wire, and which are not
 //
 // notifications/grpc serves the inbox as six RPCs — ListNotifications,
 // ListUnreadNotifications, GetNotification, MarkNotificationRead,
 // MarkAllNotificationsRead and ArchiveNotification — and the registry as three:
-// RegisterDevice, ListDevices and RevokeDevice. Those nine are what a bell icon
-// and a device screen are made of, and the second three have a caller that is
-// literally a handset.
+// RegisterDevice, ListDevices and RevokeDevice. Those are what a bell icon and a
+// device screen are made of, and the registry's have a caller that is literally
+// a handset.
 //
-// The five that stay off it are four *different* shapes of machinery rather than
-// five instances of one, which is what makes this package the place to read the
+// The ones that stay off it are *different* shapes of machinery rather than
+// instances of one, which is what makes this package the place to read the
 // distinction: [Inbox.CreateNotification] is the transactional companion,
 // [Registry.ListDevicesByPrincipals] is the internal fan-out,
 // [Registry.InvalidateDeviceToken] is the provider callback hook, and
@@ -85,7 +85,7 @@ import (
 // entity whose scope disagrees with the argument is [ErrScopeMismatch] rather
 // than either value quietly winning; one that names none adopts the argument.
 //
-// # Five of these writes hand back the row they moved, and four do not
+// # Most of these writes hand back the row they moved, and the rest do not
 //
 // [Inbox.CreateNotification], [Inbox.MarkNotificationRead],
 // [Inbox.ArchiveNotification], [Registry.RegisterDevice] and
@@ -102,16 +102,16 @@ import (
 // first and writes second, and its record then describes the row as it stood a
 // statement earlier rather than as the statement left it.
 //
-// Two of the five could not be answered by a later read at all, which is what
+// Two of them could not be answered by a later read at all, which is what
 // makes the boundary a line rather than a preference. An archived notification
 // is invisible to every single-row read here, because excluding archived rows
 // is what "the inbox" means; a revoked device is invisible to everything,
-// because the row is deleted. The other three are reachable a statement later
+// because the row is deleted. The others are reachable a statement later
 // and hand the row back anyway, because a module with two spellings of "what
 // did I just write" is a module where the answer depends on which method you
 // called.
 //
-// The four that do not are the four with no row to describe.
+// The ones that do not are the ones with no row to describe.
 // [Inbox.MarkAllNotificationsRead] moves a set rather than a row and reports how
 // many, and [Inbox.DeleteNotificationsForPrincipal] and
 // [Registry.DeleteDevicesForPrincipal] do the same with less left over: a

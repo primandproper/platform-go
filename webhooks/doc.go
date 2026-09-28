@@ -326,8 +326,8 @@ be a scan error on whichever dialect a container test happened to reach first.
 The schema's facts — the five table names, each table's columns in projection
 order, the two subsets a write may assign — are spelled once, in
 webhooks/internal/queries. `make generate` renders most of the corpus from them
-through database/querygen; eleven statements are written out there in full,
-because they are the shapes querygen deliberately does not render — a self-join,
+through database/querygen; the rest are written out there in full, because
+they are the shapes querygen deliberately does not render — a self-join,
 a three-table projection, a bounded delete, an incrementing counter, an
 aggregate, a scope reached through another table, and the two creation instants
 that are the emitting transaction's rather than the row's. That package's
@@ -428,7 +428,7 @@ is not traced: a root span every poll interval is noise.
 
 # Where this package stops
 
-Ten of the nineteen store methods are served over gRPC by webhooks/grpc: the
+The store's resource methods are served over gRPC by webhooks/grpc: the
 endpoint CRUD, the rotation, the subscription CRUD and the delivery log. That is
 the half of this package that is a resource rather than a protocol — an operator
 adds a URL, picks the event types it wants, rotates its keys and then asks
@@ -455,7 +455,7 @@ decision every consumer made again. [Secret] is why a rotation is not an outage
 and rotating to the key already in force is a no-op rather than a second
 rotation, so a retry cannot close that window early.
 
-The nine that stay behind each say so on themselves. Seven are the delivery
+The ones that stay behind each say so on themselves. Seven are the delivery
 machinery [Store] groups under "The delivery machinery takes neither" —
 [Store.Claim], [Store.MarkDelivered], [Store.RecordFailure],
 [Store.RecordAttempt], [Store.Requeue], [Store.Backlog] and [Store.Reap] —

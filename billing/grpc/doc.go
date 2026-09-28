@@ -14,11 +14,11 @@ on it, and a caller who is mostly not the one writing.
 	srv, _ := billinggrpc.NewServer(store, client, extractPrincipal, authorizer)
 	// []grpcserver.RegistrationFunc{srv.RegisterOn}
 
-# Eighteen RPCs over a thirty-method store
+# A subset of the store, chosen deliberately
 
-Twelve reads and six writes — two that stock and revise the catalog, and the
-four-strong Archive set. The subset is the decision worth reading first, because
-on this table it is not the usual one.
+Mostly reads; the writes are the two that stock and revise the catalog, and the
+Archive set. The subset is the decision worth reading first, because on this
+table it is not the usual one.
 
 	the catalog        GetProduct, ListProducts
 	its administration CreateProduct, UpdateProduct, ArchiveProduct
@@ -136,8 +136,8 @@ identity/grpc passes its MembershipAuthorizer straight in.
 
 And a refusal is answered two ways rather than one. Where the account is named
 in the request, a refusal is codes.PermissionDenied, exactly as the directory
-answers. Where the row was read first and the account came off it — the three
-keyed reads — a refusal is codes.NotFound, the same status a row that is not
+answers. Where the row was read first and the account came off it — the keyed
+reads — a refusal is codes.NotFound, the same status a row that is not
 there gets, because answering anything else would tell a caller walking
 transaction ids which of them are real. The chain returned is still the refusal
 and the log and the span record it; only the status differs, and
@@ -170,8 +170,8 @@ Every failure here is one grpcerrors.PrepareAndLogGRPCStatus with codes.Internal
 as the *default*. The encoding interceptor re-runs the registered mappers over
 the preserved chain, so the mapper wins over the guess made at the call site,
 which is why no handler on this surface switches on a sentinel. billing's
-client-safe sentinels matter more here than on the other surfaces: seven of its
-refusals are InvalidArgument, five are AlreadyExists and two are
+client-safe sentinels matter more here than on the other surfaces: several of
+its refusals share each of InvalidArgument, AlreadyExists and
 FailedPrecondition, and inside each family the remedy differs.
 */
 package grpc

@@ -11,22 +11,21 @@ each method requires is a default map a consumer composes into their own.
 
 It is imported as notificationsgrpc.
 
-# Nine RPCs over two seams
+# Two seams
 
 Six on the inbox — list, list unread, get, mark one read, mark them all read,
-archive — and three on the registry: register, list, revoke. The six are the
-bell icon, which is the screen every consumer's application has and the code
-every consumer otherwise writes. The three are the surface whose caller is
+archive — and three on the registry: register, list, revoke. The inbox's are
+the bell icon, which is the screen every consumer's application has and the code
+every consumer otherwise writes. The registry's are the surface whose caller is
 literally a remote device: a handset re-registers on every app launch and every
 token rotation, which is a description of an RPC being called from a phone.
 
 [NewServer] takes the two interfaces separately because notifications declares
 them separately, and one value satisfies both — notifications.SQLStore is passed
 twice. Both are required. A deployment with no mobile application never calls
-the three device RPCs, which costs it nothing; a server that accepted a nil
-registry would answer three of its nine methods differently depending on wiring
-nobody can see from the client side, and silently is the one way this surface
-must not fail.
+the device RPCs, which costs it nothing; a server that accepted a nil registry
+would answer its device methods differently depending on wiring nobody can see
+from the client side, and silently is the one way this surface must not fail.
 
 # Who is calling
 
@@ -46,7 +45,7 @@ authorization here — see the next section.
 # Row-level permission, and why there is no TargetAuthorizer
 
 identity/grpc grew [github.com/primandproper/platform-go/v14/identity/grpc.TargetAuthorizer]
-because eleven of its RPCs take their target from the request, and whether the
+because most of its RPCs take their target from the request, and whether the
 caller has standing in that row cannot be answered by an interceptor holding
 only the method name and the caller's grants.
 
@@ -95,7 +94,7 @@ this handler puts on the wire is that row — the value the store returned, not 
 registration the request described, since those differ exactly when the write
 converged on a token somebody had already registered.
 
-The other three writes discard the rows their store methods return, because
+The other writes discard the rows their store methods return, because
 their responses have no field to carry one. Each of those rows is still readable
 by the caller a moment later or, for the revocation, was never readable by
 anybody but the transaction that removed it; the store returns them for the

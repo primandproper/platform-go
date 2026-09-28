@@ -108,7 +108,7 @@ leaves live reset links for an account whose password has just changed — the
 vulnerability the paragraph above names, reached by the one route that paragraph
 does not close.
 
-What it needs from the directory is two methods, [Directory], and one of them is
+What it needs from the directory is [Directory], and one of its methods is
 [github.com/primandproper/platform-go/v14/identity.CredentialStore]'s. It is
 reached as a store rather than through identity's Service because that Service
 opens a transaction of its own, which is the one thing this sequence cannot

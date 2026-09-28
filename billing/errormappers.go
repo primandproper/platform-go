@@ -29,7 +29,7 @@ import (
 //
 // Every case below is reachable from a consumer's own handler over Store as well
 // as from billing/grpc, which is why the mapping covers the whole package rather
-// than the eighteen RPCs' subset of it. Seven of this package's writes are
+// than the RPCs' subset of it. Several of this package's writes are
 // deliberately not on the wire and their refusals still have to mean something:
 // a redelivered webhook arriving at a consumer's receiver is answered by
 // ErrTransactionExists whether that receiver speaks HTTP, gRPC or neither.
