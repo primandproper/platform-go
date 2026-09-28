@@ -366,7 +366,7 @@ func (s *SQLStore) newCode(ctx context.Context) (string, error) {
 }
 
 // Redeem spends the code a phone number holds, if code is it. See Store.Redeem,
-// which says why a wrong code's ErrCodeInvalid has to be committed.
+// which says why a refusal is a result rather than an error.
 //
 // It reads the row first, on tx, because two things it needs are only on the
 // row: the id the digest is bound to, and the attempt count both writes compare
@@ -388,7 +388,7 @@ func (s *SQLStore) Redeem(
 	tx database.Tx,
 	scope tenancy.Scope,
 	phoneNumber, code string,
-) (*Code, error) {
+) (*Code, bool, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 	defer op.Time(ctx, nil, s.instruments.Latency)()
@@ -396,18 +396,18 @@ func (s *SQLStore) Redeem(
 	s.instruments.Attempt(ctx)
 
 	if err := validateRedemption(tx, scope, phoneNumber, code); err != nil {
-		return nil, s.failed(ctx, op.Error(err, "redeeming phone code"))
+		return nil, false, s.failed(ctx, op.Error(err, "redeeming phone code"))
 	}
 
 	held, err := s.read(ctx, tx, scope, phoneNumber)
 	if errors.Is(err, sql.ErrNoRows) {
 		op.SpanOnly(reasonKey, reasonUnknown)
 
-		return nil, ErrCodeInvalid
+		return nil, false, nil
 	}
 
 	if err != nil {
-		return nil, s.failed(ctx, op.Error(err, "reading phone code row"))
+		return nil, false, s.failed(ctx, op.Error(err, "reading phone code row"))
 	}
 
 	op.Set(idKey, held.ID).Set(subjectKey, held.SubjectID)
@@ -417,7 +417,7 @@ func (s *SQLStore) Redeem(
 	if reason := deadReason(held, now); reason != "" {
 		op.SpanOnly(reasonKey, reason)
 
-		return nil, ErrCodeInvalid
+		return nil, false, nil
 	}
 
 	spent, err := s.q.SpendPhoneCode(ctx, tx, phonecodesdb.SpendPhoneCodeParams{
@@ -429,13 +429,13 @@ func (s *SQLStore) Redeem(
 		ExpectedAttempts: int64(held.Attempts),
 	})
 	if err != nil {
-		return nil, s.failed(ctx, op.Error(err, "spending phone code row"))
+		return nil, false, s.failed(ctx, op.Error(err, "spending phone code row"))
 	}
 
 	if spent == 1 {
 		held.RedeemedAt = &now
 
-		return held, nil
+		return held, true, nil
 	}
 
 	counted, err := s.q.CountPhoneCodeAttempt(ctx, tx, phonecodesdb.CountPhoneCodeAttemptParams{
@@ -446,7 +446,7 @@ func (s *SQLStore) Redeem(
 		ExpectedAttempts: int64(held.Attempts),
 	})
 	if err != nil {
-		return nil, s.failed(ctx, op.Error(err, "counting a wrong phone code"))
+		return nil, false, s.failed(ctx, op.Error(err, "counting a wrong phone code"))
 	}
 
 	if counted == 0 {
@@ -455,7 +455,7 @@ func (s *SQLStore) Redeem(
 		op.SpanOnly(reasonKey, reasonWrongCode)
 	}
 
-	return nil, ErrCodeInvalid
+	return nil, false, nil
 }
 
 // validateRedemption is the argument check a redemption makes before it reads.

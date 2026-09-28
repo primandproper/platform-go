@@ -6,19 +6,17 @@ import (
 
 // The sentinels this package returns.
 var (
-	// ErrCodeInvalid is every refusal a redemption can produce: no code for the
-	// number, a spent code, a withdrawn one, an expired one, one at its attempt
-	// limit, and a wrong code.
+	// ErrCodeInvalid is how a caller reports every refusal a redemption can
+	// produce: no code for the number, a spent code, a withdrawn one, an
+	// expired one, one at its attempt limit, and a wrong code. Store.Redeem
+	// answers a refusal as false rather than returning this, so that the
+	// attempt it counted commits; the caller reports it after the commit.
 	//
-	// They are one sentinel so that a guesser learns nothing from which one it
+	// They are one answer so that a guesser learns nothing from which one it
 	// got. Telling "that number has no code" from "wrong code" apart says which
 	// numbers are waiting for one; telling "wrong code" from "too many attempts"
 	// apart says when to move on to the next number. The span records which it
 	// was, for the operator.
-	//
-	// When it is the wrong code, the attempt has been counted in the caller's
-	// transaction — see Store.Redeem, which says why that transaction has to
-	// commit.
 	ErrCodeInvalid = platformerrors.New("the code is not valid for that phone number")
 
 	// ErrInvalidPhoneNumber indicates a number that is not in E.164: a plus
@@ -31,7 +29,7 @@ var (
 
 	// ErrEmptyCode indicates a redemption presenting nothing.
 	//
-	// It is an argument refusal rather than ErrCodeInvalid, because an empty
+	// It is an argument refusal rather than a refused code, because an empty
 	// submission is a form nobody filled in rather than a guess that missed, and
 	// counting it as an attempt would let a double-clicked empty form spend a
 	// person's tries.

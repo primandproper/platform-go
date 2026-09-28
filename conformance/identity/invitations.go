@@ -126,6 +126,34 @@ func invitations(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 
+	t.Run("the right token under somebody else's address is refused as absent", func(t *testing.T) {
+		t.Parallel()
+
+		sender := s.Subject(t, conformance.Making(invite, listAccountMembers))
+		needsAccount(t, sender)
+		addressee := colleague(t, s, sender, conformance.Making(getPrincipal, acceptInvitation))
+		holder := colleague(t, s, sender, conformance.Making(acceptInvitation))
+
+		invitation := sendInvitation(t, sender, self(t, addressee).GetEmailAddress(), role)
+		token := tokenFor(t, s, sender, invitation.GetId())
+
+		// The token leaks wherever the mail and the events about it go. The
+		// address is what stops a leaked one admitting whoever holds it, and
+		// the refusal is a wrong token's, so the holder learns nothing about
+		// which half they got right.
+		_, err := holder.Surfaces.Identity.AcceptInvitation(holder.Context(t.Context()),
+			&identitypb.AcceptInvitationRequest{InvitationId: invitation.GetId(), Token: token})
+		must.Error(t, err, must.Sprint("an invitation admitted somebody it was not addressed to"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
+		test.SliceNotContains(t, memberIDs(t, sender, sender.AccountID), holder.UserID)
+
+		// The positive control: the addressee answers the same link.
+		_, err = addressee.Surfaces.Identity.AcceptInvitation(addressee.Context(t.Context()),
+			&identitypb.AcceptInvitationRequest{InvitationId: invitation.GetId(), Token: token})
+		must.NoError(t, err, must.Sprint("the addressee cannot accept; the refusal above proves nothing"))
+		test.SliceContains(t, memberIDs(t, sender, sender.AccountID), addressee.UserID)
+	})
+
 	t.Run("a rejection checks the token before it writes", func(t *testing.T) {
 		t.Parallel()
 

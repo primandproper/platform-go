@@ -29,6 +29,7 @@ import (
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -451,12 +452,22 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				return http.DefaultClient, nil
 			},
 
+			// And a caller the suite signed in itself is the same connection
+			// with that token on every call, read back by the extractor as any
+			// minted subject's is — the contract's default Authorizer.
+			SignedIn: func(_ context.Context, issued *signinpb.IssuedToken) (grpc.ClientConnInterface, error) {
+				return &bearerConn{ClientConnInterface: conn, token: issued.GetToken(), reserving: reserving}, nil
+			},
+
 			// The one target type registerApplication declares, for the reads that
 			// name a target without writing to it. Its writes go through
 			// CommentTarget, since the type checks that a target exists.
 			CommentTargetType: string(thingType),
 
 			Dialect: d,
+
+			// The one role the sign-in block's administrative door admits.
+			Roles: conformance.Roles{Administrator: adminServiceRole},
 
 			// service mounts waitlists with its default scope resolver, which is
 			// the single-tenant answer: a visitor is in the global directory.
@@ -663,6 +674,33 @@ func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirem
 	must.NoError(t, err)
 
 	return reqs
+}
+
+// bearerConn puts one signed-in caller's token on every call, beside which run
+// the call is made in, which is what a consumer's authenticated client
+// connection does with the first half.
+type bearerConn struct {
+	grpc.ClientConnInterface
+
+	token     string
+	reserving string
+}
+
+func (c *bearerConn) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
+	return c.ClientConnInterface.Invoke(c.carrying(ctx), method, args, reply, opts...)
+}
+
+func (c *bearerConn) NewStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	return c.ClientConnInterface.NewStream(c.carrying(ctx), desc, method, opts...)
+}
+
+func (c *bearerConn) carrying(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.token, mdReserving, c.reserving)
 }
 
 // credentialTransport puts one subject's bearer token on every request, which

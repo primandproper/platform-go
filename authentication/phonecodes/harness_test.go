@@ -2,7 +2,6 @@ package phonecodes
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -214,26 +213,21 @@ func issueFor(tb testing.TB, store *SQLStore, scope tenancy.Scope, request *Issu
 	return issuance, err
 }
 
-// redeem presents a code in a transaction of its own, the way Store.Redeem says
-// a caller has to: ErrCodeInvalid is captured and the transaction commits, so a
-// counted wrong code stays counted, and the refusal is reported after.
+// redeem presents a code in a transaction of its own, the way a caller writes
+// it: the callback returns Redeem's error as it is, so a refusal commits its
+// counted attempt, and the refusal is reported after as ErrCodeInvalid.
 func redeem(tb testing.TB, store *SQLStore, scope tenancy.Scope, phoneNumber, code string) (*Code, error) {
 	tb.Helper()
 
 	var (
-		spent   *Code
-		refused error
+		spent    *Code
+		redeemed bool
 	)
 
 	err := withTx(tb, store, func(tx database.Tx) error {
 		var redeemErr error
 
-		spent, redeemErr = store.Redeem(tb.Context(), tx, scope, phoneNumber, code)
-		if errors.Is(redeemErr, ErrCodeInvalid) {
-			refused = redeemErr
-
-			return nil
-		}
+		spent, redeemed, redeemErr = store.Redeem(tb.Context(), tx, scope, phoneNumber, code)
 
 		return redeemErr
 	})
@@ -241,8 +235,8 @@ func redeem(tb testing.TB, store *SQLStore, scope tenancy.Scope, phoneNumber, co
 		return nil, err
 	}
 
-	if refused != nil {
-		return nil, refused
+	if !redeemed {
+		return nil, ErrCodeInvalid
 	}
 
 	return spent, nil
