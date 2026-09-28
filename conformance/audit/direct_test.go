@@ -169,10 +169,6 @@ func runDirect(t *testing.T, edge ...grpc.ServerOption) {
 			},
 		},
 		Dialect: dialect.SQLite,
-
-		// One database, stood up by this function, with nothing else writing
-		// to it.
-		ExclusiveDatabase: true,
 	}, conformanceaudit.Suite())
 }
 

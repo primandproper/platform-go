@@ -7,10 +7,11 @@ It lives here for the reason `client-contract.md` does: it describes a thing
 consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
-**Status:** in progress. Five suites and all three subjects exist; the assembled
-subject mounts all twelve gRPC surfaces over all three dialects and the three
-HTTP surfaces wherever they can run, and the per-surface suites cover two of
-them. [What is left](#what-is-left) is the honest list, and nothing below
+**Status:** in progress. Seventeen suites and all three subjects exist: one for
+each of the twelve gRPC surfaces, one each for the dataprivacy and mediaregistry
+HTTP surfaces, and three that cut across every surface. The assembled subject
+mounts all twelve gRPC surfaces and all three HTTP surfaces over all three
+dialects. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
 
 ## The problem it exists to solve
@@ -108,6 +109,16 @@ bring about. Both skip with the reason printed. That is `service.Config`'s
 presence-is-the-switch rule one level down. Nothing degrades quietly: a suite
 that silently asserted nothing is worse than no suite.
 
+**Nothing here asserts a clock or claims a database.** No suite asserts an
+expiry, a TTL, a pacing rule or a sweep, and `Seams` has no field offering a
+movable clock or a database the run owns alone — two such fields once existed,
+were read by no suite, and were deleted so that a consumer reading the seams
+could not conclude those promises were covered. They are asserted in process,
+and a consumer's own test of one is not something these suites replace. A
+time-based promise that later wants a suite — refresh-token expiry, link TTLs,
+retention sweeps — comes back as a seam shaped for that suite, not as a general
+flag.
+
 **Some promises can only be asserted in process.** `NewServer(nil, db)` has no wire form,
 a permission roster is a statement about a server rather than a call, and a
 converter test is about two Go types. So is anything that varies how the server
@@ -175,12 +186,12 @@ all three files say so and point at each other.
 
 | suite | assertions | notes |
 | --- | --- | --- |
-| `conformance/anonymous` | 154 | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
+| `conformance/anonymous` | 156 | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
 | `conformance/filters` | 39 | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | 156 | every paged read reports the filter it applied |
-| `conformance/identity` | 49 | accounts, memberships, invitations, users |
+| `conformance/identity` | 50 | accounts, memberships, invitations, users |
 | `conformance/settings` | 29 | definitions, values, reserved settings, confinement |
-| `conformance/waitlists` | 40 | both audiences: the console, and the public signup page |
+| `conformance/waitlists` | 42 | both audiences: the console, and the public signup page |
 | `conformance/billing` | 32 | products, subscriptions, the account rule |
 | `conformance/issuereports` | 48 | filing, lifecycle, the triage queue |
 | `conformance/signin` | 31 | registration, the password and magic-link doors, refresh, sign-out |
@@ -193,7 +204,7 @@ all three files say so and point at each other.
 | `conformance/dataprivacy` | 5 | privacy requests over HTTP, and the operations that fulfill them |
 | `conformance/mediaregistry` | 3 | the guarded object read: its owner, another tenant, a colleague |
 
-689 leaf assertions on each run of the assembled subject, which serves every
+694 leaf assertions on each run of the assembled subject, which serves every
 surface on Postgres, SQLite and MySQL 8 alike. Every one passes on all three,
 with eight skips on each, every skip printing its reason.
 
@@ -207,7 +218,8 @@ twelve descriptors, but an RPC is only called on a surface the subject mounted,
 and until the assembled subject existed no subject mounted anything but identity
 — so identity's 31 were executed and the other 111 were compiled. Audit's three
 ran for the first time through `service.New`, and all three failed; see below.
-With every surface mounted all 142 run, on three dialects. The other ten
+With every surface mounted all of them run, on three dialects — 146 today,
+since signin grew to seventeen. The other ten
 surfaces passed on first mounting: what they refuse without a caller was already
 right, and the value of running them is that it now stays right.
 
@@ -263,14 +275,15 @@ disagree with them. Its roster is checked against `protoregistry.GlobalFiles`,
 because a missing entry compiles perfectly and quietly asserts nothing about an
 entire service.
 
-It asserts both directions. The 127 RPCs that require a caller must refuse one
-that has none; the 15 that do not must not be refused that way. The second
+It asserts both directions. The 129 RPCs that require a caller must refuse one
+that has none; the 17 that do not must not be refused that way. The second
 direction is the one nothing else checks and the one with a user-visible
 failure: three of waitlists' public RPCs are a signup form, the link in the mail
 that follows, and the unsubscribe in that mail.
 
-Roughly 142 of the 150 assertions are dialect-independent; that ratio inverts as
-per-surface work lands, which is almost entirely SQL-shaped.
+The cross-cutting suites are close to dialect-independent; the per-surface
+suites are almost entirely SQL-shaped, which is why the assembled subject runs
+every one of them on all three.
 
 ## What it has already found
 
@@ -331,12 +344,7 @@ tenant still gets a 404, and the suite asserts both.
 
 ## What is left
 
-1. **Every gRPC surface has a suite.** Each suite's commit names the in-process
-   tests whose promises it restates, and the ones it cannot reach and why —
-   construction, rosters, converters, schema, options, observability, and
-   anything that varies how a server was built.
-
-2. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
+1. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
    own deployment, runs these suites in its integration job, and deletes the
    integration tests of this module's promises they now cover. That is its
    work, in its repository, and it is what the suites exist to make possible.

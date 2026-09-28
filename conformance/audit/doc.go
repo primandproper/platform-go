@@ -45,18 +45,20 @@ What moved is the half that holds however the server was built. Those are the
 promises a consumer is owed, and until now the only place any of them was
 asserted against an assembled service was a consumer's own repository.
 
-# Seeding, and why it is required rather than worked around
+# The action, and why it is required rather than worked around
 
 There is no recording RPC. audit/grpc/client says why and means it: a recording
 belongs inside the transaction of the change it describes, and a client is by
-definition somewhere else. So every assertion here needs Seeds.AuditEntry, and
-a subject that supplies none skips the whole suite.
+definition somewhere else. So every assertion here needs Actions.Auditable — the
+deployment does something it audits, its own way, and reports what the entry
+will name — and a subject that supplies none skips the whole suite.
 
 The tempting alternative is to take some action over another surface and read
 the entry it wrote. A consumer's suite does exactly that, and it is why their
 cross-tenant test asserts against whatever entries happen to exist. It works
 until a deployment records something else too, and then it is a count that
-drifts. Seeding names the row, so the assertion is that this entry is here and
-that one is not — true in a database the run owns and in one it shares.
+drifts. The action reports the entry it wrote, so the assertion is that this
+entry is here and that one is not — true in a database the run owns and in one
+it shares.
 */
 package audit
