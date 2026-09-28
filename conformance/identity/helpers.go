@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test"
@@ -202,18 +203,48 @@ func archiveOwner(t *testing.T, s *conformance.Session, owner *conformance.Subje
 		test.Sprint("an owner was archived and left accounts that are neither closed nor owned by anybody else"))
 }
 
-// directoryAccounts is the operator's listing of their directory.
+// maxPages bounds a walk through a directory this suite does not own. A
+// deployment may keep one directory every account in the run shares, so the
+// account an assertion is looking for may not be on the first page — and a walk
+// with no bound is a test that never ends against a cursor that never does.
+const maxPages = 100
+
+// directoryAccounts walks every page of the operator's listing of their
+// directory.
 //
-// One page, because every subject here is minted in a tenant nothing else in
-// the run shares, and the handful of accounts an assertion creates in it fits
-// in the first.
+// Every page rather than the first, because a directory may be shared with the
+// rest of the run: once more accounts exist than one page holds, the owner's
+// need not be on page one, and "owns nothing on page one" is not "owns nothing"
+// either — which is the half that would pass an archival that left an account
+// answering to nobody.
 func directoryAccounts(t *testing.T, operator *conformance.Subject) []*identitypb.Account {
 	t.Helper()
 
-	page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()), &identitypb.ListAccountsRequest{})
-	must.NoError(t, err)
+	var (
+		seen   []*identitypb.Account
+		filter *filteringpb.QueryFilter
+	)
 
-	return page.GetResults()
+	for range maxPages {
+		page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()),
+			&identitypb.ListAccountsRequest{Filter: filter})
+		must.NoError(t, err, must.Sprint("reading the directory's accounts"))
+
+		seen = append(seen, page.GetResults()...)
+
+		next := page.GetPagination().GetCursor()
+		if next == "" || len(page.GetResults()) == 0 {
+			return seen
+		}
+
+		// Cursor has explicit presence, so it is set only once there is one:
+		// an empty cursor is a cursor, not the absence of one.
+		filter = &filteringpb.QueryFilter{Cursor: &next}
+	}
+
+	t.Fatalf("conformance: the account directory was still paging after %d pages", maxPages)
+
+	return nil
 }
 
 // ownedBy are the identifiers of the listed accounts userID owns.
