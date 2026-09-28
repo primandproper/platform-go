@@ -71,6 +71,11 @@ caller is.
 The administrative door is asserted the same way, once the registrant is
 granted Seams.Roles.Administrator, and skips where the subject names none.
 
+A forced change is asserted twice: that it is reported and still signs in, and
+that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
+made. The second is the gate service installs by default, and skips where the
+subject says Seams.PasswordChangeGateDisabled.
+
 # Who a call is made as
 
 The consumer declares its operator-only calls in Seams.OperatorMethods, and

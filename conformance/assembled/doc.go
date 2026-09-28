@@ -26,6 +26,9 @@ it would be proving a service nobody could run.
     service but sign-in is declared optional on the interceptor's table, so that
     whether a request with nobody on it is refused stays each surface's decision
     and the anonymous suite keeps asserting the surfaces rather than the table.
+    The one interceptor the harness does not register is the forced-password-
+    change gate: service installs that itself, innermost, wherever sign-in
+    mounts, and the sign-in suite asserts it is there.
   - The services Register does not build. identity/config's RegisterService is a
     call the application makes. oauth2clients and passwordreset have config
     blocks, and the harness leaves both unset and builds the two services by
