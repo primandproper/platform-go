@@ -306,7 +306,8 @@ func (g *PasswordChangeGate) StreamServerInterceptor() grpc.StreamServerIntercep
 // sign-in surface is gRPC, so no route of its own needs to be named.
 //
 // The refusal is the platform's error envelope under signin.HTTPMapper's 403,
-// encoded as JSON. A directory that could not be read is a 503.
+// encoded as JSON. A directory that could not be read is a 503 in the same
+// envelope.
 func (g *PasswordChangeGate) HTTPMiddleware(allow func(*http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -323,7 +324,7 @@ func (g *PasswordChangeGate) HTTPMiddleware(allow func(*http.Request) bool) func
 			switch {
 			case err != nil:
 				g.o11y.Logger().Error("reading whether the caller of "+r.URL.Path+" owes a password change", err)
-				http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+				g.unavailableHTTP(ctx, w)
 			case owed:
 				g.refuseHTTP(ctx, w)
 			default:
@@ -377,8 +378,21 @@ func (g *PasswordChangeGate) owes(ctx context.Context) (bool, error) {
 // disagree with what the registry answers once it did.
 func (g *PasswordChangeGate) refuseHTTP(ctx context.Context, w http.ResponseWriter) {
 	code, msg, _ := signin.HTTPMapper.Map(signin.ErrPasswordChangeRequired)
-	statusCode := httperrors.HTTPStatusForCode(code)
+	g.writeHTTPError(ctx, w, httperrors.HTTPStatusForCode(code), code, msg)
+}
 
+// unavailableHTTP writes the 503 for a standing that could not be read, in the
+// words the interceptors use for the same failure. Its code is
+// ErrNothingSpecific rather than ErrCircuitBroken, the one code whose own status
+// is a 503: that code round-trips through httperrors.ErrorForCode to
+// circuitbreaking's sentinel, and a typed client told a breaker had tripped
+// would be told something that did not happen.
+func (g *PasswordChangeGate) unavailableHTTP(ctx context.Context, w http.ResponseWriter) {
+	g.writeHTTPError(ctx, w, http.StatusServiceUnavailable, httperrors.ErrNothingSpecific, "the caller's password standing could not be read")
+}
+
+// writeHTTPError answers with the platform's error envelope under statusCode.
+func (g *PasswordChangeGate) writeHTTPError(ctx context.Context, w http.ResponseWriter, statusCode int, code httperrors.ErrorCode, msg string) {
 	encoded, err := g.codec.Marshal(ctx, httperrors.NewAPIErrorResponse(msg, code, httperrors.ResponseDetails{}))
 	if err != nil {
 		http.Error(w, http.StatusText(statusCode), statusCode)

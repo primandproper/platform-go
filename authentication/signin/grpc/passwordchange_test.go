@@ -468,6 +468,15 @@ func TestPasswordChangeGate_HTTPMiddleware(T *testing.T) {
 
 		res, reached := serve(t, gate, nil)
 		test.False(t, reached)
-		test.EqOp(t, http.StatusServiceUnavailable, res.Code)
+		must.EqOp(t, http.StatusServiceUnavailable, res.Code)
+		test.StrContains(t, res.Header().Get("Content-Type"), "json")
+
+		// The same envelope the 403 answers in, not a plain-text body, and one
+		// that names neither the refusal nor the directory's own error.
+		var body httperrors.APIResponse[any]
+		must.NoError(t, json.Unmarshal(res.Body.Bytes(), &body))
+		must.NotNil(t, body.Error)
+		test.EqOp(t, httperrors.ErrNothingSpecific, body.Error.Code)
+		test.StrNotContains(t, body.Error.Message, "directory down")
 	})
 }
