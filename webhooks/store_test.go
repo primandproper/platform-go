@@ -474,6 +474,69 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.NotNil(t, second.LastUpdatedAt)
 	})
 
+	// Created is the store's answer to "was this a registration or a
+	// re-registration", so a caller auditing the two apart does not infer it
+	// from stamps that SQLite keeps to the second. The identical re-save is the
+	// case an affected-row count gets wrong on MySQL: it changes nothing, and
+	// whether it counts depends on the DSN's clientFoundRows.
+	t.Run("a save says whether it created the endpoint", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		endpoint := &Endpoint{
+			ID:            "endpoint-1",
+			URL:           "https://93.184.216.34/hooks",
+			ContentType:   DefaultContentType,
+			Secret:        Secret{Current: []byte("current")},
+			Subscriptions: SubscribeTo(orderCreated),
+		}
+
+		first := mustSaveEndpoint(t, store, testScope, endpoint)
+		test.True(t, first.Created)
+		test.False(t, endpoint.Created, test.Sprint("the argument is the caller's"))
+
+		identical := mustSaveEndpoint(t, store, testScope, endpoint)
+		test.False(t, identical.Created)
+
+		changed := *endpoint
+		changed.URL = "https://93.184.216.34/hooks/moved"
+		test.False(t, mustSaveEndpoint(t, store, testScope, &changed).Created)
+
+		got, err := store.GetEndpoint(ctxFor(t), readerOf(t, store), testScope, "endpoint-1")
+		must.NoError(t, err)
+		test.False(t, got.Created, test.Sprint("a read describes no save"))
+
+		test.True(t, mustSaveEndpoint(t, store, testScope, &Endpoint{
+			ID:            "endpoint-2",
+			URL:           "https://93.184.216.34/hooks",
+			ContentType:   DefaultContentType,
+			Secret:        Secret{Current: []byte("current")},
+			Subscriptions: SubscribeTo(orderCreated),
+		}).Created)
+	})
+
+	// Re-registering a retired endpoint revives the row it already had, so it
+	// is an update: the ID was taken, and the creation facts are the old ones.
+	t.Run("re-saving an archived endpoint is not a creation", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+		mustArchiveEndpoint(t, store, testScope, "endpoint-1")
+
+		revived := mustSaveEndpoint(t, store, testScope, &Endpoint{
+			ID:            "endpoint-1",
+			URL:           "https://93.184.216.34/hooks",
+			ContentType:   DefaultContentType,
+			Secret:        Secret{Current: []byte("current")},
+			Subscriptions: SubscribeTo(orderCreated),
+		})
+		test.False(t, revived.Created)
+		test.False(t, revived.Archived())
+	})
+
 	// The transition describing what it moved. Without this the consumer's
 	// audit entry beside the archive names the row as a read found it a
 	// statement earlier.

@@ -388,6 +388,18 @@ type Endpoint struct {
 	// Disabled stops delivery without deleting the endpoint or its history,
 	// which is what an operator wants when a subscriber is misbehaving.
 	Disabled bool `json:"disabled"`
+	// Created reports whether the Store.SaveEndpoint that returned this value
+	// inserted the row rather than updating one that was already there —
+	// archived included, since re-registering a retired endpoint revives it. A
+	// caller auditing "created" apart from "updated" reads it here rather than
+	// inferring it from the stamps.
+	//
+	// It describes a save, not the endpoint, so it is set only on the value a
+	// save returns — false on everything a read hands back, and on the argument
+	// a save is given — and it is never serialized. Two concurrent first saves
+	// of one ID can both report it, for the reason they can both pass the scope
+	// check: each looked before the other committed.
+	Created bool `json:"-"`
 }
 
 // Archived reports whether the endpoint has been retired.

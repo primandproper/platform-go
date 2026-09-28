@@ -228,6 +228,9 @@ type Store interface {
 	// reading as the row already held them rather than as the argument spelled
 	// them. The argument itself is not written to.
 	//
+	// The returned endpoint's Created says which of the two the save was: true
+	// when it inserted the row, false when the ID was already registered.
+	//
 	// The endpoint adopts scope where it names none, and an endpoint naming a
 	// different one is ErrScopeMismatch. A nil tx is an error wrapping
 	// ErrNilExecutor.
