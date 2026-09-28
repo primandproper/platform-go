@@ -72,6 +72,25 @@ type Seams struct {
 	// subjects carry no HTTP, skips the HTTP half.
 	AnonymousHTTP func(ctx context.Context) (*http.Client, error)
 
+	// SignedIn turns a token the sign-in surface issued into a caller: a
+	// connection carrying that token the way the deployment's clients carry
+	// one. Nil skips the assertions that call as somebody the suite signed in
+	// itself, with the reason printed.
+	//
+	// It is the conformance face of the Authorizer seam docs/client-contract.md
+	// describes, and a seam for that seam's reason: nothing in this module
+	// fixes how an access token reaches a server, so no suite can attach one.
+	// A deployment whose clients send the contract's default dials with
+	// "authorization: Bearer <token>" on every call and is done.
+	//
+	// It is what lets an assertion be about a person whose every credential
+	// the suite chose — a registrant, with a password it typed and no second
+	// factor until it enrolls one — rather than a caller NewSubject minted,
+	// whose credentials are the deployment's. The connection is held to the
+	// calls declared for it exactly as a minted caller's is; see
+	// Session.SignedIn.
+	SignedIn func(ctx context.Context, token *signinpb.IssuedToken) (grpc.ClientConnInterface, error)
+
 	// VisitorScope is the tenant the deployment's waitlists surface places a
 	// request with nobody on it in — what its scope resolver answers for the
 	// Anonymous connection. Nil skips the assertions about the public half made

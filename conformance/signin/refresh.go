@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
@@ -212,11 +213,11 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("signing out everywhere ends every login the caller holds", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s, loginForToken, exchangeRefreshToken)
-		sub, user := passworded(t, s, signOutEverywhere)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
+		sub, who := signedIn(t, s, anon, signOutEverywhere)
 
-		phone := rotating(t, anon, user.GetUsername(), password)
-		laptop := loggedIn(t, anon, user.GetUsername(), password)
+		phone := rotating(t, anon, who.username, password)
+		laptop := loggedIn(t, anon, who.username, password)
 		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
 
 		// The control: the phone's login is live before the button is pressed.
@@ -233,6 +234,93 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		// Ending every login is not ending the account: the password still
 		// signs in, as a new login.
-		loggedIn(t, anon, user.GetUsername(), password)
+		loggedIn(t, anon, who.username, password)
+	})
+
+	// The logins a person holds, as a screen lists them, and the button beside
+	// each one. A family identifier is not a secret, so ending one that is not
+	// the caller's must end nothing and say nothing: every EndSignIn answer is
+	// the same answer, and only the tokens behind it tell what happened.
+	t.Run("the caller's live logins are listed, and ending one by name ends that one only", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
+		sub, who := signedIn(t, s, anon, listSignIns, endSignIn)
+
+		phone := rotating(t, anon, who.username, password)
+		laptop := loggedIn(t, anon, who.username, password)
+		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
+
+		ctx := sub.Context(t.Context())
+
+		listed, err := sub.Surfaces.SignIn.ListSignIns(ctx, &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+
+		// By family and never by count or order: the caller's own login is
+		// listed too, and "most recently refreshed first" ties on a dialect
+		// that keeps whole seconds.
+		byFamily := map[string]*signinpb.ActiveSignIn{}
+		current := 0
+
+		for _, signIn := range listed.GetSignIns() {
+			byFamily[signIn.GetFamilyId()] = signIn
+
+			if signIn.GetCurrent() {
+				current++
+			}
+		}
+
+		test.LessEq(t, 1, current, test.Sprint("more than one login is the one the request was made through"))
+
+		for _, family := range []string{phone.GetFamilyId(), laptop.GetFamilyId()} {
+			signIn, ok := byFamily[family]
+			if !ok {
+				t.Errorf("a live login %s is not listed", family)
+
+				continue
+			}
+
+			test.EqOp(t, who.accountID, signIn.GetActiveAccountId())
+			test.False(t, signIn.GetAdministrative())
+			must.NotNil(t, signIn.GetExpiresAt())
+			test.True(t, signIn.GetExpiresAt().AsTime().After(time.Now().Add(-time.Second)),
+				test.Sprint("a live login is listed as already over"))
+		}
+
+		ended, err := sub.Surfaces.SignIn.EndSignIn(ctx, &signinpb.EndSignInRequest{FamilyId: phone.GetFamilyId()})
+		must.NoError(t, err)
+
+		_, err = exchange(t.Context(), anon, phone.GetRefreshToken())
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		// The control, and the scope of the button: the laptop is another
+		// login, and still works.
+		_, err = exchange(t.Context(), anon, laptop.GetRefreshToken())
+		test.NoError(t, err, test.Sprint("ending one login ended another"))
+
+		relisted, err := sub.Surfaces.SignIn.ListSignIns(ctx, &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+
+		for _, signIn := range relisted.GetSignIns() {
+			test.NotEqOp(t, phone.GetFamilyId(), signIn.GetFamilyId(), test.Sprint("an ended login is still listed"))
+		}
+
+		// Somebody else's login, one that never existed, and the one just
+		// ended: each is answered exactly as the ending that worked was.
+		stranger := signInAs(t, s, anon)
+		theirs := rotating(t, anon, stranger.username, password)
+
+		for what, family := range map[string]string{
+			"somebody else's login": theirs.GetFamilyId(),
+			"a login never begun":   "conf-never-begun-" + identifiers.New(),
+			"a login already ended": phone.GetFamilyId(),
+		} {
+			answer, endErr := sub.Surfaces.SignIn.EndSignIn(ctx, &signinpb.EndSignInRequest{FamilyId: family})
+			must.NoError(t, endErr, must.Sprintf("ending %s was refused", what))
+			test.True(t, proto.Equal(ended, answer), test.Sprintf("ending %s answered differently", what))
+		}
+
+		_, err = exchange(t.Context(), anon, theirs.GetRefreshToken())
+		test.NoError(t, err, test.Sprint("a caller ended somebody else's login by naming it"))
 	})
 }
