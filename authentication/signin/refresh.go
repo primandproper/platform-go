@@ -164,6 +164,67 @@ type RefreshTokenIssuance struct {
 	Secret string `json:"-"`
 }
 
+// SignInSelector names the logins [RefreshTokenStore.EndSignIns] ends: one
+// person's, one family, or one family only if it is that person's.
+//
+// At least one field is set. Both empty would be every login in the scope,
+// which no door here ends.
+type SignInSelector struct {
+	_ struct{}
+
+	// SubjectID confines the selection to one person's logins. Alone, it
+	// selects every one of them.
+	SubjectID string
+
+	// FamilyID confines the selection to one login. With SubjectID, a family
+	// that is not that person's selects nothing.
+	FamilyID string
+}
+
+// EndedSignIn is one login a revocation ended: it was live when the store looked
+// and it is not now.
+type EndedSignIn struct {
+	_ struct{}
+
+	// FamilyID names the login.
+	FamilyID string
+
+	// SubjectID is whose login it was.
+	SubjectID string
+
+	// Revoked is how many of the family's refresh tokens the revocation
+	// withdrew — its live one, and the spent predecessors nothing had revoked
+	// yet.
+	Revoked int64
+}
+
+// RefreshTokenReusedError is how a [RefreshTokenStore] reports
+// [ErrRefreshTokenReused]: the sentinel, with the family it ended in answer.
+//
+// It unwraps to the sentinel, so errors.Is matches it everywhere the sentinel
+// did, and a transport answers it exactly as it answered the bare sentinel —
+// the family is a fact for this package's hooks rather than for the client.
+type RefreshTokenReusedError struct {
+	_ struct{}
+
+	// FamilyID is the login the reused token belonged to.
+	FamilyID string
+
+	// SubjectID is whose login it was.
+	SubjectID string
+
+	// Ended reports whether the family was live when the store revoked it. A
+	// token replayed after its family was already over — signed out, ended by
+	// an earlier reuse, or lapsed — is still a reuse, and ends nothing.
+	Ended bool
+}
+
+// Error is the sentinel's.
+func (e *RefreshTokenReusedError) Error() string { return ErrRefreshTokenReused.Error() }
+
+// Unwrap is the sentinel.
+func (e *RefreshTokenReusedError) Unwrap() error { return ErrRefreshTokenReused }
+
 // RefreshTokenStore is where a sign-in's refresh tokens live.
 //
 // This module ships a SQL implementation together with the DDL it needs —
@@ -288,7 +349,10 @@ type RefreshTokenStore interface {
 	// A secret whose row says it was already spent is ErrRefreshTokenReused, and
 	// the implementation revokes the whole family before returning it, in tx. The
 	// two are one act: a reuse reported without the revocation is a theft detected
-	// and then allowed to continue.
+	// and then allowed to continue. It is returned as a *RefreshTokenReusedError
+	// naming the family and whether it was live, which is what the service hands
+	// [Hooks.AfterRevokeSignIns]; a bare sentinel is refused as a store that
+	// cannot say what it ended.
 	//
 	// That puts one obligation on the caller, and it is the only place in this
 	// module where an error arrives with work attached. The revocation is written
@@ -376,20 +440,30 @@ type RefreshTokenStore interface {
 		familyID string,
 	) (int64, error)
 
-	// RevokeForSubject ends every login one person holds and reports how many
-	// tokens it withdrew.
+	// EndSignIns ends the live logins selector names and answers with the ones
+	// it ended. It is what every door but SignOut ends a login through:
+	// SignOutEverywhere, EndSignIn and the two operator revocations.
 	//
-	// It is "disable this account", "sign out everywhere", and the erasure a
-	// dataprivacy run performs. It is a method of its own rather than a loop over
-	// RevokeFamily, and it has to be: a caller holding a subject identifier
-	// cannot enumerate that person's families, and a loop would leave live
-	// whatever was issued while it ran.
-	RevokeForSubject(
+	// Live is the exchange's reading, as ListActiveSignIns's is. The
+	// implementation locks the selected families' live rows first, then revokes
+	// exactly those families, and answers with them — all in tx. The order is
+	// the point: a login that commits between a read and a revocation keyed on
+	// the subject would be ended without being reported, and an exchange racing
+	// the revocation would carry a login past it. Locked first, the exchange waits
+	// and then finds its token revoked, and a login this call did not see is one
+	// it did not end. MySQL has no RETURNING, so the read comes first on every
+	// engine.
+	//
+	// A login already over — ended, revoked, or lapsed — is not selected, and a
+	// selection matching nothing is an empty answer and no error. With both
+	// SubjectID and FamilyID set, a family that is not the subject's matches
+	// nothing, and that is not told apart from one that never existed.
+	EndSignIns(
 		ctx context.Context,
 		tx database.Tx,
 		scope tenancy.Scope,
-		subjectID string,
-	) (int64, error)
+		selector SignInSelector,
+	) ([]*EndedSignIn, error)
 
 	// ListActiveSignIns answers one entry per live login a subject holds, most
 	// recently refreshed first, and no more than limit of them. It is what
@@ -409,23 +483,6 @@ type RefreshTokenStore interface {
 		subjectID string,
 		limit uint16,
 	) ([]*ActiveSignIn, error)
-
-	// RevokeFamilyForSubject ends one login, named by its family, only if it is
-	// the named subject's, and reports how many tokens it withdrew. It is what
-	// [Service.EndSignIn] calls.
-	//
-	// The subject is what makes it safe to hand a signed-in caller: a family
-	// identifier is not a secret, so a door ending a family by identifier alone
-	// would let whoever learned one end somebody else's login. A family that is
-	// not the subject's, one that does not exist and one already ended are all
-	// zero and no error, and are not told apart.
-	RevokeFamilyForSubject(
-		ctx context.Context,
-		tx database.Tx,
-		scope tenancy.Scope,
-		subjectID string,
-		familyID string,
-	) (int64, error)
 }
 
 // ExchangeRefreshToken spends a refresh token and answers with a fresh access
@@ -531,7 +588,7 @@ func (s *Service) ExchangeRefreshToken(
 			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
 				reuse = txErr
 
-				return nil
+				return s.afterReuse(ctx, tx, scope, txErr)
 			}
 
 			return txErr
@@ -662,7 +719,15 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 			// Both branches commit. A reuse has already had the family revoked
 			// into tx by the store, and every other refusal is a token that
 			// names no live login — neither is a reason to abandon the
-			// transaction, and the first is a reason not to.
+			// transaction, and the first is a reason not to. The reuse is
+			// reported as one, not as this sign-out: the token presented was
+			// spent, so it was not this caller's login that it ended.
+			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
+				op.SpanOnly(signOutNothingToEndKey, true)
+
+				return s.afterReuse(ctx, tx, scope, txErr)
+			}
+
 			if platformerrors.Is(txErr, ErrInvalidCredentials) {
 				op.SpanOnly(signOutNothingToEndKey, true)
 
@@ -674,9 +739,26 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 
 		op.SetValues(map[string]any{userIDKey: spent.SubjectID, familyKey: spent.FamilyID})
 
-		_, txErr = s.refreshTokens.RevokeFamily(ctx, tx, scope, spent.FamilyID)
+		// The redemption is what proves the login was live, so this revocation
+		// always ends one: the spent row is the family's and is not yet revoked.
+		// It is a revocation by the family's id rather than EndSignIns, whose
+		// live-row lock would find nothing here — the one live row is the token
+		// this call just spent.
+		revoked, txErr := s.refreshTokens.RevokeFamily(ctx, tx, scope, spent.FamilyID)
+		if txErr != nil {
+			return txErr
+		}
 
-		return txErr
+		if revoked == 0 {
+			return nil
+		}
+
+		return s.hooks.AfterRevokeSignIns(ctx, tx, scope, &Revocation{
+			Reason:    RevocationSignOut,
+			SubjectID: spent.SubjectID,
+			ActorID:   spent.SubjectID,
+			FamilyIDs: []string{spent.FamilyID},
+		})
 	}); err != nil {
 		return op.Error(err, "signing out")
 	}
@@ -684,21 +766,46 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 	return nil
 }
 
+// RevocationOption adjusts what an operator's revocation reports to
+// [Hooks.AfterRevokeSignIns].
+type RevocationOption func(*revocationRequest)
+
+// revocationRequest is what the RevocationOptions an operator door was handed
+// resolve to.
+type revocationRequest struct {
+	actorID string
+}
+
+// RevokedBy names who asked for an operator's revocation, and is what
+// [Revocation.ActorID] carries for it.
+//
+// This package decides nothing about who may act for whom, so it cannot know
+// who is asking unless it is told: an operator surface that stands its own
+// authorization in front of [Service.RevokeRefreshTokenFamily] or
+// [Service.RevokeRefreshTokensForSubject] passes the principal it authorized.
+// Without it the revocation is reported with no actor.
+func RevokedBy(actorID string) RevocationOption {
+	return func(r *revocationRequest) { r.actorID = actorID }
+}
+
 // RevokeRefreshTokenFamily ends one login: every refresh token that sign-in ever
 // issued stops being exchangeable, and it reports how many it withdrew.
 //
-// It is sign-out. What it does not do is stop the access token already in
-// somebody's hands — nothing here can, because an access token is checked by the
-// consumer's interceptor against the issuer's signature rather than against this
-// table. What it does is stop that access token being replaced, so a sign-out
-// takes effect within one access-token lifetime, which is what
-// [DefaultTokenTTL]'s hour is chosen against.
+// It is an operator's sign-out, and it is reported to
+// [Hooks.AfterRevokeSignIns] as [RevocationOperator]. What it does not do is
+// stop the access token already in somebody's hands — nothing here can, because
+// an access token is checked by the consumer's interceptor against the issuer's
+// signature rather than against this table. What it does is stop that access
+// token being replaced, so a sign-out takes effect within one access-token
+// lifetime, which is what [DefaultTokenTTL]'s hour is chosen against.
 //
-// A family nobody holds tokens for is zero and no error.
+// A family nobody holds a live token for — never issued, already ended, or
+// lapsed — is zero and no error, and runs no hook.
 func (s *Service) RevokeRefreshTokenFamily(
 	ctx context.Context,
 	scope tenancy.Scope,
 	familyID string,
+	opts ...RevocationOption,
 ) (revoked int64, err error) {
 	ctx, op, done := s.begin(ctx, opRevokeRefreshFamily,
 		observability.WithValue(scopeKey, scope.String()),
@@ -718,34 +825,32 @@ func (s *Service) RevokeRefreshTokenFamily(
 		return 0, op.Error(ErrEmptyFamilyID, "reading a refresh token family")
 	}
 
-	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		var txErr error
+	request := resolveRevocation(opts)
 
-		revoked, txErr = s.refreshTokens.RevokeFamily(ctx, tx, scope, familyID)
-
-		return txErr
-	}); err != nil {
+	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{FamilyID: familyID}, RevocationOperator,
+		request.actorID); err != nil {
 		return 0, op.Error(err, "revoking a refresh token family")
 	}
 
 	return revoked, nil
 }
 
-// RevokeRefreshTokensForSubject ends every login one person holds, and reports
-// how many refresh tokens it withdrew.
+// RevokeRefreshTokensForSubject ends every login one person holds on somebody
+// else's say-so, and reports how many refresh tokens it withdrew.
 //
-// It is "sign out everywhere", the thing an operator runs when disabling an
-// account, and what a data erasure calls. It is a door of its own rather than a
-// loop over [Service.RevokeRefreshTokenFamily] for the reason
-// [RefreshTokenStore.RevokeForSubject] gives: a caller holding a user ID cannot
-// enumerate that person's families, and a loop would leave live whatever was
-// issued while it ran.
+// It is the thing an operator runs when disabling an account, and what a data
+// erasure calls, and it is reported to [Hooks.AfterRevokeSignIns] as
+// [RevocationOperator]. The person doing it to themselves is
+// [Service.SignOutEverywhere], which ends the same logins and is reported as
+// the person's own decision instead.
 //
-// A user who has never signed in is zero and no error.
+// A user who has never signed in, or whose logins are all over, is zero and no
+// error, and runs no hook.
 func (s *Service) RevokeRefreshTokensForSubject(
 	ctx context.Context,
 	scope tenancy.Scope,
 	userID string,
+	opts ...RevocationOption,
 ) (revoked int64, err error) {
 	ctx, op, done := s.begin(ctx, opRevokeRefreshSubject,
 		observability.WithValue(scopeKey, scope.String()),
@@ -753,29 +858,178 @@ func (s *Service) RevokeRefreshTokensForSubject(
 	)
 	defer func() { done(err) }()
 
-	if s.refreshTokens == nil {
-		return 0, op.Error(ErrRefreshTokensNotConfigured, "revoking a subject's refresh tokens")
-	}
-
-	if err = scope.Validate(); err != nil {
-		return 0, op.Error(err, "checking the scope a subject's refresh tokens were revoked in")
-	}
-
-	if userID == "" {
-		return 0, op.Error(ErrEmptyUserID, "reading the subject whose refresh tokens are revoked")
-	}
-
-	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		var txErr error
-
-		revoked, txErr = s.refreshTokens.RevokeForSubject(ctx, tx, scope, userID)
-
-		return txErr
-	}); err != nil {
+	if revoked, err = s.endSubjectSignIns(ctx, scope, userID, RevocationOperator,
+		resolveRevocation(opts).actorID); err != nil {
 		return 0, op.Error(err, "revoking a subject's refresh tokens")
 	}
 
 	return revoked, nil
+}
+
+// SignOutEverywhere ends every login userID holds, this one included, and
+// reports how many refresh tokens it withdrew.
+//
+// It is [Service.RevokeRefreshTokensForSubject] done by the person themselves:
+// the same logins end, and [Hooks.AfterRevokeSignIns] is told
+// [RevocationSignOutEverywhere] with the person as the actor, because an audit
+// trail that could not tell "I signed out of everything" from "an operator
+// signed me out" would be missing the fact a security review asks for first.
+// Which of the two a request is, is the caller's to know —
+// authentication/signin/grpc's SignOutEverywhere takes userID off the caller.
+//
+// A user with no live login is zero and no error, and runs no hook.
+func (s *Service) SignOutEverywhere(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+) (revoked int64, err error) {
+	ctx, op, done := s.begin(ctx, opSignOutEverywhere,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer func() { done(err) }()
+
+	if revoked, err = s.endSubjectSignIns(ctx, scope, userID, RevocationSignOutEverywhere, userID); err != nil {
+		return 0, op.Error(err, "signing out everywhere")
+	}
+
+	return revoked, nil
+}
+
+// endSubjectSignIns is the body RevokeRefreshTokensForSubject and
+// SignOutEverywhere share: every live login one person holds, ended and
+// reported under reason.
+func (s *Service) endSubjectSignIns(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	reason RevocationReason,
+	actorID string,
+) (int64, error) {
+	if s.refreshTokens == nil {
+		return 0, ErrRefreshTokensNotConfigured
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, err
+	}
+
+	if userID == "" {
+		return 0, ErrEmptyUserID
+	}
+
+	return s.endSignIns(ctx, scope, SignInSelector{SubjectID: userID}, reason, actorID)
+}
+
+// endSignIns ends the live logins selector names and runs
+// [Hooks.AfterRevokeSignIns] for them, in one transaction, and answers with how
+// many refresh tokens it withdrew.
+//
+// The hook is handed what the store actually ended rather than what was asked
+// for, and runs only when that is something — see [RefreshTokenStore.EndSignIns]
+// for why the store locks before it revokes. A hook that refuses rolls the
+// revocation back.
+func (s *Service) endSignIns(
+	ctx context.Context,
+	scope tenancy.Scope,
+	selector SignInSelector,
+	reason RevocationReason,
+	actorID string,
+) (revoked int64, err error) {
+	err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		ended, txErr := s.refreshTokens.EndSignIns(ctx, tx, scope, selector)
+		if txErr != nil {
+			return txErr
+		}
+
+		revoked = 0
+		for _, signIn := range ended {
+			revoked += signIn.Revoked
+		}
+
+		return s.afterRevoke(ctx, tx, scope, reason, actorID, ended)
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return revoked, nil
+}
+
+// afterRevoke reports ended logins to [Hooks.AfterRevokeSignIns], once per
+// person they belonged to, and not at all when nothing ended.
+//
+// Every door ends one person's logins, so in practice this is one call; the
+// grouping is what keeps [Revocation.SubjectID] true should a store answer an
+// operator's family-only selection with rows that disagree about whose it is.
+func (s *Service) afterRevoke(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	reason RevocationReason,
+	actorID string,
+	ended []*EndedSignIn,
+) error {
+	var revocations []*Revocation
+
+	bySubject := map[string]*Revocation{}
+
+	for _, signIn := range ended {
+		revocation, ok := bySubject[signIn.SubjectID]
+		if !ok {
+			revocation = &Revocation{Reason: reason, SubjectID: signIn.SubjectID, ActorID: actorID}
+			bySubject[signIn.SubjectID] = revocation
+			revocations = append(revocations, revocation)
+		}
+
+		revocation.FamilyIDs = append(revocation.FamilyIDs, signIn.FamilyID)
+	}
+
+	for _, revocation := range revocations {
+		if err := s.hooks.AfterRevokeSignIns(ctx, tx, scope, revocation); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// afterReuse reports the family a detected reuse ended to
+// [Hooks.AfterRevokeSignIns], inside the transaction the store revoked it in.
+//
+// It runs from the two doors that capture the reuse and commit rather than
+// return it — see [RefreshTokenStore.Redeem] — and its error is returned out of
+// that transaction, so a hook that refuses rolls the revocation back with it.
+//
+// A store that reported the sentinel bare, without the family, is refused here
+// rather than passed over. A reuse the hooks never hear about is an audit trail
+// that is silently missing its most important entry, and the wiring that
+// produced it is found on the first reuse rather than in an incident review.
+func (s *Service) afterReuse(ctx context.Context, tx database.Tx, scope tenancy.Scope, reuse error) error {
+	var reused *RefreshTokenReusedError
+	if !platformerrors.As(reuse, &reused) {
+		return platformerrors.New("refresh token store reported a reuse without naming the family it ended")
+	}
+
+	if !reused.Ended {
+		return nil
+	}
+
+	return s.hooks.AfterRevokeSignIns(ctx, tx, scope, &Revocation{
+		Reason:    RevocationReuse,
+		SubjectID: reused.SubjectID,
+		FamilyIDs: []string{reused.FamilyID},
+	})
+}
+
+// resolveRevocation applies an operator door's options in order.
+func resolveRevocation(opts []RevocationOption) *revocationRequest {
+	request := &revocationRequest{}
+	for _, opt := range opts {
+		opt(request)
+	}
+
+	return request
 }
 
 // idempotentExchangeKey reports the idempotency key this exchange was given,

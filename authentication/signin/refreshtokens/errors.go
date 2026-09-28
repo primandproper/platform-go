@@ -25,6 +25,10 @@ var (
 	// ErrEmptySubjectID indicates a mint or a revocation naming nobody.
 	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject ID for a refresh token")
 
+	// ErrEmptySelector indicates an EndSignIns naming neither a person nor a
+	// login, which would be every login in the scope.
+	ErrEmptySelector = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty sign-in selector for ending refresh token families")
+
 	// ErrNilExecutor indicates a listing handed no executor to read on.
 	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor for listing refresh token families")
 
