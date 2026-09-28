@@ -54,6 +54,7 @@ what a client talks to:
 	service.Register(i, cfg)
 	service.RegisterTransports(i, &service.Transports{
 		Extractor: principalFromContext,
+		TenantOf:  service.DirectoryTenant,
 		Authorizers: service.Authorizers{
 			BillingAccounts:  accounts,
 			IssueReports:     reports,
@@ -116,9 +117,10 @@ files its audit entries, its operations and its media under the account instead.
 Those two readings cannot both be Principal.Scope() — identity reads it as the
 directory — so a deployment where they differ supplies Transports.TenantOf,
 which reads the tenant off a principal this package has already found, and the
-three surfaces that mean the tenant are mounted with it. Left nil it is read
-from Principal.Scope() as before, which is right for every deployment whose
-directory is its tenant.
+three surfaces that mean the tenant are mounted with it. It has no default: a
+deployment mounting any of the three without one fails at startup with
+ErrNilTenantOf, and a deployment whose directory is its tenant names
+DirectoryTenant.
 
 The authorizers are the rules about which rows a caller who may make a call may
 make it against. Some are required, and a surface configured without one fails

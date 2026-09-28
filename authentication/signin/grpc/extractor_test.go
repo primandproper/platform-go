@@ -159,12 +159,12 @@ func (h *extractorHarness) extractor(t *testing.T, opts ...signingrpc.ExtractorO
 func (h *extractorHarness) issue(t *testing.T, reg *identity.Registration, administrative bool) *signin.SignIn {
 	t.Helper()
 
-	door := h.svc.IssueForPrincipal
+	var opts []signin.IssueOption
 	if administrative {
-		door = h.svc.AdminIssueForPrincipal
+		opts = append(opts, signin.Administrative())
 	}
 
-	issued, err := door(t.Context(), testScope, reg.User.ID, reg.Account.ID)
+	issued, err := h.svc.IssueForPrincipal(t.Context(), testScope, reg.User.ID, reg.Account.ID, opts...)
 	must.NoError(t, err)
 
 	return issued

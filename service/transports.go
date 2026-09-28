@@ -69,6 +69,21 @@ var (
 		"nil principal extractor for the mounted transport surfaces",
 	)
 
+	// ErrNilTenantOf is a Transports mounting one of the three surfaces that
+	// mean the tenant — audit, operations and the media registry — with no
+	// Transports.TenantOf to read the tenant with.
+	//
+	// It is refused rather than read as Principal.Scope(), because that reading
+	// is right only for a deployment whose directory is its tenant, and a
+	// deployment where it is wrong files its rows under one scope and reads
+	// them back under another, which sees none of them and says nothing. A
+	// deployment for which the directory is the tenant says so by naming
+	// DirectoryTenant.
+	ErrNilTenantOf = platformerrors.Wrap(
+		platformerrors.ErrNilInputParameter,
+		"nil tenant reader for a mounted transport surface that reads the tenant",
+	)
+
 	// ErrNoPrincipal is a request to one of the surfaces whose seam is derived
 	// from the extractor, arriving with nobody on it.
 	//
@@ -166,8 +181,9 @@ type Transports struct {
 	// TenantOf reads the tenant a caller's rows belong to off the caller, for
 	// the three surfaces that mean the tenant rather than the directory:
 	// audit's ScopeResolver, operations' OwnerResolver and mediaregistry's
-	// caller scope. Nil reads Principal.Scope(), which is what every consumer
-	// had before this field existed.
+	// caller scope. A Transports mounting any of the three without one is
+	// ErrNilTenantOf at startup, and a deployment whose tenant is its directory
+	// names DirectoryTenant here.
 	//
 	// It exists because a principal has two scopes and callers.Principal names
 	// one. Principal.Scope() is the directory the caller is in — identity's
@@ -189,10 +205,11 @@ type Transports struct {
 	// answers that names nothing is refused with tenancy.ErrNoScope rather
 	// than carried to the store.
 	//
-	// It is a field rather than a method on callers.Principal only because
-	// that interface is one consumers implement and v14 is frozen. Nil falls
-	// back quietly, which is the failure a method would have made a compile
-	// error; the next major version should make it one.
+	// It is a field rather than a method on callers.Principal because that
+	// interface is primitives-go's, and which of a principal's facts is the
+	// tenant is a question only the application can answer. There is no
+	// default: a reading that is right for one deployment and silently wrong
+	// for another is the failure this field exists to remove.
 	//
 	// It does not touch dataprivacy's subject resolver, which reads a user and
 	// not a scope.
@@ -497,6 +514,21 @@ func (m *mount) caller(surface string) (callers.PrincipalExtractor, bool) {
 	return m.t.Extractor, true
 }
 
+// tenantOf returns Transports.TenantOf, refusing a surface that reads the
+// tenant and has no reader for it.
+//
+// Like caller, the check is made where a surface needs it, so that only a
+// service that mounts one of the three surfaces is asked for one.
+func (m *mount) tenantOf(surface string) (func(callers.Principal) (tenancy.Scope, error), bool) {
+	if m.t.TenantOf == nil {
+		m.err = platformerrors.Wrapf(ErrNilTenantOf, "mounting the %s surface", surface)
+
+		return nil, false
+	}
+
+	return m.t.TenantOf, true
+}
+
 // fail records a surface that could not be built, naming it.
 //
 // The surface's own sentinel is underneath, which is the whole intent of
@@ -593,10 +625,10 @@ func (m *mount) routesLanded(surface string, router *routing.Router) bool {
 // same value. Neither package may say so — they are siblings, not a hierarchy —
 // so this is where the one answer is written.
 //
-// tenantOf is Transports.TenantOf, and nil reads Principal.Scope(). Either way
-// the principal is found here first, so a request with nobody on it is refused
-// before an application's resolver is asked anything. See that field for why
-// the directory and the tenant are different questions.
+// tenantOf is Transports.TenantOf. The principal is found here first, so a
+// request with nobody on it is refused before an application's resolver is
+// asked anything. See that field for why the directory and the tenant are
+// different questions.
 func deriveScope(
 	extract callers.PrincipalExtractor,
 	tenantOf func(callers.Principal) (tenancy.Scope, error),
@@ -611,17 +643,20 @@ func deriveScope(
 	}
 }
 
-// tenantScope is the tenant of a principal already found: the application's
-// reading when it supplied one, and Principal.Scope() when it did not.
+// DirectoryTenant is the Transports.TenantOf of a deployment whose tenant is
+// the directory its callers are in: it reads Principal.Scope().
 //
-// Only the application's reading is validated. Principal.Scope() is returned as
-// it always was, so a consumer that leaves Transports.TenantOf nil sees no
-// change at all.
-func tenantScope(principal callers.Principal, tenantOf func(callers.Principal) (tenancy.Scope, error)) (tenancy.Scope, error) {
-	if tenantOf == nil {
-		return principal.Scope(), nil
-	}
+// It is exported so that the choice is spelled at the composition root rather
+// than made by leaving a field nil. For a deployment with one directory it
+// answers tenancy.Global() for everybody, which is right when the rows the
+// tenant-reading surfaces serve were filed under it.
+func DirectoryTenant(principal callers.Principal) (tenancy.Scope, error) {
+	return principal.Scope(), nil
+}
 
+// tenantScope is the application's reading of the tenant of a principal
+// already found, validated.
+func tenantScope(principal callers.Principal, tenantOf func(callers.Principal) (tenancy.Scope, error)) (tenancy.Scope, error) {
 	scope, err := tenantOf(principal)
 	if err != nil {
 		return tenancy.Scope{}, err
@@ -731,9 +766,14 @@ func (m *mount) audit() {
 		return
 	}
 
+	tenantOf, ok := m.tenantOf("audit")
+	if !ok {
+		return
+	}
+
 	srv, err := auditgrpc.NewServer(reader, client,
 		auditgrpc.WithPillars(m.pillars),
-		auditgrpc.WithScopeResolver(deriveScope(extract, m.t.TenantOf)),
+		auditgrpc.WithScopeResolver(deriveScope(extract, tenantOf)),
 	)
 	if err != nil {
 		m.fail("audit", err)
@@ -1232,10 +1272,15 @@ func (m *mount) mediaRegistry() {
 		return
 	}
 
+	tenantOf, ok := m.tenantOf("media registry")
+	if !ok {
+		return
+	}
+
 	opts := []mediaregistryhttp.Option{
 		mediaregistryhttp.WithLogger(m.pillars.Logger),
 		mediaregistryhttp.WithTracerProvider(m.pillars.TracerProvider),
-		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract, m.t.TenantOf)),
+		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract, tenantOf)),
 	}
 	if m.t.Authorizers.MediaObjects != nil {
 		opts = append(opts, mediaregistryhttp.WithEntitlement(m.t.Authorizers.MediaObjects))
@@ -1279,10 +1324,15 @@ func (m *mount) operations() {
 		return
 	}
 
+	tenantOf, ok := m.tenantOf("operations")
+	if !ok {
+		return
+	}
+
 	opts := []operationshttp.Option{
 		operationshttp.WithLogger(m.pillars.Logger),
 		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
-		operationshttp.WithOwnersResolver(deriveOwners(extract, m.t.TenantOf)),
+		operationshttp.WithOwnersResolver(deriveOwners(extract, tenantOf)),
 	}
 
 	if watcher, watching := need[*operations.Watcher](m); watching {

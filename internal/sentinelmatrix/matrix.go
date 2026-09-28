@@ -652,7 +652,6 @@ var Matrix = map[string]map[string]Decision{
 
 		// The listing doors on a service whose store mints refresh tokens and
 		// cannot enumerate them. Wiring again, and nothing a caller sent.
-		"ErrSignInListingNotSupported": {Err: signin.ErrSignInListingNotSupported, Is: Unhandled},
 
 		// The two registration wiring failures: a service that was given nothing
 		// to register through, and one that was given nothing to finish a

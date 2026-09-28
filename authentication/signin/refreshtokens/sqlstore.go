@@ -51,10 +51,7 @@ const (
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 
-var (
-	_ signin.RefreshTokenStore  = (*SQLStore)(nil)
-	_ signin.SignInListingStore = (*SQLStore)(nil)
-)
+var _ signin.RefreshTokenStore = (*SQLStore)(nil)
 
 // SQLStore keeps sign-in refresh tokens in a SQL table, against the schema
 // refreshtokens/migrations renders.

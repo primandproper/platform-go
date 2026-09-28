@@ -60,56 +60,6 @@ type ActiveSignIn struct {
 	Administrative bool `json:"administrative"`
 }
 
-// SignInListingStore is a [RefreshTokenStore] that can answer "which logins
-// does this person have?" and end one of them on that person's behalf.
-//
-// It is what [Service.ListSignIns] and [Service.EndSignIn] need, and it is a
-// second interface for the reason [IdempotentRefreshTokenStore] is:
-// RefreshTokenStore is exported and meant to be implemented outside this
-// module, and a method added to it would stop every such implementation
-// compiling. This one embeds it and is type-asserted for at runtime, and a
-// store that does not implement it keeps every door it had — the two doors
-// that need it answer [ErrSignInListingNotSupported].
-// [github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens]
-// implements it.
-type SignInListingStore interface {
-	RefreshTokenStore
-
-	// ListActiveSignIns answers one entry per live login a subject holds, most
-	// recently refreshed first, and no more than limit of them.
-	//
-	// Live is the exchange's own reading: a login is listed while it has a
-	// refresh token that Redeem would still accept, and not once it has been
-	// revoked or has lapsed — whether or not anything has collected its rows.
-	//
-	// It is a read, so it takes the wider executor: a caller holding
-	// Client.Reader() and a caller inside a transaction both call it, and the
-	// second sees that transaction's own writes.
-	ListActiveSignIns(
-		ctx context.Context,
-		q database.SQLQueryExecutor,
-		scope tenancy.Scope,
-		subjectID string,
-		limit uint16,
-	) ([]*ActiveSignIn, error)
-
-	// RevokeFamilyForSubject ends one login, named by its family, only if it is
-	// the named subject's, and reports how many tokens it withdrew.
-	//
-	// The subject is what makes it safe to hand a signed-in caller: a family
-	// identifier is not a secret, so a door ending a family by identifier alone
-	// would let whoever learned one end somebody else's login. A family that is
-	// not the subject's, one that does not exist and one already ended are all
-	// zero and no error, and are not told apart.
-	RevokeFamilyForSubject(
-		ctx context.Context,
-		tx database.Tx,
-		scope tenancy.Scope,
-		subjectID string,
-		familyID string,
-	) (int64, error)
-}
-
 // ListSignIns answers the live logins one person holds, most recently
 // refreshed first, for a screen that shows them where they are signed in.
 //
@@ -132,8 +82,7 @@ type SignInListingStore interface {
 // read shows it.
 //
 // A service built without [WithRefreshTokenStore] is
-// [ErrRefreshTokensNotConfigured], and one whose store does not implement
-// [SignInListingStore] is [ErrSignInListingNotSupported].
+// [ErrRefreshTokensNotConfigured].
 func (s *Service) ListSignIns(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -146,9 +95,8 @@ func (s *Service) ListSignIns(
 	)
 	defer func() { done(err) }()
 
-	store, err := s.signInListing()
-	if err != nil {
-		return nil, op.Error(err, "listing a subject's sign-ins")
+	if s.refreshTokens == nil {
+		return nil, op.Error(ErrRefreshTokensNotConfigured, "listing a subject's sign-ins")
 	}
 
 	if err = scope.Validate(); err != nil {
@@ -159,7 +107,7 @@ func (s *Service) ListSignIns(
 		return nil, op.Error(ErrEmptyUserID, "reading the subject whose sign-ins are listed")
 	}
 
-	signIns, err = store.ListActiveSignIns(ctx, s.client.Reader(), scope, userID, signInListLimit(limit))
+	signIns, err = s.refreshTokens.ListActiveSignIns(ctx, s.client.Reader(), scope, userID, signInListLimit(limit))
 	if err != nil {
 		return nil, op.Error(err, "listing a subject's sign-ins")
 	}
@@ -185,8 +133,8 @@ func (s *Service) ListSignIns(
 // here unchanged — so the login ends within one access-token lifetime rather
 // than at once.
 //
-// The same two refusals as [Service.ListSignIns] apply when the service or its
-// store cannot do this at all.
+// A service built without [WithRefreshTokenStore] is
+// [ErrRefreshTokensNotConfigured], as [Service.ListSignIns] is.
 func (s *Service) EndSignIn(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -200,9 +148,8 @@ func (s *Service) EndSignIn(
 	)
 	defer func() { done(err) }()
 
-	store, err := s.signInListing()
-	if err != nil {
-		return 0, op.Error(err, "ending a sign-in")
+	if s.refreshTokens == nil {
+		return 0, op.Error(ErrRefreshTokensNotConfigured, "ending a sign-in")
 	}
 
 	if err = scope.Validate(); err != nil {
@@ -220,7 +167,7 @@ func (s *Service) EndSignIn(
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		var txErr error
 
-		revoked, txErr = store.RevokeFamilyForSubject(ctx, tx, scope, userID, familyID)
+		revoked, txErr = s.refreshTokens.RevokeFamilyForSubject(ctx, tx, scope, userID, familyID)
 
 		return txErr
 	}); err != nil {
@@ -228,25 +175,6 @@ func (s *Service) EndSignIn(
 	}
 
 	return revoked, nil
-}
-
-// signInListing resolves the store the two sign-in listing doors run on, or
-// the refusal that says why there is none.
-//
-// The two refusals are different wiring failures and are named apart: no store
-// at all is a service that mints no refresh tokens, and a store without the
-// interface is one that mints them and cannot enumerate them.
-func (s *Service) signInListing() (SignInListingStore, error) {
-	if s.refreshTokens == nil {
-		return nil, ErrRefreshTokensNotConfigured
-	}
-
-	store, ok := s.refreshTokens.(SignInListingStore)
-	if !ok {
-		return nil, ErrSignInListingNotSupported
-	}
-
-	return store, nil
 }
 
 // signInListLimit resolves the limit a listing runs with: the default for
