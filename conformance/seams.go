@@ -174,6 +174,18 @@ type Seams struct {
 	// deployment refuses a member each entry on one of this module's surfaces.
 	OperatorMethods []string
 
+	// FulfillmentBudget is how long this deployment may take to pick queued
+	// work up and finish it — a privacy request submitted to its worker, say.
+	// Zero is DefaultFulfillmentBudget. Session.Await waits this long, or until
+	// the test's own deadline if that comes first.
+	//
+	// A fact about the deployment rather than an action, and the deployment's
+	// because nothing else knows it: one worker is woken the moment work is
+	// queued, another sleeps a whole poll interval first, and a suite that
+	// guessed would either flake on the slow one or wait out a minute's
+	// silence on a fast one that had stopped.
+	FulfillmentBudget time.Duration
+
 	// PasswordChangeGateDisabled says the deployment installs no gate holding a
 	// caller who owes a forced password change at the form — it built
 	// signin/grpc's PrincipalExtractor WithoutPasswordChangeGate, or
@@ -231,18 +243,6 @@ type Seams struct {
 	// say here, and one that supplied a wider rule says so rather than having
 	// the suite guess which rule it wrote.
 	MediaObjectsShared bool
-
-	// FulfillmentBudget is how long this deployment may take to pick queued
-	// work up and finish it — a privacy request submitted to its worker, say.
-	// Zero is DefaultFulfillmentBudget. Session.Await waits this long, or until
-	// the test's own deadline if that comes first.
-	//
-	// A fact about the deployment rather than an action, and the deployment's
-	// because nothing else knows it: one worker is woken the moment work is
-	// queued, another sleeps a whole poll interval first, and a suite that
-	// guessed would either flake on the slow one or wait out a minute's
-	// silence on a fast one that had stopped.
-	FulfillmentBudget time.Duration
 
 	// InvitationTokenReturned says the deployment's identity server was built
 	// with identitygrpc.WithInvitationTokenReturned, so Invite answers the
