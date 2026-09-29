@@ -123,6 +123,22 @@ Cache-Control is private, always. Every object this route serves is one a guard
 was consulted about, and a shared cache that answered the second request would
 be answering it without the guard.
 
+# Who may use the route
+
+The row decides which objects a caller may have; the grant decides whether they
+may use the route at all, and it is checked first. Serving requires
+PermissionReadObjects, checked by the authorization/http Enforcer a consumer
+passes to WithEnforcer before the row is read — so a caller without it is
+refused as 403 whether or not the object they named exists, and a handler given
+no enforcer refuses the route rather than serving it. A grant widens nothing:
+its holder is still refused an object the Entitlement declines, as a 404.
+
+The route is not among OwnStandingRoutes, which is empty here, so a deployment
+may reserve it to an operator by granting its members nothing. A request with
+nobody on it is refused by the resolver rather than by the grant: a caller that
+does not resolve skips the check and reaches the handler, whose first act is to
+resolve one and fail.
+
 # Refusals say nothing
 
 An object that does not exist, an object in another tenant, and an object the

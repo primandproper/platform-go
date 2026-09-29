@@ -82,6 +82,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -275,13 +276,20 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// The HTTP half, on the router before anything mounts on it: chi refuses
 	// middleware added after the first route, which is a constraint a
 	// consumer's main meets in the same place.
-	do.MustInvoke[*routing.Router](i).Use(extractor.HTTPMiddleware)
+	do.MustInvoke[*routing.Router](i).Use(extractor.HTTPMiddleware, markReserving)
+
+	// And the HTTP half of authorization, which the three HTTP surfaces check
+	// their routes with. A consumer builds it over the grants its interceptor
+	// reads; this one's are the role policy, narrowed in the reserving run.
+	httpEnforcer, err := authzhttp.NewEnforcer(httpGrants(extractor))
+	must.NoError(t, err)
 
 	service.RegisterTransports(i, &service.Transports{
-		Extractor:   extractor.Extract,
-		TenantOf:    service.DirectoryTenant,
-		Grants:      extractor.Grants,
-		Authorizers: authorizers(),
+		Extractor:    extractor.Extract,
+		TenantOf:     service.DirectoryTenant,
+		Grants:       extractor.Grants,
+		HTTPEnforcer: httpEnforcer,
+		Authorizers:  authorizers(),
 	})
 
 	svc, err := service.New(i)
@@ -318,11 +326,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	// Every run against this server is one of these, differing only in what
 	// it reserves.
-	seams := func(reserved []string) conformance.Seams {
-		reserving := strconv.FormatBool(len(reserved) > 0)
+	seams := func(reserved, reservedRoutes []string) conformance.Seams {
+		reserving := strconv.FormatBool(len(reserved) > 0 || len(reservedRoutes) > 0)
 
 		return conformance.Seams{
 			OperatorMethods: reserved,
+			OperatorRoutes:  reservedRoutes,
 
 			NewSubject: func(ctx context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
 				req := conformance.NewSubjectRequest(opts...)
@@ -396,7 +405,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					Conn:      conn,
 					Surfaces:  surfaces,
 					HTTP: &conformance.HTTPSurfaces{
-						Client:        &http.Client{Transport: &credentialTransport{token: issued.Token}},
+						Client:        &http.Client{Transport: &credentialTransport{token: issued.Token, reserving: reserving}},
 						BaseURL:       baseURL,
 						DataPrivacy:   true,
 						MediaRegistry: true,
@@ -513,7 +522,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// The first run is this module's own answer, where a member holds every
 	// grant but the archive ones and so makes every call: it is what keeps each
 	// promise asserted of a member. The second reserves staffOnly, which
-	// reserveStaffCalls refuses to anybody but an administrator: it is what
+	// reserveStaffCalls refuses to anybody but an administrator, and
+	// staffOnlyRoutes, whose permissions httpGrants withholds from a member: it is what
 	// keeps the path a consumer's reservation takes exercised, each reserved
 	// call made by an administrator minted for it and each assertion about a
 	// member of a reserved call skipping rather than failing. That every call a
@@ -521,17 +531,17 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// connection. Sequential rather than parallel, because each claims the
 	// database as its own.
 	t.Run("members make every call", func(t *testing.T) {
-		conformanceall.Run(t, seams(nil))
+		conformanceall.Run(t, seams(nil, nil))
 	})
 
 	t.Run("staff calls reserved", func(t *testing.T) {
-		conformanceall.Run(t, seams(staffOnly))
+		conformanceall.Run(t, seams(staffOnly, staffOnlyRoutes))
 	})
 
 	// And the record the reservations suite skips by, held to the handlers it
 	// describes, which here sit behind this module's own authorizers.
 	t.Run("empty requests refused", func(t *testing.T) {
-		conformance.Run(t, seams(nil), conformancereservations.RosterSuite())
+		conformance.Run(t, seams(nil, nil), conformancereservations.RosterSuite())
 	})
 }
 
@@ -743,13 +753,18 @@ func (c *bearerConn) carrying(ctx context.Context) context.Context {
 
 // credentialTransport puts one subject's bearer token on every request, which
 // is what a consumer's authenticated HTTP client does.
+//
+// It carries the run the subject was minted in beside the credential, as
+// headerReserving, the way Decorate carries mdReserving beside the gRPC one.
 type credentialTransport struct {
-	token string
+	token     string
+	reserving string
 }
 
 func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set(headerReserving, c.reserving)
 
 	return http.DefaultTransport.RoundTrip(req)
 }

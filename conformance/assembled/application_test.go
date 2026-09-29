@@ -2,6 +2,7 @@ package assembled_test
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"sync"
 
@@ -17,14 +18,17 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
+	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 	"github.com/primandproper/platform-go/v14/privacyadapters"
 	"github.com/primandproper/platform-go/v14/service"
 	"github.com/primandproper/platform-go/v14/settings"
@@ -283,12 +287,16 @@ var administrative = []authorization.Permission{
 // hold.
 var memberRole, adminRole = roles()
 
-// roles builds the two sets from the seven surfaces' own Permissions maps, so
-// that a permission a surface adds later is a member's without an edit here.
+// roles builds the two sets from the seven surfaces' own Permissions maps, and
+// the three HTTP surfaces', so that a permission a surface adds later is a
+// member's without an edit here.
 func roles() (member, admin *authorization.PermissionSet) {
 	var every []authorization.Permission
 
 	for _, surface := range []map[string][]authorization.Permission{
+		dataprivacyhttp.Permissions(),
+		mediaregistryhttp.Permissions(),
+		operationshttp.Permissions(),
 		billinggrpc.Permissions(),
 		commentsgrpc.Permissions(),
 		issuereportsgrpc.Permissions(),
@@ -431,4 +439,104 @@ func reserving(ctx context.Context) bool {
 	values := md.Get(mdReserving)
 
 	return len(values) > 0 && values[0] == "true"
+}
+
+// staffOnlyRoutes is the HTTP half of staffOnly: one route on each HTTP
+// surface, kept to the back office in the run that reserves.
+//
+// The console view of every operation running in a tenant, the withdrawal of
+// somebody's privacy request — which that deployment routes through its support
+// desk — and the stored objects, which its product serves to staff alone. None
+// is one of the surfaces' OwnStandingRoutes, which no deployment can reserve:
+// a person following their own erasure and the confirmation link in their mail
+// stay reachable to a member in both runs.
+var staffOnlyRoutes = []string{
+	dataprivacyhttp.RouteCancel,
+	mediaregistryhttp.RouteServe,
+	operationshttp.RouteList,
+}
+
+// memberWithoutStaffRoutes is what a member holds in the run that reserves
+// staffOnlyRoutes: every permission memberRole does, but the ones those routes
+// require.
+//
+// Withholding a route's permission is how a deployment reserves it, and it
+// reserves exactly that route here because no permission a reserved route
+// requires is one an unreserved route requires too — which is the property a
+// consumer checks of its own policy before relying on the same move.
+var memberWithoutStaffRoutes = func() *authorization.PermissionSet {
+	var withheld []authorization.Permission
+
+	for _, surface := range []map[string][]authorization.Permission{
+		dataprivacyhttp.Permissions(),
+		mediaregistryhttp.Permissions(),
+		operationshttp.Permissions(),
+	} {
+		for route, required := range surface {
+			if slices.Contains(staffOnlyRoutes, route) {
+				withheld = append(withheld, required...)
+			}
+		}
+	}
+
+	var kept []authorization.Permission
+
+	for p := range memberRole.All() {
+		if !slices.Contains(withheld, p) {
+			kept = append(kept, p)
+		}
+	}
+
+	return authorization.NewPermissionSet(kept...)
+}()
+
+// httpGrants is the grants extractor this harness's HTTP enforcer reads: the
+// role policy the extractor applies, except that in the run reserving
+// staffOnlyRoutes a member holds memberWithoutStaffRoutes instead.
+//
+// It is the HTTP counterpart of reserveStaffCalls, and it reserves by the
+// means a consumer's policy would — a member simply does not hold the
+// permission — because on HTTP that is the only means there is: each surface
+// checks its own routes' permissions with the enforcer it was handed, and
+// nothing sits in front of them keyed by route.
+func httpGrants(extractor *signingrpc.PrincipalExtractor) authorization.GrantsExtractor {
+	return func(ctx context.Context) (authorization.Grants, bool) {
+		grants, ok := extractor.Grants(ctx)
+		if !ok || !reservingRequest(ctx) {
+			return grants, ok
+		}
+
+		if principal, found := extractor.Extract(ctx); found && isAdministrator(principal) {
+			return grants, ok
+		}
+
+		return authorization.NewGrants(memberWithoutStaffRoutes), true
+	}
+}
+
+// headerReserving is mdReserving's HTTP spelling: which of the harness's two
+// runs the caller making a request was minted in.
+const headerReserving = "Conformance-Reserving"
+
+// reservingKey is where markReserving leaves the run on a request's context.
+type reservingKey struct{}
+
+// markReserving reads headerReserving onto the request's context, where
+// httpGrants reads it back.
+func markReserving(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		if req.Header.Get(headerReserving) == "true" {
+			req = req.WithContext(context.WithValue(req.Context(), reservingKey{}, true))
+		}
+
+		next.ServeHTTP(res, req)
+	})
+}
+
+// reservingRequest reports whether an HTTP request was made in the run that
+// reserves staffOnlyRoutes.
+func reservingRequest(ctx context.Context) bool {
+	reserving, ok := ctx.Value(reservingKey{}).(bool)
+
+	return ok && reserving
 }

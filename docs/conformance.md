@@ -282,6 +282,20 @@ consumer's test, beside its test that an operator may make it. The assembled
 subject's "staff calls reserved" run passes every entry, and a reservation its
 interceptor stops enforcing reds.
 
+An HTTP route is reserved the same way, in `Seams.OperatorRoutes`, keyed as
+each HTTP surface keys its `Permissions` map (`POST
+/operations/{operationID}/cancel`). A caller names the routes it requests with
+`conformance.Making` beside the methods it calls, is minted an administrator
+where it names a reserved one, and its HTTP client admits only the routes it
+declared — an undeclared request fails the test that minted it. `Run` refuses an
+entry that names no route this module's HTTP surfaces mount, and one a surface
+exports among its `OwnStandingRoutes`: a person following their own erasure or
+clicking their own confirmation link holds no grant a deployment could
+withhold, so a list reserving either has contradicted itself. The assembled
+subject's "staff calls reserved" run reserves one route on each HTTP surface
+and withholds the permissions those routes require from a member.
+`conformance/reservations` does not yet hold a deployment to that list.
+
 `conformance/anonymous` is the shape that pays, and the reason to prefer
 cross-cutting suites over per-surface ports where the promise allows it. It
 enumerates each service's RPCs from its protobuf descriptor rather than naming

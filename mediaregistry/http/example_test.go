@@ -12,6 +12,8 @@ import (
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
@@ -69,8 +71,19 @@ func Example() {
 	client := &databasemock.ClientMock{}
 	client.ReaderFunc = func() database.SQLQueryExecutor { return nil }
 
+	// The consumer's authorization middleware, over the grants its policy
+	// gives a caller. This one's policy lets everybody use the route; which
+	// objects they may have through it is still the row's to say.
+	enforcer, err := authzhttp.NewEnforcer(func(context.Context) (authorization.Grants, bool) {
+		return authorization.NewGrants(authorization.NewPermissionSet(mediaregistryhttp.PermissionReadObjects)), true
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	handler, err := mediaregistryhttp.New(store, client, exampleBucket(),
-		mediaregistryhttp.WithCallerResolver(callerFromContext))
+		mediaregistryhttp.WithCallerResolver(callerFromContext),
+		mediaregistryhttp.WithEnforcer(enforcer))
 	if err != nil {
 		panic(err)
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/eventstream/sse"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
@@ -60,6 +61,7 @@ type (
 		resolver       OwnerResolver
 		owners         OwnersResolver
 		watcher        *operations.Watcher
+		enforcer       *authzhttp.Enforcer
 		logger         logging.Logger
 		tracerProvider tracing.Provider
 

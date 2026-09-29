@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/internal/routeguard"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -107,8 +108,12 @@ type Handler struct {
 	client  database.Client
 	manager uploads.UploadManager
 
-	resolver    CallerResolver
 	entitlement Entitlement
+
+	// guard checks PermissionReadObjects before the row is read, and resolves
+	// the caller once for the check and the read behind it. It refuses the
+	// route where the consumer supplied no enforcer. See WithEnforcer.
+	guard *routeguard.Guard[Caller]
 
 	// codec renders the refusals, which are the only bodies this package writes
 	// that are not an object. It is pinned to JSON rather than negotiated: a
@@ -156,11 +161,16 @@ func New(
 		return nil, ErrNilCallerResolver
 	}
 
+	guard, err := routeguard.New(o.enforcer, o.resolver, o.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Handler{
+		guard:       guard,
 		store:       store,
 		client:      client,
 		manager:     manager,
-		resolver:    o.resolver,
 		entitlement: o.entitlement,
 		codec: encoding.NewClientEncoder(encoding.ContentTypeJSON,
 			encoding.WithLogger(o.logger),
@@ -171,7 +181,8 @@ func New(
 	}, nil
 }
 
-// Mount registers the route and describes it in the OpenAPI document.
+// Mount registers the route, behind PermissionReadObjects, and describes it in
+// the OpenAPI document.
 //
 // The registration goes on the Backend rather than through routing's typed
 // registration, for the same reason the operations event stream does: a typed
@@ -185,7 +196,7 @@ func New(
 func (h *Handler) Mount(r *routing.Router) *routing.Route {
 	pattern := h.pattern()
 
-	r.Handle(nethttp.MethodGet, pattern, nethttp.HandlerFunc(h.serve))
+	r.Handle(nethttp.MethodGet, pattern, nethttp.HandlerFunc(h.serve), h.guard.Require(PermissionReadObjects))
 
 	h.describe(r)
 
@@ -253,7 +264,7 @@ func (h *Handler) read(ctx context.Context, span observability.Operation, object
 		return nil, platformerrors.Wrap(mediaregistry.ErrObjectNotFound, "no object named")
 	}
 
-	caller, err := h.resolver(ctx)
+	caller, err := h.guard.Caller(ctx)
 	if err != nil {
 		return nil, span.Error(err, "resolving the caller")
 	}

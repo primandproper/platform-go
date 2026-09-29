@@ -49,7 +49,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("an object is served to the caller who registered it", func(t *testing.T) {
 		t.Parallel()
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(mediaregistryhttp.RouteServe))
 		object := registered(t, s, mine)
 
 		got := fetch(t, mine, object.ID)
@@ -67,7 +67,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("another tenant's object is absent, exactly as an unknown one is", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoTenants(t, s)
+		mine, theirs := s.TwoTenants(t, surface, conformance.Making(mediaregistryhttp.RouteServe))
 		object := registered(t, s, mine)
 
 		owned := fetch(t, mine, object.ID)
@@ -89,9 +89,9 @@ func run(t *testing.T, s *conformance.Session) {
 			t.Skip("conformance: this deployment's entitlement lets somebody other than the owner read an object")
 		}
 
-		mine := s.Subject(t)
+		mine := s.Subject(t, conformance.Making(mediaregistryhttp.RouteServe))
 		object := registered(t, s, mine)
-		colleague := s.Subject(t, conformance.InTenant(surface, mine.ScopeFor(surface)))
+		colleague := s.Subject(t, conformance.Making(mediaregistryhttp.RouteServe), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 		must.StrNotEqFold(t, mine.UserID, colleague.UserID,
 			must.Sprint("the subject minted a colleague as the same user; the entitlement this asserts cannot be observed"))
@@ -124,17 +124,6 @@ func indistinguishable(t *testing.T, refused, unknown *answer) {
 	test.EqOp(t, unknown.header.Get("Content-Type"), refused.header.Get("Content-Type"),
 		test.Sprint("a refusal and an absence answered with different content types"))
 	test.Eq(t, unknown.body, refused.body, test.Sprint("a refusal and an absence answered with different bodies"))
-}
-
-// twoTenants mints two callers and refuses to proceed if the subject put them in
-// one tenant, since the confinement asserted would then compare a tenant with
-// itself.
-func twoTenants(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
-	t.Helper()
-
-	mine, theirs = s.TwoTenants(t, surface)
-
-	return mine, theirs
 }
 
 // registered has the deployment register an object as sub's, skipping where the

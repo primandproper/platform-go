@@ -8,7 +8,9 @@ import (
 
 // Making names the calls the caller being minted goes on to make, as the full
 // method names a client invokes — identitypb.IdentityService_GetUser_FullMethodName
-// and its siblings.
+// and its siblings — and as the routes it requests on the HTTP surfaces, keyed
+// the way Seams.OperatorRoutes keys them: operationshttp.RouteCancel and its
+// siblings.
 //
 // Every caller a suite mints names them, and that is what lets a deployment
 // reserve any call it likes. Which calls a deployment keeps from its members is
@@ -18,7 +20,8 @@ import (
 // consumer's access scheme against every other. So the suite says what the
 // caller will do, the subject says in Seams.OperatorMethods what it reserves,
 // and Session.Subject mints an administrator where the two meet and an ordinary
-// caller where they do not.
+// caller where they do not. Seams.OperatorRoutes is read the same way for the
+// routes named here.
 //
 // Naming a call is not a claim that the caller is allowed it. It is what the
 // caller is minted to attempt — a refusal a suite asserts is made by a caller
@@ -26,8 +29,9 @@ import (
 // rather than the reservation's.
 //
 // And it is the whole of what the caller may attempt. Its connection admits
-// only the calls declared here, and a call it did not declare fails the test
-// that minted it, including a call a helper makes on its behalf.
+// only the calls declared here, its HTTP client only the routes, and a call it
+// did not declare fails the test that minted it, including a call a helper
+// makes on its behalf.
 func Making(methods ...string) SubjectOption {
 	return func(r *SubjectRequest) { r.Methods = append(r.Methods, methods...) }
 }
@@ -65,10 +69,11 @@ func Attempting(methods ...string) SubjectOption {
 	}
 }
 
-// Reserves reports whether the subject reserves method to an operator, by
-// naming it in Seams.OperatorMethods.
-func (s *Session) Reserves(method string) bool {
-	return slices.Contains(s.seams.OperatorMethods, method)
+// Reserves reports whether the subject reserves a call to an operator: a full
+// method name it names in Seams.OperatorMethods, or a route it names in
+// Seams.OperatorRoutes.
+func (s *Session) Reserves(call string) bool {
+	return slices.Contains(s.seams.OperatorMethods, call) || slices.Contains(s.seams.OperatorRoutes, call)
 }
 
 // NeedsPublic skips the test where the subject reserves any of methods to an

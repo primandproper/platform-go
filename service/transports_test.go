@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	nethttp "net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +26,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsmock "github.com/primandproper/platform-go/v14/comments/mock"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -38,6 +42,7 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications"
 	notificationsmock "github.com/primandproper/platform-go/v14/notifications/mock"
 	"github.com/primandproper/platform-go/v14/operations"
+	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 	"github.com/primandproper/platform-go/v14/settings"
 	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
@@ -51,6 +56,8 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
@@ -1128,4 +1135,93 @@ func auditServiceOverBufconn(
 	})
 
 	return auditpb.NewAuditServiceClient(conn)
+}
+
+// TestRegisterTransports_httpEnforcerReachesEveryHTTPSurface is the assertion
+// that Transports.HTTPEnforcer is the enforcer each HTTP surface checks its
+// routes with, and that leaving it out refuses them rather than serving them.
+//
+// The enforcer's deny handler answers with a status nothing else here writes,
+// so a refusal that arrives with it is one this enforcer made, on that surface.
+func TestRegisterTransports_httpEnforcerReachesEveryHTTPSurface(T *testing.T) {
+	T.Parallel()
+
+	caller := testPrincipal{userID: "user_1", scope: tenancy.Global(), account: "acct_1"}
+
+	// One guarded route per surface, at its default base path.
+	guarded := map[string]string{
+		"dataprivacy":   dataprivacyhttp.RouteList,
+		"mediaregistry": mediaregistryhttp.RouteServe,
+		"operations":    operationshttp.RouteList,
+	}
+
+	serve := func(t *testing.T, enforcer *authzhttp.Enforcer) nethttp.Handler {
+		t.Helper()
+
+		i := newTransportInjector(t)
+
+		router := newRouter()
+		do.ProvideValue(i, router)
+		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
+		do.ProvideValue[uploads.UploadManager](i, &uploadsmock.UploadManagerMock{})
+		do.ProvideValue[dataprivacy.Service](i, &dataprivacymock.ServiceMock{})
+		do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
+		do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
+
+		_, err := mountTransports(i, &Transports{
+			Extractor:    withPrincipal,
+			TenantOf:     DirectoryTenant,
+			Authorizers:  allAuthorizers(),
+			HTTPEnforcer: enforcer,
+		})
+		must.NoError(t, err)
+
+		return nethttp.HandlerFunc(func(res nethttp.ResponseWriter, req *nethttp.Request) {
+			router.Handler().ServeHTTP(res, req.WithContext(context.WithValue(req.Context(), principalKey{}, callers.Principal(caller))))
+		})
+	}
+
+	request := func(t *testing.T, handler nethttp.Handler, route string) int {
+		t.Helper()
+
+		method, pattern, _ := strings.Cut(route, " ")
+		target := strings.NewReplacer("{objectID}", "made-up", "{operationID}", "made-up").Replace(pattern)
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), method, target, nethttp.NoBody))
+
+		return res.Code
+	}
+
+	T.Run("each surface checks its routes with the consumer's enforcer", func(t *testing.T) {
+		t.Parallel()
+
+		enforcer, err := authzhttp.NewEnforcer(
+			func(context.Context) (authorization.Grants, bool) {
+				return authorization.NewGrants(authorization.NewPermissionSet()), true
+			},
+			authzhttp.WithDenyHandler(func(res nethttp.ResponseWriter, _ *nethttp.Request, _ error) {
+				res.WriteHeader(nethttp.StatusTeapot)
+			}),
+		)
+		must.NoError(t, err)
+
+		handler := serve(t, enforcer)
+
+		for surface, route := range guarded {
+			test.EqOp(t, nethttp.StatusTeapot, request(t, handler, route),
+				test.Sprintf("%s's %s was not refused by the enforcer Transports named", surface, route))
+		}
+	})
+
+	T.Run("without one each surface refuses its guarded routes", func(t *testing.T) {
+		t.Parallel()
+
+		handler := serve(t, nil)
+
+		for surface, route := range guarded {
+			test.EqOp(t, nethttp.StatusForbidden, request(t, handler, route),
+				test.Sprintf("%s served %s with no enforcer to check it", surface, route))
+		}
+	})
 }
