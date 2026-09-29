@@ -141,6 +141,14 @@ withholds rather than one that mounts open, so nil stays legal, and a service
 that means to serve either feature supplies the same
 authorization.GrantsExtractor its authorization interceptor reads.
 
+The HTTP enforcer is the optional fifth, and the HTTP counterpart of that interceptor:
+an authorization/http Enforcer the consumer builds over the same grants, which
+the three HTTP surfaces check each route's permission with before they read
+anything. It is a field of its own rather than something built from Grants,
+because the two absences mean opposite things. Left nil, the HTTP surfaces do
+not mount open: each refuses every route its Permissions map names, as 403, and
+serves only the routes it exports as reached on the caller's own standing.
+
 # Configuring or replacing a mounted surface
 
 The seams above are the whole list, and it is closed. Anything else a surface
@@ -188,7 +196,8 @@ that surface rather than added by this one, and nothing else follows it.
 It declares no authorization requirements. Every gRPC surface ships a
 Require(*authzgrpc.RequirementsBuilder) naming the permission each of its
 methods needs, and installing those beside the interceptor that enforces them is
-still the consumer's. A mount is not a policy, which is the same thing
+still the consumer's. The HTTP surfaces install their own, route by route, and
+check them with the enforcer Transports.HTTPEnforcer names. A mount is not a policy, which is the same thing
 identity/config's RegisterServer says about the one surface it builds.
 
 sessions/http does not mount. Its constructor is NewManager[T] and a type

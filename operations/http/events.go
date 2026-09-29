@@ -51,7 +51,8 @@ const (
 const watchOperationID = "watch_operation_events"
 
 // MountEvents registers the server-sent-events endpoint, if there is a Watcher
-// to serve it, and returns nil if there is not.
+// to serve it, and returns nil if there is not. It is one of the
+// OwnStandingRoutes, and requires no grant.
 //
 // Without one the route is not registered at all. A subscription endpoint with
 // nothing behind it would accept the connection, hold it open, and say nothing

@@ -94,7 +94,8 @@ func declaredList(methods []string) string {
 }
 
 // declare puts sub's calls behind a connection admitting only methods, and
-// rebuilds every surface it mounts over that connection.
+// rebuilds every surface it mounts over that connection; and puts its HTTP
+// client behind a transport admitting only the routes among methods.
 //
 // A subject mounting a gRPC surface must therefore supply the connection its
 // surfaces are reached through: the typed clients it hands over are read for
@@ -104,8 +105,16 @@ func declaredList(methods []string) string {
 func declare(t *testing.T, sub *Subject, methods []string) *Subject {
 	t.Helper()
 
-	if !mountsGRPC(&sub.Surfaces) {
+	grpcMounted := mountsGRPC(&sub.Surfaces)
+	if !grpcMounted && (sub.HTTP == nil || sub.HTTP.Client == nil) {
 		return sub
+	}
+
+	checked := *sub
+	checked.HTTP = declareHTTP(t, sub.HTTP, methods)
+
+	if !grpcMounted {
+		return &checked
 	}
 
 	if sub.Conn == nil {
@@ -115,7 +124,6 @@ func declare(t *testing.T, sub *Subject, methods []string) *Subject {
 		return nil
 	}
 
-	checked := *sub
 	conn := &declaredConn{ClientConnInterface: sub.Conn, t: t, declared: slices.Clone(methods)}
 	checked.Conn = conn
 	checked.Surfaces = surfacesOver(&sub.Surfaces, conn)

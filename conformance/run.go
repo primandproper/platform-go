@@ -311,6 +311,7 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 	}
 
 	checkOperatorMethods(t, seams.OperatorMethods)
+	checkOperatorRoutes(t, seams.OperatorRoutes)
 	checkRoles(t, &seams.Roles)
 
 	probe, err := seams.NewSubject(t.Context())

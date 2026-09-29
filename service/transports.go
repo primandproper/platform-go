@@ -38,6 +38,7 @@ import (
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -245,8 +246,8 @@ type SurfaceOptions struct {
 
 // Transports is what a mounted surface needs and a Config cannot carry.
 //
-// Two required seams and two optional ones, and they are the whole of the "you
-// keep the policy" bargain. Every surface this module ships is otherwise
+// Two required seams and three optional ones, and they are the whole of the
+// "you keep the policy" bargain. Every surface this module ships is otherwise
 // deterministic from the config: the store it reads, the client it reads on,
 // the observability it reports through. What is not deterministic is who is
 // calling, which rows they may act on, and — for a deployment whose directory
@@ -269,6 +270,11 @@ type SurfaceOptions struct {
 // Options, in the surface's own Option type, and a surface configured without
 // it fails the startup in its own words. A surface an application would rather
 // build itself is named in Skip.
+//
+// HTTPEnforcer is the one field added since, and it is not one surface's seam:
+// it is the HTTP half of the authorization every surface answers to, shared by
+// the three HTTP surfaces the way Grants is shared by seven gRPC ones, so a
+// consumer names it once rather than three times in Options.
 type Transports struct {
 	// Extractor is how every mounted surface tells who is calling.
 	//
@@ -344,6 +350,23 @@ type Transports struct {
 	// to those surfaces only when it is set, for the reason an optional
 	// authorizer is: the absence rule is theirs.
 	Grants authorization.GrantsExtractor
+
+	// HTTPEnforcer checks the permission each route of the three HTTP surfaces
+	// requires — dataprivacy, mediaregistry and operations, each of which
+	// declares its routes' permissions in a Permissions map beside them. It is
+	// the HTTP counterpart of the authorization interceptor a consumer installs
+	// on the gRPC server, and is built the same way: over the same grants
+	// extractor, by the consumer, with primitives-go's authorization/http.
+	//
+	// Nil does not mount the surfaces open. Each refuses every route its
+	// Permissions names, as 403, and serves only the routes it exports as
+	// reached on the caller's own standing — a privacy subject following their
+	// own export, the confirmation link in their mail. That is the reading a
+	// fail-closed gRPC enforcer gives a method nobody declared, and it is why
+	// this is a separate field from Grants rather than something this package
+	// builds from it: nil Grants withholds features and serves the rest, and
+	// one field meaning both would mean opposite things on the two transports.
+	HTTPEnforcer *authzhttp.Enforcer
 
 	// Registrations are the application's own gRPC services, mounted on the
 	// same server as the platform's.
@@ -468,7 +491,9 @@ type Authorizers struct {
 // It declares no authorization requirements. Every gRPC surface ships a
 // Require(*authzgrpc.RequirementsBuilder) naming the permission each of its
 // methods needs, and those are still the consumer's to install, beside the
-// interceptor that enforces them. This is the same thing
+// interceptor that enforces them. The HTTP surfaces install their own
+// requirements, route by route, and are handed the consumer's enforcer to check
+// them with through Transports.HTTPEnforcer. This is the same thing
 // identitycfg.RegisterServer already says about the one surface it builds: a
 // mount is not a policy.
 //
@@ -1460,6 +1485,7 @@ func (m *mount) dataPrivacy() {
 	opts := []dataprivacyhttp.Option{
 		dataprivacyhttp.WithLogger(m.pillars.Logger),
 		dataprivacyhttp.WithTracerProvider(m.pillars.TracerProvider),
+		dataprivacyhttp.WithEnforcer(m.t.HTTPEnforcer),
 	}
 
 	extract, _, derive := m.derivation(SurfaceDataPrivacy, len(m.t.Options.DataPrivacy) > 0, false)
@@ -1517,6 +1543,7 @@ func (m *mount) mediaRegistry() {
 	opts := []mediaregistryhttp.Option{
 		mediaregistryhttp.WithLogger(m.pillars.Logger),
 		mediaregistryhttp.WithTracerProvider(m.pillars.TracerProvider),
+		mediaregistryhttp.WithEnforcer(m.t.HTTPEnforcer),
 	}
 
 	extract, tenantOf, derive := m.derivation(SurfaceMediaRegistry, len(m.t.Options.MediaRegistry) > 0, true)
@@ -1572,6 +1599,7 @@ func (m *mount) operations() {
 	opts := []operationshttp.Option{
 		operationshttp.WithLogger(m.pillars.Logger),
 		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
+		operationshttp.WithEnforcer(m.t.HTTPEnforcer),
 	}
 
 	extract, tenantOf, derive := m.derivation(SurfaceOperations, len(m.t.Options.Operations) > 0, true)

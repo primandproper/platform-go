@@ -11,6 +11,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -110,6 +111,11 @@ type Handler struct {
 	resolver    CallerResolver
 	entitlement Entitlement
 
+	// enforcer checks PermissionReadObjects before the row is read. It is never
+	// nil: New substitutes one that refuses the route where the consumer
+	// supplied none. See WithEnforcer.
+	enforcer *authzhttp.Enforcer
+
 	// codec renders the refusals, which are the only bodies this package writes
 	// that are not an object. It is pinned to JSON rather than negotiated: a
 	// client of this route asked for an image and is being told it cannot have
@@ -156,7 +162,13 @@ func New(
 		return nil, ErrNilCallerResolver
 	}
 
+	enforcer, err := enforcerOrRefusal(o.enforcer, o.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Handler{
+		enforcer:    enforcer,
 		store:       store,
 		client:      client,
 		manager:     manager,
@@ -171,7 +183,8 @@ func New(
 	}, nil
 }
 
-// Mount registers the route and describes it in the OpenAPI document.
+// Mount registers the route, behind PermissionReadObjects, and describes it in
+// the OpenAPI document.
 //
 // The registration goes on the Backend rather than through routing's typed
 // registration, for the same reason the operations event stream does: a typed
@@ -185,7 +198,7 @@ func New(
 func (h *Handler) Mount(r *routing.Router) *routing.Route {
 	pattern := h.pattern()
 
-	r.Handle(nethttp.MethodGet, pattern, nethttp.HandlerFunc(h.serve))
+	r.Handle(nethttp.MethodGet, pattern, nethttp.HandlerFunc(h.serve), h.guard(PermissionReadObjects))
 
 	h.describe(r)
 

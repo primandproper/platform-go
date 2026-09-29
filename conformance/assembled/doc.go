@@ -71,6 +71,16 @@ it would be proving a service nobody could run.
     reservation takes exercised; that each caller makes only the calls it
     declared is checked by the suites themselves, on its own connection, in
     both.
+  - The HTTP half of authorization, which service does not build either: an
+    authorization/http Enforcer named to service.Transports as the
+    HTTPEnforcer the three HTTP surfaces check their routes with. Its grants
+    are the role policy's — a member holds every permission those surfaces'
+    Permissions maps name — except in the reserving run, where httpGrants
+    withholds from a member the permissions of staffOnlyRoutes, one route on
+    each surface. That is how a consumer reserves a route, and the only way
+    there is: nothing keyed by route sits in front of the surfaces. The run
+    rides beside the credential as a header, the way it rides in metadata on
+    gRPC.
   - The schema. Nothing in service runs migrations; a consumer renders each
     package's migrations.Statements with the prefix they configured, and so does
     this.

@@ -44,7 +44,7 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 	t.Run("an export completes", func(t *testing.T) {
 		t.Parallel()
 
-		me := s.Subject(t)
+		me := s.Subject(t, conformance.Making(dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet, operationshttp.RouteGet))
 		fulfilled := exported(t, s, me)
 
 		// Only when there is an operation to read, and the operations surface
@@ -71,7 +71,7 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		// A fresh caller, always: this one is erased.
-		me := s.Subject(t)
+		me := s.Subject(t, conformance.Making(dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteConfirm, dataprivacyhttp.RouteGet))
 		if me.Surfaces.Identity == nil {
 			t.Skip("conformance: this subject mounts no directory, and no client can observe an erasure without one")
 		}
@@ -136,7 +136,7 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		expire := s.Seams().Actions.ArtifactExpired
 		s.NeedsAction(t, expire != nil, "ArtifactExpired")
 
-		me := s.Subject(t)
+		me := s.Subject(t, conformance.Making(dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet))
 		fulfilled := exported(t, s, me)
 
 		must.NoError(t, expire(t.Context(), me.ScopeFor(surface), fulfilled.ID))

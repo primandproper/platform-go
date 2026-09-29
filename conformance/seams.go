@@ -174,6 +174,25 @@ type Seams struct {
 	// deployment refuses a member each entry on one of this module's surfaces.
 	OperatorMethods []string
 
+	// OperatorRoutes are the routes on this module's HTTP surfaces the
+	// deployment reserves to an operator, keyed as each surface's own route
+	// constants key them — the method, a space, and the path at the surface's
+	// default base path with its parameters braced, as in
+	// operationshttp.RouteCancel, "POST /operations/{operationID}/cancel". Nil
+	// reserves nothing.
+	//
+	// They are OperatorMethods for the HTTP half, read the same way: a caller
+	// that declares a reserved route with Making is minted an administrator,
+	// and its client is held to the routes it declared. A deployment reserves a
+	// route by granting its members none of the permissions the surface's
+	// Permissions map says it requires, which is the list to hand over here.
+	//
+	// Run checks that each entry is a route one of this module's HTTP surfaces
+	// mounts, and that none is a route its surface exports among its
+	// OwnStandingRoutes: those ask for no grant, so no deployment can keep them
+	// from its members, and a list naming one has contradicted itself.
+	OperatorRoutes []string
+
 	// FulfillmentBudget is how long this deployment may take to pick queued
 	// work up and finish it — a privacy request submitted to its worker, say.
 	// Zero is DefaultFulfillmentBudget. Session.Await waits this long, or until
@@ -680,11 +699,12 @@ type SubjectRequest struct {
 	// account of their own.
 	Surface string
 
-	// Methods are the calls the caller goes on to make, as full method names,
-	// which a suite names on every caller it mints with Making. A factory may
+	// Methods are the calls the caller goes on to make, as full method names
+	// and route keys, which a suite names on every caller it mints with
+	// Making. A factory may
 	// ignore them: Session.Subject has already read them against
-	// Seams.OperatorMethods and asked for an administrator where the subject
-	// reserves one. They are there for a harness that wants to refuse a caller
+	// Seams.OperatorMethods and Seams.OperatorRoutes and asked for an
+	// administrator where the subject reserves one. They are there for a harness that wants to refuse a caller
 	// every reserved call it was not minted for, which is how this module's own
 	// keeps each suite honest about naming every call it makes.
 	Methods []string

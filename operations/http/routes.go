@@ -11,6 +11,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httpx "github.com/primandproper/primitives-go/v2/errors/http"
@@ -136,6 +137,11 @@ type Handlers struct {
 	// assembled from validated options cannot fail to be assembled.
 	upgrader *sse.Upgrader
 
+	// enforcer checks the grant each route in Permissions requires. It is never
+	// nil: New substitutes one that refuses every guarded route where the
+	// consumer supplied none. See WithEnforcer.
+	enforcer *authzhttp.Enforcer
+
 	basePath string
 	tags     []string
 
@@ -193,7 +199,13 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 	// comparison and answers identically.
 	httpx.RegisterHTTPErrorMapper(operations.HTTPMapper)
 
+	enforcer, err := enforcerOrRefusal(o.enforcer, o.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Handlers{
+		enforcer: enforcer,
 		svc:      svc,
 		watcher:  o.watcher,
 		resolver: o.resolver,
@@ -264,7 +276,8 @@ func (h *Handlers) Mount(r *routing.Router) []*routing.Route {
 	return routes
 }
 
-// MountGet registers the read of one operation.
+// MountGet registers the read of one operation. It is one of the
+// OwnStandingRoutes, and requires no grant.
 func (h *Handlers) MountGet(r *routing.Router) *routing.Route {
 	return routing.Get(r, path.Join(h.basePath, "/{"+pathParam+"}"), h.get,
 		routing.WithSummary("Read a long-running operation"),
@@ -277,15 +290,17 @@ func (h *Handlers) MountGet(r *routing.Router) *routing.Route {
 	)
 }
 
-// MountList registers the collection read.
+// MountList registers the collection read, behind PermissionListOperations.
 func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 	return routing.Get(r, h.basePath, h.list,
 		routing.WithSummary("List long-running operations"),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard(PermissionListOperations)),
 	)
 }
 
-// MountCancel registers the cancellation endpoint.
+// MountCancel registers the cancellation endpoint, behind
+// PermissionCancelOperations.
 //
 // It is the one route here that is not a read, and the most likely thing for a
 // consumer to leave off: a deployment whose operations should run to completion
@@ -305,6 +320,7 @@ func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 		// finished, the cancellation is complete by the time this returns.
 		routing.WithResponseStatus(nethttp.StatusOK),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard(PermissionCancelOperations)),
 	)
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -108,6 +109,11 @@ type Handlers struct {
 	scopes   ScopeResolver
 	o11y     observability.Observer
 
+	// enforcer checks the grant each route in Permissions requires. It is never
+	// nil: New substitutes one that refuses every guarded route where the
+	// consumer supplied none. See WithEnforcer.
+	enforcer *authzhttp.Enforcer
+
 	basePath       string
 	operationsPath string
 	tags           []string
@@ -134,7 +140,13 @@ func New(svc dataprivacy.Service, opts ...Option) (*Handlers, error) {
 		return nil, ErrNilSubjectResolver
 	}
 
+	enforcer, err := enforcerOrRefusal(o.enforcer, o.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Handlers{
+		enforcer:       enforcer,
 		svc:            svc,
 		resolver:       o.resolver,
 		scopes:         o.scopes,
@@ -233,7 +245,8 @@ func (h *Handlers) Mount(r *routing.Router) []*routing.Route {
 	}
 }
 
-// MountSubmit registers the submission endpoint.
+// MountSubmit registers the submission endpoint, behind
+// PermissionSubmitRequests.
 func (h *Handlers) MountSubmit(r *routing.Router) *routing.Route {
 	return routing.Post(r, h.basePath, h.submit,
 		routing.WithSummary("Submit a data-privacy request"),
@@ -253,10 +266,12 @@ func (h *Handlers) MountSubmit(r *routing.Router) *routing.Route {
 		// and readable throughout, which is what 202 says.
 		routing.WithResponseStatus(nethttp.StatusAccepted),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard(PermissionSubmitRequests)),
 	)
 }
 
-// MountList registers the collection read, scoped to the calling subject.
+// MountList registers the collection read, scoped to the calling subject and
+// behind PermissionReadRequests.
 func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 	return routing.Get(r, h.basePath, h.list,
 		routing.WithSummary("List the calling subject's data-privacy requests"),
@@ -265,10 +280,11 @@ func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 				"is scoped to one rather than global.",
 		),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard(PermissionReadRequests)),
 	)
 }
 
-// MountGet registers the read of one request.
+// MountGet registers the read of one request, behind PermissionReadRequests.
 func (h *Handlers) MountGet(r *routing.Router) *routing.Route {
 	return routing.Get(r, path.Join(h.basePath, "/{"+pathParam+"}"), h.get,
 		routing.WithSummary("Read one data-privacy request"),
@@ -278,10 +294,12 @@ func (h *Handlers) MountGet(r *routing.Router) *routing.Route {
 				"which is the operations surface against this request's operation.",
 		),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard(PermissionReadRequests)),
 	)
 }
 
-// MountConfirm registers the confirmation endpoint.
+// MountConfirm registers the confirmation endpoint. It is the one route in
+// OwnStandingRoutes, and requires no grant.
 //
 // It is a GET because it is reached by clicking a link in a mail, and a link
 // click is a GET. That is a state change on a verb that does not promise one, and
@@ -299,7 +317,8 @@ func (h *Handlers) MountConfirm(r *routing.Router) *routing.Route {
 	)
 }
 
-// MountCancel registers the withdrawal endpoint.
+// MountCancel registers the withdrawal endpoint, behind
+// PermissionCancelRequests.
 func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 	return routing.Post(r, path.Join(h.basePath, "/{"+pathParam+"}", CancelSuffix), h.cancel,
 		routing.WithSummary("Withdraw a data-privacy request"),
@@ -315,6 +334,7 @@ func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 		// in_progress rather than by a status code promising less.
 		routing.WithResponseStatus(nethttp.StatusOK),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard(PermissionCancelRequests)),
 	)
 }
 

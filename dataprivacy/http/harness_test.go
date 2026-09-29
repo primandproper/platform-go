@@ -62,14 +62,19 @@ func mount(t *testing.T, svc dataprivacy.Service, subject dataprivacy.Subject, o
 }
 
 // build assembles the handlers and an empty router without mounting anything, for
-// the tests that mount one route at a time.
+// the tests that mount one route at a time. The caller holds every permission
+// the surface declares; a test about the grants passes an enforcer of its own,
+// which replaces this one.
 func build(t *testing.T, svc dataprivacy.Service, opts ...Option) (*Handlers, *routing.Router) {
 	t.Helper()
 
 	backend := chi.NewBackend(&chi.Config{ServiceName: "dataprivacy-test"})
 	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
 
-	handlers, err := New(svc, append([]Option{WithSubjectResolver(subjectFromContext)}, opts...)...)
+	handlers, err := New(svc, append([]Option{
+		WithSubjectResolver(subjectFromContext),
+		WithEnforcer(enforcerGranting(t, PermissionSubmitRequests, PermissionReadRequests, PermissionCancelRequests)),
+	}, opts...)...)
 	must.NoError(t, err)
 
 	return handlers, router

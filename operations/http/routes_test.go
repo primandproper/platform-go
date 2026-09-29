@@ -45,14 +45,19 @@ func asOwner(owner tenancy.Scope, next nethttp.Handler) nethttp.Handler {
 	})
 }
 
-// mount builds a router with the handlers on it, under an owner.
+// mount builds a router with the handlers on it, under an owner who holds every
+// permission the surface declares. A test about the grants passes an enforcer
+// of its own, which replaces this one.
 func mount(t *testing.T, svc operations.Service, owner tenancy.Scope, opts ...Option) nethttp.Handler {
 	t.Helper()
 
 	backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
 	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
 
-	handlers, err := New(svc, append([]Option{WithOwnerResolver(resolverFromContext)}, opts...)...)
+	handlers, err := New(svc, append([]Option{
+		WithOwnerResolver(resolverFromContext),
+		WithEnforcer(enforcerGranting(t, PermissionListOperations, PermissionCancelOperations)),
+	}, opts...)...)
 	must.NoError(t, err)
 
 	handlers.Mount(router)

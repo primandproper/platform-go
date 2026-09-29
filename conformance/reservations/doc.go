@@ -59,9 +59,10 @@ handler cannot survive. That the deployment refuses such a call to a member is
 the consumer's own test, beside its test that an operator may make it, and the
 entry skips saying so.
 
-Nor, yet, a route on one of the HTTP surfaces. Seams.OperatorMethods names gRPC
-methods, and there is no seam by which a deployment says which routes it
-reserves, so there is no list to hold it to.
+Nor, yet, a route on one of the HTTP surfaces. A deployment names those in
+Seams.OperatorRoutes, and the suites mint an administrator for each one a
+caller declares, but nothing here yet asks whether the deployment refuses a
+member one of them.
 
 Nothing here counts. Each entry is its own subtest, so a reservation of any
 length is asserted entry by entry.

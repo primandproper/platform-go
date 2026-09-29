@@ -638,6 +638,27 @@ rule above rather than as an exception to it, and every resource surface but
 reason given above: `dataprivacy`'s flow was on HTTP before there was a
 handler in it.
 
+**Who may use a route.** Every gRPC surface declares a namespaced permission
+per method in its `permissions.go`, and the three HTTP ones do too, per route:
+`dataprivacy/http`, `mediaregistry/http` and `operations/http` each export a
+`Permissions` map keyed by route (`POST /operations/{operationID}/cancel`), the
+`Route…` constants those keys are spelled with, and `OwnStandingRoutes` — the
+routes reached on what the caller is rather than on a grant. There are three of
+those: following an operation by polling it or subscribing to it, which is how a
+person watches their own export or erasure, and `dataprivacy`'s confirmation
+link. The platform declares the permissions and grants none; which a member
+holds is the consumer's policy, exactly as on gRPC, and withholding a route's
+permission is how a deployment keeps that route to its operators. Each surface
+checks its routes with the `authorization/http` enforcer the consumer builds
+over the grants its gRPC interceptor reads — `WithEnforcer`, or
+`service.Transports.HTTPEnforcer` for all three — before anything is read, so a
+caller without the grant is refused as 403 whether or not the identifier they
+named exists. A surface given no enforcer refuses every route its `Permissions`
+names rather than serving it, which is what a fail-closed gRPC enforcer does
+with a method nobody declared. `authorization/http` cannot fail closed on a
+route nobody guarded, so each surface's own tests mount its real handlers and
+check that every route is in exactly one of the two lists.
+
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
 refuses to emit a row for one whose own `doc.go` does not name its kind and
