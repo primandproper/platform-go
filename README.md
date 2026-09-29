@@ -585,6 +585,7 @@ the whole list.
 <!-- readmegen:transports -->
 | Transport                           | Kind             | Whose shape it is                                                                                         |
 |-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------|
+| `billing/http`                      | binding          | a payment provider's callback, whose status code the provider acts on                                     |
 | `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                 |
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                       |
 | `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                       |
@@ -603,7 +604,7 @@ the whole list.
 | `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store` |
 <!-- /readmegen:transports -->
 
-Two rows are bindings rather than surfaces. `sessions/http` binds a store to a
+The bindings are not surfaces. `sessions/http` binds a store to a
 cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
@@ -622,6 +623,13 @@ a refusal is indistinguishable from an absence, a content type a browser execute
 is never served inline, and nothing is cached by a shared proxy. There is no
 resource of yours in that either: what is on the wire is bytes and a content
 type.
+
+`billing/http` binds a payment provider's callback to `billing/sync`. The
+payload is the provider's and the verification is capitalism's; what is left is
+the status code, which the provider acts on and the hand-written endpoints got
+wrong — a 400 for a database that blinked tells the provider to drop the
+delivery. That code is decided here, once: 400 only for a delivery that failed
+verification or could not be parsed, 500 for anything a retry could fix.
 
 The rest are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its

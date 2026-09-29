@@ -213,16 +213,23 @@ The service layer, the checkout flow, and every judgement about what a status
 means.
 
 Concretely: the handler that creates a payment intent through capitalism and then
-writes the [Purchase] it will settle into; the webhook endpoint that verifies a
-signature through [github.com/primandproper/primitives-go/v2/webhooks/inbound]
-and maps the payload through a capitalism adapter; the function billing/plans takes, saying which statuses leave an account
-entitled; and the one billing/standing takes, saying what a status means for the
-coarse standing an application gates on — which includes a suspension no
-processor reports.
+writes the [Purchase] it will settle into; the function billing/plans takes, saying
+which statuses leave an account entitled; and the one billing/standing takes,
+saying what a status means for the coarse standing an application gates on —
+which includes a suspension no processor reports.
 
-What that endpoint then does with the mapped event is no longer yours.
-[github.com/primandproper/platform-go/v14/billing/sync] is the reconciliation
-itself: the agreement looked up by the provider's identifier, opened if nobody
+The webhook endpoint a provider reports to is no longer on that list.
+[github.com/primandproper/platform-go/v14/billing/http] verifies a delivery
+through a capitalism.PaymentManager, reconciles it on a transaction, and answers
+with the status code the provider acts on: 400 only for a delivery that failed
+verification or could not be parsed, 200 for one reconciled or redelivered, and
+500 for everything else, so a database that blinked is retried rather than
+dropped. What it asks of a deployment is which tenant a delivery is for, from
+the verified event and never from the request.
+
+What that endpoint does with the mapped event is
+[github.com/primandproper/platform-go/v14/billing/sync], which is the
+reconciliation itself: the agreement looked up by the provider's identifier, opened if nobody
 holds it, moved if its status or its paid period changed, acknowledged if the
 delivery is a redelivery, and the account's standing written beside it — all on
 the transaction the handler is already in. It is here rather than in each
