@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/conformance"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
@@ -38,12 +39,22 @@ type envelope[T any] struct {
 	Data T `json:"data"`
 }
 
-// receipt is the part of a submission's answer the assertions read.
+// receipt is the part of a submission's answer, and of a read, the assertions
+// read.
 type receipt struct {
-	Request struct {
-		ID          string `json:"id"`
-		OperationID string `json:"operationID"`
-	} `json:"request"`
+	Request request `json:"request"`
+}
+
+// request is a privacy request as its subject is shown it.
+type request struct {
+	ExpiresAt   time.Time         `json:"expiresAt"`
+	CompletedAt *time.Time        `json:"completedAt"`
+	Failures    map[string]string `json:"failures"`
+	ID          string            `json:"id"`
+	OperationID string            `json:"operationID"`
+	ArtifactRef string            `json:"artifactRef"`
+	LastError   string            `json:"lastError"`
+	Status      string            `json:"status"`
 }
 
 // page is a listing, reduced to the identifiers in it.
@@ -165,6 +176,12 @@ func run(t *testing.T, s *conformance.Session) {
 
 		status, _ := call(t, caller, http.MethodPost, dataprivacyhttp.BasePath, []byte(`{"type":"sideways"}`))
 		test.EqOp(t, http.StatusBadRequest, status)
+	})
+
+	t.Run("fulfillment", func(t *testing.T) {
+		t.Parallel()
+
+		fulfillment(t, s)
 	})
 }
 

@@ -103,7 +103,13 @@ serves fewer reports it; this harness sets all three.
 
 dataprivacy refuses to start with no collector registered, so the harness
 registers identity's privacy adapter through privacyadapters — the call a
-consumer makes — over the directory the composition root built.
+consumer makes — over the directory the composition root built. service mounts
+the privacy surface with its default, which confines a request to its person
+and names no tenant, so the adapter's scope resolver is the harness's record of
+which directory it registered each caller into: that is where their data is.
+Actions.ArtifactExpired is dataprivacy's own Sweeper at a clock past the
+request's expiry, over a store narrowed to that one request, so a sweep never
+expires an artifact a parallel assertion is still reading.
 
 # Isolation
 

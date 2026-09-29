@@ -3,6 +3,7 @@ package assembled_test
 import (
 	"context"
 	"slices"
+	"sync"
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
@@ -55,7 +56,7 @@ import (
 // Each surface below mounts only because something here made its dependency
 // resolvable, which is service.RegisterTransports' absence rule doing its job —
 // a surface over half a service is not a surface.
-func registerApplication(i do.Injector, prefix string, commentable *things) {
+func registerApplication(i do.Injector, prefix string, commentable *things, people *directories) {
 	// The declarations. Which kinds of thing accept comments, and which events
 	// an application publishes, are the application's to say.
 	do.ProvideValue(i, comments.Targets{thingType: commentable.definition()})
@@ -83,7 +84,7 @@ func registerApplication(i do.Injector, prefix string, commentable *things) {
 			Reader: do.MustInvoke[database.Client](i).Reader(),
 			Identity: &privacyadapters.IdentityAdapter{
 				Store:   do.MustInvoke[identity.Store](i),
-				Resolve: ownDirectory,
+				Resolve: people.resolve,
 			},
 		}); err != nil {
 			return nil, err
@@ -134,12 +135,39 @@ func registerApplication(i do.Injector, prefix string, commentable *things) {
 	})
 }
 
-// ownDirectory is the harness's answer to which tenants a person's data lives
-// in: the one the request was made in. Every caller here is minted into a
-// directory of its own, so that is the whole of the truth rather than a
-// narrowing of it.
-func ownDirectory(_ context.Context, requestScope tenancy.Scope, _ dataprivacy.Subject) ([]tenancy.Scope, error) {
-	return []tenancy.Scope{requestScope}, nil
+// directories is the harness's answer to which tenants a person's data lives
+// in: the one it registered them into.
+//
+// A request's own confinement is not that answer here. service mounts the
+// privacy surface with dataprivacy/http's default, UnconfinedRequests, so every
+// request a caller submits names no scope — a person's request, not a
+// tenant's — and the resolver is what says where that person is. Every caller
+// NewSubject mints is registered into one directory of its own, so the
+// directory it was registered into is the whole of the truth rather than a
+// narrowing of it. A person the harness never registered has nothing in any
+// directory it knows of, which is the answer a resolver gives for them.
+type directories struct {
+	byUser sync.Map
+}
+
+// remember records the directory a caller was registered into.
+func (d *directories) remember(userID string, scope tenancy.Scope) {
+	d.byUser.Store(userID, scope)
+}
+
+// resolve is the dataprivacy.ScopeResolver: the request's own confinement
+// where it names one, and the subject's directory where it does not.
+func (d *directories) resolve(_ context.Context, requestScope tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
+	if requestScope.Validate() == nil {
+		return []tenancy.Scope{requestScope}, nil
+	}
+
+	scope, ok := d.byUser.Load(subject.ID)
+	if !ok {
+		return nil, nil
+	}
+
+	return []tenancy.Scope{scope.(tenancy.Scope)}, nil
 }
 
 // operationsConfig puts both of the operations block's tables under the run's
