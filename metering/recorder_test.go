@@ -167,21 +167,51 @@ func TestDurableRecorder_Record(T *testing.T) {
 		test.EqOp(t, int64(0), totalOf(t, env, store))
 	})
 
-	T.Run("drops usage for an unregistered meter by default", func(t *testing.T) {
+	T.Run("refuses usage for an unregistered meter by default", func(t *testing.T) {
 		t.Parallel()
 
-		logger := newRecordingLogger()
-		recorder, env, store, _ := newTestRecorder(t, WithRecorderLogger(logger))
+		instruments := newRecordingInstruments()
+		recorder, env, store, _ := newTestRecorder(t, WithRecorderMetricsProvider(instruments.provider()))
 
-		// A deploy that adds a meter reaches the ingest path before it reaches
-		// the wiring on some replica somewhere, and failing here would turn a
-		// rollout into an outage on the path that was supposed to be cheap.
+		// A typo'd meter name is billable usage nobody would be charged for, so
+		// it fails the batch rather than being dropped — and takes the
+		// registered record in the same batch with it, because the batch is one
+		// write.
+		test.ErrorIs(t, recordThrough(t, env, recorder,
+			Usage{Subject: testSubject, Meter: testMeter, Quantity: 3, IdempotencyKey: "req-1"},
+			Usage{Subject: testSubject, Meter: "not_registered", Quantity: 5, IdempotencyKey: "req-2"},
+		), ErrUnknownMeter)
+
+		test.EqOp(t, int64(0), totalOf(t, env, store))
+
+		// Refused, not dropped: nothing went missing for the counter to report.
+		test.SliceEmpty(t, instruments.recorded("_usage_dropped"))
+	})
+
+	T.Run("drops usage for an unregistered meter when configured to", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+		store := env.newStore(t)
+		logger := newRecordingLogger()
+		instruments := newRecordingInstruments()
+
+		recorder, err := NewDurableRecorder(t.Context(),
+			&RecorderConfig{AllowUnknownMeters: true}, store, newTestRegistry(t, BehaviorBlock, 1000),
+			WithRecorderClock(newStubClock()), WithRecorderLogger(logger),
+			WithRecorderMetricsProvider(instruments.provider()))
+		must.NoError(t, err)
+
+		// The opt-out is for usage arriving from another process on another
+		// build, where refusing would redeliver a record the next replica
+		// knows about.
 		must.NoError(t, recordThrough(t, env, recorder,
 			Usage{Subject: testSubject, Meter: "not_registered", Quantity: 5, IdempotencyKey: "req-1"},
 			Usage{Subject: testSubject, Meter: testMeter, Quantity: 3, IdempotencyKey: "req-2"},
 		))
 
 		test.EqOp(t, int64(3), totalOf(t, env, store))
+		test.Eq(t, []int64{1}, instruments.recorded("_usage_dropped"))
 
 		// Dropped is not the same as unremarkable. The record is billable usage
 		// nobody will be charged for, so it lands at Error with the meter that
@@ -197,21 +227,6 @@ func TestDurableRecorder_Record(T *testing.T) {
 
 		// The meter that was registered is not a line anybody has to read past.
 		test.SliceEmpty(t, logger.messages(logging.InfoLevel))
-	})
-
-	T.Run("refuses an unregistered meter when configured to", func(t *testing.T) {
-		t.Parallel()
-
-		env := newSQLiteEnv(t)
-		store := env.newStore(t)
-
-		recorder, err := NewDurableRecorder(t.Context(),
-			&RecorderConfig{RejectUnknownMeters: true}, store, newTestRegistry(t, BehaviorBlock, 10))
-		must.NoError(t, err)
-
-		test.ErrorIs(t, recordThrough(t, env, recorder,
-			Usage{Subject: testSubject, Meter: "not_registered", Quantity: 5, IdempotencyKey: "req-1"}),
-			ErrUnknownMeter)
 	})
 
 	T.Run("propagates a period resolution failure", func(t *testing.T) {

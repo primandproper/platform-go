@@ -177,10 +177,10 @@ func WithRecorderPeriodResolver(resolver PeriodResolver) RecorderOption {
 	}
 }
 
-// WithRecorderLogger attaches a logger. A dropped record is reported through it
-// and nowhere else — the caller is told the batch succeeded, because the record
-// that named an unknown meter is not the caller's to fix — so without one, usage
-// silently going nowhere is visible only in metrics.
+// WithRecorderLogger attaches a logger. Under AllowUnknownMeters a dropped
+// record is reported through it and nowhere else — the caller is told the batch
+// succeeded — so without one, usage silently going nowhere is visible only in
+// metrics.
 func WithRecorderLogger(logger logging.Logger) RecorderOption {
 	return func(r *DurableRecorder) {
 		r.logger = logger
