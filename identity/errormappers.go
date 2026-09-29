@@ -174,7 +174,7 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 
 	// A handle the directory will not store as written. It is bad input for the
 	// same reason: nothing collided — the value is one no engine agrees with
-	// itself about, since MariaDB's PAD SPACE collation would call "ada  " a
+	// itself about, since MySQL 8's PAD SPACE collation would call "ada  " a
 	// collision with "ada" and the other two would not. The message says what
 	// to send instead rather than why, which is the part a form can act on.
 	case errors.Is(err, ErrUsernameWhitespace):

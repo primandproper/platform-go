@@ -333,7 +333,9 @@ func (s *SQLStore) ListInvitationsFromUser(
 //
 // The address is folded before it is bound, because to_email holds the folded
 // spelling — an invitation sent to Ada@example.com is the invitation the user
-// who registered as ada@example.com is owed. See FoldHandle.
+// who registered as ada@example.com is owed. See FoldHandle. An address that
+// begins or ends with whitespace pages nothing, on every dialect, because no
+// invitation is addressed to one; see lookupHandle.
 func (s *SQLStore) ListInvitationsForEmailAddress(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -342,7 +344,7 @@ func (s *SQLStore) ListInvitationsForEmailAddress(
 	status InvitationStatus,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Invitation], error) {
-	return s.pageInvitations(ctx, q, invitationToEmailColumn, scope, FoldHandle(emailAddress), status, filter,
+	return s.pageInvitations(ctx, q, invitationToEmailColumn, scope, emailAddress, status, filter,
 		"listing identity invitations for email address")
 }
 
@@ -475,6 +477,11 @@ func (s *SQLStore) listInvitationRows(
 		return rows, nil
 
 	case invitationToEmailColumn:
+		address, ok := lookupHandle(value)
+		if !ok {
+			return nil, nil
+		}
+
 		params := identitydb.ListInvitationsByToEmailParams{
 			CreatedAfter:    w.createdAfter,
 			CreatedBefore:   w.createdBefore,
@@ -482,7 +489,7 @@ func (s *SQLStore) listInvitationRows(
 			UpdatedBefore:   w.updatedBefore,
 			IncludeArchived: w.includeArchived,
 			Scope:           scope,
-			ToEmail:         value,
+			ToEmail:         address,
 			Status:          status.String(),
 			PageCursor:      w.pageCursor,
 			ResultLimit:     w.resultLimit,

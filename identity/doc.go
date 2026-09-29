@@ -424,9 +424,9 @@ underneath a running directory: what MySQL folds afterwards is already folded,
 and what the other two compare byte for byte was folded before it was bound.
 
 Case is not the whole of what a collation decides, and the rest is settled in
-the schema rather than in Go. MariaDB 11 — which is the flavor this module's
-MySQL suite runs against — defaults to utf8mb4_uca1400_ai_ci, which is accent
-insensitive as well: against a stored "renee" it matches "renée", where Postgres
+the schema rather than in Go. MySQL 8 — which is what this module's MySQL suite
+runs against — defaults to utf8mb4_0900_ai_ci, which is accent insensitive as
+well: against a stored "renee" it matches "renée", where Postgres
 and SQLite do not. A Go fold cannot close that one and should not try. Stripping
 accents would make renee and renée the same person on all three dialects, which
 is a worse answer than the divergence — nobody's name is a spelling of somebody
@@ -437,7 +437,7 @@ folds anything. The clause is in identity/migrations/mysql.sql, and the case
 that fails without it is in the handle folding suite.
 
 Padding is the third thing a collation decides, and it is settled by refusing
-it. utf8mb4_bin is still a PAD SPACE collation on MariaDB, so "ada  " compares
+it. utf8mb4_bin is a PAD SPACE collation on MySQL 8, so "ada  " compares
 equal to "ada" there and the unique index calls the handle taken, where
 Postgres and SQLite compare the trailing bytes and register a second user. A
 fold cannot close that one either — trimming would store a value nobody sent —
@@ -448,6 +448,10 @@ share. Leading whitespace is refused for a reason that needs no dialect at all:
 entry. Interior whitespace is untouched, and so is everything else a handle may
 be spelled with — what a handle is made of is a question about charsets,
 homoglyphs and zero-width characters, and this rule is not an answer to it.
+The lookups hold the same line from the other side: a username, email address
+or invitation address that begins or ends with whitespace is not found, on
+every dialect, without a query — where MySQL's collation would otherwise
+answer "ada " with ada and the other two with nothing.
 
 FoldHandle is that fold, and it is exported because it is not this package's
 private business. Every write and every lookup here calls it, so does
@@ -483,7 +487,7 @@ whatever case was submitted, so fold the username and email_address columns in
 the same migration that adds display_name, or a lookup will not find the rows
 that were not already lower case. The same migration owes the padding rule its
 own pass — a username written before it was refused is one no write now
-accepts, so TRIM the column and reconcile whatever collides, which on MariaDB
+accepts, so TRIM the column and reconcile whatever collides, which on MySQL
 is nothing new, because its collation was already treating those rows as one. Backfilling the display column itself is
 optional — a row with none reads its folded handle back in DisplayName, so a
 page rendering that field never renders a blank. On MySQL the same migration
