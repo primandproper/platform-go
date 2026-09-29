@@ -24,11 +24,11 @@ func TestRecorderConfig(T *testing.T) {
 	T.Run("keeps what was set", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := &RecorderConfig{BatchSize: 7, RejectUnknownMeters: true}
+		cfg := &RecorderConfig{BatchSize: 7, AllowUnknownMeters: true}
 		cfg.EnsureDefaults()
 
 		test.EqOp(t, 7, cfg.BatchSize)
-		test.True(t, cfg.RejectUnknownMeters)
+		test.True(t, cfg.AllowUnknownMeters)
 	})
 
 	T.Run("clamps a non-positive batch size", func(t *testing.T) {

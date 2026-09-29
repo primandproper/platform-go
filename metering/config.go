@@ -108,27 +108,27 @@ type RecorderConfig struct {
 	// instead of being chunked.
 	BatchSize int `env:"BATCH_SIZE" json:"batchSize,omitempty" yaml:"batchSize,omitempty"`
 
-	// RejectUnknownMeters refuses usage naming an unregistered meter instead of
-	// dropping it.
+	// AllowUnknownMeters drops usage naming an unregistered meter instead of
+	// refusing it.
 	//
-	// The default — false — drops the record and counts it, because the failure
-	// this guards against is asymmetric. A deploy that adds a meter reaches the
-	// ingest path before it reaches the wiring on some replica somewhere, and a
-	// Record that returns an error for a meter the next replica knows about turns
-	// a rollout into an outage on the path that was supposed to be cheap. An
-	// operator who would rather find out loudly sets this.
+	// The default — false — refuses: Record returns ErrUnknownMeter and the batch
+	// fails. It is the same call the flusher makes when it declines to build over
+	// an implicit noop reporter, reached from the other end. A dropped record is
+	// billable usage nobody will be charged for, and a typo'd meter name that
+	// drops it silently is a month of revenue discarded by an omission in the
+	// wiring. The Registry is an in-process value, and this package has no ingest
+	// transport, so the code that emits a meter and the code that registers it
+	// ship in the same binary — a meter this recorder has never heard of is a
+	// wiring mistake, and the expensive direction to be wrong in is the quiet one.
 	//
-	// The default stays where it is, and the drop is logged at Error instead. The
-	// asymmetry above is about what a rollout should do to a live ingest path; it
-	// says nothing about how quiet the drop should be, and those are two
-	// decisions that were being made by one field. A dropped record is billable
-	// usage nobody will be charged for — the same money the flusher refuses to
-	// discard when it declines to build over an implicit noop reporter — so it is
-	// logged at Error with the meter, the subject, and ErrUnknownMeter as the
-	// cause. A typo'd meter name is then a line somebody's alerting already
-	// watches rather than one it has to be taught to read, and usage_dropped is
-	// the counter that says how much.
-	RejectUnknownMeters bool `env:"REJECT_UNKNOWN_METERS" json:"rejectUnknownMeters,omitempty" yaml:"rejectUnknownMeters,omitempty"`
+	// The opt-out exists for the one case that is not a mistake: usage arriving
+	// from another process on a different build, such as a queue worker draining
+	// events emitted by a newer release during a rolling deploy, where refusing
+	// would redeliver a record the next replica knows about. Set it there, and the
+	// drop is still logged at Error with the meter, the subject, and
+	// ErrUnknownMeter as the cause, and counted in usage_dropped — it is still
+	// revenue leaving, and Info is the level for things that went as intended.
+	AllowUnknownMeters bool `env:"ALLOW_UNKNOWN_METERS" json:"allowUnknownMeters,omitempty" yaml:"allowUnknownMeters,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*RecorderConfig)(nil)
