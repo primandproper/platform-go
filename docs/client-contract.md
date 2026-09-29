@@ -244,7 +244,7 @@ revoking a role has no effect until the token expires."*
 
 ## Registration, and the two links
 
-Registration is sign-in's, because sign-in is what hashes a password. Four RPCs matter to a
+Registration is sign-in's, because sign-in is what hashes a password. These RPCs matter to a
 client and their authority differs sharply:
 
 - **`Register` requires a caller**, and a client is not one. *"An open sign-up is a flow with
@@ -255,6 +255,17 @@ client and their authority differs sharply:
 - **`VerifyEmailAddress`** and **`AttachPassword`** are anonymous and carry the token the
   mailed link carried, which is the whole of their authority. There is no verification token in
   any response — it travels to the person it is about, never back to whoever called `Register`.
+- **`RequestVerificationEmail`** requires a caller and takes no fields: it mails the signed-in
+  person a fresh link and retires the one they had, which is the "resend" button. It is for
+  somebody whose address is unproven — the link never arrived, or they changed address — and an
+  address already proven is refused (`EMAIL_ADDRESS_ALREADY_VERIFIED`) with its proof intact, so
+  pressing it can never un-verify anybody. The link goes to the inbox and not into the response.
+- **`RequestVerificationEmailByAddress`** is the resend for a registrant, who cannot sign in
+  until they answer a link: a `LoginForToken` refused with `USER_UNVERIFIED` is where a client
+  offers it, with the address the person just typed. It is anonymous and answers *identically*
+  whoever holds the address — nobody, a proven address, or one it mailed — under the same timing
+  floor `RequestMagicLink` holds, so a client renders "if that address is waiting on a link, we
+  sent another" and never branches on the answer.
 - **`RequestMagicLink`** is anonymous and answers *identically* whether the address exists or
   not, padding its own timing so the two cannot be told apart by a stopwatch. A client that
   renders "we sent it" on success and "no such account" on failure rebuilds the enumerator that
@@ -546,6 +557,7 @@ error details. Everything outside sign-in is [R13](#errors): the code, and nothi
 | `ADMIN_SIGNIN_UNAVAILABLE` | `PERMISSION_DENIED` | stop asking |
 | `NO_PASSWORD_CREDENTIAL` | `FAILED_PRECONDITION` | a signed-in subject changing a password they do not have; offer the door they do |
 | `PASSWORD_ALREADY_SET` | `FAILED_PRECONDITION` | attaching a password to somebody who holds one; it is a change, not an attach |
+| `EMAIL_ADDRESS_ALREADY_VERIFIED` | `FAILED_PRECONDITION` | asking for another verification link for an address already proven; there is nothing to verify, so stop offering the button |
 | `NO_CREDENTIAL_NAMED` | `INVALID_ARGUMENT` | a registration that did not say how the user will sign in; fix the request |
 | `PASSWORD_CHANGE_REQUIRED` | `FAILED_PRECONDITION` | an operator forced a password change and this call is not one that makes it; send them to the form, then retry. From v14.2.0; over HTTP it is a `403` |
 | `SIGN_IN_NOT_IDENTIFIED` | `FAILED_PRECONDITION` | `EndOtherSignIns` from a token naming no login; nothing was ended, and `SignOutEverywhere` is the door that needs no `sid` |

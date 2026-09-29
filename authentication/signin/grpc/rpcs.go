@@ -487,6 +487,62 @@ func (s *Server) VerifyEmailAddress(
 	return &signinpb.VerifyEmailAddressResponse{}, nil
 }
 
+// RequestVerificationEmail mails the calling user a fresh link proving their
+// address, and retires the one they were sent before.
+//
+// It takes its subject from the principal and has no field that could name
+// anybody else, which is the whole of its authorization. An address that is
+// already proven is FailedPrecondition with EMAIL_ADDRESS_ALREADY_VERIFIED, and
+// keeps its proof. The link reaches the consumer's VerificationMailer and never
+// this response.
+//
+// Rate limiting is the consumer's, in front of it: every call sends a mail.
+func (s *Server) RequestVerificationEmail(
+	ctx context.Context,
+	_ *signinpb.RequestVerificationEmailRequest,
+) (*signinpb.RequestVerificationEmailResponse, error) {
+	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_RequestVerificationEmail_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.RequestVerificationEmail(ctx, req.scope, req.principal.UserID()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "requesting a verification link")
+	}
+
+	return &signinpb.RequestVerificationEmailResponse{}, nil
+}
+
+// RequestVerificationEmailByAddress mails a fresh verification link to an
+// address whose owner has not proven it, and answers the same way whatever it
+// found.
+//
+// It is anonymous because the person it is for cannot sign in yet: a registrant
+// is refused at the password door until they answer a link. See
+// [github.com/primandproper/platform-go/v14/authentication/signin.Service.RequestVerificationEmailByAddress]
+// for why every answer is the same and held to the same floor.
+//
+// Rate limiting is the consumer's, in front of it: anybody can reach it.
+func (s *Server) RequestVerificationEmailByAddress(
+	ctx context.Context,
+	request *signinpb.RequestVerificationEmailByAddressRequest,
+) (*signinpb.RequestVerificationEmailByAddressResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.RequestVerificationEmailByAddress(ctx, req.scope, request.GetEmailAddress()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "requesting a verification link by address")
+	}
+
+	return &signinpb.RequestVerificationEmailByAddressResponse{}, nil
+}
+
 // RequestMagicLink mails somebody a link that signs them in, and answers the
 // same way whatever it found.
 //

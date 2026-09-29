@@ -219,6 +219,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	invites := &invitationTokens{}
 	do.ProvideValue[identity.Hooks](i, invites)
 
+	// The same value is the consumer's verification mailer, so a resent link
+	// lands where the registration's did and the action reads the newest.
+	do.ProvideValue[signin.VerificationMailer](i, invites)
+
 	// And the consumer's reset mailer, which is where a reset link goes.
 	mailbox := &resetMailbox{}
 	do.ProvideValue(i, mailbox)

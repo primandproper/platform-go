@@ -2,8 +2,10 @@ package identity
 
 import (
 	"testing"
+	"time"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -117,18 +119,16 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
+		// Seeded with a proof and an outstanding link at once, so all three
+		// columns are set going in and the assertions below are about what the
+		// move cleared rather than what was never there. No write reaches that
+		// state any more — a link is refused for a proven address — but a row
+		// written before that refusal existed can hold it, and the move has to
+		// clear it all the same.
 		user := newUser("ada")
-		mintVerificationLink(user, "verify-me")
+		mintVerificationLink(user, "verify-once-more")
+		user.EmailAddressVerifiedAt = pointer.To(time.Now().UTC().Truncate(time.Second))
 		seedUser(t, env, store, user)
-
-		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
-
-		// Re-issued after the proof, so all three columns are set going in and
-		// the assertions below are about what the move cleared rather than what
-		// was never there.
-		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "verify-again"))
-		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-again"))
-		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "verify-once-more"))
 
 		user.EmailAddress = "moved@example.com"
 		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))

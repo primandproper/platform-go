@@ -101,6 +101,7 @@ var ClientSafeSentinels = []error{
 	ErrAdminLoginDisabled,
 	ErrNoPasswordCredential,
 	ErrPasswordAlreadySet,
+	ErrEmailAddressAlreadyVerified,
 	ErrNoCredentialNamed,
 	ErrPasswordRefused,
 	ErrRegistrationRefused,
@@ -194,6 +195,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrAdminLoginDisabled, Reason: "ADMIN_SIGNIN_UNAVAILABLE", Domain: ClientReasonDomain},
 	{Err: ErrNoPasswordCredential, Reason: "NO_PASSWORD_CREDENTIAL", Domain: ClientReasonDomain},
 	{Err: ErrPasswordAlreadySet, Reason: "PASSWORD_ALREADY_SET", Domain: ClientReasonDomain},
+	{Err: ErrEmailAddressAlreadyVerified, Reason: "EMAIL_ADDRESS_ALREADY_VERIFIED", Domain: ClientReasonDomain},
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
@@ -262,8 +264,8 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrNotAnAdministrator), errors.Is(err, ErrAdminLoginDisabled):
 		return httperrors.ErrUserIsNotAuthorized, "administrative sign-in is not available", true
 
-	// The three states an act is refused from rather than forbidden. Each is
-	// fixable, in a specific order, and the message says which act comes first.
+	// The states an act is refused from rather than forbidden. Each is
+	// fixable, or already done, and the message says which act comes first.
 	case errors.Is(err, ErrSecondFactorNotEnrolled):
 		return httperrors.ErrResourceConflict, "a second factor must be enrolled first", true
 	case errors.Is(err, ErrUserUnverified):
@@ -272,6 +274,9 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrResourceConflict, "account holds no password to change", true
 	case errors.Is(err, ErrPasswordAlreadySet):
 		return httperrors.ErrResourceConflict, "account already holds a password", true
+	case errors.Is(err, ErrEmailAddressAlreadyVerified):
+		return httperrors.ErrResourceConflict, "email address is already verified", true
+
 	// Ending every login but this one, from a request whose token names no
 	// login. It is the credential's state rather than the caller's input, and
 	// the remedy is signing in again with a client that carries one.
@@ -336,6 +341,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrUserUnverified),
 		errors.Is(err, ErrNoPasswordCredential),
 		errors.Is(err, ErrPasswordAlreadySet),
+		errors.Is(err, ErrEmailAddressAlreadyVerified),
 		errors.Is(err, ErrPasswordChangeRequired),
 		errors.Is(err, ErrSignInNotIdentified):
 		return codes.FailedPrecondition, true

@@ -345,6 +345,44 @@ type Hooks interface {
 	// the stamps these writes just made rather than the copy read before them.
 	AfterVerify(ctx context.Context, tx database.Tx, scope tenancy.Scope, verification *Verification) error
 
+	// AfterRequestVerificationEmail is called with the user who was minted a
+	// fresh verification link, as they stood before the write and redacted, in
+	// the transaction that stored its digest and retired the link before it.
+	//
+	// It runs before the mail is sent, because the mail is sent only after that
+	// transaction commits: an error here rolls the new link back, leaves the
+	// outstanding one working, and sends nothing. So a resend is never mailed
+	// without this having run, and what a consumer records here is that a link
+	// was asked for and for whom — which is also what an unexplained stream of
+	// them looks like from the audit side.
+	//
+	// The token is deliberately not here. It is in flight to exactly one
+	// address, and a hook that recorded it would put a working verification link
+	// in whatever the hook writes to.
+	AfterRequestVerificationEmail(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+
+	// AfterRequestMagicLink is called with the user who was minted a sign-in
+	// link, redacted, in the transaction that stored it.
+	//
+	// It runs only when a link was actually minted: an address nobody holds, and
+	// an owner whose standing admits no sign-in, write nothing and fire nothing.
+	// That is not a leak, because whether it ran is visible only to the
+	// consumer's own hook — the caller of Service.RequestMagicLink gets the same
+	// nil either way, held to the same floor. What the hook must not do is undo
+	// that by answering the caller itself; a hook that failed is this service's
+	// failure rather than a fact about the address, and is reported as one, the
+	// way a store that will not write is.
+	//
+	// It runs before the mail is sent, because the mail is sent only after that
+	// transaction commits: an error here rolls the link back and sends nothing.
+	// So a sign-in link is never mailed without this having run, and what a
+	// consumer records here is that a link was asked for and for whom.
+	//
+	// The secret is deliberately not here, and nor is its digest. The secret is
+	// in flight to exactly one address, and a hook that recorded it would put a
+	// working sign-in in whatever the hook writes to.
+	AfterRequestMagicLink(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+
 	// AfterVerifyTOTPSecret is called with the user who proved possession of the
 	// secret they hold, redacted, in the transaction that marked it verified.
 	//
@@ -447,6 +485,16 @@ func (NoopHooks) AfterAttachPassword(context.Context, database.Tx, tenancy.Scope
 
 // AfterVerify does nothing.
 func (NoopHooks) AfterVerify(context.Context, database.Tx, tenancy.Scope, *Verification) error {
+	return nil
+}
+
+// AfterRequestVerificationEmail does nothing.
+func (NoopHooks) AfterRequestVerificationEmail(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
+	return nil
+}
+
+// AfterRequestMagicLink does nothing.
+func (NoopHooks) AfterRequestMagicLink(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
 	return nil
 }
 

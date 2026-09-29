@@ -28,27 +28,30 @@ const surface = "signin"
 // The calls this suite makes, as the names a caller is minted to make them by,
 // or that a door is reached by with nobody on it.
 const (
-	adminLoginForToken            = signinpb.SignInService_AdminLoginForToken_FullMethodName
-	attachPassword                = signinpb.SignInService_AttachPassword_FullMethodName
-	endOtherSignIns               = signinpb.SignInService_EndOtherSignIns_FullMethodName
-	endSignIn                     = signinpb.SignInService_EndSignIn_FullMethodName
-	exchangeRefreshToken          = signinpb.SignInService_ExchangeRefreshToken_FullMethodName
-	getAuthStatus                 = signinpb.SignInService_GetAuthStatus_FullMethodName
-	getSelf                       = signinpb.SignInService_GetSelf_FullMethodName
-	listSignIns                   = signinpb.SignInService_ListSignIns_FullMethodName
-	loginForToken                 = signinpb.SignInService_LoginForToken_FullMethodName
-	redeemMagicLink               = signinpb.SignInService_RedeemMagicLink_FullMethodName
-	refreshTOTPSecret             = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
-	requestMagicLink              = signinpb.SignInService_RequestMagicLink_FullMethodName
-	signOut                       = signinpb.SignInService_SignOut_FullMethodName
-	signOutEverywhere             = signinpb.SignInService_SignOutEverywhere_FullMethodName
-	updatePassword                = signinpb.SignInService_UpdatePassword_FullMethodName
-	verifyEmailAddress            = signinpb.SignInService_VerifyEmailAddress_FullMethodName
-	verifyTOTPSecret              = signinpb.SignInService_VerifyTOTPSecret_FullMethodName
-	acceptInvitation              = identitypb.IdentityService_AcceptInvitation_FullMethodName
-	invite                        = identitypb.IdentityService_Invite_FullMethodName
-	setUserRequiresPasswordChange = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
-	setUserServiceRoles           = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
+	adminLoginForToken                = signinpb.SignInService_AdminLoginForToken_FullMethodName
+	attachPassword                    = signinpb.SignInService_AttachPassword_FullMethodName
+	endOtherSignIns                   = signinpb.SignInService_EndOtherSignIns_FullMethodName
+	endSignIn                         = signinpb.SignInService_EndSignIn_FullMethodName
+	exchangeRefreshToken              = signinpb.SignInService_ExchangeRefreshToken_FullMethodName
+	getAuthStatus                     = signinpb.SignInService_GetAuthStatus_FullMethodName
+	getSelf                           = signinpb.SignInService_GetSelf_FullMethodName
+	listSignIns                       = signinpb.SignInService_ListSignIns_FullMethodName
+	loginForToken                     = signinpb.SignInService_LoginForToken_FullMethodName
+	redeemMagicLink                   = signinpb.SignInService_RedeemMagicLink_FullMethodName
+	refreshTOTPSecret                 = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
+	requestMagicLink                  = signinpb.SignInService_RequestMagicLink_FullMethodName
+	requestVerificationEmail          = signinpb.SignInService_RequestVerificationEmail_FullMethodName
+	requestVerificationEmailByAddress = signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName
+	signOut                           = signinpb.SignInService_SignOut_FullMethodName
+	signOutEverywhere                 = signinpb.SignInService_SignOutEverywhere_FullMethodName
+	updatePassword                    = signinpb.SignInService_UpdatePassword_FullMethodName
+	verifyEmailAddress                = signinpb.SignInService_VerifyEmailAddress_FullMethodName
+	verifyTOTPSecret                  = signinpb.SignInService_VerifyTOTPSecret_FullMethodName
+	acceptInvitation                  = identitypb.IdentityService_AcceptInvitation_FullMethodName
+	invite                            = identitypb.IdentityService_Invite_FullMethodName
+	setUserRequiresPasswordChange     = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
+	setUserServiceRoles               = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
+	updateUserAccountStatus           = identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName
 )
 
 // identitySurface is the identity suite's name, for the operators here whose
@@ -100,6 +103,7 @@ const (
 	reasonNotAnAdministrator      = "NOT_AN_ADMINISTRATOR"
 	reasonAdminSignInUnavailable  = "ADMIN_SIGNIN_UNAVAILABLE"
 	reasonPasswordAlreadySet      = "PASSWORD_ALREADY_SET"
+	reasonEmailAlreadyVerified    = "EMAIL_ADDRESS_ALREADY_VERIFIED"
 	reasonNoCredentialNamed       = "NO_CREDENTIAL_NAMED" //nolint:gosec // G101: a refusal's name, not a credential.
 	reasonPasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
 	reasonSignInNotIdentified     = "SIGN_IN_NOT_IDENTIFIED"

@@ -202,6 +202,16 @@ var (
 	// ErrNoPasswordCredential already takes from the other direction.
 	ErrPasswordAlreadySet = platformerrors.New("user already holds a password credential")
 
+	// ErrEmailAddressAlreadyVerified indicates Service.RequestVerificationEmail
+	// for somebody whose address is already proven.
+	//
+	// It is the refusal that keeps a resend from un-verifying anybody: a link and
+	// a proof may not stand on one row together, and the proof is the one that
+	// stays. It is the specific answer rather than a silent success because the
+	// caller is signed in as the person it is about, so it tells them nothing
+	// about anybody else — and "there is nothing to verify" is the remedy.
+	ErrEmailAddressAlreadyVerified = platformerrors.New("email address is already proven; no link was sent")
+
 	// ErrInvalidVerificationToken indicates a verification link that named
 	// nobody: expired, already answered, never issued, or simply wrong.
 	//
@@ -283,6 +293,13 @@ var (
 	// registration on a service built without WithVerifications. It is a wiring
 	// failure, and is a 500 for the reason above.
 	ErrVerificationsNotConfigured = platformerrors.New("no verifications directory is configured")
+
+	// ErrVerificationMailerNotConfigured indicates
+	// Service.RequestVerificationEmail on a service built without
+	// WithVerificationMailer: a link minted and never sent is a link nobody can
+	// answer, and one minted anyway would retire the link the person already
+	// has. It is a wiring failure, and is a 500 for the reason above.
+	ErrVerificationMailerNotConfigured = platformerrors.New("no verification mailer is configured")
 
 	// ErrMagicLinksNotConfigured indicates one of the two sign-in link doors on a
 	// service built without WithMagicLinkStore — or, for the request door,

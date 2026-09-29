@@ -1601,11 +1601,11 @@ WHERE archived_at IS NULL
 UPDATE identity_users SET
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
 	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
-	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
-	AND scope = sqlc.arg(scope);
+	AND scope = sqlc.arg(scope)
+	AND email_address_verified_at IS NULL;
 
 -- name: MarkUserEmailAddressVerified :execrows
 UPDATE identity_users SET
