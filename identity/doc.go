@@ -73,6 +73,19 @@ read carries is [User.EmailAddressVerificationTokenDigest] and
 [InvitationStore.CreateInvitation], which answers with the token its caller
 minted so that it can be mailed.
 
+Where that token goes from there is the consumer's choice of one of two, and
+[WithInvitationMailer] is the one that keeps it private. With an
+[InvitationMailer] configured, [Service.Invite] hands the token to the mailer
+after its transaction commits, and to nothing else: [Hooks.AfterInvite]
+receives the invitation redacted, so an event built from the hook's argument
+cannot fan the secret out to webhook subscribers or an analytics vendor.
+Without one, [Hooks.AfterInvite] receives the token, as it always has, and a
+consumer queueing the mail from the hook must keep it out of everything else
+that hook writes. The token is a bearer credential for joining an account, and
+it is only as private as the one channel it travels — the addressee check
+[InvitationStore.AcceptInvitation] makes is proof of nothing if the token
+reached somewhere other than the addressee's mailbox.
+
 What is deliberately not here, and why it is not an omission: WebAuthn ceremony
 state, password reset tokens, and sessions. Each is a set per user rather than a
 column on one, each has a lifecycle of its own (a ceremony is begun and
