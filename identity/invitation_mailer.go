@@ -39,9 +39,11 @@ type InvitationMail struct {
 //
 // An error from it fails Service.Invite, and by then the invitation is
 // committed. An invitation whose link was never delivered is a request that
-// accomplished nothing, so the caller is told; their retry issues a second
-// invitation beside the first rather than replacing it, and the addressee may
-// answer either.
+// accomplished nothing, so the caller is told — and is handed the committed
+// invitation beside the error, which is the only way they learn its ID. With
+// it they can revoke the undelivered invitation before retrying, since a retry
+// issues a second invitation beside the first rather than replacing it, and
+// the addressee may answer either.
 type InvitationMailer interface {
 	SendInvitation(ctx context.Context, mail *InvitationMail) error
 }

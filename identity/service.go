@@ -538,7 +538,8 @@ func (s *Service) RegisterWithInvitation(
 // WithInvitationMailer. With a mailer, AfterInvite receives the invitation
 // redacted, the transaction commits, and the mailer is handed the token —
 // once, and only then. A mailer's error fails the call with the invitation
-// already committed; see InvitationMailer. Without a mailer, AfterInvite
+// already committed, and the call returns that invitation beside the error;
+// see InvitationMailer. Without a mailer, AfterInvite
 // receives the token, and a consumer queues the mail from the hook, on the
 // transaction, so the queue row and the invitation land together or neither
 // does.
@@ -587,7 +588,9 @@ func (s *Service) Invite(ctx context.Context, scope tenancy.Scope, invitation *I
 	if s.invitationMailer != nil {
 		mail := &InvitationMail{Invitation: issued.Redacted(), Token: issued.Token}
 		if err = s.invitationMailer.SendInvitation(ctx, mail); err != nil {
-			return nil, op.Error(err, "mailing identity invitation")
+			// Committed and unmailed: the caller still gets the row, so the
+			// invitation that exists is one they can see and revoke.
+			return issued, op.Error(err, "mailing identity invitation")
 		}
 	}
 

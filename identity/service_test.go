@@ -1034,7 +1034,11 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		issued, err := service.Invite(t.Context(), testScope, newInvitation(registration.User,
 			registration.Account.ID, "grace@example.com", "the-token", futureExpiry()))
 		must.ErrorIs(t, err, errMailerDown)
-		test.Nil(t, issued)
+
+		// The committed invitation comes back beside the error, so the caller
+		// can see the invitation that exists and revoke it.
+		must.NotNil(t, issued)
+		test.EqOp(t, mailedID, issued.ID)
 
 		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, mailedID)
 		must.NoError(t, err)
