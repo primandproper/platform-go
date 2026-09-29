@@ -146,7 +146,102 @@ var (
 	ErrWaitlistConfirmationNeedsLinks = platformerrors.New(
 		"a waitlist confirmation mailer is registered and no links minter is configured to mint its links",
 	)
+
+	// ErrUnknownSurface is a Transports.Skip naming a surface this package does
+	// not mount.
+	//
+	// It is refused rather than ignored because a skip is how an application
+	// replaces a surface, and a misspelled one leaves the platform's surface
+	// mounted beside the application's replacement — which the gRPC server
+	// reports as a duplicate service somewhere far from the typo, and the
+	// router as a collision on a route the application thought it owned.
+	ErrUnknownSurface = platformerrors.New("Transports.Skip names a surface RegisterTransports does not mount")
 )
+
+// Surface names one of the surfaces RegisterTransports mounts, for
+// Transports.Skip. Its value is the name the surface reports under in a
+// startup failure.
+type Surface string
+
+// The surfaces RegisterTransports mounts, gRPC then HTTP.
+const (
+	SurfaceAudit         Surface = "audit"
+	SurfaceBilling       Surface = "billing"
+	SurfaceComments      Surface = "comments"
+	SurfaceIdentity      Surface = "identity"
+	SurfaceIssueReports  Surface = "issue reports"
+	SurfaceNotifications Surface = "notifications"
+	SurfaceOAuth2Clients Surface = "oauth2 clients"
+	SurfacePasswordReset Surface = "password reset"
+	SurfaceSettings      Surface = "settings"
+	SurfaceSignIn        Surface = "sign-in"
+	SurfaceWaitlists     Surface = "waitlists"
+	SurfaceWebhooks      Surface = "webhooks"
+
+	SurfaceDataPrivacy   Surface = "data privacy"
+	SurfaceMediaRegistry Surface = "media registry"
+	SurfaceOperations    Surface = "operations"
+)
+
+// surfaces is every Surface, which is what a Skip entry is checked against.
+var surfaces = map[Surface]bool{
+	SurfaceAudit:         true,
+	SurfaceBilling:       true,
+	SurfaceComments:      true,
+	SurfaceIdentity:      true,
+	SurfaceIssueReports:  true,
+	SurfaceNotifications: true,
+	SurfaceOAuth2Clients: true,
+	SurfacePasswordReset: true,
+	SurfaceSettings:      true,
+	SurfaceSignIn:        true,
+	SurfaceWaitlists:     true,
+	SurfaceWebhooks:      true,
+	SurfaceDataPrivacy:   true,
+	SurfaceMediaRegistry: true,
+	SurfaceOperations:    true,
+}
+
+// SurfaceOptions are an application's own options for each mounted surface,
+// passed through to that surface's constructor.
+//
+// They are the one door for configuring a mounted surface beyond the seams
+// Transports names, and the reason Transports stops at the seams it has: a
+// field per seam made every surface's configuration something to learn twice,
+// once on the surface and once here, and a seam this struct had not yet
+// mirrored was a seam the automatic mount could not set. Here the surface's
+// own Option is the only spelling.
+//
+// Each slice is applied after everything RegisterTransports supplies — the
+// observability pillars, the seams derived from the extractor, the
+// authorizers, the grants extractor and whatever a config block contributes —
+// so an option here overrides the platform's for the same setting, which is
+// the reading every surface's Options already take of a later option.
+//
+// The three surfaces that read the tenant, and dataprivacy, derive a resolver
+// from Transports.Extractor and, for the three, Transports.TenantOf. A surface
+// given options here is not refused for lacking either: the derivation is
+// skipped, and the surface is built from what the application passed. If that
+// names no resolver either, the surface refuses in its own words, so leaving
+// the seam out opens nothing.
+type SurfaceOptions struct {
+	Audit         []auditgrpc.Option
+	Billing       []billinggrpc.Option
+	Comments      []commentsgrpc.Option
+	Identity      []identitygrpc.Option
+	IssueReports  []issuereportsgrpc.Option
+	Notifications []notificationsgrpc.Option
+	OAuth2Clients []oauth2clientsgrpc.Option
+	PasswordReset []passwordresetgrpc.Option
+	Settings      []settingsgrpc.Option
+	SignIn        []signingrpc.Option
+	Waitlists     []waitlistsgrpc.Option
+	Webhooks      []webhooksgrpc.Option
+
+	DataPrivacy   []dataprivacyhttp.Option
+	MediaRegistry []mediaregistryhttp.Option
+	Operations    []operationshttp.Option
+}
 
 // Transports is what a mounted surface needs and a Config cannot carry.
 //
@@ -166,6 +261,14 @@ var (
 // an authorizer: a surface with no rule about which rows a caller may touch is
 // a surface that mounts open, so a missing one is a startup error rather than a
 // default.
+//
+// The fields naming a seam are the ones the surfaces mounted when this struct
+// was written, and the list is closed. A surface joins the automatic mount only
+// if every seam it has carries a default; a required seam of a surface added
+// since — or any seam of an existing one that no field names — arrives through
+// Options, in the surface's own Option type, and a surface configured without
+// it fails the startup in its own words. A surface an application would rather
+// build itself is named in Skip.
 type Transports struct {
 	// Extractor is how every mounted surface tells who is calling.
 	//
@@ -255,6 +358,18 @@ type Transports struct {
 	// They are appended after the platform's, so a service name declared on
 	// both fails on this one, which is the half the application can move.
 	Registrations []grpcserver.RegistrationFunc
+
+	// Options are the application's own options for each surface, passed
+	// through to its constructor after the platform's. They are how a mounted
+	// surface is configured past the seams above, and the reason no further
+	// seam is mirrored here — see SurfaceOptions.
+	Options SurfaceOptions
+
+	// Skip names surfaces left unmounted even when everything they are built
+	// from resolves, so an application can replace one: it mounts its own
+	// through Registrations or on the router, over the same store. A name this
+	// package does not mount is ErrUnknownSurface at startup.
+	Skip []Surface
 }
 
 // Authorizers is the second seam, one field per surface that takes one.
@@ -426,7 +541,16 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 		return nil, platformerrors.Wrap(err, "invoking the observability pillars for the transport surfaces")
 	}
 
-	m := &mount{i: i, pillars: pillars, t: t}
+	skip := make(map[Surface]bool, len(t.Skip))
+	for _, surface := range t.Skip {
+		if !surfaces[surface] {
+			return nil, platformerrors.Wrapf(ErrUnknownSurface, "%q", surface)
+		}
+
+		skip[surface] = true
+	}
+
+	m := &mount{i: i, pillars: pillars, t: t, skip: skip}
 
 	m.audit()
 	m.billing()
@@ -466,8 +590,18 @@ type mount struct {
 
 	t *Transports
 
+	// skip is Transports.Skip as a set, already checked against surfaces.
+	skip map[Surface]bool
+
 	registrations []grpcserver.RegistrationFunc
 	names         []string
+}
+
+// mounting reports whether surface is to be mounted at all: false for a
+// surface the application named in Skip, and for every surface once one has
+// failed.
+func (m *mount) mounting(surface Surface) bool {
+	return m.err == nil && !m.skip[surface]
 }
 
 // need resolves T, reporting absence as false rather than as a failure.
@@ -505,7 +639,7 @@ func need[T any](m *mount) (T, bool) {
 // Transports with no extractor is only a failure for a service that configured
 // something to mount. A consumer who calls this and configures no surfaces has
 // said nothing wrong.
-func (m *mount) caller(surface string) (callers.PrincipalExtractor, bool) {
+func (m *mount) caller(surface Surface) (callers.PrincipalExtractor, bool) {
 	if m.t.Extractor == nil {
 		m.err = platformerrors.Wrapf(ErrNilPrincipalExtractor, "mounting the %s surface", surface)
 
@@ -520,7 +654,7 @@ func (m *mount) caller(surface string) (callers.PrincipalExtractor, bool) {
 //
 // Like caller, the check is made where a surface needs it, so that only a
 // service that mounts one of the three surfaces is asked for one.
-func (m *mount) tenantOf(surface string) (func(callers.Principal) (tenancy.Scope, error), bool) {
+func (m *mount) tenantOf(surface Surface) (func(callers.Principal) (tenancy.Scope, error), bool) {
 	if m.t.TenantOf == nil {
 		m.err = platformerrors.Wrapf(ErrNilTenantOf, "mounting the %s surface", surface)
 
@@ -530,26 +664,63 @@ func (m *mount) tenantOf(surface string) (func(callers.Principal) (tenancy.Scope
 	return m.t.TenantOf, true
 }
 
+// derivation returns the extractor, and for a surface that reads the tenant
+// Transports.TenantOf, that a surface's derived resolver is built from, and
+// whether one is to be derived at all.
+//
+// own is whether the application passed the surface options of its own. With
+// none, the derivation is the surface's only resolver, so a missing seam is
+// refused here as it always was. With some, a missing seam means no
+// derivation: the surface is built from the application's options, and if
+// those name no resolver either the surface refuses in its own words. A
+// derivation that is made goes first, so the application's resolver, if it
+// names one, overrides it.
+func (m *mount) derivation(surface Surface, own, readsTenant bool) (
+	extract callers.PrincipalExtractor,
+	tenantOf func(callers.Principal) (tenancy.Scope, error),
+	derive bool,
+) {
+	if own && (m.t.Extractor == nil || (readsTenant && m.t.TenantOf == nil)) {
+		return nil, nil, false
+	}
+
+	extract, ok := m.caller(surface)
+	if !ok {
+		return nil, nil, false
+	}
+
+	if !readsTenant {
+		return extract, nil, true
+	}
+
+	tenantOf, ok = m.tenantOf(surface)
+	if !ok {
+		return nil, nil, false
+	}
+
+	return extract, tenantOf, true
+}
+
 // fail records a surface that could not be built, naming it.
 //
 // The surface's own sentinel is underneath, which is the whole intent of
 // passing a nil authorizer through rather than checking it here: a service that
 // configured billing and supplied no AccountAuthorizer is told so by
 // billing/grpc, in billing's words.
-func (m *mount) fail(surface string, err error) {
+func (m *mount) fail(surface Surface, err error) {
 	m.err = platformerrors.Wrapf(err, "building the %s transport surface", surface)
 }
 
 // mountedGRPC records a built gRPC surface and the registration that will put
 // it on the server.
-func (m *mount) mountedGRPC(surface string, register grpcserver.RegistrationFunc) {
+func (m *mount) mountedGRPC(surface Surface, register grpcserver.RegistrationFunc) {
 	m.registrations = append(m.registrations, register)
-	m.names = append(m.names, surface+" gRPC")
+	m.names = append(m.names, string(surface)+" gRPC")
 }
 
 // mountedHTTP records a surface that has put its own routes on the router.
-func (m *mount) mountedHTTP(surface string) {
-	m.names = append(m.names, surface+" HTTP")
+func (m *mount) mountedHTTP(surface Surface) {
+	m.names = append(m.names, string(surface)+" HTTP")
 }
 
 // httpLane mounts the three HTTP surfaces, having first established that the
@@ -608,7 +779,7 @@ func (m *mount) routerClean() bool {
 // It can name one because routerClean has already refused a router that arrived
 // dirty, and because the first surface to fail stops the lane: whatever Err
 // reports here was put there by the surface that just mounted.
-func (m *mount) routesLanded(surface string, router *routing.Router) bool {
+func (m *mount) routesLanded(surface Surface, router *routing.Router) bool {
 	if err := router.Err(); err != nil {
 		m.fail(surface, err)
 
@@ -752,6 +923,10 @@ func deriveMediaCaller(
 // nothing else about a caller, so what it declares is a ScopeResolver, and that
 // resolver is derived from the extractor here.
 func (m *mount) audit() {
+	if !m.mounting(SurfaceAudit) {
+		return
+	}
+
 	reader, ok := need[audit.Reader](m)
 	if !ok {
 		return
@@ -762,32 +937,34 @@ func (m *mount) audit() {
 		return
 	}
 
-	extract, ok := m.caller("audit")
-	if !ok {
+	opts := []auditgrpc.Option{auditgrpc.WithPillars(m.pillars)}
+
+	extract, tenantOf, derive := m.derivation(SurfaceAudit, len(m.t.Options.Audit) > 0, true)
+	if m.err != nil {
 		return
 	}
 
-	tenantOf, ok := m.tenantOf("audit")
-	if !ok {
-		return
+	if derive {
+		opts = append(opts, auditgrpc.WithScopeResolver(deriveScope(extract, tenantOf)))
 	}
 
-	srv, err := auditgrpc.NewServer(reader, client,
-		auditgrpc.WithPillars(m.pillars),
-		auditgrpc.WithScopeResolver(deriveScope(extract, tenantOf)),
-	)
+	srv, err := auditgrpc.NewServer(reader, client, append(opts, m.t.Options.Audit...)...)
 	if err != nil {
-		m.fail("audit", err)
+		m.fail(SurfaceAudit, err)
 
 		return
 	}
 
-	m.mountedGRPC("audit", srv.RegisterOn)
+	m.mountedGRPC(SurfaceAudit, srv.RegisterOn)
 }
 
 // billing mounts the ledger surface. Its authorizer is required, and a nil one
 // travels to the constructor so the refusal is billing's own.
 func (m *mount) billing() {
+	if !m.mounting(SurfaceBilling) {
+		return
+	}
+
 	store, ok := need[billing.Store](m)
 	if !ok {
 		return
@@ -798,7 +975,7 @@ func (m *mount) billing() {
 		return
 	}
 
-	extract, ok := m.caller("billing")
+	extract, ok := m.caller(SurfaceBilling)
 	if !ok {
 		return
 	}
@@ -808,19 +985,23 @@ func (m *mount) billing() {
 		opts = append(opts, billinggrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	srv, err := billinggrpc.NewServer(store, client, extract, m.t.Authorizers.BillingAccounts, opts...)
+	srv, err := billinggrpc.NewServer(store, client, extract, m.t.Authorizers.BillingAccounts, append(opts, m.t.Options.Billing...)...)
 	if err != nil {
-		m.fail("billing", err)
+		m.fail(SurfaceBilling, err)
 
 		return
 	}
 
-	m.mountedGRPC("billing", srv.RegisterOn)
+	m.mountedGRPC(SurfaceBilling, srv.RegisterOn)
 }
 
 // comments mounts the comment surface. Its authorizer is optional, so a nil one
 // is left out rather than passed, and comments/grpc's own default stands.
 func (m *mount) comments() {
+	if !m.mounting(SurfaceComments) {
+		return
+	}
+
 	store, ok := need[comments.Store](m)
 	if !ok {
 		return
@@ -831,7 +1012,7 @@ func (m *mount) comments() {
 		return
 	}
 
-	extract, ok := m.caller("comments")
+	extract, ok := m.caller(SurfaceComments)
 	if !ok {
 		return
 	}
@@ -845,14 +1026,14 @@ func (m *mount) comments() {
 		opts = append(opts, commentsgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	srv, err := commentsgrpc.NewServer(store, client, extract, opts...)
+	srv, err := commentsgrpc.NewServer(store, client, extract, append(opts, m.t.Options.Comments...)...)
 	if err != nil {
-		m.fail("comments", err)
+		m.fail(SurfaceComments, err)
 
 		return
 	}
 
-	m.mountedGRPC("comments", srv.RegisterOn)
+	m.mountedGRPC(SurfaceComments, srv.RegisterOn)
 }
 
 // identity mounts the directory surface.
@@ -862,6 +1043,10 @@ func (m *mount) comments() {
 // application that built the service itself. That is the absence rule doing its
 // job rather than a gap in it: a surface over half a directory is not a surface.
 func (m *mount) identity() {
+	if !m.mounting(SurfaceIdentity) {
+		return
+	}
+
 	svc, ok := need[*identity.Service](m)
 	if !ok {
 		return
@@ -877,7 +1062,7 @@ func (m *mount) identity() {
 		return
 	}
 
-	extract, ok := m.caller("identity")
+	extract, ok := m.caller(SurfaceIdentity)
 	if !ok {
 		return
 	}
@@ -899,18 +1084,22 @@ func (m *mount) identity() {
 		opts = append(opts, identitygrpc.WithTargetAuthorizer(m.t.Authorizers.IdentityTargets))
 	}
 
-	srv, err := identitygrpc.NewServer(svc, store, client, extract, opts...)
+	srv, err := identitygrpc.NewServer(svc, store, client, extract, append(opts, m.t.Options.Identity...)...)
 	if err != nil {
-		m.fail("identity", err)
+		m.fail(SurfaceIdentity, err)
 
 		return
 	}
 
-	m.mountedGRPC("identity", srv.RegisterOn)
+	m.mountedGRPC(SurfaceIdentity, srv.RegisterOn)
 }
 
 // issueReports mounts the report surface. Its authorizer is required.
 func (m *mount) issueReports() {
+	if !m.mounting(SurfaceIssueReports) {
+		return
+	}
+
 	store, ok := need[issuereports.Store](m)
 	if !ok {
 		return
@@ -921,7 +1110,7 @@ func (m *mount) issueReports() {
 		return
 	}
 
-	extract, ok := m.caller("issue reports")
+	extract, ok := m.caller(SurfaceIssueReports)
 	if !ok {
 		return
 	}
@@ -931,20 +1120,24 @@ func (m *mount) issueReports() {
 		opts = append(opts, issuereportsgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	srv, err := issuereportsgrpc.NewServer(store, client, extract, m.t.Authorizers.IssueReports, opts...)
+	srv, err := issuereportsgrpc.NewServer(store, client, extract, m.t.Authorizers.IssueReports, append(opts, m.t.Options.IssueReports...)...)
 	if err != nil {
-		m.fail("issue reports", err)
+		m.fail(SurfaceIssueReports, err)
 
 		return
 	}
 
-	m.mountedGRPC("issue reports", srv.RegisterOn)
+	m.mountedGRPC(SurfaceIssueReports, srv.RegisterOn)
 }
 
 // notifications mounts the inbox and device surface. It takes two seams, and
 // one registered store satisfies both — notificationscfg registers each as a
 // narrowing of the same value.
 func (m *mount) notifications() {
+	if !m.mounting(SurfaceNotifications) {
+		return
+	}
+
 	inbox, ok := need[notifications.Inbox](m)
 	if !ok {
 		return
@@ -960,7 +1153,7 @@ func (m *mount) notifications() {
 		return
 	}
 
-	extract, ok := m.caller("notifications")
+	extract, ok := m.caller(SurfaceNotifications)
 	if !ok {
 		return
 	}
@@ -970,20 +1163,24 @@ func (m *mount) notifications() {
 		opts = append(opts, notificationsgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	srv, err := notificationsgrpc.NewServer(inbox, registry, client, extract, opts...)
+	srv, err := notificationsgrpc.NewServer(inbox, registry, client, extract, append(opts, m.t.Options.Notifications...)...)
 	if err != nil {
-		m.fail("notifications", err)
+		m.fail(SurfaceNotifications, err)
 
 		return
 	}
 
-	m.mountedGRPC("notifications", srv.RegisterOn)
+	m.mountedGRPC(SurfaceNotifications, srv.RegisterOn)
 }
 
 // oauth2Clients mounts the client registry surface. It needs both the service
 // and the store, which Config.OAuth2Clients registers together, and stays absent
 // for a service that configured neither.
 func (m *mount) oauth2Clients() {
+	if !m.mounting(SurfaceOAuth2Clients) {
+		return
+	}
+
 	svc, ok := need[*oauth2clients.Service](m)
 	if !ok {
 		return
@@ -999,25 +1196,29 @@ func (m *mount) oauth2Clients() {
 		return
 	}
 
-	extract, ok := m.caller("oauth2 clients")
+	extract, ok := m.caller(SurfaceOAuth2Clients)
 	if !ok {
 		return
 	}
 
-	srv, err := oauth2clientsgrpc.NewServer(svc, store, client, extract,
-		oauth2clientsgrpc.WithPillars(m.pillars),
-	)
+	opts := append([]oauth2clientsgrpc.Option{oauth2clientsgrpc.WithPillars(m.pillars)}, m.t.Options.OAuth2Clients...)
+
+	srv, err := oauth2clientsgrpc.NewServer(svc, store, client, extract, opts...)
 	if err != nil {
-		m.fail("oauth2 clients", err)
+		m.fail(SurfaceOAuth2Clients, err)
 
 		return
 	}
 
-	m.mountedGRPC("oauth2 clients", srv.RegisterOn)
+	m.mountedGRPC(SurfaceOAuth2Clients, srv.RegisterOn)
 }
 
 // settings mounts the settings surface. Its authorizer is required.
 func (m *mount) settings() {
+	if !m.mounting(SurfaceSettings) {
+		return
+	}
+
 	store, ok := need[settings.Store](m)
 	if !ok {
 		return
@@ -1028,7 +1229,7 @@ func (m *mount) settings() {
 		return
 	}
 
-	extract, ok := m.caller("settings")
+	extract, ok := m.caller(SurfaceSettings)
 	if !ok {
 		return
 	}
@@ -1038,14 +1239,14 @@ func (m *mount) settings() {
 		opts = append(opts, settingsgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	srv, err := settingsgrpc.NewServer(store, client, extract, m.t.Authorizers.SettingsSubjects, opts...)
+	srv, err := settingsgrpc.NewServer(store, client, extract, m.t.Authorizers.SettingsSubjects, append(opts, m.t.Options.Settings...)...)
 	if err != nil {
-		m.fail("settings", err)
+		m.fail(SurfaceSettings, err)
 
 		return
 	}
 
-	m.mountedGRPC("settings", srv.RegisterOn)
+	m.mountedGRPC(SurfaceSettings, srv.RegisterOn)
 }
 
 // passwordReset mounts the way back in for somebody who cannot sign in.
@@ -1064,19 +1265,25 @@ func (m *mount) settings() {
 // from the injector, and a block whose application registered neither fails at
 // boot naming the one it wanted.
 func (m *mount) passwordReset() {
+	if !m.mounting(SurfacePasswordReset) {
+		return
+	}
+
 	svc, ok := need[*passwordreset.Service](m)
 	if !ok {
 		return
 	}
 
-	srv, err := passwordresetgrpc.NewServer(svc, passwordresetgrpc.WithPillars(m.pillars))
+	opts := append([]passwordresetgrpc.Option{passwordresetgrpc.WithPillars(m.pillars)}, m.t.Options.PasswordReset...)
+
+	srv, err := passwordresetgrpc.NewServer(svc, opts...)
 	if err != nil {
-		m.fail("password reset", err)
+		m.fail(SurfacePasswordReset, err)
 
 		return
 	}
 
-	m.mountedGRPC("password reset", srv.RegisterOn)
+	m.mountedGRPC(SurfacePasswordReset, srv.RegisterOn)
 }
 
 // signIn mounts the sign-in surface.
@@ -1090,24 +1297,30 @@ func (m *mount) passwordReset() {
 // Config.SignIn registers the *signin.Service this mounts over, and it stays
 // absent for a service that configured none.
 func (m *mount) signIn() {
+	if !m.mounting(SurfaceSignIn) {
+		return
+	}
+
 	svc, ok := need[*signin.Service](m)
 	if !ok {
 		return
 	}
 
-	extract, ok := m.caller("sign-in")
+	extract, ok := m.caller(SurfaceSignIn)
 	if !ok {
 		return
 	}
 
-	srv, err := signingrpc.NewServer(svc, extract, signingrpc.WithPillars(m.pillars))
+	opts := append([]signingrpc.Option{signingrpc.WithPillars(m.pillars)}, m.t.Options.SignIn...)
+
+	srv, err := signingrpc.NewServer(svc, extract, opts...)
 	if err != nil {
-		m.fail("sign-in", err)
+		m.fail(SurfaceSignIn, err)
 
 		return
 	}
 
-	m.mountedGRPC("sign-in", srv.RegisterOn)
+	m.mountedGRPC(SurfaceSignIn, srv.RegisterOn)
 }
 
 // waitlists mounts the signup surface. Its authorizer is required, and its
@@ -1123,6 +1336,10 @@ func (m *mount) signIn() {
 // as does a minter that declares neither waitlist action, which is the
 // surface's own refusal.
 func (m *mount) waitlists() {
+	if !m.mounting(SurfaceWaitlists) {
+		return
+	}
+
 	store, ok := need[waitlists.Store](m)
 	if !ok {
 		return
@@ -1133,7 +1350,7 @@ func (m *mount) waitlists() {
 		return
 	}
 
-	extract, ok := m.caller("waitlists")
+	extract, ok := m.caller(SurfaceWaitlists)
 	if !ok {
 		return
 	}
@@ -1157,7 +1374,7 @@ func (m *mount) waitlists() {
 		}
 
 		if !minting {
-			m.fail("waitlists", ErrWaitlistConfirmationNeedsLinks)
+			m.fail(SurfaceWaitlists, ErrWaitlistConfirmationNeedsLinks)
 
 			return
 		}
@@ -1165,20 +1382,24 @@ func (m *mount) waitlists() {
 		opts = append(opts, waitlistsgrpc.WithConfirmation(minter, mailer))
 	}
 
-	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups, opts...)
+	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups, append(opts, m.t.Options.Waitlists...)...)
 	if err != nil {
-		m.fail("waitlists", err)
+		m.fail(SurfaceWaitlists, err)
 
 		return
 	}
 
-	m.mountedGRPC("waitlists", srv.RegisterOn)
+	m.mountedGRPC(SurfaceWaitlists, srv.RegisterOn)
 }
 
 // webhooks mounts the endpoint and subscription surface. It takes the
 // dispatcher and the store beneath it, both of which Register registers
 // together.
 func (m *mount) webhooks() {
+	if !m.mounting(SurfaceWebhooks) {
+		return
+	}
+
 	dispatcher, ok := need[webhooks.Dispatcher](m)
 	if !ok {
 		return
@@ -1194,7 +1415,7 @@ func (m *mount) webhooks() {
 		return
 	}
 
-	extract, ok := m.caller("webhooks")
+	extract, ok := m.caller(SurfaceWebhooks)
 	if !ok {
 		return
 	}
@@ -1204,14 +1425,14 @@ func (m *mount) webhooks() {
 		opts = append(opts, webhooksgrpc.WithGrantsExtractor(m.t.Grants))
 	}
 
-	srv, err := webhooksgrpc.NewServer(dispatcher, store, client, extract, opts...)
+	srv, err := webhooksgrpc.NewServer(dispatcher, store, client, extract, append(opts, m.t.Options.Webhooks...)...)
 	if err != nil {
-		m.fail("webhooks", err)
+		m.fail(SurfaceWebhooks, err)
 
 		return
 	}
 
-	m.mountedGRPC("webhooks", srv.RegisterOn)
+	m.mountedGRPC(SurfaceWebhooks, srv.RegisterOn)
 }
 
 // dataPrivacy mounts the subject access request surface.
@@ -1222,6 +1443,10 @@ func (m *mount) webhooks() {
 // would narrow every privacy request to the tenant the caller happens to be
 // acting in, which is a quieter answer than the one that was asked for.
 func (m *mount) dataPrivacy() {
+	if !m.mounting(SurfaceDataPrivacy) {
+		return
+	}
+
 	svc, ok := need[dataprivacy.Service](m)
 	if !ok {
 		return
@@ -1232,34 +1457,43 @@ func (m *mount) dataPrivacy() {
 		return
 	}
 
-	extract, ok := m.caller("data privacy")
-	if !ok {
+	opts := []dataprivacyhttp.Option{
+		dataprivacyhttp.WithLogger(m.pillars.Logger),
+		dataprivacyhttp.WithTracerProvider(m.pillars.TracerProvider),
+	}
+
+	extract, _, derive := m.derivation(SurfaceDataPrivacy, len(m.t.Options.DataPrivacy) > 0, false)
+	if m.err != nil {
 		return
 	}
 
-	handlers, err := dataprivacyhttp.New(svc,
-		dataprivacyhttp.WithLogger(m.pillars.Logger),
-		dataprivacyhttp.WithTracerProvider(m.pillars.TracerProvider),
-		dataprivacyhttp.WithSubjectResolver(deriveSubject(extract)),
-	)
+	if derive {
+		opts = append(opts, dataprivacyhttp.WithSubjectResolver(deriveSubject(extract)))
+	}
+
+	handlers, err := dataprivacyhttp.New(svc, append(opts, m.t.Options.DataPrivacy...)...)
 	if err != nil {
-		m.fail("data privacy", err)
+		m.fail(SurfaceDataPrivacy, err)
 
 		return
 	}
 
 	handlers.Mount(router)
 
-	if !m.routesLanded("data privacy", router) {
+	if !m.routesLanded(SurfaceDataPrivacy, router) {
 		return
 	}
 
-	m.mountedHTTP("data privacy")
+	m.mountedHTTP(SurfaceDataPrivacy)
 }
 
 // mediaRegistry mounts the object download surface. Its entitlement is
 // optional, so a nil one leaves mediaregistry/http's OwnerOnly in place.
 func (m *mount) mediaRegistry() {
+	if !m.mounting(SurfaceMediaRegistry) {
+		return
+	}
+
 	store, ok := need[mediaregistry.Store](m)
 	if !ok {
 		return
@@ -1280,39 +1514,38 @@ func (m *mount) mediaRegistry() {
 		return
 	}
 
-	extract, ok := m.caller("media registry")
-	if !ok {
-		return
-	}
-
-	tenantOf, ok := m.tenantOf("media registry")
-	if !ok {
-		return
-	}
-
 	opts := []mediaregistryhttp.Option{
 		mediaregistryhttp.WithLogger(m.pillars.Logger),
 		mediaregistryhttp.WithTracerProvider(m.pillars.TracerProvider),
-		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract, tenantOf)),
 	}
+
+	extract, tenantOf, derive := m.derivation(SurfaceMediaRegistry, len(m.t.Options.MediaRegistry) > 0, true)
+	if m.err != nil {
+		return
+	}
+
+	if derive {
+		opts = append(opts, mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract, tenantOf)))
+	}
+
 	if m.t.Authorizers.MediaObjects != nil {
 		opts = append(opts, mediaregistryhttp.WithEntitlement(m.t.Authorizers.MediaObjects))
 	}
 
-	handler, err := mediaregistryhttp.New(store, client, manager, opts...)
+	handler, err := mediaregistryhttp.New(store, client, manager, append(opts, m.t.Options.MediaRegistry...)...)
 	if err != nil {
-		m.fail("media registry", err)
+		m.fail(SurfaceMediaRegistry, err)
 
 		return
 	}
 
 	handler.Mount(router)
 
-	if !m.routesLanded("media registry", router) {
+	if !m.routesLanded(SurfaceMediaRegistry, router) {
 		return
 	}
 
-	m.mountedHTTP("media registry")
+	m.mountedHTTP(SurfaceMediaRegistry)
 }
 
 // operations mounts the long-running operation surface.
@@ -1322,6 +1555,10 @@ func (m *mount) mediaRegistry() {
 // subscription route rather than mounting a subscription with nothing behind
 // it.
 func (m *mount) operations() {
+	if !m.mounting(SurfaceOperations) {
+		return
+	}
+
 	svc, ok := need[operations.Service](m)
 	if !ok {
 		return
@@ -1332,20 +1569,18 @@ func (m *mount) operations() {
 		return
 	}
 
-	extract, ok := m.caller("operations")
-	if !ok {
-		return
-	}
-
-	tenantOf, ok := m.tenantOf("operations")
-	if !ok {
-		return
-	}
-
 	opts := []operationshttp.Option{
 		operationshttp.WithLogger(m.pillars.Logger),
 		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
-		operationshttp.WithOwnersResolver(deriveOwners(extract, tenantOf)),
+	}
+
+	extract, tenantOf, derive := m.derivation(SurfaceOperations, len(m.t.Options.Operations) > 0, true)
+	if m.err != nil {
+		return
+	}
+
+	if derive {
+		opts = append(opts, operationshttp.WithOwnersResolver(deriveOwners(extract, tenantOf)))
 	}
 
 	if watcher, watching := need[*operations.Watcher](m); watching {
@@ -1356,18 +1591,18 @@ func (m *mount) operations() {
 		return
 	}
 
-	handlers, err := operationshttp.New(svc, opts...)
+	handlers, err := operationshttp.New(svc, append(opts, m.t.Options.Operations...)...)
 	if err != nil {
-		m.fail("operations", err)
+		m.fail(SurfaceOperations, err)
 
 		return
 	}
 
 	handlers.Mount(router)
 
-	if !m.routesLanded("operations", router) {
+	if !m.routesLanded(SurfaceOperations, router) {
 		return
 	}
 
-	m.mountedHTTP("operations")
+	m.mountedHTTP(SurfaceOperations)
 }
