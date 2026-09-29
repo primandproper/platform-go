@@ -361,9 +361,11 @@ func TestStatementsSince(T *testing.T) {
 			must.NoError(t, versionErr)
 			test.Eq(t, want, stmts, test.Sprintf("dialect %q", d))
 
-			must.SliceLen(t, 1, stmts, must.Sprintf("dialect %q", d))
+			must.SliceLen(t, 2, stmts, must.Sprintf("dialect %q", d))
 			test.StrContains(t, stmts[0], "ADD COLUMN", test.Sprintf("dialect %q", d))
 			test.StrContains(t, stmts[0], "access_token_id", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[1], "ADD COLUMN", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[1], "actor_id", test.Sprintf("dialect %q", d))
 		}
 	})
 

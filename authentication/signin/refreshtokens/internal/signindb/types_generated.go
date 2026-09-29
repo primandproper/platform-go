@@ -40,6 +40,7 @@ type GetLiveRefreshTokenForFamilyRow struct {
 	RedeemedAt      *time.Time
 	RevokedAt       *time.Time
 	AccessTokenID   *string
+	ActorID         *string
 }
 
 // GetRefreshTokenParams are the arguments to GetRefreshToken.
@@ -62,6 +63,7 @@ type GetRefreshTokenRow struct {
 	RedeemedAt      *time.Time
 	RevokedAt       *time.Time
 	AccessTokenID   *string
+	ActorID         *string
 }
 
 // GetRefreshTokenRedemptionParams are the arguments to GetRefreshTokenRedemption.
@@ -89,6 +91,7 @@ type InsertRefreshTokenParams struct {
 	ExpiresAt       time.Time
 	PurgeAfter      time.Time
 	AccessTokenID   *string
+	ActorID         *string
 }
 
 // ListLiveRefreshTokenFamiliesParams are the arguments to ListLiveRefreshTokenFamilies.
@@ -107,6 +110,7 @@ type ListLiveRefreshTokenFamiliesRow struct {
 	IssuedAt        time.Time
 	SignedInAt      time.Time
 	ExpiresAt       time.Time
+	ActorID         *string
 }
 
 // LockLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockLiveRefreshTokenFamiliesForSubject.

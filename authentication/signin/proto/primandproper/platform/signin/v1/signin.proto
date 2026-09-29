@@ -400,6 +400,12 @@ message ActiveSignIn {
   // consumer whose principal does not carry the access token's "sid" -- which
   // is the answer that marks nothing rather than guessing.
   bool current = 7;
+
+  // actor_id is the operator signed in as this person through this login --
+  // an impersonation an operator surface began -- and empty for a login of the
+  // person's own. A client shows it, because "somebody else is signed in as
+  // you" is a thing a person is owed the chance to see and end.
+  string actor_id = 8 [json_name = "actorID"];
 }
 
 // ListSignInsRequest asks for the calling user's live logins, most recently

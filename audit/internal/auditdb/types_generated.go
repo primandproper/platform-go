@@ -75,20 +75,21 @@ type GetAuditLogEntryParams struct {
 
 // GetAuditLogEntryRow is one row of GetAuditLogEntry's result.
 type GetAuditLogEntryRow struct {
-	ID           string
-	Seq          int64
-	Scope        tenancy.Scope
-	RecordedAt   time.Time
-	EventType    string
-	ResourceType string
-	ResourceID   string
-	ActorID      string
-	ActorType    string
-	ActorIP      string
-	ChangeSet    []byte
-	Metadata     []byte
-	PrevHash     string
-	Hash         string
+	ID                string
+	Seq               int64
+	Scope             tenancy.Scope
+	RecordedAt        time.Time
+	EventType         string
+	ResourceType      string
+	ResourceID        string
+	ActorID           string
+	ActorType         string
+	ActorIP           string
+	ChangeSet         []byte
+	Metadata          []byte
+	PrevHash          string
+	Hash              string
+	ActorImpersonator string
 }
 
 // GetAuditLogEntryBySeqParams are the arguments to GetAuditLogEntryBySeq.
@@ -99,20 +100,21 @@ type GetAuditLogEntryBySeqParams struct {
 
 // GetAuditLogEntryBySeqRow is one row of GetAuditLogEntryBySeq's result.
 type GetAuditLogEntryBySeqRow struct {
-	ID           string
-	Seq          int64
-	Scope        tenancy.Scope
-	RecordedAt   time.Time
-	EventType    string
-	ResourceType string
-	ResourceID   string
-	ActorID      string
-	ActorType    string
-	ActorIP      string
-	ChangeSet    []byte
-	Metadata     []byte
-	PrevHash     string
-	Hash         string
+	ID                string
+	Seq               int64
+	Scope             tenancy.Scope
+	RecordedAt        time.Time
+	EventType         string
+	ResourceType      string
+	ResourceID        string
+	ActorID           string
+	ActorType         string
+	ActorIP           string
+	ChangeSet         []byte
+	Metadata          []byte
+	PrevHash          string
+	Hash              string
+	ActorImpersonator string
 }
 
 // GetAuditPruneBoundsParams are the arguments to GetAuditPruneBounds.
@@ -141,20 +143,21 @@ type GetAuditPruneTargetRow struct {
 
 // InsertAuditLogEntryParams are the arguments to InsertAuditLogEntry.
 type InsertAuditLogEntryParams struct {
-	ID           string
-	Seq          int64
-	Scope        tenancy.Scope
-	RecordedAt   time.Time
-	EventType    string
-	ResourceType string
-	ResourceID   string
-	ActorID      string
-	ActorType    string
-	ActorIP      string
-	ChangeSet    []byte
-	Metadata     []byte
-	PrevHash     string
-	Hash         string
+	ID                string
+	Seq               int64
+	Scope             tenancy.Scope
+	RecordedAt        time.Time
+	EventType         string
+	ResourceType      string
+	ResourceID        string
+	ActorID           string
+	ActorType         string
+	ActorIP           string
+	ChangeSet         []byte
+	Metadata          []byte
+	PrevHash          string
+	Hash              string
+	ActorImpersonator string
 }
 
 // ListAuditChainEntriesParams are the arguments to ListAuditChainEntries.
@@ -168,88 +171,93 @@ type ListAuditChainEntriesParams struct {
 
 // ListAuditChainEntriesRow is one row of ListAuditChainEntries's result.
 type ListAuditChainEntriesRow struct {
-	ID           string
-	Seq          int64
-	Scope        tenancy.Scope
-	RecordedAt   time.Time
-	EventType    string
-	ResourceType string
-	ResourceID   string
-	ActorID      string
-	ActorType    string
-	ActorIP      string
-	ChangeSet    []byte
-	Metadata     []byte
-	PrevHash     string
-	Hash         string
+	ID                string
+	Seq               int64
+	Scope             tenancy.Scope
+	RecordedAt        time.Time
+	EventType         string
+	ResourceType      string
+	ResourceID        string
+	ActorID           string
+	ActorType         string
+	ActorIP           string
+	ChangeSet         []byte
+	Metadata          []byte
+	PrevHash          string
+	Hash              string
+	ActorImpersonator string
 }
 
 // ListAuditLogEntriesParams are the arguments to ListAuditLogEntries.
 type ListAuditLogEntriesParams struct {
-	ScopeFilter        *string
-	ActorIDFilter      *string
-	ActorTypeFilter    *string
-	ResourceIDFilter   *string
-	ResourceTypeFilter *string
-	EventTypeFilter    *string
-	CreatedAfter       *time.Time
-	CreatedBefore      *time.Time
-	PageCursor         *string
-	ResultLimit        int64
+	ScopeFilter             *string
+	ActorIDFilter           *string
+	ActorTypeFilter         *string
+	ResourceIDFilter        *string
+	ResourceTypeFilter      *string
+	EventTypeFilter         *string
+	ActorImpersonatorFilter *string
+	CreatedAfter            *time.Time
+	CreatedBefore           *time.Time
+	PageCursor              *string
+	ResultLimit             int64
 }
 
 // ListAuditLogEntriesRow is one row of ListAuditLogEntries's result.
 type ListAuditLogEntriesRow struct {
-	ID            string
-	Seq           int64
-	Scope         tenancy.Scope
-	RecordedAt    time.Time
-	EventType     string
-	ResourceType  string
-	ResourceID    string
-	ActorID       string
-	ActorType     string
-	ActorIP       string
-	ChangeSet     []byte
-	Metadata      []byte
-	PrevHash      string
-	Hash          string
-	FilteredCount int64
-	TotalCount    int64
+	ID                string
+	Seq               int64
+	Scope             tenancy.Scope
+	RecordedAt        time.Time
+	EventType         string
+	ResourceType      string
+	ResourceID        string
+	ActorID           string
+	ActorType         string
+	ActorIP           string
+	ChangeSet         []byte
+	Metadata          []byte
+	PrevHash          string
+	Hash              string
+	ActorImpersonator string
+	FilteredCount     int64
+	TotalCount        int64
 }
 
 // ListAuditLogEntriesDescendingParams are the arguments to ListAuditLogEntriesDescending.
 type ListAuditLogEntriesDescendingParams struct {
-	ScopeFilter        *string
-	ActorIDFilter      *string
-	ActorTypeFilter    *string
-	ResourceIDFilter   *string
-	ResourceTypeFilter *string
-	EventTypeFilter    *string
-	CreatedAfter       *time.Time
-	CreatedBefore      *time.Time
-	PageCursor         *string
-	ResultLimit        int64
+	ScopeFilter             *string
+	ActorIDFilter           *string
+	ActorTypeFilter         *string
+	ResourceIDFilter        *string
+	ResourceTypeFilter      *string
+	EventTypeFilter         *string
+	ActorImpersonatorFilter *string
+	CreatedAfter            *time.Time
+	CreatedBefore           *time.Time
+	PageCursor              *string
+	ResultLimit             int64
 }
 
 // ListAuditLogEntriesDescendingRow is one row of ListAuditLogEntriesDescending's result.
 type ListAuditLogEntriesDescendingRow struct {
-	ID            string
-	Seq           int64
-	Scope         tenancy.Scope
-	RecordedAt    time.Time
-	EventType     string
-	ResourceType  string
-	ResourceID    string
-	ActorID       string
-	ActorType     string
-	ActorIP       string
-	ChangeSet     []byte
-	Metadata      []byte
-	PrevHash      string
-	Hash          string
-	FilteredCount int64
-	TotalCount    int64
+	ID                string
+	Seq               int64
+	Scope             tenancy.Scope
+	RecordedAt        time.Time
+	EventType         string
+	ResourceType      string
+	ResourceID        string
+	ActorID           string
+	ActorType         string
+	ActorIP           string
+	ChangeSet         []byte
+	Metadata          []byte
+	PrevHash          string
+	Hash              string
+	ActorImpersonator string
+	FilteredCount     int64
+	TotalCount        int64
 }
 
 // ListPrunableAuditScopesParams are the arguments to ListPrunableAuditScopes.

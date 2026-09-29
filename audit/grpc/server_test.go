@@ -268,6 +268,24 @@ func TestServer_ListEntries(T *testing.T) {
 		test.SliceEmpty(t, empty.GetResults())
 	})
 
+	T.Run("narrows to what an operator did as somebody else", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		impersonated := entryFor(ours, "recipe_3")
+		impersonated.Actor = audit.Actor{ID: "customer", Type: audit.ActorUser, Impersonator: "operator"}
+		h.record(t, ours, impersonated)
+
+		response, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{
+			Query: &auditpb.EntryQuery{ImpersonatorId: "operator"},
+		})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, response.GetResults())
+		test.EqOp(t, "customer", response.GetResults()[0].GetActor().GetId())
+		test.EqOp(t, "operator", response.GetResults()[0].GetActor().GetImpersonator())
+	})
+
 	T.Run("refuses a malformed filter", func(t *testing.T) {
 		t.Parallel()
 

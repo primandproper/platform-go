@@ -76,3 +76,6 @@ CREATE INDEX IF NOT EXISTS signin_refresh_tokens_purge_after_idx
 ALTER TABLE signin_refresh_tokens
     ADD COLUMN access_token_id TEXT;
 
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN actor_id TEXT;
+

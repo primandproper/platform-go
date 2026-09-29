@@ -37,8 +37,20 @@ type FailedSignIn struct {
 	Handle string `json:"handle"`
 
 	// UserID is who the handle resolved to, or empty when it resolved to
-	// nobody.
+	// nobody. On a refused impersonation it is the subject the operator asked
+	// to act as.
 	UserID string `json:"userID"`
+
+	// ActorID is the operator on a refused [Service.IssueImpersonationToken],
+	// and empty on every other refusal. A refused impersonation is the operator's
+	// attempt, and an audit trail that recorded only the subject would file it
+	// under the one person who had nothing to do with it.
+	ActorID string `json:"actorID,omitempty"`
+
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever ActorID
+	// is empty. The hook itself runs in the subject's scope, and an operator
+	// need not share it.
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
 
 	// Administrative reports whether this was AdminLoginForToken rather than
 	// LoginForToken. A failed administrative sign-in is a different event from a
@@ -83,6 +95,21 @@ type Authentication struct {
 	// most wants.
 	CredentialKind CredentialKind `json:"credentialKind"`
 
+	// ActorID is the operator on an impersonation, and empty on every other
+	// authentication. Principal is the subject being impersonated.
+	//
+	// It is what makes [Hooks.AfterAuthenticate] the audit row for an
+	// impersonation: a hook recording it has both people, in the transaction the
+	// token is minted in, and an impersonation whose record failed to write is
+	// an impersonation that did not happen.
+	ActorID string `json:"actorID,omitempty"`
+
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever ActorID
+	// is empty. The hook runs in the subject's scope, which an operator need
+	// not share: a deployment whose staff live apart from its customers records
+	// both scopes or loses track of which operator it means.
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
+
 	// Administrative reports whether this came through the administrative door —
 	// AdminAuthenticate or AdminLoginForToken — rather than the ordinary one.
 	Administrative bool `json:"administrative"`
@@ -119,6 +146,12 @@ const (
 	// CredentialKindPrincipal is a principal the consumer proved and did not
 	// name the credential of — what [Service.IssueForPrincipal] stamps.
 	CredentialKindPrincipal CredentialKind = "principal"
+	// CredentialKindImpersonation is an operator acting as somebody else —
+	// what [Service.IssueImpersonationToken] stamps. Nothing was proven about
+	// the subject, which is the point of naming it apart from every kind that
+	// was: an access log reading "password" for a login the person never made
+	// would be the lie this kind exists to prevent.
+	CredentialKindImpersonation CredentialKind = "impersonation"
 )
 
 // RevocationReason says which door ended a set of logins.

@@ -238,6 +238,7 @@ func (s *SQLStore) Issue(
 		ExpiresAt:       now.Add(request.TTL),
 		PurgeAfter:      now.Add(request.TTL).Add(s.retention),
 		AccessTokenID:   request.AccessTokenID,
+		ActorID:         request.ActorID,
 	}
 
 	if err = s.q.InsertRefreshToken(ctx, tx, signindb.InsertRefreshTokenParams{
@@ -252,6 +253,7 @@ func (s *SQLStore) Issue(
 		ExpiresAt:       token.ExpiresAt,
 		PurgeAfter:      token.PurgeAfter,
 		AccessTokenID:   optionalString(token.AccessTokenID),
+		ActorID:         optionalString(token.ActorID),
 	}); err != nil {
 		return nil, op.Error(err, "storing refresh token row")
 	}
@@ -666,6 +668,10 @@ func (s *SQLStore) ListActiveSignIns(
 			LastRefreshedAt: rows[i].IssuedAt.UTC(),
 			ExpiresAt:       rows[i].ExpiresAt.UTC(),
 		})
+
+		if rows[i].ActorID != nil {
+			signIns[len(signIns)-1].ActorID = *rows[i].ActorID
+		}
 	}
 
 	return signIns, nil
@@ -755,6 +761,10 @@ func tokenFromRow(row *signindb.GetRefreshTokenRow) *signin.RefreshToken {
 
 	if row.AccessTokenID != nil {
 		token.AccessTokenID = *row.AccessTokenID
+	}
+
+	if row.ActorID != nil {
+		token.ActorID = *row.ActorID
 	}
 
 	if row.RedeemedAt != nil {

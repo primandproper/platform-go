@@ -30,3 +30,7 @@ CREATE TABLE IF NOT EXISTS audit_log_chains (
     archived_at         DATETIME(6)
 );
 
+ALTER TABLE audit_log_entries
+    ADD COLUMN actor_impersonator VARCHAR(255) NOT NULL DEFAULT '',
+    ADD KEY audit_log_entries_impersonator_idx (actor_impersonator, recorded_at);
+

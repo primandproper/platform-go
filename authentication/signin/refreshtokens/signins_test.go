@@ -581,3 +581,33 @@ func TestSQLStore_EndSignIns_AllButOne(T *testing.T) {
 		test.NoError(t, err)
 	})
 }
+
+// A login somebody else began as the subject says so, on the row and on the
+// listing, and one the subject began names nobody.
+func TestSQLStore_ActorID(T *testing.T) {
+	T.Parallel()
+
+	store, _ := newTestStore(T)
+
+	_, err := issueFor(T, store, testScope(), &signin.RefreshTokenRequest{
+		TTL:             testTTL,
+		FamilyID:        "family_impersonated",
+		SubjectID:       testSubject,
+		ActiveAccountID: testAccount,
+		ActorID:         "operator_01",
+	})
+	must.NoError(T, err)
+
+	mintInto(T, store, testScope(), "family_own", testSubject)
+
+	actors := map[string]string{}
+	for _, signIn := range listSignIns(T, store, testScope(), testSubject, 10) {
+		actors[signIn.FamilyID] = signIn.ActorID
+	}
+
+	test.Eq(T, map[string]string{"family_impersonated": "operator_01", "family_own": ""}, actors)
+
+	live, err := store.LiveToken(T.Context(), store.db.Reader(), testScope(), "family_impersonated")
+	must.NoError(T, err)
+	test.EqOp(T, "operator_01", live.ActorID)
+}

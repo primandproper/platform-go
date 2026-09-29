@@ -571,12 +571,14 @@ var Matrix = map[string]map[string]Decision{
 		"ErrSignInEnded":      {Err: signin.ErrSignInEnded, Is: Mapped},
 		"ErrSignInSuperseded": {Err: signin.ErrSignInSuperseded, Is: Mapped},
 
-		// Proven, and refused anyway. The four PermissionDenials: two statuses
-		// an operator set, and the two halves of the administrative door.
-		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
-		"ErrNotAnAdministrator": {Err: signin.ErrNotAnAdministrator, Is: Mapped},
-		"ErrUserBanned":         {Err: signin.ErrUserBanned, Is: Mapped},
-		"ErrUserTerminated":     {Err: signin.ErrUserTerminated, Is: Mapped},
+		// Proven, and refused anyway. The PermissionDenials: two statuses an
+		// operator set, the two halves of the administrative door, and the
+		// impersonation door a deployment never opened.
+		"ErrAdminLoginDisabled":    {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
+		"ErrImpersonationDisabled": {Err: signin.ErrImpersonationDisabled, Is: Mapped},
+		"ErrNotAnAdministrator":    {Err: signin.ErrNotAnAdministrator, Is: Mapped},
+		"ErrUserBanned":            {Err: signin.ErrUserBanned, Is: Mapped},
+		"ErrUserTerminated":        {Err: signin.ErrUserTerminated, Is: Mapped},
 
 		// The states an act is refused from rather than forbidden. Each is
 		// fixable in a specific order, and these are the rows where the two
@@ -606,6 +608,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyHandle":           {Err: signin.ErrEmptyHandle, Is: Platform},
 		"ErrEmptyPassword":         {Err: signin.ErrEmptyPassword, Is: Platform},
 		"ErrEmptyUserID":           {Err: signin.ErrEmptyUserID, Is: Platform},
+		"ErrSelfImpersonation":     {Err: signin.ErrSelfImpersonation, Is: Platform},
 		"ErrNilAuthenticator":      {Err: signin.ErrNilAuthenticator, Is: Platform},
 		"ErrNilCredentials":        {Err: signin.ErrNilCredentials, Is: Platform},
 		"ErrNilDatabaseClient":     {Err: signin.ErrNilDatabaseClient, Is: Platform},

@@ -112,6 +112,13 @@ type SignInChecker interface {
 // and answers with that caller's grants. A *Caller's Identity carries the roles
 // the directory holds, less the service roles an ordinary-door token does not
 // carry; see WithOrdinaryServiceRoles.
+//
+// An impersonated request is the subject's, and its Identity is the subject's
+// too. Whether it also carries the operator's grants is this resolver's call and
+// nobody else's: callers.DelegatedActor(principal) names the operator, so a
+// resolver may grant the subject's permissions alone, the operator's alone, or
+// their intersection — and one that never asks resolves an impersonation exactly
+// as it resolves the subject signing in themselves.
 type GrantsResolver func(ctx context.Context, principal callers.Principal) (authorization.Grants, error)
 
 // ServiceRolesPolicy says which of a caller's service roles a token minted
@@ -129,12 +136,14 @@ type Caller struct {
 	principal      *identity.Principal
 	familyID       string
 	tokenID        string
+	actorID        string
 	scope          tenancy.Scope
 	administrative bool
 }
 
 var (
 	_ callers.Principal = (*Caller)(nil)
+	_ callers.Delegated = (*Caller)(nil)
 	_ FamilyIdentifier  = (*Caller)(nil)
 )
 
@@ -158,6 +167,15 @@ func (c *Caller) TokenID() string { return c.tokenID }
 // Administrative is whether the login came through the administrative door —
 // signin.ClaimAdministrative.
 func (c *Caller) Administrative() bool { return c.administrative }
+
+// ActorID is the operator acting through this caller's token — signin.ClaimActor
+// on a token signin.Service.IssueImpersonationToken minted — and empty on every
+// other. It makes a Caller a callers.Delegated, so callers.ActorOf names the
+// operator while UserID, Scope and Identity stay the subject's.
+//
+// What an impersonated request may do is the GrantsResolver's to decide; see
+// that type.
+func (c *Caller) ActorID() string { return c.actorID }
 
 // Identity is the directory's answer for this request: the user, redacted,
 // their memberships and the active account.
@@ -541,6 +559,30 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 		return nil, op.Error(platformerrors.Wrap(ErrUnauthenticated, "the directory answered with nobody"), "resolving a bearer token's caller")
 	}
 
+	actorID, _ := claims.GetString(signin.ClaimActor)
+	if actorID == userID {
+		actorID = ""
+	}
+
+	if actorID != "" {
+		op.Set(actorIDKey, actorID)
+
+		// Present, not merely non-empty: the empty string is tenancy.Global's
+		// owner, which is exactly where a deployment's staff may live. A token
+		// naming an operator and no scope for them is not one signin minted.
+		actorScopeClaim, present := claims.GetString(signin.ClaimActorScope)
+		if !present {
+			return nil, op.Error(platformerrors.Wrapf(ErrNotASignInToken, "a %q claim with no %q claim", signin.ClaimActor, signin.ClaimActorScope), "reading a bearer token")
+		}
+
+		actorScope := tenancy.FromOwner(actorScopeClaim)
+		op.Set(actorScopeKey, actorScope.String())
+
+		if err = e.operatorStands(ctx, actorScope, actorID); err != nil {
+			return nil, op.Error(err, "resolving a bearer token's operator")
+		}
+	}
+
 	if !administrative {
 		principal = e.withOrdinaryServiceRoles(ctx, principal)
 	}
@@ -550,8 +592,39 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 		scope:          scope,
 		familyID:       familyID,
 		tokenID:        claims.JTI(),
+		actorID:        actorID,
 		administrative: administrative,
 	}, nil
+}
+
+// operatorStands checks that the operator named on an impersonation token is
+// still somebody the directory admits.
+//
+// It is the ban rule applied to the second identity. A subject's ban takes
+// effect on the next request whatever minted their token, and an operator's has
+// to as well: otherwise suspending an operator mid-impersonation would leave
+// them acting as a customer until the token lapsed. It resolves no account —
+// the operator's memberships are not what the request is against.
+//
+// It reads the operator in actorScope, the token's signin.ClaimActorScope, and
+// not in the subject's scope: an operator who is staff in a directory of their
+// own is nobody in the customer's, and a re-check there would refuse every
+// impersonation that crossed the line on its first request.
+func (e *PrincipalExtractor) operatorStands(ctx context.Context, actorScope tenancy.Scope, actorID string) error {
+	operator, err := e.directory.GetPrincipal(ctx, e.client.Reader(), actorScope, actorID, "")
+	if err != nil {
+		if refusesTheCaller(err) {
+			return platformerrors.Join(ErrUnauthenticated, err)
+		}
+
+		return err
+	}
+
+	if operator == nil || operator.User == nil {
+		return platformerrors.Wrap(ErrUnauthenticated, "the directory answered with no operator")
+	}
+
+	return nil
 }
 
 // checkSignIn asks the checker WithSignInCheck named whether the token's login

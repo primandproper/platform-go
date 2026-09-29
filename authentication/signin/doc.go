@@ -83,6 +83,15 @@ lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
 consumer's interceptor refuse administrative work under an ordinary login by the
 same person.
 
+An impersonation — [Service.IssueImpersonationToken], an operator acting as a
+customer — is a token of the customer's that also names the operator, as
+[ClaimActor], and the scope the operator is in, as [ClaimActorScope]. The two
+scopes are separate arguments because a deployment's staff need not live where
+its customers do, and signin/grpc's extractor re-reads the operator in theirs on
+every request, so banning an operator ends their impersonations as it ends
+their own logins. Which operators may cross into which scopes is the
+deployment's [ImpersonationPolicy] to decide; this package compares none.
+
 A person's live families are what [Service.ListSignIns] answers, what
 [Service.EndSignIn] ends one of, and what [Service.EndOtherSignIns] ends all but
 one of, for a "where you're signed in" screen. Each

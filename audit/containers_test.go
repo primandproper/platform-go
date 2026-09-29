@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -780,14 +781,81 @@ func TestAudit_Migrations_RealServers(T *testing.T) {
 			stmts, err := migrations.Statements(dialect.MySQL, "ddl_check")
 			must.NoError(t, err)
 
-			// Executed twice: CREATE TABLE IF NOT EXISTS carries the inline KEY
-			// clauses with it, so a second run must not trip over them.
-			for range 2 {
-				for _, stmt := range stmts {
-					_, execErr := client.Writer().ExecContext(ctx, stmt)
-					must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
-				}
+			// Once, where Postgres runs twice: MySQL has no IF NOT EXISTS on ADD
+			// COLUMN, and a version runs once, which is what the consumer's
+			// migration tool records it for.
+			for _, stmt := range stmts {
+				_, execErr := client.Writer().ExecContext(ctx, stmt)
+				must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
 			}
+		})
+	})
+
+	// A database created before the impersonator column existed takes what
+	// StatementsSince renders from version 1, and is then the table this
+	// package writes to.
+	T.Run("upgrades a version 1 database", func(t *testing.T) {
+		t.Parallel()
+
+		upgrade := func(t *testing.T, client database.Client, d dialect.Dialect) {
+			t.Helper()
+
+			const prefix = "upgraded_audit"
+
+			all, err := migrations.Statements(d, prefix)
+			must.NoError(t, err)
+
+			owed, err := migrations.StatementsSince(d, prefix, 1)
+			must.NoError(t, err)
+			must.SliceNotEmpty(t, owed)
+
+			for _, stmt := range slices.Concat(all[:len(all)-len(owed)], owed) {
+				_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+				must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+			}
+
+			recorder, err := NewRecorder(d, WithRecorderTablePrefix(prefix))
+			must.NoError(t, err)
+
+			reader, err := NewReader(d, WithReaderTablePrefix(prefix))
+			must.NoError(t, err)
+
+			scope := tenancy.Of("acct_1")
+			impersonated := entryFor(scope, "r1")
+			impersonated.Actor.Impersonator = "operator"
+
+			must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+				return recorder.Record(t.Context(), q, scope, entryFor(scope, "r0"), impersonated)
+			}))
+
+			byOperator, err := reader.List(t.Context(), client.Reader(), &Query{Scope: &scope, ImpersonatorID: "operator"}, nil)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, byOperator.Data)
+			test.EqOp(t, impersonated.ID, byOperator.Data[0].ID)
+
+			result, err := reader.Verify(t.Context(), client.Reader(), scope, time.Time{}, time.Time{}, ChainStart)
+			must.NoError(t, err)
+			test.True(t, result.Intact())
+		}
+
+		t.Run("postgres", func(t *testing.T) {
+			t.Parallel()
+
+			pgtest.Run(t, func(ctx context.Context, pg *pgtest.Instance) {
+				client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString, maxOpenConns: realServerConns})
+				must.NoError(t, err)
+				t.Cleanup(func() { _ = client.Close() })
+
+				upgrade(t, client, dialect.Postgres)
+			})
+		})
+
+		t.Run("mysql", func(t *testing.T) {
+			t.Parallel()
+
+			runWithMySQL(t, func(_ context.Context, client database.Client) {
+				upgrade(t, client, dialect.MySQL)
+			})
 		})
 	})
 

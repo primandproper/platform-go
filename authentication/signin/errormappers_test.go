@@ -70,6 +70,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "administrative sign-in is not available",
 			grpcCode: codes.PermissionDenied,
 		},
+		"impersonation disabled": {
+			err:      signin.ErrImpersonationDisabled,
+			httpCode: httperrors.ErrUserIsNotAuthorized,
+			httpMsg:  "impersonation is not available",
+			grpcCode: codes.PermissionDenied,
+		},
 		"second factor not enrolled": {
 			err:      signin.ErrSecondFactorNotEnrolled,
 			httpCode: httperrors.ErrResourceConflict,
@@ -183,7 +189,7 @@ func TestClientSafeSentinels(T *testing.T) {
 	// necessary here. The count is pinned because a sentinel added to the package
 	// and left out of this list is one a gRPC client is told the code's name for,
 	// and nothing else reports that.
-	must.SliceLen(T, 16, signin.ClientSafeSentinels)
+	must.SliceLen(T, 17, signin.ClientSafeSentinels)
 
 	for _, err := range signin.ClientSafeSentinels {
 		_, _, ok := signin.HTTPMapper.Map(err)

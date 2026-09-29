@@ -13,10 +13,22 @@ import (
 )
 
 // imageVersion tags the framing below. It is the first field of every image, so
-// a future v2 framing produces different digests for the same entry rather than
+// a v2 framing produces different digests for the same entry rather than
 // colliding with v1 — which is what lets a verifier tell "the format changed"
 // apart from "the row changed".
 const imageVersion = "audit.v1"
+
+// impersonatedImageVersion tags the framing of an entry that names an
+// impersonator: v1's fields, then the impersonator.
+//
+// It is a second framing rather than a replacement for the first, and that is
+// what lets every entry recorded before the column existed go on verifying.
+// An entry that names no impersonator — every one of those, and almost every one
+// since — renders exactly the image it always did, so its stored hash is still
+// the right one; an entry that names one renders under this tag, so an
+// impersonator stripped from the row changes the tag as well as the field and
+// cannot be removed without the chain noticing.
+const impersonatedImageVersion = "audit.v2"
 
 // ErrMalformedHash indicates a stored hash that is not hex. It is what Verify
 // reports when a chain field has been overwritten with something that was never
@@ -51,8 +63,13 @@ var ErrMalformedHash = platformerrors.New("malformed audit hash")
 // a rendering rather than over the stored value is a digest that moves when the
 // rendering does, and the whole point of this image is that it does not move.
 func canonicalImage(e *Entry, changes, metadata []byte) []byte {
+	version := imageVersion
+	if e.Actor.Impersonator != "" {
+		version = impersonatedImageVersion
+	}
+
 	fields := [][]byte{
-		[]byte(imageVersion),
+		[]byte(version),
 		[]byte(strconv.FormatInt(e.Seq, 10)),
 		[]byte(e.ID),
 		[]byte(strconv.FormatInt(e.RecordedAt.UTC().UnixMicro(), 10)),
@@ -65,6 +82,10 @@ func canonicalImage(e *Entry, changes, metadata []byte) []byte {
 		[]byte(e.Actor.IP),
 		changes,
 		metadata,
+	}
+
+	if e.Actor.Impersonator != "" {
+		fields = append(fields, []byte(e.Actor.Impersonator))
 	}
 
 	size := 0

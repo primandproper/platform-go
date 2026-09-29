@@ -79,6 +79,15 @@ var (
 	// consumer reading their own logs needs to know which.
 	ErrAdminLoginDisabled = platformerrors.New("administrative sign-in is not configured")
 
+	// ErrImpersonationDisabled indicates an impersonation against a service
+	// that named no ImpersonationPolicy.
+	//
+	// It is the posture ErrAdminLoginDisabled takes toward a service that named
+	// no administrative roles: the door does not exist until the deployment
+	// says who may use it, because a library has no way to know which of the
+	// deployment's permissions that is.
+	ErrImpersonationDisabled = platformerrors.New("impersonation is not configured")
+
 	// ErrNoPasswordCredential indicates a password change for a user who holds
 	// no password — a passkey-only or federated registration.
 	//
@@ -381,6 +390,12 @@ var (
 
 	// ErrEmptyUserID indicates an operation on nobody.
 	ErrEmptyUserID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID")
+
+	// ErrSelfImpersonation indicates an impersonation whose operator and subject
+	// are the same user. The token it would mint carries an actor claim that
+	// callers.ActorOf reads as no delegation at all, so the audit trail would
+	// name one person twice and call it an impersonation.
+	ErrSelfImpersonation = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "an operator cannot impersonate themselves")
 
 	// ErrEmptyCredentialKind indicates a principal door whose caller named no
 	// credential. Service.IssueForPrincipal without WithCredentialKind is the

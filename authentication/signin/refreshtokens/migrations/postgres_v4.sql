@@ -17,5 +17,13 @@
 ALTER TABLE {{PREFIX}}signin_refresh_tokens
     ADD COLUMN IF NOT EXISTS access_token_id TEXT;
 
+-- actor_id is the operator behind a login signin.Service.IssueImpersonationToken
+-- began -- somebody acting as the subject -- and NULL on every other row. It is
+-- what lets a person's list of where they are signed in say which login is not
+-- theirs, and it arrived in this version beside access_token_id because the
+-- impersonation's row is what that version's per-request check reads.
+ALTER TABLE {{PREFIX}}signin_refresh_tokens
+    ADD COLUMN IF NOT EXISTS actor_id TEXT;
+
 -- No index changes. The check reads a family's live row by (scope, family_id),
 -- which version 1's family index already serves.

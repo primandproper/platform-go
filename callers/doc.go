@@ -51,5 +51,17 @@ webhooks writes it into an endpoint's provenance, settings hands the whole
 principal to its authorizer rather than the one field it would have picked, and
 waitlists is the one surface whose extractor reports nobody on requests that are
 working exactly as intended.
+
+# Somebody acting as somebody else
+
+A principal has one user, and an operator signed in as a customer is two
+people. The platform once declined to model that, on the ground that every layer
+had room for one identity — and the ground was right about the consequence:
+with one slot, the operator's request goes out under the customer's ID and the
+audit trail says the customer did it. What it got wrong was the remedy. The
+deployments with an operator tool built one anyway, and told that lie in their
+own interceptors. [Delegated] is the second slot: the request stays the
+subject's, and [ActorOf] and [DelegatedActor] name who made it. See Delegated
+for which half is the platform's and which is the deployment's.
 */
 package callers

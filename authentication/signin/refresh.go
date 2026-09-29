@@ -85,6 +85,10 @@ type RefreshToken struct {
 	// family was minted by a row since spent.
 	AccessTokenID string `json:"accessTokenID,omitempty"`
 
+	// ActorID is the operator acting as the subject on a login
+	// [Service.IssueImpersonationToken] began, and empty on every other row.
+	ActorID string `json:"actorID,omitempty"`
+
 	// Scope is the directory the sign-in was made in.
 	Scope tenancy.Scope `json:"scope"`
 
@@ -148,6 +152,12 @@ type RefreshTokenRequest struct {
 	// continues one both mint the access token first, so it is always known by
 	// the time this is.
 	AccessTokenID string `json:"accessTokenID"`
+
+	// ActorID is the operator on an impersonation's login, which the store
+	// records so that [RefreshTokenStore.ListActiveSignIns] can say which of a
+	// person's logins is somebody else acting as them. Empty on every other
+	// mint.
+	ActorID string `json:"actorID,omitempty"`
 
 	// TTL is how long the minted token may be exchanged for. It is the service's
 	// WithRefreshTokenTTL, resolved before the call, rather than something a

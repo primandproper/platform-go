@@ -242,3 +242,69 @@ func TestValidatePrefix(T *testing.T) {
 		test.ErrorIs(t, ValidatePrefix(namespace), ddl.ErrPrefixTooLong)
 	})
 }
+
+func TestSequence(T *testing.T) {
+	T.Parallel()
+
+	T.Run("latest is the impersonator version", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, uint64(2), Latest())
+	})
+
+	T.Run("a fresh install carries every version", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			body, err := SQL(d, "")
+			must.NoError(t, err)
+			test.StrContains(t, body, "CREATE TABLE IF NOT EXISTS audit_log_entries")
+			test.StrContains(t, body, "actor_impersonator", test.Sprintf("dialect %s", d))
+			test.StrContains(t, body, "audit_log_entries_impersonator_idx", test.Sprintf("dialect %s", d))
+		}
+	})
+
+	T.Run("a database at version 1 owes the impersonator and nothing else", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			stmts, err := StatementsSince(d, "", 1)
+			must.NoError(t, err)
+			must.SliceNotEmpty(t, stmts)
+
+			joined := strings.Join(stmts, "\n")
+			test.StrContains(t, joined, "actor_impersonator")
+			test.StrNotContains(t, joined, "CREATE TABLE")
+		}
+	})
+
+	T.Run("a database at latest owes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		body, err := SQLSince(dialect.Postgres, "", Latest())
+		must.NoError(t, err)
+		test.EqOp(t, "", strings.TrimSpace(body))
+	})
+
+	T.Run("refuses a version past latest", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := SQLSince(dialect.Postgres, "", Latest()+1)
+		test.Error(t, err)
+	})
+
+	T.Run("version 1 is what v14.0.0 shipped", func(t *testing.T) {
+		t.Parallel()
+
+		// The first version's DDL is the file every earlier release embedded as
+		// the whole schema, and it is never edited: a change is a new version.
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			stmts, err := StatementsSince(d, "", 0)
+			must.NoError(t, err)
+
+			v1 := strings.Join(stmts, "\n")
+			test.StrNotContains(t, strings.SplitN(v1, "ALTER TABLE", 2)[0], "actor_impersonator",
+				test.Sprintf("dialect %s: version 1 must not carry the version 2 column", d))
+		}
+	})
+}

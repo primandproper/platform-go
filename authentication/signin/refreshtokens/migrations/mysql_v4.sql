@@ -10,3 +10,8 @@
 -- consumer's migration tool records it for.
 ALTER TABLE {{PREFIX}}signin_refresh_tokens
     ADD COLUMN access_token_id VARCHAR(255);
+
+-- actor_id: see postgres_v4.sql. VARCHAR for the reason access_token_id is: it
+-- is an identifier, projected on a listing.
+ALTER TABLE {{PREFIX}}signin_refresh_tokens
+    ADD COLUMN actor_id VARCHAR(255);

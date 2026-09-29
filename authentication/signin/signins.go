@@ -54,6 +54,12 @@ type ActiveSignIn struct {
 	// ActiveAccountID is the account the login's tokens are for.
 	ActiveAccountID string `json:"activeAccountID"`
 
+	// ActorID is the operator acting as this person through this login — one
+	// [Service.IssueImpersonationToken] began — and empty for a login of their
+	// own. A "where you're signed in" screen shows it, so a person can see
+	// that somebody else is signed in as them, and end it.
+	ActorID string `json:"actorID,omitempty"`
+
 	// Administrative reports whether the login came through
 	// [Service.AdminLoginForToken].
 	Administrative bool `json:"administrative"`
