@@ -11,13 +11,16 @@ import (
 )
 
 // IssueOption adjusts one call to [Service.IssueForPrincipal]: which
-// credential its caller proved, and which door it comes through.
+// credential its caller proved, how many factors it proved, and which door it
+// comes through.
 type IssueOption func(*issueRequest)
 
 // issueRequest is what the options on one principal door resolve to.
 type issueRequest struct {
 	kind           CredentialKind
+	totpCode       string
 	administrative bool
+	multiFactor    bool
 }
 
 // WithCredentialKind names the credential the caller proved, and the
@@ -47,15 +50,45 @@ func WithCredentialKind(kind CredentialKind) IssueOption {
 // either, and every call is [ErrAdminLoginDisabled]. Both refusals are recorded
 // through [Hooks.AfterFailedSignIn] with Administrative set.
 //
-// The second factor [Service.AdminLoginForToken] insists on is not insisted on
-// here, for the reason IssueForPrincipal gives: this door proves nothing, so
-// whether the credential in front of it was strong enough for an operator is
-// the consumer's to have decided before calling it. A consumer admitting
-// operators through a single-factor credential has made that choice at their
-// own door, and this one cannot see it to refuse it.
+// The second factor [Service.AdminLoginForToken] insists on is insisted on
+// here as a credential that was two factors on its own: without [MultiFactor]
+// the call is [ErrMultiFactorRequired], a TOTP code or none. A passkey an
+// authenticator did not verify the person for is a key that was present, and
+// an operator's door is the one door where possession alone is not an answer.
 func Administrative() IssueOption {
 	return func(r *issueRequest) {
 		r.administrative = true
+	}
+}
+
+// MultiFactor says the credential the caller proved was two factors on its
+// own, and waives the second-factor rule for it.
+//
+// A passkey asserted with user verification is the case it exists for: the
+// device is something the person has and the PIN or biometric that unlocked
+// it is something they know or are, so asking for a TOTP code as well would
+// be asking the consumer's strongest credential to be the weakest one's
+// companion. A passkey asserted without user verification is not that case —
+// authentication/passkeys reports which one a login was, as
+// Login.UserVerified — and neither is anything else that proved possession
+// alone.
+//
+// It is a claim the caller makes rather than one this package checks, like
+// everything else a principal door is handed, and it is off unless named:
+// a caller that forgot it gets a second-factor prompt, where one that forgot
+// the opposite would have signed somebody in on a key tap.
+func MultiFactor() IssueOption {
+	return func(r *issueRequest) {
+		r.multiFactor = true
+	}
+}
+
+// WithTOTPCode hands the door the second factor a single-factor credential is
+// asked for: a TOTP code, or one of the user's recovery codes, exactly as
+// [Credentials.TOTPCode] is read. It is ignored beside [MultiFactor].
+func WithTOTPCode(code string) IssueOption {
+	return func(r *issueRequest) {
+		r.totpCode = code
 	}
 }
 
@@ -63,8 +96,8 @@ func Administrative() IssueOption {
 // already proven — a passkey assertion, a device grant — and proves nothing
 // itself.
 //
-// It is [Service.LoginForToken] with the proof taken out and nothing else: the
-// same standing check, the same principal read, the same claims, lifetimes and
+// It is [Service.LoginForToken] with the password taken out and nothing else:
+// the same standing check, the same second-factor rule, the same principal read, the same claims, lifetimes and
 // family, and the same transaction holding the refresh token,
 // [Hooks.AfterAuthenticate] and [Hooks.AfterIssueToken] in that order. A
 // consumer whose people sign in with a passkey gets the token a password
@@ -94,16 +127,24 @@ func Administrative() IssueOption {
 // The account the token is for is activeAccountID, resolved by the directory
 // exactly as [Credentials.ActiveAccountID] is.
 //
-// The second-factor rule is not applied. What counts as proof is the
-// credential's, and a passkey asserted with user verification is two factors
-// already; asking it for a TOTP code as well would be asking the consumer's
-// strongest credential to be the weakest one's companion.
+// And whether the credential needs a second factor beside it. The
+// second-factor rule applies — the one [Service.LoginForToken] applies after a
+// password, read from [WithTOTPCode] — unless the caller says with
+// [MultiFactor] that the credential was two factors on its own, which a
+// passkey is only when the authenticator verified the person. A user holding
+// a proven second factor who signed in with a key tap and no code is
+// [ErrSecondFactorRequired]; a wrong code is [ErrInvalidCredentials]; and a
+// recovery code standing in for the second factor is spent and stamps
+// [CredentialKindRecoveryCode], all as they are after a password. The
+// administrative door takes no code at all and requires MultiFactor instead;
+// see [Administrative].
 //
 // # The options
 //
-// [WithCredentialKind] names the credential the caller proved, and
-// [Administrative] sends the call through the administrative door. With
-// neither, the sign-in is an ordinary one stamped [CredentialKindPrincipal].
+// [WithCredentialKind] names the credential the caller proved, [MultiFactor]
+// and [WithTOTPCode] settle the second factor, and [Administrative] sends the
+// call through the administrative door. With none, the sign-in is an ordinary
+// single-factor one stamped [CredentialKindPrincipal].
 func (s *Service) IssueForPrincipal(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -115,7 +156,7 @@ func (s *Service) IssueForPrincipal(
 		opt(request)
 	}
 
-	return s.issueForPrincipal(ctx, scope, request.kind, userID, activeAccountID, request.administrative)
+	return s.issueForPrincipal(ctx, scope, request, userID, activeAccountID)
 }
 
 // issueForPrincipal mints for a principal somebody else proved, stamping the
@@ -123,10 +164,11 @@ func (s *Service) IssueForPrincipal(
 func (s *Service) issueForPrincipal(
 	ctx context.Context,
 	scope tenancy.Scope,
-	kind CredentialKind,
+	request *issueRequest,
 	userID, activeAccountID string,
-	administrative bool,
 ) (signIn *SignIn, err error) {
+	administrative := request.administrative
+
 	name := opIssueForPrincipal
 	if administrative {
 		name = opAdminIssueForPrincipal
@@ -146,7 +188,7 @@ func (s *Service) issueForPrincipal(
 		return nil, op.Error(ErrEmptyUserID, "issuing a sign-in for a proven principal")
 	}
 
-	if kind == "" {
+	if request.kind == "" {
 		return nil, op.Error(ErrEmptyCredentialKind, "issuing a sign-in for a proven principal")
 	}
 
@@ -173,12 +215,36 @@ func (s *Service) issueForPrincipal(
 		}
 	}
 
+	proven := &proof{attempt: attempt}
+
+	op.SpanOnly(multiFactorKey, request.multiFactor)
+
+	// After the role check, as the second factor comes after it on the password
+	// doors: what a single-factor credential is refused with says the
+	// credential was good.
+	if !request.multiFactor {
+		if administrative {
+			return nil, s.refuse(ctx, op, scope, attempt, ErrMultiFactorRequired, "admitting an administrative sign-in")
+		}
+
+		usedRecoveryCode, verifyErr := s.verifySecondFactor(ctx, s.client.Reader(), scope, user, request.totpCode, false)
+		if verifyErr != nil {
+			return nil, s.refuse(ctx, op, scope, attempt, verifyErr, "verifying a second factor")
+		}
+
+		if usedRecoveryCode {
+			proven.recoveryCode = request.totpCode
+		}
+	}
+
 	principal, err := s.directory.GetPrincipal(ctx, s.client.Reader(), scope, user.ID, activeAccountID)
 	if err != nil {
 		return nil, op.Error(err, "resolving the principal for a sign-in")
 	}
 
 	op.Set(accountIDKey, principal.ActiveAccountID)
+
+	proven.principal = principal
 
 	// The login this sign-in begins, minted here for Service.login's reason.
 	familyID := identifiers.New()
@@ -188,11 +254,23 @@ func (s *Service) issueForPrincipal(
 		return nil, op.Error(err, "issuing a token")
 	}
 
+	// A recovery code outranks the credential beside it here as it does beside
+	// a password: signing in without the enrolled authenticator is the event an
+	// audit trail most needs to see.
+	kind := request.kind
+	if proven.recoveryCode != "" {
+		kind = CredentialKindRecoveryCode
+	}
+
 	auth := &Authentication{Principal: principal, CredentialKind: kind, Administrative: administrative}
 
-	// Service.login's transaction, minus the recovery code: nothing was proven
-	// here, so there is nothing of the proof's to spend.
+	// Service.login's transaction, the recovery code that stood in for the
+	// second factor spent first where one did.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if txErr := s.spendProvenRecoveryCode(ctx, tx, scope, proven); txErr != nil {
+			return txErr
+		}
+
 		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID, time.Time{}); txErr != nil {
 			return txErr
 		}
@@ -203,7 +281,7 @@ func (s *Service) issueForPrincipal(
 
 		return s.hooks.AfterIssueToken(ctx, tx, scope, signIn)
 	}); err != nil {
-		return nil, op.Error(err, "recording a sign-in")
+		return nil, s.settle(ctx, op, scope, proven, err, "recording a sign-in")
 	}
 
 	return signIn, nil

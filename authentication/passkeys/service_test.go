@@ -245,7 +245,7 @@ func (f *serviceFixture) mustRegister(t *testing.T, userID string) (*virtualAuth
 }
 
 // login runs a named login for username with device.
-func (f *serviceFixture) login(t *testing.T, username string, device *virtualAuthenticator) (*Credential, error) {
+func (f *serviceFixture) login(t *testing.T, username string, device *virtualAuthenticator) (*Login, error) {
 	t.Helper()
 
 	assertion, err := f.service.BeginLogin(t.Context(), f.env.reader(), testScope, username)
@@ -392,10 +392,11 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		proven, err := f.login(t, "alice", device)
 		must.NoError(t, err)
 
-		test.EqOp(t, aliceID, proven.BelongsToUser)
-		test.EqOp(t, registered.ID, proven.ID)
-		test.EqOp(t, uint32(2), proven.SignCount)
-		test.NotNil(t, proven.LastUsedAt)
+		test.EqOp(t, aliceID, proven.Credential.BelongsToUser)
+		test.EqOp(t, registered.ID, proven.Credential.ID)
+		test.EqOp(t, uint32(2), proven.Credential.SignCount)
+		test.NotNil(t, proven.Credential.LastUsedAt)
+		test.True(t, proven.UserVerified)
 
 		// Committed rather than merely returned: the caller's next transaction
 		// cannot roll it back.
@@ -420,8 +421,36 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			device.assert(t, assertion.Response.Challenge.String()))
 		must.NoError(t, err)
 
-		test.EqOp(t, bobID, proven.BelongsToUser)
-		test.EqOp(t, registered.ID, proven.ID)
+		test.EqOp(t, bobID, proven.Credential.BelongsToUser)
+		test.EqOp(t, registered.ID, proven.Credential.ID)
+		test.True(t, proven.UserVerified)
+	})
+
+	t.Run("a login the authenticator did not verify the user for says so", func(t *testing.T) {
+		t.Parallel()
+
+		f := env.newService(t)
+		device, registered := f.mustRegister(t, aliceID)
+		device.unverified = true
+
+		// Named: the relying party prefers verification and admits a
+		// ceremony without it, which is the default this answer exists for.
+		proven, err := f.login(t, "alice", device)
+		must.NoError(t, err)
+
+		test.EqOp(t, registered.ID, proven.Credential.ID)
+		test.False(t, proven.UserVerified)
+
+		// Discoverable.
+		assertion, err := f.service.BeginDiscoverableLogin(t.Context())
+		must.NoError(t, err)
+
+		proven, err = f.service.FinishDiscoverableLogin(t.Context(), testScope,
+			device.assert(t, assertion.Response.Challenge.String()))
+		must.NoError(t, err)
+
+		test.EqOp(t, registered.ID, proven.Credential.ID)
+		test.False(t, proven.UserVerified)
 	})
 
 	t.Run("an unknown username is answered with the shape a known one gets", func(t *testing.T) {
