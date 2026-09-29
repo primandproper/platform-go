@@ -280,9 +280,14 @@ func (s *Service) MarkUserTwoFactorSecretVerified(
 // an empty one. So is the deadline: expiresAt is required and a zero one is
 // refused, because a verification link is a bearer credential and the policy for
 // how long one stays dangerous is a deployment's rather than this package's. Any
-// outstanding token is replaced, so re-sending invalidates the previous link,
-// and any proof the address already had comes off in the same statement; what
-// that proof was reaches the hook, because nothing can read it afterwards.
+// outstanding token is replaced, so re-sending invalidates the previous link.
+//
+// An address that is already proven is refused with
+// ErrEmailAddressAlreadyVerified and keeps its proof. Asking for another link is
+// not a statement that a proven address has stopped being the caller's, and a
+// write that read it as one would let anybody able to mint a link un-verify the
+// person it names. The write that does withdraw a proof is the address change,
+// UpdateUser, because it moves the thing the proof was about.
 //
 // The token does not reach the hook and is not returned: the caller minted it and
 // is the one who needs it. The user handed back and passed to the hook is read
@@ -302,14 +307,7 @@ func (s *Service) SetUserEmailAddressVerificationToken(
 	var updated *User
 
 	err := s.run(ctx, op, opSetUserEmailAddressVerificationToken, func(tx database.Tx) error {
-		before, err := s.store.GetUser(ctx, tx, scope, userID)
-		if err != nil {
-			return err
-		}
-
-		previousAddressVerifiedAt := before.EmailAddressVerifiedAt
-
-		if err = s.store.SetUserEmailAddressVerificationToken(ctx, tx, scope, userID, token, expiresAt); err != nil {
+		if err := s.store.SetUserEmailAddressVerificationToken(ctx, tx, scope, userID, token, expiresAt); err != nil {
 			return err
 		}
 
@@ -320,7 +318,7 @@ func (s *Service) SetUserEmailAddressVerificationToken(
 
 		updated = after.Redacted()
 
-		return s.hooks.AfterSetUserEmailAddressVerificationToken(ctx, tx, scope, updated, previousAddressVerifiedAt)
+		return s.hooks.AfterSetUserEmailAddressVerificationToken(ctx, tx, scope, updated)
 	})
 	if err != nil {
 		return nil, op.Error(err, "setting email verification token for identity user %q", userID)

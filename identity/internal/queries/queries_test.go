@@ -789,16 +789,21 @@ func TestFieldWrites_GuardsSurvive(T *testing.T) {
 // MarkUserEmailAddressUnverified is the one that assigns the stamp alone, and
 // the assertion says so rather than exempting it: the address has not moved, so
 // the link outstanding for it is still a link for it.
+//
+// SetUserEmailAddressVerificationToken is the one that assigns the token and
+// not the stamp, and it is deliberate about the stamp by requiring it absent
+// instead: a link is refused for a proven address rather than minted by
+// withdrawing the proof. TestRender_VerificationLinkRefusesAProvenAddress pins
+// that half.
 func TestRender_VerificationColumnsMoveTogether(T *testing.T) {
 	T.Parallel()
 
 	// Statement name to whether it assigns the token alongside the stamp.
 	pairing := map[string]bool{
-		"UpdateUser":                           true,
-		"SetUserEmailAddressVerificationToken": true,
-		"MarkUserEmailAddressVerified":         true,
-		"MarkUserEmailAddressProven":           true,
-		"MarkUserEmailAddressUnverified":       false,
+		"UpdateUser":                     true,
+		"MarkUserEmailAddressVerified":   true,
+		"MarkUserEmailAddressProven":     true,
+		"MarkUserEmailAddressUnverified": false,
 	}
 
 	for _, d := range everyDialect {
@@ -834,6 +839,40 @@ func TestRender_VerificationColumnsMoveTogether(T *testing.T) {
 			// Without this a rendering that emitted none of the four would pass
 			// the loop above, which is the failure it exists to catch.
 			test.SliceLen(t, len(pairing), seen)
+		})
+	}
+}
+
+// TestRender_VerificationLinkRefusesAProvenAddress pins the other half of the
+// pairing above: minting a link assigns no proof and matches only a row whose
+// address is unproven, so no caller able to mint a link can un-verify somebody
+// by minting one. The failing direction is silent — the stamp in the SET list
+// is correct SQL, and it is the write the resend door would reach.
+func TestRender_VerificationLinkRefusesAProvenAddress(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			var found bool
+
+			for statement := range strings.SplitSeq(Render(d), "-- name: ") {
+				name, _, _ := strings.Cut(statement, " ")
+				if name != "SetUserEmailAddressVerificationToken" {
+					continue
+				}
+
+				found = true
+
+				set, where, ok := strings.Cut(statement, "WHERE")
+				must.True(t, ok, must.Sprint("the statement has no predicate"))
+
+				test.StrNotContains(t, set, EmailAddressVerifiedAtColumn)
+				test.StrContains(t, where, EmailAddressVerifiedAtColumn+" IS NULL")
+			}
+
+			must.True(t, found, must.Sprint("no SetUserEmailAddressVerificationToken statement was rendered"))
 		})
 	}
 }

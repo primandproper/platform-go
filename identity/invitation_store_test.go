@@ -287,6 +287,68 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		must.SliceLen(t, 1, members.Data)
 	})
 
+	t.Run("refuses acceptance by a user the invitation was not addressed to", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _, account, invitation := newInvitedStore(t)
+
+		// The token is right and the user is live in the right directory. The
+		// address is somebody else's, and a leaked link admits nobody but the
+		// person it was sent to.
+		eve := seedUser(t, env, store, newUser("eve"))
+
+		_, err := env.acceptInvitation(t, store, testScope, invitation.ID, "tok-secret", eve.ID, "")
+		must.ErrorIs(t, err, ErrInvitationNotFound)
+
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
+		must.NoError(t, err)
+		test.EqOp(t, InvitationPending, read.Status)
+		test.Nil(t, read.ToUser)
+
+		members, err := store.ListAccountMembers(t.Context(), env.reader(), testScope, account.ID, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, members.Data)
+	})
+
+	t.Run("refuses a wrong address exactly as it refuses a wrong token", func(t *testing.T) {
+		t.Parallel()
+
+		store, clk, _, _, invitation := newInvitedStore(t)
+		eve := seedUser(t, env, store, newUser("eve"))
+		brian := seedUser(t, env, store, newUser("brian"))
+
+		// Past its expiry, where a right token under the right address is told
+		// so. A right token under the wrong address is told nothing a wrong
+		// token is not, so a guesser cannot learn which half they got right.
+		clk.advance(73 * time.Hour)
+
+		_, wrongToken := env.acceptInvitation(t, store, testScope, invitation.ID, "tok-wrong", brian.ID, "")
+		must.ErrorIs(t, wrongToken, ErrInvitationNotFound)
+
+		_, wrongAddress := env.acceptInvitation(t, store, testScope, invitation.ID, "tok-secret", eve.ID, "")
+		must.ErrorIs(t, wrongAddress, ErrInvitationNotFound)
+		test.False(t, platformerrors.Is(wrongAddress, ErrInvitationExpired))
+
+		_, rightBoth := env.acceptInvitation(t, store, testScope, invitation.ID, "tok-secret", brian.ID, "")
+		must.ErrorIs(t, rightBoth, ErrInvitationExpired)
+	})
+
+	t.Run("matches the address however either side was spelled", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, owner, account, _ := newInvitedStore(t)
+
+		shouted := newInvitation(owner, account.ID, "Cleo@Example.COM", "tok-cleo", baseTime.Add(time.Hour))
+		must.NoError(t, env.createInvitationErr(t, store, shouted.Scope, shouted))
+
+		cleo := newUser("cleo")
+		cleo.EmailAddress = "CLEO@example.com"
+		cleo = seedUser(t, env, store, cleo)
+
+		_, err := env.acceptInvitation(t, store, testScope, shouted.ID, "tok-cleo", cleo.ID, "")
+		must.NoError(t, err)
+	})
+
 	t.Run("refuses to accept without an accepting user", func(t *testing.T) {
 		t.Parallel()
 
@@ -526,18 +588,15 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		// to_user and to_email name the same person by two different keys, and
-		// accepting requires a live user rather than a matching mailbox — so a
-		// row keyed only on the acceptance has to go too.
+		// the two part company the moment somebody who accepted changes their
+		// address — so a row keyed only on the acceptance has to go too.
 		store, _, owner, account, _ := newInvitedStore(t)
 
-		// His directory address is deliberately not the address the invitation
-		// was sent to, so the only key that can reach this row is the
-		// acceptance.
 		brian := seedUser(t, env, store, &User{
 			ID:             identifiers.New(),
 			Scope:          testScope,
 			Username:       "brian",
-			EmailAddress:   "b.directory@example.com",
+			EmailAddress:   "b.other@example.com",
 			HashedPassword: "argon2$brian",
 			AccountStatus:  StatusGood,
 		})
@@ -546,6 +605,13 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, env.createInvitationErr(t, store, elsewhere.Scope, elsewhere))
 
 		_, err := env.acceptInvitation(t, store, testScope, elsewhere.ID, "tok-other", brian.ID, "joined")
+		must.NoError(t, err)
+
+		// His directory address moves off the one the invitation was sent to,
+		// so the only key that can reach this row is the acceptance.
+		moved := *brian
+		moved.EmailAddress = "b.directory@example.com"
+		_, err = env.updateUser(t, store, testScope, &moved)
 		must.NoError(t, err)
 
 		erasure, err := env.eraseInvitationsForSubject(t, store, testScope, brian.ID)

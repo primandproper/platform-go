@@ -23,8 +23,8 @@ options:
 
   # MySQL accepts only a bare placeholder in LIMIT and names it `limit`;
   # Postgres rejects `limit` as an argument name. The name converges here, for
-  # the one bounded statement in this corpus: the listing of a person's live
-  # logins.
+  # the two bounded statements in this corpus: the listing of a person's live
+  # logins, and the read-back of the ones a sign-out of the others ended.
   rename_params:
     mysql:
       limit: result_limit

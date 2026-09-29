@@ -48,6 +48,12 @@ import (
 // and the standard library's http.Flusher; neither is a method the interface
 // beside it grew.
 //
+// The impersonation marker is the one such interface this package declares
+// itself, as [Delegated], because more than one surface has to agree on it: the
+// audit log records it, signin mints it, and a surface writing an entry reads it
+// — three places that would otherwise each declare an interface of the same
+// shape and could disagree about its name.
+//
 // This is not the ruling identity/grpc's TargetAuthorizer carries, and the two
 // should not be collapsed. That one ships a default a consumer embeds, which is
 // a different way of staying additive and is open to it because it has a

@@ -56,6 +56,13 @@ var (
 	// produced. It is what sends a request to WithFallback rather than
 	// refusing it, alongside a token that does not verify at all.
 	ErrNotASignInToken = platformerrors.Wrap(ErrUnauthenticated, "a token the sign-in service did not mint")
+
+	// ErrNoPasswordChangeReading indicates an extractor with a fallback, a
+	// directory that cannot read a user by ID, and no reading named through
+	// WithPasswordChangeRequired. The fallback's principals carry no flag of
+	// their own and there is nothing to read one from, so the gate would have
+	// to wave them through; it is refused at construction instead.
+	ErrNoPasswordChangeReading = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "no way to read a fallback principal's forced password change")
 )
 
 // TokenVerifier parses a token this deployment issued back into its claims.
@@ -85,6 +92,19 @@ type PrincipalDirectory interface {
 	) (*identity.Principal, error)
 }
 
+// SignInChecker answers whether an access token's login is still going.
+//
+// It is signin.Service.CheckSignIn, and a *signin.Service satisfies it. nil is
+// a login that is going; an error wrapping signin.ErrInvalidCredentials is one
+// that has ended or, on a service that refuses them, an access token the login
+// has replaced; an error wrapping signin.ErrEmptyTokenID is a token with no ID
+// for a service that refuses superseded tokens to compare, and is refused as a
+// token the sign-in service did not mint; any other error is a read that could
+// not be made.
+type SignInChecker interface {
+	CheckSignIn(ctx context.Context, scope tenancy.Scope, familyID, tokenID string) error
+}
+
 // GrantsResolver is the consumer's role policy: what a caller may do.
 //
 // It is handed the principal the extractor resolved — a *Caller for a token
@@ -92,6 +112,13 @@ type PrincipalDirectory interface {
 // and answers with that caller's grants. A *Caller's Identity carries the roles
 // the directory holds, less the service roles an ordinary-door token does not
 // carry; see WithOrdinaryServiceRoles.
+//
+// An impersonated request is the subject's, and its Identity is the subject's
+// too. Whether it also carries the operator's grants is this resolver's call and
+// nobody else's: callers.DelegatedActor(principal) names the operator, so a
+// resolver may grant the subject's permissions alone, the operator's alone, or
+// their intersection — and one that never asks resolves an impersonation exactly
+// as it resolves the subject signing in themselves.
 type GrantsResolver func(ctx context.Context, principal callers.Principal) (authorization.Grants, error)
 
 // ServiceRolesPolicy says which of a caller's service roles a token minted
@@ -109,12 +136,14 @@ type Caller struct {
 	principal      *identity.Principal
 	familyID       string
 	tokenID        string
+	actorID        string
 	scope          tenancy.Scope
 	administrative bool
 }
 
 var (
 	_ callers.Principal = (*Caller)(nil)
+	_ callers.Delegated = (*Caller)(nil)
 	_ FamilyIdentifier  = (*Caller)(nil)
 )
 
@@ -139,6 +168,15 @@ func (c *Caller) TokenID() string { return c.tokenID }
 // signin.ClaimAdministrative.
 func (c *Caller) Administrative() bool { return c.administrative }
 
+// ActorID is the operator acting through this caller's token — signin.ClaimActor
+// on a token signin.Service.IssueImpersonationToken minted — and empty on every
+// other. It makes a Caller a callers.Delegated, so callers.ActorOf names the
+// operator while UserID, Scope and Identity stay the subject's.
+//
+// What an impersonated request may do is the GrantsResolver's to decide; see
+// that type.
+func (c *Caller) ActorID() string { return c.actorID }
+
 // Identity is the directory's answer for this request: the user, redacted,
 // their memberships and the active account.
 //
@@ -162,7 +200,8 @@ func (c *Caller) Identity() *identity.Principal { return c.principal }
 //
 // That the token verifies and carries signin.DefaultClaims' four claims; that
 // the directory still admits the user and still counts them a member of the
-// account the token was minted against; and what an ordinary-door token of
+// account the token was minted against; with WithSignInCheck, that the login
+// the token belongs to has not ended; and what an ordinary-door token of
 // somebody who holds service roles carries — nothing of those roles unless
 // WithOrdinaryServiceRoles says otherwise. signin.ClaimAdministrative is the
 // only thing that confers service roles, which is what makes the
@@ -183,6 +222,19 @@ func (c *Caller) Identity() *identity.Principal { return c.principal }
 // AuthenticationRequirements table, and answer an unusable credential with the
 // honest code — Unavailable for a directory outage rather than
 // codes.Unauthenticated. HTTPMiddleware is the router's counterpart.
+//
+// # The forced password change
+//
+// Both also hold a caller an operator has forced to change their password at
+// the form, through a PasswordChangeGate built over this extractor: every call
+// but PasswordChangeMethods, WithPasswordChangeAllowedMethods and the requests
+// WithPasswordChangeAllowedRequests admits is refused with
+// signin.ErrPasswordChangeRequired until the change is made. It is on by
+// default, because a flag enforced by nobody is an operator control that works
+// only when every client cooperates, and it lives here because this is the one
+// place that has just resolved the caller it reads. WithoutPasswordChangeGate
+// is the deliberate no, for a deployment that enforces the flag somewhere of
+// its own.
 type PrincipalExtractor struct {
 	verifier  TokenVerifier
 	client    database.Client
@@ -191,12 +243,25 @@ type PrincipalExtractor struct {
 	grants   GrantsResolver
 	ordinary ServiceRolesPolicy
 	fallback callers.PrincipalExtractor
+	signIns  SignInChecker
+
+	gate *PasswordChangeGate
 
 	o11y observability.Observer
 
-	// What the options wrote, kept only until the observer is built from it.
+	// What the options wrote, kept only until the observer and the gate are
+	// built from it.
 	logger         logging.Logger
 	tracerProvider tracing.Provider
+	passwordChange passwordChangeSettings
+}
+
+// passwordChangeSettings is what the options said about the gate.
+type passwordChangeSettings struct {
+	required PasswordChangeRequired
+	allow    func(*http.Request) bool
+	methods  []string
+	disabled bool
 }
 
 // ExtractorOption configures a PrincipalExtractor.
@@ -251,6 +316,71 @@ func WithFallback(fallback callers.PrincipalExtractor) ExtractorOption {
 			e.fallback = fallback
 		}
 	}
+}
+
+// WithSignInCheck makes every token this module minted answer for its login as
+// well as its signature: a token whose login has ended — signed out, ended by
+// name, revoked for reuse or by an operator — names nobody from the next
+// request on, rather than from when it expires. A nil checker is ignored,
+// leaving none, and a token then stands until it expires, which is the family
+// model's premise.
+//
+// It is a read per request, and that is the trade it makes: see
+// signin.Service.CheckSignIn, which is what a consumer passes here and whose
+// WithSupersededTokenRefusal decides whether an access token the login has
+// since replaced is refused as well.
+//
+// A refusal is ErrUnauthenticated, and like a refused user it does not go to
+// WithFallback: a signed-out token is still this module's, and a fallback that
+// could answer for it would be a second opinion on the sign-out. A checker that
+// could not answer is reported as the outage it is, as a directory that could
+// not be read is.
+func WithSignInCheck(checker SignInChecker) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		if checker != nil {
+			e.signIns = checker
+		}
+	}
+}
+
+// WithPasswordChangeAllowedMethods adds gRPC methods, as full method names, that
+// a caller who owes a forced password change may still make, to
+// PasswordChangeMethods — which are always allowed and cannot be removed. It is
+// how a deployment names the calls of its own that a person on their way to
+// the form needs.
+func WithPasswordChangeAllowedMethods(methods ...string) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		e.passwordChange.methods = append(e.passwordChange.methods, methods...)
+	}
+}
+
+// WithPasswordChangeAllowedRequests names the HTTP requests a caller who owes a
+// forced password change may still make. Absent allows none, which is right
+// for a deployment none of whose routes discharge the obligation: this
+// module's sign-in surface is gRPC, so no route of its own needs naming.
+func WithPasswordChangeAllowedRequests(allow func(*http.Request) bool) ExtractorOption {
+	return func(e *PrincipalExtractor) { e.passwordChange.allow = allow }
+}
+
+// WithPasswordChangeRequired names how the gate reads whether a caller owes a
+// forced password change. Absent reads it off the caller this extractor
+// resolved, and through the directory for a principal WithFallback produced —
+// DirectoryPasswordChange. A nil reading is ignored, leaving the default.
+func WithPasswordChangeRequired(required PasswordChangeRequired) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		if required != nil {
+			e.passwordChange.required = required
+		}
+	}
+}
+
+// WithoutPasswordChangeGate builds the extractor with no gate, so a caller who
+// owes a forced password change is resolved and let through like any other.
+// It is for a deployment that enforces the flag somewhere of its own; one
+// that names it and enforces the flag nowhere has a flag an operator can set
+// and nothing obeys.
+func WithoutPasswordChangeGate() ExtractorOption {
+	return func(e *PrincipalExtractor) { e.passwordChange.disabled = true }
 }
 
 // WithExtractorLogger sets the logger. Absent means no logging.
@@ -311,7 +441,61 @@ func NewPrincipalExtractor(
 
 	e.o11y = observability.NewObserver(extractorName, e.logger, e.tracerProvider)
 
+	if !e.passwordChange.disabled {
+		gate, err := e.buildGate()
+		if err != nil {
+			return nil, err
+		}
+
+		e.gate = gate
+	}
+
 	return e, nil
+}
+
+// buildGate is the PasswordChangeGate the interceptors and HTTPMiddleware hold
+// a flagged caller with, reading the caller they resolved through Extract.
+func (e *PrincipalExtractor) buildGate() (*PasswordChangeGate, error) {
+	required := e.passwordChange.required
+	if required == nil {
+		// identity.Store is both directories, so a deployment on this module's
+		// directory reads a fallback principal's flag by its user ID. One whose
+		// directory cannot has a reading only for the callers this extractor
+		// resolved, which is every caller when there is no fallback.
+		directory, ok := e.directory.(PasswordChangeDirectory)
+
+		switch {
+		case ok:
+			read, err := DirectoryPasswordChange(e.client, directory)
+			if err != nil {
+				return nil, err
+			}
+
+			required = read
+		case e.fallback != nil:
+			return nil, ErrNoPasswordChangeReading
+		default:
+			required = carriedPasswordChange
+		}
+	}
+
+	return NewPasswordChangeGate(e.Extract, required,
+		WithAllowedMethods(e.passwordChange.methods...),
+		WithGateLogger(e.logger),
+		WithGateTracerProvider(e.tracerProvider),
+	)
+}
+
+// carriedPasswordChange reads the flag off a *Caller, which carries the user
+// the extractor read to resolve them. It is the default reading for an
+// extractor with no fallback, where every principal is one.
+func carriedPasswordChange(_ context.Context, principal callers.Principal) (bool, error) {
+	caller, ok := principal.(*Caller)
+	if !ok || caller.principal == nil || caller.principal.User == nil {
+		return false, ErrNoPasswordChangeReading
+	}
+
+	return caller.principal.User.RequiresPasswordChange, nil
 }
 
 // keepNoServiceRoles is the default ServiceRolesPolicy: an ordinary-door token
@@ -358,6 +542,10 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 	op.Set(scopeKey, scope.String())
 	op.Set(userIDKey, userID)
 
+	if err = e.checkSignIn(ctx, scope, familyID, claims.JTI()); err != nil {
+		return nil, op.Error(err, "checking a bearer token's sign-in")
+	}
+
 	principal, err := e.directory.GetPrincipal(ctx, e.client.Reader(), scope, userID, accountID)
 	if err != nil {
 		if refusesTheCaller(err) {
@@ -371,6 +559,30 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 		return nil, op.Error(platformerrors.Wrap(ErrUnauthenticated, "the directory answered with nobody"), "resolving a bearer token's caller")
 	}
 
+	actorID, _ := claims.GetString(signin.ClaimActor)
+	if actorID == userID {
+		actorID = ""
+	}
+
+	if actorID != "" {
+		op.Set(actorIDKey, actorID)
+
+		// Present, not merely non-empty: the empty string is tenancy.Global's
+		// owner, which is exactly where a deployment's staff may live. A token
+		// naming an operator and no scope for them is not one signin minted.
+		actorScopeClaim, present := claims.GetString(signin.ClaimActorScope)
+		if !present {
+			return nil, op.Error(platformerrors.Wrapf(ErrNotASignInToken, "a %q claim with no %q claim", signin.ClaimActor, signin.ClaimActorScope), "reading a bearer token")
+		}
+
+		actorScope := tenancy.FromOwner(actorScopeClaim)
+		op.Set(actorScopeKey, actorScope.String())
+
+		if err = e.operatorStands(ctx, actorScope, actorID); err != nil {
+			return nil, op.Error(err, "resolving a bearer token's operator")
+		}
+	}
+
 	if !administrative {
 		principal = e.withOrdinaryServiceRoles(ctx, principal)
 	}
@@ -380,8 +592,75 @@ func (e *PrincipalExtractor) Authenticate(ctx context.Context, token string) (_ 
 		scope:          scope,
 		familyID:       familyID,
 		tokenID:        claims.JTI(),
+		actorID:        actorID,
 		administrative: administrative,
 	}, nil
+}
+
+// operatorStands checks that the operator named on an impersonation token is
+// still somebody the directory admits.
+//
+// It is the ban rule applied to the second identity. A subject's ban takes
+// effect on the next request whatever minted their token, and an operator's has
+// to as well: otherwise suspending an operator mid-impersonation would leave
+// them acting as a customer until the token lapsed. It resolves no account —
+// the operator's memberships are not what the request is against.
+//
+// It reads the operator in actorScope, the token's signin.ClaimActorScope, and
+// not in the subject's scope: an operator who is staff in a directory of their
+// own is nobody in the customer's, and a re-check there would refuse every
+// impersonation that crossed the line on its first request.
+func (e *PrincipalExtractor) operatorStands(ctx context.Context, actorScope tenancy.Scope, actorID string) error {
+	operator, err := e.directory.GetPrincipal(ctx, e.client.Reader(), actorScope, actorID, "")
+	if err != nil {
+		if refusesTheCaller(err) {
+			return platformerrors.Join(ErrUnauthenticated, err)
+		}
+
+		return err
+	}
+
+	if operator == nil || operator.User == nil {
+		return platformerrors.Wrap(ErrUnauthenticated, "the directory answered with no operator")
+	}
+
+	return nil
+}
+
+// checkSignIn asks the checker WithSignInCheck named whether the token's login
+// is still going, and is nil where it named none.
+//
+// A token with no family claim is refused rather than passed: under a check,
+// a token whose login cannot be named is one whose sign-out cannot be seen, and
+// signin.DefaultClaims writes the claim on every token this module mints.
+func (e *PrincipalExtractor) checkSignIn(ctx context.Context, scope tenancy.Scope, familyID, tokenID string) error {
+	if e.signIns == nil {
+		return nil
+	}
+
+	if familyID == "" {
+		return platformerrors.Wrapf(ErrNotASignInToken, "no %q claim", signin.ClaimFamilyID)
+	}
+
+	err := e.signIns.CheckSignIn(ctx, scope, familyID, tokenID)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, signin.ErrInvalidCredentials) {
+		return platformerrors.Join(ErrUnauthenticated, err)
+	}
+
+	// A token with no "jti" is refused for the reason one with no family claim
+	// is: a checker that refuses superseded tokens compares the token's ID, and
+	// a token that carries none is not one signin.DefaultClaims' issuer minted.
+	// It is the checker that says so rather than this method, because only a
+	// checker that refuses superseded tokens reads the ID at all.
+	if errors.Is(err, signin.ErrEmptyTokenID) {
+		return platformerrors.Join(platformerrors.Wrap(ErrNotASignInToken, "no \"jti\" claim"), err)
+	}
+
+	return err
 }
 
 // withOrdinaryServiceRoles is the principal an ordinary-door token carries: the
@@ -405,10 +684,12 @@ func (e *PrincipalExtractor) withOrdinaryServiceRoles(ctx context.Context, princ
 	return &narrowed
 }
 
-// refusesTheCaller reports whether a directory error is an answer about the
-// caller rather than a failure to give one.
+// refusesTheCaller reports whether a directory error, or a sign-in check's, is
+// an answer about the caller rather than a failure to give one.
 func refusesTheCaller(err error) bool {
-	return errors.Is(err, identity.ErrSignInNotAdmitted) ||
+	return errors.Is(err, signin.ErrSignInEnded) ||
+		errors.Is(err, signin.ErrSignInSuperseded) ||
+		errors.Is(err, identity.ErrSignInNotAdmitted) ||
 		errors.Is(err, identity.ErrUserNotFound) ||
 		errors.Is(err, identity.ErrMembershipNotFound) ||
 		errors.Is(err, platformerrors.ErrInvalidIDProvided) ||
@@ -568,7 +849,15 @@ func (e *PrincipalExtractor) fallBack(ctx context.Context) callers.Principal {
 // proceed as nobody. It answers two failures itself, because proceeding would
 // misreport them: a token naming somebody whose account status admits no
 // sign-in is a 403, and a directory that cannot be read is a 503.
+//
+// A caller who owes a forced password change is then held at the form, save
+// for the requests WithPasswordChangeAllowedRequests admits; see
+// PasswordChangeGate.HTTPMiddleware for the answers.
 func (e *PrincipalExtractor) HTTPMiddleware(next http.Handler) http.Handler {
+	if e.gate != nil {
+		next = e.gate.HTTPMiddleware(e.passwordChange.allow)(next)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 

@@ -29,6 +29,7 @@ import (
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -172,7 +173,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Audit:         &auditcfg.Config{Dialect: d, TablePrefix: prefix},
 		Billing:       &billingcfg.Config{TablePrefix: prefix},
 		Comments:      &commentscfg.Config{TablePrefix: prefix},
-		Identity:      &identitycfg.Config{TablePrefix: prefix},
+		Identity:      &identitycfg.Config{TablePrefix: prefix, ReturnInvitationToken: true},
 		IssueReports:  &issuereportscfg.Config{TablePrefix: prefix},
 		Notifications: &notificationscfg.Config{TablePrefix: prefix},
 		Settings:      &settingscfg.Config{TablePrefix: prefix},
@@ -220,6 +221,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	invites := &invitationTokens{}
 	do.ProvideValue[identity.Hooks](i, invites)
 
+	// The same value is the consumer's verification mailer, so a resent link
+	// lands where the registration's did and the action reads the newest.
+	do.ProvideValue[signin.VerificationMailer](i, invites)
+
 	// And the consumer's reset mailer, which is where a reset link goes.
 	mailbox := &resetMailbox{}
 	do.ProvideValue(i, mailbox)
@@ -230,6 +235,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	links := &magicLinkMailbox{}
 	do.ProvideValue(i, links)
 	do.ProvideValue[signin.MagicLinkMailer](i, links)
+
+	// And the consumer's registration policy, which refuses a registrant who
+	// has not accepted every agreement — so the sign-in suite runs against a
+	// deployment that requires them.
+	do.ProvideValue[signin.RegistrationPolicy](i, requireAgreements)
 
 	// And, on a run that confirms, the consumer's waitlist confirmation mailer,
 	// whose presence is what mounts the loop — over the minter the Links block
@@ -242,11 +252,16 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// the way a consumer's main installs it: its interceptor in the chain, its
 	// middleware on the router, and it named to Transports as the extractor
 	// and the grants every surface reads. service builds none of this.
+	//
+	// It checks each token's login as well, which is the per-request read a
+	// deployment buys immediate revocation with, and what lets this harness
+	// declare Seams.ImmediateRevocation.
 	extractor, err := signingrpc.NewPrincipalExtractor(
 		do.MustInvoke[tokens.Issuer](i),
 		do.MustInvoke[database.Client](i),
 		do.MustInvoke[identity.Store](i),
 		signingrpc.WithGrants(grantsOf),
+		signingrpc.WithSignInCheck(do.MustInvoke[*signin.Service](i)),
 	)
 	must.NoError(t, err)
 
@@ -263,6 +278,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	service.RegisterTransports(i, &service.Transports{
 		Extractor:   extractor.Extract,
+		TenantOf:    service.DirectoryTenant,
 		Grants:      extractor.Grants,
 		Authorizers: authorizers(),
 	})
@@ -360,12 +376,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				// role — and so adminRole, the grants the surfaces ask inside a
 				// handler — rides on: the extractor keeps it off an
 				// ordinary-door token.
-				door := signIn.IssueForPrincipal
+				var issueOpts []signin.IssueOption
 				if req.Admin {
-					door = signIn.AdminIssueForPrincipal
+					issueOpts = append(issueOpts, signin.Administrative())
 				}
 
-				issued, issueErr := door(ctx, scope, reg.User.ID, reg.Account.ID)
+				issued, issueErr := signIn.IssueForPrincipal(ctx, scope, reg.User.ID, reg.Account.ID, issueOpts...)
 				if issueErr != nil {
 					return nil, issueErr
 				}
@@ -456,12 +472,31 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				return http.DefaultClient, nil
 			},
 
+			// And a caller the suite signed in itself is the same connection
+			// with that token on every call, read back by the extractor as any
+			// minted subject's is — the contract's default Authorizer.
+			SignedIn: func(_ context.Context, issued *signinpb.IssuedToken) (grpc.ClientConnInterface, error) {
+				return &bearerConn{ClientConnInterface: conn, token: issued.GetToken(), reserving: reserving}, nil
+			},
+
+			// The extractor above checks every token's login on every request.
+			ImmediateRevocation: true,
+
 			// The one target type registerApplication declares, for the reads that
 			// name a target without writing to it. Its writes go through
 			// CommentTarget, since the type checks that a target exists.
 			CommentTargetType: string(thingType),
 
+			// The identity block above returns an invitation's token to its
+			// sender, so the suites assert that reading here and the
+			// identity harness, built on the server's default, asserts the
+			// other.
+			InvitationTokenReturned: true,
+
 			Dialect: d,
+
+			// The one role the sign-in block's administrative door admits.
+			Roles: conformance.Roles{Administrator: adminServiceRole},
 
 			// service mounts waitlists with its default scope resolver, which is
 			// the single-tenant answer: a visitor is in the global directory.
@@ -668,6 +703,33 @@ func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirem
 	must.NoError(t, err)
 
 	return reqs
+}
+
+// bearerConn puts one signed-in caller's token on every call, beside which run
+// the call is made in, which is what a consumer's authenticated client
+// connection does with the first half.
+type bearerConn struct {
+	grpc.ClientConnInterface
+
+	token     string
+	reserving string
+}
+
+func (c *bearerConn) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
+	return c.ClientConnInterface.Invoke(c.carrying(ctx), method, args, reply, opts...)
+}
+
+func (c *bearerConn) NewStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	return c.ClientConnInterface.NewStream(c.carrying(ctx), desc, method, opts...)
+}
+
+func (c *bearerConn) carrying(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.token, mdReserving, c.reserving)
 }
 
 // credentialTransport puts one subject's bearer token on every request, which

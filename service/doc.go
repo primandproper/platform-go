@@ -54,6 +54,7 @@ what a client talks to:
 	service.Register(i, cfg)
 	service.RegisterTransports(i, &service.Transports{
 		Extractor: principalFromContext,
+		TenantOf:  service.DirectoryTenant,
 		Authorizers: service.Authorizers{
 			BillingAccounts:  accounts,
 			IssueReports:     reports,
@@ -116,9 +117,10 @@ files its audit entries, its operations and its media under the account instead.
 Those two readings cannot both be Principal.Scope() — identity reads it as the
 directory — so a deployment where they differ supplies Transports.TenantOf,
 which reads the tenant off a principal this package has already found, and the
-three surfaces that mean the tenant are mounted with it. Left nil it is read
-from Principal.Scope() as before, which is right for every deployment whose
-directory is its tenant.
+three surfaces that mean the tenant are mounted with it. It has no default: a
+deployment mounting any of the three without one fails at startup with
+ErrNilTenantOf, and a deployment whose directory is its tenant names
+DirectoryTenant.
 
 The authorizers are the rules about which rows a caller who may make a call may
 make it against. Some are required, and a surface configured without one fails
@@ -138,6 +140,36 @@ every reserved write is refused, for administrators too. That is a server that
 withholds rather than one that mounts open, so nil stays legal, and a service
 that means to serve either feature supplies the same
 authorization.GrantsExtractor its authorization interceptor reads.
+
+# Configuring or replacing a mounted surface
+
+The seams above are the whole list, and it is closed. Anything else a surface
+takes — one of its own options, or a required seam of a surface added since —
+arrives through Transports.Options, one slice per surface in that surface's own
+Option type, passed to its constructor after everything this package supplies:
+
+	service.RegisterTransports(i, &service.Transports{
+		Extractor: principalFromContext,
+		TenantOf:  service.DirectoryTenant,
+		Options: service.SurfaceOptions{
+			Audit: []auditgrpc.Option{auditgrpc.WithChainsResolver(chains)},
+		},
+		Skip: []service.Surface{service.SurfaceOperations},
+	})
+
+So a surface's configuration is learned once, on the surface, rather than once
+there and again as a field here, and a surface joins the automatic mount only if
+every seam it has carries a default — the ones that do not are configured
+through Options and refuse the startup in their own words without it. A surface
+given options is not refused for a missing Extractor or TenantOf: the resolver
+those would have derived is skipped, and the surface is built from the
+application's options, refusing if they name no resolver either.
+
+Skip leaves a surface unmounted even when everything it is built from resolves,
+so an application can build its own over the same store and mount it through
+Transports.Registrations or on the router. A name this package does not mount is
+ErrUnknownSurface, because a misspelled skip is the platform's surface mounted
+beside its replacement.
 
 # What RegisterTransports owns, and what it leaves
 

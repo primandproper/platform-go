@@ -369,13 +369,14 @@ var Matrix = map[string]map[string]Decision{
 		// the lookup rather than about expiry. See the sentinel's own comment.
 		"ErrEmailVerificationLinkExpired": {Err: identity.ErrEmailVerificationLinkExpired, Is: Mapped},
 
-		// The three states an act is refused from rather than forbidden. Each is
+		// The states an act is refused from rather than forbidden. Each is
 		// fixable by the caller in a specific order, and a 500 would tell them to
 		// do nothing. ErrInvitationExpired is the one row in this file whose two
 		// transports differ on purpose — see identity's own mappers.
-		"ErrInvitationExpired": {Err: identity.ErrInvitationExpired, Is: Mapped},
-		"ErrLastAccountOwner":  {Err: identity.ErrLastAccountOwner, Is: Mapped},
-		"ErrNoDefaultAccount":  {Err: identity.ErrNoDefaultAccount, Is: Mapped},
+		"ErrEmailAddressAlreadyVerified": {Err: identity.ErrEmailAddressAlreadyVerified, Is: Mapped},
+		"ErrInvitationExpired":           {Err: identity.ErrInvitationExpired, Is: Mapped},
+		"ErrLastAccountOwner":            {Err: identity.ErrLastAccountOwner, Is: Mapped},
+		"ErrNoDefaultAccount":            {Err: identity.ErrNoDefaultAccount, Is: Mapped},
 
 		// The three a client sent that the directory will not store as written.
 		// One names a different tenant than the call did, one is longer than the
@@ -563,21 +564,42 @@ var Matrix = map[string]map[string]Decision{
 		// own words would say which of the five happened.
 		"ErrInvalidMagicLink": {Err: signin.ErrInvalidMagicLink, Is: Mapped},
 
-		// Proven, and refused anyway. The four PermissionDenials: two statuses
-		// an operator set, and the two halves of the administrative door.
-		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
-		"ErrNotAnAdministrator": {Err: signin.ErrNotAnAdministrator, Is: Mapped},
-		"ErrUserBanned":         {Err: signin.ErrUserBanned, Is: Mapped},
-		"ErrUserTerminated":     {Err: signin.ErrUserTerminated, Is: Mapped},
+		// An access token whose login has ended, or has since replaced it. Same
+		// construction again: each wraps ErrInvalidCredentials and is not
+		// client-safe, because its own words would tell whoever holds a stolen
+		// copy what the person they took it from has done since.
+		"ErrSignInEnded":      {Err: signin.ErrSignInEnded, Is: Mapped},
+		"ErrSignInSuperseded": {Err: signin.ErrSignInSuperseded, Is: Mapped},
 
-		// The three states an act is refused from rather than forbidden. Each is
+		// Proven, and refused anyway. The PermissionDenials: two statuses an
+		// operator set, the two halves of the administrative door, and the
+		// impersonation door a deployment never opened.
+		"ErrAdminLoginDisabled":    {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
+		"ErrImpersonationDisabled": {Err: signin.ErrImpersonationDisabled, Is: Mapped},
+		"ErrNotAnAdministrator":    {Err: signin.ErrNotAnAdministrator, Is: Mapped},
+		"ErrUserBanned":            {Err: signin.ErrUserBanned, Is: Mapped},
+		"ErrUserTerminated":        {Err: signin.ErrUserTerminated, Is: Mapped},
+
+		// The states an act is refused from rather than forbidden. Each is
 		// fixable in a specific order, and these are the rows where the two
 		// transports read differently on purpose — FailedPrecondition on one
 		// side, a conflict with a specific message on the other.
-		"ErrNoPasswordCredential":    {Err: signin.ErrNoPasswordCredential, Is: Mapped},
-		"ErrPasswordAlreadySet":      {Err: signin.ErrPasswordAlreadySet, Is: Mapped},
-		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
-		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
+		"ErrEmailAddressAlreadyVerified": {Err: signin.ErrEmailAddressAlreadyVerified, Is: Mapped},
+		"ErrNoPasswordCredential":        {Err: signin.ErrNoPasswordCredential, Is: Mapped},
+		"ErrPasswordAlreadySet":          {Err: signin.ErrPasswordAlreadySet, Is: Mapped},
+		"ErrSecondFactorNotEnrolled":     {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
+		"ErrUserUnverified":              {Err: signin.ErrUserUnverified, Is: Mapped},
+
+		// A caller an operator has forced to change their password, refused by
+		// the gate in front of every call but the ones that discharge it.
+		// FailedPrecondition and a 403, and client-safe with a reason, because
+		// a client has to branch on it — send them to the form — rather than
+		// display it.
+		"ErrPasswordChangeRequired": {Err: signin.ErrPasswordChangeRequired, Is: Mapped},
+		// Ending every other login from a token that names none. A state of the
+		// credential rather than of the request, read the way the rows above
+		// are, and refused rather than widened into ending every login.
+		"ErrSignInNotIdentified": {Err: signin.ErrSignInNotIdentified, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Some are wiring failures and the rest
@@ -586,6 +608,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyHandle":           {Err: signin.ErrEmptyHandle, Is: Platform},
 		"ErrEmptyPassword":         {Err: signin.ErrEmptyPassword, Is: Platform},
 		"ErrEmptyUserID":           {Err: signin.ErrEmptyUserID, Is: Platform},
+		"ErrSelfImpersonation":     {Err: signin.ErrSelfImpersonation, Is: Platform},
 		"ErrNilAuthenticator":      {Err: signin.ErrNilAuthenticator, Is: Platform},
 		"ErrNilCredentials":        {Err: signin.ErrNilCredentials, Is: Platform},
 		"ErrNilDatabaseClient":     {Err: signin.ErrNilDatabaseClient, Is: Platform},
@@ -610,6 +633,10 @@ var Matrix = map[string]map[string]Decision{
 		// guess that missed.
 		"ErrEmptyFamilyID":     {Err: signin.ErrEmptyFamilyID, Is: Platform},
 		"ErrEmptyRefreshToken": {Err: signin.ErrEmptyRefreshToken, Is: Platform},
+
+		// A check that named no access token to compare, which is the same
+		// reading: a caller that did not read the claim, not a token that lost.
+		"ErrEmptyTokenID": {Err: signin.ErrEmptyTokenID, Is: Platform},
 
 		// A door answered with no token at all, which is the same reading again:
 		// an empty request is a client that did not submit.
@@ -650,16 +677,22 @@ var Matrix = map[string]map[string]Decision{
 		"ErrRefreshTokenTTLTooShort":    {Err: signin.ErrRefreshTokenTTLTooShort, Is: Unhandled},
 		"ErrRefreshTokensNotConfigured": {Err: signin.ErrRefreshTokensNotConfigured, Is: Unhandled},
 
+		// A refresh token store that reported a reuse without naming the family
+		// it ended. The revocation commits; what fails is the store's contract,
+		// which is wiring rather than anything a caller sent, so a 500.
+		"ErrRefreshTokenStoreContractViolated": {Err: signin.ErrRefreshTokenStoreContractViolated, Is: Unhandled},
+
 		// The listing doors on a service whose store mints refresh tokens and
 		// cannot enumerate them. Wiring again, and nothing a caller sent.
-		"ErrSignInListingNotSupported": {Err: signin.ErrSignInListingNotSupported, Is: Unhandled},
 
-		// The two registration wiring failures: a service that was given nothing
-		// to register through, and one that was given nothing to finish a
-		// registration with. Neither is anything a caller sent.
-		"ErrRegistrationIncomplete":     {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
-		"ErrRegistrationNotConfigured":  {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
-		"ErrVerificationsNotConfigured": {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
+		// The registration wiring failures: a service that was given nothing to
+		// register through, one that was given nothing to finish a registration
+		// with, and one that was given nothing to mail a fresh link through. None
+		// is anything a caller sent.
+		"ErrRegistrationIncomplete":          {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
+		"ErrRegistrationNotConfigured":       {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
+		"ErrVerificationsNotConfigured":      {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
+		"ErrVerificationMailerNotConfigured": {Err: signin.ErrVerificationMailerNotConfigured, Is: Unhandled},
 
 		// A passwordless door on a service that was given no link store — or, for
 		// the request half, no mailer. It is wiring rather than anything a caller

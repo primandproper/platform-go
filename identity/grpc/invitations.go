@@ -22,9 +22,17 @@ import (
 // the token could choose a guessable one, or somebody else's. So the server
 // mints it — with the CSPRNG by default, or whatever WithTokenMinter supplied —
 // and it goes out with the invitation to the consumer's AfterInvite hook, which
-// is where a link gets queued for mailing. It is not returned to the sender:
-// the response carries the redacted invitation, and the token reaches only the
-// address it was minted for.
+// is where a link gets queued for mailing.
+//
+// Whether the sender gets it back is the deployment's to say, and both readings
+// hold the same rule — the token never rides a read, an event or a hook. By
+// default it is not returned: the response carries the redacted invitation, and
+// the token reaches only the address it was minted for. Built with
+// WithInvitationTokenReturned, the response carries it beside the invitation,
+// once, to the authenticated sender, so they can copy the link the mail
+// carries and hand it over themselves. That hands out nothing the mail did not:
+// acceptance is bound to the invited address, so the copied link admits the
+// addressed person and nobody else, and a sender could forward the mail anyway.
 //
 // The account has to be one the caller may act on, checked before the token is
 // minted. identity.invitations.send is a grant on the method, so without this a
@@ -101,7 +109,12 @@ func (s *Server) Invite(
 
 	op.Set(invitationIDKey, issued.ID)
 
-	return &identitypb.InviteResponse{Invitation: InvitationToProto(issued.Redacted())}, nil
+	response := &identitypb.InviteResponse{Invitation: InvitationToProto(issued.Redacted())}
+	if s.returnInvitationToken {
+		response.Token = token
+	}
+
+	return response, nil
 }
 
 // AcceptInvitation answers an invitation and mints the membership it promised.

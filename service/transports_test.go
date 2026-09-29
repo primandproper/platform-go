@@ -179,7 +179,7 @@ func TestRegisterTransports(T *testing.T) {
 		t.Parallel()
 
 		i := newTransportInjector(t)
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -212,7 +212,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
 		do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -262,7 +262,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		do.ProvideValue(i, svc)
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -329,7 +329,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue[signin.MagicLinkMailer](i, stubMagicLinkMailer{})
 		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -352,7 +352,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		i := newInjector(t, cfg)
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant})
 
 		_, err := do.Invoke[*mountedTransports](i)
 		must.Error(t, err)
@@ -367,7 +367,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 		do.ProvideValue[billing.Store](i, &billingmock.StoreMock{})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -390,7 +390,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		i := newInjector(t, cfg)
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -410,7 +410,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 		do.ProvideValue[identity.Store](i, &identitymock.StoreMock{})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -461,7 +461,7 @@ func TestRegisterTransports(T *testing.T) {
 				do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 				tc.provide(i)
 
-				RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: tc.seams})
+				RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: tc.seams})
 
 				_, err := do.Invoke[*mountedTransports](i)
 				must.ErrorIs(t, err, tc.want)
@@ -498,7 +498,7 @@ func TestRegisterTransports(T *testing.T) {
 			do.ProvideValue[waitlistsgrpc.ConfirmationMailer](i, discardConfirmations{})
 			provide(i)
 
-			RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+			RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 			return do.Invoke[*mountedTransports](i)
 		}
@@ -541,7 +541,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 		do.ProvideValue[comments.Store](i, &commentsmock.StoreMock{})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		mounted, err := do.Invoke[*mountedTransports](i)
 		must.NoError(t, err)
@@ -561,6 +561,58 @@ func TestRegisterTransports(T *testing.T) {
 
 		_, err := do.Invoke[*mountedTransports](i)
 		must.ErrorIs(t, err, ErrNilPrincipalExtractor)
+	})
+
+	// A nil TenantOf is refused by each of the three surfaces that read the
+	// tenant, rather than read as the directory: a deployment whose tenant is
+	// the directory says so by naming DirectoryTenant.
+	T.Run("a surface that reads the tenant with no TenantOf is a startup error", func(t *testing.T) {
+		t.Parallel()
+
+		for surface, provide := range map[string]func(do.Injector){
+			"audit": func(i do.Injector) {
+				do.ProvideValue[audit.Reader](i, &auditmock.ReaderMock{})
+			},
+			"media registry": func(i do.Injector) {
+				do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
+			},
+			"operations": func(i do.Injector) {
+				do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
+			},
+		} {
+			t.Run(surface, func(t *testing.T) {
+				t.Parallel()
+
+				i := newTransportInjector(t)
+
+				do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
+				do.ProvideValue(i, newRouter())
+				do.ProvideValue[uploads.UploadManager](i, &uploadsmock.UploadManagerMock{})
+				provide(i)
+
+				RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+				_, err := do.Invoke[*mountedTransports](i)
+				must.ErrorIs(t, err, ErrNilTenantOf)
+				test.StrContains(t, err.Error(), surface)
+			})
+		}
+	})
+
+	T.Run("no TenantOf is not an error for a service mounting nothing that reads the tenant", func(t *testing.T) {
+		t.Parallel()
+
+		i := newTransportInjector(t)
+
+		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
+		do.ProvideValue[billing.Store](i, &billingmock.StoreMock{})
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.Eq(t, []string{"billing gRPC"}, mounted.names)
 	})
 
 	T.Run("no extractor is not an error for a service with nothing to mount", func(t *testing.T) {
@@ -587,6 +639,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		RegisterTransports(i, &Transports{
 			Extractor:     withPrincipal,
+			TenantOf:      DirectoryTenant,
 			Authorizers:   allAuthorizers(),
 			Registrations: []grpcserver.RegistrationFunc{func(*grpc.Server) { own++ }},
 		})
@@ -612,7 +665,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		// It does not panic on the way in, which is the whole point: the
 		// duplicate is reported where every other startup failure is.
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		_, err := do.Invoke[*mountedTransports](i)
 		must.ErrorIs(t, err, ErrGRPCRegistrationsAlreadyProvided)
@@ -626,7 +679,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue(i, newRouter())
 		do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
 
-		seams := &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()}
+		seams := &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()}
 
 		// The first pass puts operations' routes on the router. The second
 		// mounts the same ones over them, which routing.Router records and
@@ -652,7 +705,7 @@ func TestRegisterTransports(T *testing.T) {
 		do.ProvideValue(i, newRouter())
 		do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
 
-		seams := &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()}
+		seams := &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()}
 
 		// One clean pass, then the pass that breaks the router and is told so.
 		_, err := mountTransports(i, seams)
@@ -685,7 +738,7 @@ func TestRegisterTransports(T *testing.T) {
 			return nil, errBrokenStore
 		})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		_, err := do.Invoke[*mountedTransports](i)
 		must.ErrorIs(t, err, errBrokenStore)
@@ -702,10 +755,10 @@ func TestDerivedSeams(T *testing.T) {
 		return tenancy.Of(principal.ActiveAccountID()), nil
 	}
 
-	T.Run("the scope a caller is acting in", func(t *testing.T) {
+	T.Run("the directory, for a deployment that names it its tenant", func(t *testing.T) {
 		t.Parallel()
 
-		scope, err := deriveScope(withPrincipal, nil)(withCaller)
+		scope, err := deriveScope(withPrincipal, DirectoryTenant)(withCaller)
 		must.NoError(t, err)
 		test.EqOp(t, caller.scope, scope)
 	})
@@ -729,10 +782,10 @@ func TestDerivedSeams(T *testing.T) {
 		test.EqOp(t, dataprivacy.Subject{ID: "user_1", Type: dataprivacy.SubjectUser}, subject)
 	})
 
-	T.Run("the caller a media request is from", func(t *testing.T) {
+	T.Run("the caller a media request is from, on the directory", func(t *testing.T) {
 		t.Parallel()
 
-		mediaCaller, err := deriveMediaCaller(withPrincipal, nil)(withCaller)
+		mediaCaller, err := deriveMediaCaller(withPrincipal, DirectoryTenant)(withCaller)
 		must.NoError(t, err)
 		test.EqOp(t, mediaregistryhttp.Caller{PrincipalID: "user_1", Scope: caller.scope}, mediaCaller)
 	})
@@ -783,7 +836,7 @@ func TestDerivedSeams(T *testing.T) {
 			return tenancy.Global(), nil
 		}
 
-		for _, tenantOf := range []func(callers.Principal) (tenancy.Scope, error){nil, asked} {
+		for _, tenantOf := range []func(callers.Principal) (tenancy.Scope, error){DirectoryTenant, asked} {
 			_, err := deriveScope(withPrincipal, tenantOf)(nobody)
 			test.ErrorIs(t, err, ErrNoPrincipal)
 
@@ -800,11 +853,11 @@ func TestDerivedSeams(T *testing.T) {
 	T.Run("the owners a caller follows are their tenant and themselves", func(t *testing.T) {
 		t.Parallel()
 
-		owners, err := deriveOwners(withPrincipal, nil)(withCaller)
+		owners, err := deriveOwners(withPrincipal, DirectoryTenant)(withCaller)
 		must.NoError(t, err)
 		test.Eq(t, []tenancy.Scope{caller.scope, tenancy.Of(caller.userID)}, owners)
 
-		_, err = deriveOwners(withPrincipal, nil)(context.Background())
+		_, err = deriveOwners(withPrincipal, DirectoryTenant)(context.Background())
 		test.ErrorIs(t, err, callers.ErrNoPrincipal)
 	})
 
@@ -815,7 +868,7 @@ func TestDerivedSeams(T *testing.T) {
 	T.Run("a request with nobody on it reaches a client as unauthenticated", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := deriveScope(withPrincipal, nil)(context.Background())
+		_, err := deriveScope(withPrincipal, DirectoryTenant)(context.Background())
 		must.ErrorIs(t, err, callers.ErrNoPrincipal)
 
 		grpcCode, ok := callers.GRPCMapper.Map(err)
@@ -844,7 +897,7 @@ func TestNew_transports(T *testing.T) {
 		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 		do.ProvideValue[billing.Store](i, &billingmock.StoreMock{})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
 
 		svc, err := New(i)
 		must.NoError(t, err)
@@ -868,7 +921,7 @@ func TestNew_transports(T *testing.T) {
 		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 		do.ProvideValue[settings.Store](i, &settingsmock.StoreMock{})
 
-		RegisterTransports(i, &Transports{Extractor: withPrincipal})
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant})
 
 		_, err := New(i)
 		must.ErrorIs(t, err, settingsgrpc.ErrNilSubjectAuthorizer)
@@ -981,7 +1034,7 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		must.Error(t, err, must.Sprint("a request with no principal has no tenant to be against"))
 	})
 
-	T.Run("without one, the directory still governs", func(t *testing.T) {
+	T.Run("a deployment that names the directory its tenant reads the directory", func(t *testing.T) {
 		t.Parallel()
 
 		var asked *tenancy.Scope
@@ -997,6 +1050,7 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		client := auditServiceOverBufconn(t, reader, caller, &Transports{
 			Extractor:   withPrincipal,
 			Authorizers: allAuthorizers(),
+			TenantOf:    DirectoryTenant,
 		})
 
 		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})

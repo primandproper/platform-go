@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
@@ -212,11 +213,11 @@ func refresh(t *testing.T, s *conformance.Session) {
 	t.Run("signing out everywhere ends every login the caller holds", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s, loginForToken, exchangeRefreshToken)
-		sub, user := passworded(t, s, signOutEverywhere)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
+		sub, who := signedIn(t, s, anon, signOutEverywhere)
 
-		phone := rotating(t, anon, user.GetUsername(), password)
-		laptop := loggedIn(t, anon, user.GetUsername(), password)
+		phone := rotating(t, anon, who.username, password)
+		laptop := loggedIn(t, anon, who.username, password)
 		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
 
 		// The control: the phone's login is live before the button is pressed.
@@ -233,6 +234,170 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		// Ending every login is not ending the account: the password still
 		// signs in, as a new login.
-		loggedIn(t, anon, user.GetUsername(), password)
+		loggedIn(t, anon, who.username, password)
+	})
+
+	// The promise a "sign out that device" button makes, where the deployment
+	// has bought it: the access token already in the device's hands stops
+	// working on its next request, rather than when it expires.
+	t.Run("an ended login's access token stops working at once, where the deployment checks it", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().ImmediateRevocation {
+			t.Skip("conformance: this subject does not declare Seams.ImmediateRevocation, so an ended login's access token is promised only to stop within its lifetime; skipping")
+		}
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		who := signInAs(t, s, anon)
+
+		phone := loggedIn(t, anon, who.username, password)
+		laptop := loggedIn(t, anon, who.username, password)
+		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
+
+		onPhone := caller(t, s, phone, getSelf)
+		onLaptop := caller(t, s, laptop, getSelf, endSignIn)
+
+		// The control: the phone's access token works before its login ends.
+		_, err := onPhone.Surfaces.SignIn.GetSelf(onPhone.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err, must.Sprint("a live login's access token was refused"))
+
+		// Ended from the other device, as the button beside it on a "where
+		// you're signed in" screen ends it.
+		_, err = onLaptop.Surfaces.SignIn.EndSignIn(onLaptop.Context(t.Context()),
+			&signinpb.EndSignInRequest{FamilyId: phone.GetFamilyId()})
+		must.NoError(t, err)
+
+		_, err = onPhone.Surfaces.SignIn.GetSelf(onPhone.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.Error(t, err, must.Sprint("an ended login's access token still worked"))
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+
+		// And the scope of the button: the laptop is another login.
+		_, err = onLaptop.Surfaces.SignIn.GetSelf(onLaptop.Context(t.Context()), &signinpb.GetSelfRequest{})
+		test.NoError(t, err, test.Sprint("ending one login stopped another's access token"))
+	})
+
+	// The logins a person holds, as a screen lists them, and the button beside
+	// each one. A family identifier is not a secret, so ending one that is not
+	// the caller's must end nothing and say nothing: every EndSignIn answer is
+	// the same answer, and only the tokens behind it tell what happened.
+	t.Run("the caller's live logins are listed, and ending one by name ends that one only", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
+		sub, who := signedIn(t, s, anon, listSignIns, endSignIn)
+
+		phone := rotating(t, anon, who.username, password)
+		laptop := loggedIn(t, anon, who.username, password)
+		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
+
+		ctx := sub.Context(t.Context())
+
+		listed, err := sub.Surfaces.SignIn.ListSignIns(ctx, &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+
+		// By family and never by count or order: the caller's own login is
+		// listed too, and "most recently refreshed first" ties on a dialect
+		// that keeps whole seconds.
+		byFamily := map[string]*signinpb.ActiveSignIn{}
+		current := 0
+
+		for _, signIn := range listed.GetSignIns() {
+			byFamily[signIn.GetFamilyId()] = signIn
+
+			if signIn.GetCurrent() {
+				current++
+			}
+		}
+
+		test.LessEq(t, 1, current, test.Sprint("more than one login is the one the request was made through"))
+
+		for _, family := range []string{phone.GetFamilyId(), laptop.GetFamilyId()} {
+			signIn, ok := byFamily[family]
+			if !ok {
+				t.Errorf("a live login %s is not listed", family)
+
+				continue
+			}
+
+			test.EqOp(t, who.accountID, signIn.GetActiveAccountId())
+			test.False(t, signIn.GetAdministrative())
+			must.NotNil(t, signIn.GetExpiresAt())
+			test.True(t, signIn.GetExpiresAt().AsTime().After(time.Now().Add(-time.Second)),
+				test.Sprint("a live login is listed as already over"))
+		}
+
+		ended, err := sub.Surfaces.SignIn.EndSignIn(ctx, &signinpb.EndSignInRequest{FamilyId: phone.GetFamilyId()})
+		must.NoError(t, err)
+
+		_, err = exchange(t.Context(), anon, phone.GetRefreshToken())
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		// The control, and the scope of the button: the laptop is another
+		// login, and still works.
+		_, err = exchange(t.Context(), anon, laptop.GetRefreshToken())
+		test.NoError(t, err, test.Sprint("ending one login ended another"))
+
+		relisted, err := sub.Surfaces.SignIn.ListSignIns(ctx, &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+
+		for _, signIn := range relisted.GetSignIns() {
+			test.NotEqOp(t, phone.GetFamilyId(), signIn.GetFamilyId(), test.Sprint("an ended login is still listed"))
+		}
+
+		// Somebody else's login, one that never existed, and the one just
+		// ended: each is answered exactly as the ending that worked was.
+		stranger := signInAs(t, s, anon)
+		theirs := rotating(t, anon, stranger.username, password)
+
+		for what, family := range map[string]string{
+			"somebody else's login": theirs.GetFamilyId(),
+			"a login never begun":   "conf-never-begun-" + identifiers.New(),
+			"a login already ended": phone.GetFamilyId(),
+		} {
+			answer, endErr := sub.Surfaces.SignIn.EndSignIn(ctx, &signinpb.EndSignInRequest{FamilyId: family})
+			must.NoError(t, endErr, must.Sprintf("ending %s was refused", what))
+			test.True(t, proto.Equal(ended, answer), test.Sprintf("ending %s answered differently", what))
+		}
+
+		_, err = exchange(t.Context(), anon, theirs.GetRefreshToken())
+		test.NoError(t, err, test.Sprint("a caller ended somebody else's login by naming it"))
+	})
+
+	// "Sign out my other devices": the login the request came through is kept,
+	// read off the caller's own token, and every other one the caller holds
+	// ends. A deployment whose principal cannot say which login is asking must
+	// refuse rather than end them all — so that answer is asserted too, as
+	// ending nothing, before the rest is skipped.
+	t.Run("ending the other logins keeps the one asking and ends the rest", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
+		who := signInAs(t, s, anon)
+
+		other := rotating(t, anon, who.username, password)
+		asking := loggedIn(t, anon, who.username, password)
+		must.NotEqOp(t, other.GetFamilyId(), asking.GetFamilyId(), must.Sprint("two sign-ins were one login"))
+
+		sub := caller(t, s, asking, endOtherSignIns)
+
+		_, err := sub.Surfaces.SignIn.EndOtherSignIns(sub.Context(t.Context()), &signinpb.EndOtherSignInsRequest{})
+		if status.Code(err) == codes.FailedPrecondition {
+			refused(t, s, err, codes.FailedPrecondition, reasonSignInNotIdentified)
+
+			for _, alive := range []*signinpb.IssuedToken{other, asking} {
+				_, exchangeErr := exchange(t.Context(), anon, alive.GetRefreshToken())
+				test.NoError(t, exchangeErr, test.Sprint("a refused sign-out of the other logins ended one"))
+			}
+
+			t.Skip("conformance: this deployment's principal does not name the login a request came through, so there is no login to keep; the refusal is asserted and the rest skipped")
+		}
+
+		must.NoError(t, err)
+
+		_, err = exchange(t.Context(), anon, other.GetRefreshToken())
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = exchange(t.Context(), anon, asking.GetRefreshToken())
+		test.NoError(t, err, test.Sprint("ending the other logins ended the one asking"))
 	})
 }

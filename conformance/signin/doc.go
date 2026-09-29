@@ -45,17 +45,46 @@ register and sign in are therefore placed in tenancy.Global through a
 registrar asked for there, which is where a single-tenant deployment keeps
 everybody — the reading the passwordreset suite takes of the same question.
 
-Three secrets reach a person through mail rather than a response, and each
+Two secrets reach a person through mail rather than a response, and each
 assertion that needs one reads it through an action: VerificationToken for the
-link a registration mails, MagicLinkToken for a sign-in link, and
-PasswordResetToken, which is how an existing caller is given a password the
-suite knows without the suite writing one. A subject that cannot say what it
-mailed skips those assertions with the reason printed.
+link a registration mails, and MagicLinkToken for a sign-in link. A subject
+that cannot say what it mailed skips those assertions with the reason printed.
+A registration answering an invitation is asserted through the link its sender
+copied, which exists only where the deployment returns an invitation's token
+to its sender and says so in Seams.InvitationTokenReturned; elsewhere it skips.
 
 Refresh tokens are optional — a deployment built without a store answers a
 sign-in with none, which the client contract calls a valid shape — so the
 assertions about rotation and signing out skip, with the reason printed, when
 the sign-in they start from carried no refresh token.
+
+# Calling as somebody the suite signed in
+
+An assertion about a signed-in person's own credentials — changing a
+password, enrolling or replacing a second factor, listing and ending their
+logins, a forced change — needs a caller whose every credential the suite
+chose. A caller Seams.NewSubject minted is the deployment's, and may hold a
+proven second factor the suite cannot read. So those assertions register
+somebody, verify them, sign them in with the password they typed, and call as
+the token that answered, through Seams.SignedIn: the conformance face of the
+Authorizer seam in docs/client-contract.md, and a skip where the subject
+supplies none. The caller is held to the calls it declares, as every minted
+caller is.
+
+A deployment that checks each access token's login on every request says so
+in Seams.ImmediateRevocation, and is then held to it: an access token stops
+working on the request after its login is ended by name, while another login
+the same person holds goes on working. A deployment that does not is one whose
+sign-out takes effect within one access-token lifetime, and the assertion
+skips.
+
+The administrative door is asserted the same way, once the registrant is
+granted Seams.Roles.Administrator, and skips where the subject names none.
+
+A forced change is asserted twice: that it is reported and still signs in, and
+that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
+made. The second is the gate signin/grpc's extractor runs by default, and
+skips where the subject says Seams.PasswordChangeGateDisabled.
 
 # Who a call is made as
 

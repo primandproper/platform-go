@@ -21,6 +21,8 @@ import (
 // own methods. A consumer whose principal already carries the claim satisfies
 // it by adding the method; one whose does not keeps compiling, and ListSignIns
 // marks no entry as the current one rather than guessing which it is.
+// EndOtherSignIns cannot make that choice — a sign-out that does not know which
+// login is asking has no login to keep — so there it is a refusal.
 type FamilyIdentifier interface {
 	// FamilyID is the login the request's access token belongs to, or empty
 	// for a token that names none.
@@ -96,6 +98,40 @@ func (s *Server) EndSignIn(
 	return &signinpb.EndSignInResponse{}, nil
 }
 
+// EndOtherSignIns ends every one of the calling user's logins except the one
+// the request was made through.
+//
+// Which login that is comes off the principal, through [FamilyIdentifier], and
+// nowhere else — the request has no field that could name a different one to
+// keep. A principal that does not implement it, or names no family, is
+// signin.ErrSignInNotIdentified, refused rather than read as "keep nothing":
+// ListSignIns can honestly mark nothing current when it is not told, but a
+// sign-out that is not told which device is asking would end them all, and that
+// is SignOutEverywhere, which a client asks for by name. See
+// signin.Service.EndOtherSignIns.
+func (s *Server) EndOtherSignIns(
+	ctx context.Context,
+	_ *signinpb.EndOtherSignInsRequest,
+) (_ *signinpb.EndOtherSignInsResponse, err error) {
+	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_EndOtherSignIns_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	var keep string
+	if identified, ok := req.principal.(FamilyIdentifier); ok {
+		keep = identified.FamilyID()
+	}
+
+	if _, err = s.svc.EndOtherSignIns(ctx, req.scope, req.principal.UserID(), keep); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "ending other sign-ins")
+	}
+
+	return &signinpb.EndOtherSignInsResponse{}, nil
+}
+
 // ActiveSignInToProto renders one live login. It leaves current false, since
 // whether a login is the caller's own is a fact about the request rather than
 // about the login.
@@ -111,6 +147,7 @@ func ActiveSignInToProto(s *signin.ActiveSignIn) *signinpb.ActiveSignIn {
 		ExpiresAt:       timestamppb.New(s.ExpiresAt),
 		ActiveAccountId: s.ActiveAccountID,
 		Administrative:  s.Administrative,
+		ActorId:         s.ActorID,
 	}
 }
 

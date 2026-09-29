@@ -163,7 +163,7 @@ func TestService_IssueForPrincipal(T *testing.T) {
 	})
 }
 
-func TestService_AdminIssueForPrincipal(T *testing.T) {
+func TestService_IssueForPrincipal_Administrative(T *testing.T) {
 	T.Parallel()
 
 	T.Run("no administrative roles named means no administrative door", func(t *testing.T) {
@@ -171,7 +171,7 @@ func TestService_AdminIssueForPrincipal(T *testing.T) {
 
 		e := newEnv(t)
 
-		_, err := e.svc.AdminIssueForPrincipal(t.Context(), testScope, e.user.ID, "")
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative())
 		test.ErrorIs(t, err, signin.ErrAdminLoginDisabled)
 		test.SliceEmpty(t, e.hooks.signIns)
 	})
@@ -181,7 +181,7 @@ func TestService_AdminIssueForPrincipal(T *testing.T) {
 
 		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"))
 
-		_, err := e.svc.AdminIssueForPrincipal(t.Context(), testScope, e.user.ID, "")
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative())
 		test.ErrorIs(t, err, signin.ErrNotAnAdministrator)
 
 		test.SliceEmpty(t, e.hooks.signIns)
@@ -198,7 +198,7 @@ func TestService_AdminIssueForPrincipal(T *testing.T) {
 
 		// No second factor is enrolled, and none is asked for: whether the
 		// credential in front of this door was strong enough is the consumer's.
-		signedIn, err := e.svc.AdminIssueForPrincipal(t.Context(), testScope, e.user.ID, "")
+		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative())
 		must.NoError(t, err)
 
 		test.True(t, signedIn.Administrative)
@@ -220,7 +220,7 @@ func TestService_AdminIssueForPrincipal(T *testing.T) {
 	})
 }
 
-func TestService_IssueForPrincipalVia(T *testing.T) {
+func TestService_IssueForPrincipal_WithCredentialKind(T *testing.T) {
 	T.Parallel()
 
 	T.Run("stamps the kind its caller names", func(t *testing.T) {
@@ -229,7 +229,7 @@ func TestService_IssueForPrincipalVia(T *testing.T) {
 		e := newEnv(t)
 		passkey := signin.CredentialKind("passkey")
 
-		signedIn, err := e.svc.IssueForPrincipalVia(t.Context(), testScope, passkey, e.user.ID, "")
+		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithCredentialKind(passkey))
 		must.NoError(t, err)
 		test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
 		test.False(t, signedIn.Administrative)
@@ -247,7 +247,7 @@ func TestService_IssueForPrincipalVia(T *testing.T) {
 		e.setServiceRoles(t, "service_admin")
 		passkey := signin.CredentialKind("passkey")
 
-		signedIn, err := e.svc.AdminIssueForPrincipalVia(t.Context(), testScope, passkey, e.user.ID, "")
+		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithCredentialKind(passkey), signin.Administrative())
 		must.NoError(t, err)
 		test.True(t, signedIn.Administrative)
 
@@ -257,16 +257,16 @@ func TestService_IssueForPrincipalVia(T *testing.T) {
 	})
 
 	// An empty kind is a name that got lost on its way in, not a request for
-	// CredentialKindPrincipal — that caller has IssueForPrincipal.
+	// CredentialKindPrincipal — that caller leaves the option off.
 	T.Run("refuses a caller who named no kind", func(t *testing.T) {
 		t.Parallel()
 
 		e := newEnv(t)
 
-		_, err := e.svc.IssueForPrincipalVia(t.Context(), testScope, "", e.user.ID, "")
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithCredentialKind(""))
 		test.ErrorIs(t, err, signin.ErrEmptyCredentialKind)
 
-		_, err = e.svc.AdminIssueForPrincipalVia(t.Context(), testScope, "", e.user.ID, "")
+		_, err = e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithCredentialKind(""), signin.Administrative())
 		test.ErrorIs(t, err, signin.ErrEmptyCredentialKind)
 
 		test.SliceEmpty(t, e.hooks.authentications)

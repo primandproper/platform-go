@@ -15,6 +15,11 @@ only its own change:
     shipped in v14.1.0.
   - Version 3 adds signed_in_at, which is when the login a row belongs to began,
     and backfills it for the rows already there.
+  - Version 4 adds access_token_id, which is the access token minted alongside
+    a row, so a per-request check can tell a login's current access token from
+    one it has since replaced, and actor_id, the operator behind an
+    impersonation's login. Neither has a backfill: a row minted before it
+    records none of either.
 
 A shipped version is never edited. A change to this table is a new version
 appended here, which is what Latest then reports.
@@ -47,8 +52,9 @@ migration that did it. That migration has run, and editing it changes only what
 the next fresh install gets. They add a migration of their own instead, holding
 what SQLSince renders from the version their database is at:
 
-	// Created from v14.0.0: owes versions 2 and 3.
-	// Created from v14.1.0: owes version 3 alone, so pass 2.
+	// Created from v14.0.0: owes versions 2, 3 and 4.
+	// Created from v14.1.0: owes versions 3 and 4, so pass 2.
+	// At version 3: owes version 4 alone, so pass 3.
 	owed, err := migrations.SQLSince(dialect.Postgres, refreshtokens.DefaultTablePrefix, 1)
 	// ...
 	migrate.WithGeneratedMigration(47, "upgrade_signin_refresh_tokens_table", owed)
@@ -117,6 +123,15 @@ var mysqlV3 string
 //go:embed sqlite_v3.sql
 var sqliteV3 string
 
+//go:embed postgres_v4.sql
+var postgresV4 string
+
+//go:embed mysql_v4.sql
+var mysqlV4 string
+
+//go:embed sqlite_v4.sql
+var sqliteV4 string
+
 // sequence is this package's schema over time, in the order it runs. It is
 // unexported so that nothing outside this file can append to it or overwrite a
 // version that has shipped; see the package doc.
@@ -124,6 +139,7 @@ var sequence = ddl.Migrations{
 	{Version: 1, Schema: ddl.Schema{Component: component, Postgres: postgresV1, MySQL: mysqlV1, SQLite: sqliteV1}},
 	{Version: 2, Schema: ddl.Schema{Component: component, Postgres: postgresV2, MySQL: mysqlV2, SQLite: sqliteV2}},
 	{Version: 3, Schema: ddl.Schema{Component: component, Postgres: postgresV3, MySQL: mysqlV3, SQLite: sqliteV3}},
+	{Version: 4, Schema: ddl.Schema{Component: component, Postgres: postgresV4, MySQL: mysqlV4, SQLite: sqliteV4}},
 }
 
 // Latest is the version a database is at once it has run everything this

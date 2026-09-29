@@ -244,7 +244,7 @@ func TestSequence(T *testing.T) {
 	T.Run("reports the latest version", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, uint64(3), Latest())
+		test.EqOp(t, uint64(4), Latest())
 	})
 
 	// Every version carries every dialect. A version missing one would render
@@ -311,6 +311,7 @@ func TestStatementsSince(T *testing.T) {
 			test.StrContains(t, joined, "redeemed_with_key", test.Sprintf("dialect %q", d))
 			test.StrContains(t, joined, "signed_in_at", test.Sprintf("dialect %q", d))
 			test.StrContains(t, joined, "MIN(", test.Sprintf("dialect %q backfills", d))
+			test.StrContains(t, joined, "access_token_id", test.Sprintf("dialect %q", d))
 
 			// SQLite's version 3 does create the table, as the rebuild;
 			// Postgres and MySQL owe nothing but ALTERs and the backfill.
@@ -328,14 +329,43 @@ func TestStatementsSince(T *testing.T) {
 			stmts, err := StatementsSince(d, "", 2)
 			must.NoError(t, err)
 
-			want, versionErr := sequence[2].Schema.Statements(d, "")
-			must.NoError(t, versionErr)
+			var want []string
+
+			for _, m := range sequence[2:] {
+				versionStmts, versionErr := m.Schema.Statements(d, "")
+				must.NoError(t, versionErr)
+
+				want = append(want, versionStmts...)
+			}
+
 			test.Eq(t, want, stmts, test.Sprintf("dialect %q", d))
 
 			joined := strings.Join(stmts, "\n")
 
 			test.StrContains(t, joined, "signed_in_at", test.Sprintf("dialect %q", d))
+			test.StrContains(t, joined, "access_token_id", test.Sprintf("dialect %q", d))
 			test.StrNotContains(t, joined, "ADD COLUMN redeemed_with_key", test.Sprintf("dialect %q", d))
+		}
+	})
+
+	// A database at version 3 has signed_in_at and owes only the access token
+	// column: one ALTER, no backfill and no rebuild on any dialect.
+	T.Run("renders only what a database at version 3 owes", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects() {
+			stmts, err := StatementsSince(d, "", 3)
+			must.NoError(t, err)
+
+			want, versionErr := sequence[3].Schema.Statements(d, "")
+			must.NoError(t, versionErr)
+			test.Eq(t, want, stmts, test.Sprintf("dialect %q", d))
+
+			must.SliceLen(t, 2, stmts, must.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[0], "ADD COLUMN", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[0], "access_token_id", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[1], "ADD COLUMN", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[1], "actor_id", test.Sprintf("dialect %q", d))
 		}
 	})
 

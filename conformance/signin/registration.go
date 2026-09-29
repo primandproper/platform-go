@@ -6,6 +6,7 @@ import (
 	domain "github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
@@ -120,6 +121,105 @@ func registration(t *testing.T, s *conformance.Session) {
 		indistinguishable(t, s, err, spent, "a spent verification link against one never mailed")
 	})
 
+	// The "resend" button: somebody whose link never arrived asks for another
+	// while signed in, and the one they held stops working. A registrant cannot
+	// sign in until their address is proven, so the person here is one an
+	// operator admitted without it — signed in, with an address still unproven,
+	// which is also where an address change leaves somebody.
+	t.Run("a resend retires the mailed link, and the link it mails verifies", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		operator := directoryCaller(t, s, updateUserAccountStatus)
+
+		if s.Seams().SignedIn == nil {
+			t.Skip("conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
+		}
+
+		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		first := mailedVerification(t, s, who.email)
+
+		_, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
+			&identitypb.UpdateUserAccountStatusRequest{
+				UserId: who.userID,
+				Status: identitypb.AccountStatus_ACCOUNT_STATUS_GOOD,
+			})
+		must.NoError(t, err, must.Sprint("admitting a registrant whose address is unproven"))
+
+		sub := caller(t, s, loggedIn(t, anon, who.username, password), requestVerificationEmail)
+
+		_, err = sub.Surfaces.SignIn.RequestVerificationEmail(sub.Context(t.Context()),
+			&signinpb.RequestVerificationEmailRequest{})
+		must.NoError(t, err, must.Sprint("asking for another verification link"))
+
+		fresh := mailedVerification(t, s, who.email)
+		must.NotEqOp(t, first, fresh,
+			must.Sprint("the verification token action answered with the link from before the resend; it must report the newest"))
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: first})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: fresh})
+		must.NoError(t, err, must.Sprint("the link the resend mailed did not verify"))
+	})
+
+	// The registrant's resend: they cannot sign in until they answer a link, so
+	// they ask by address, with nobody on the request. The link it mails is the
+	// one that works afterwards, and an address nobody holds is answered the
+	// same way.
+	t.Run("a resend by address retires the mailed link, and the link it mails verifies", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, requestVerificationEmailByAddress)
+
+		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		first := mailedVerification(t, s, who.email)
+
+		_, err := anon.RequestVerificationEmailByAddress(t.Context(),
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: who.email})
+		must.NoError(t, err, must.Sprint("asking for another verification link by address"))
+
+		fresh := mailedVerification(t, s, who.email)
+		must.NotEqOp(t, first, fresh,
+			must.Sprint("the verification token action answered with the link from before the resend; it must report the newest"))
+
+		_, err = anon.RequestVerificationEmailByAddress(t.Context(),
+			&signinpb.RequestVerificationEmailByAddressRequest{EmailAddress: freshEmail()})
+		must.NoError(t, err, must.Sprint("a resend for an address nobody holds was answered differently"))
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: first})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: fresh})
+		must.NoError(t, err, must.Sprint("the link the resend by address mailed did not verify"))
+	})
+
+	// A resend can never un-prove anybody: asking for a link for an address that
+	// is already proven is refused, and the proof is exactly what it was.
+	t.Run("a resend for a proven address is refused and leaves the proof", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, _ := signedIn(t, s, anon, requestVerificationEmail, getSelf)
+
+		before, err := sub.Surfaces.SignIn.GetSelf(sub.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		must.NotNil(t, before.GetUser().GetEmailAddressVerifiedAt(),
+			must.Sprint("the control: a verified registrant's address reads as unproven"))
+
+		_, err = sub.Surfaces.SignIn.RequestVerificationEmail(sub.Context(t.Context()),
+			&signinpb.RequestVerificationEmailRequest{})
+		refused(t, s, err, codes.FailedPrecondition, reasonEmailAlreadyVerified)
+
+		after, err := sub.Surfaces.SignIn.GetSelf(sub.Context(t.Context()), &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		must.NotNil(t, after.GetUser().GetEmailAddressVerifiedAt(),
+			must.Sprint("a refused resend withdrew the proof"))
+		test.True(t, before.GetUser().GetEmailAddressVerifiedAt().AsTime().Equal(
+			after.GetUser().GetEmailAddressVerifiedAt().AsTime()),
+			test.Sprint("a refused resend moved the proof"))
+	})
+
 	// A registration that did not say how the registrant will prove who they are
 	// is refused rather than defaulted to passwordless, and refused before
 	// anything is written: the same username registers afterwards, which it
@@ -161,5 +261,61 @@ func registration(t *testing.T, s *conformance.Session) {
 
 		test.StrNotContains(t, registered.String(), link,
 			test.Sprint("the registration's answer carried the verification link"))
+	})
+
+	// A sender who copied an invitation's link holds the link the mail
+	// carries, and it does what the mailed one does: registers the person it
+	// was addressed to into the inviting account. Somebody else registering
+	// with it is refused as a wrong token is, and the refusal leaves the link
+	// standing for the person it was meant for.
+	t.Run("a copied invitation link registers the addressed person into the inviting account", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().InvitationTokenReturned {
+			t.Skip("conformance: this subject does not return an invitation's token to its sender (Seams.InvitationTokenReturned), so there is no copied link; skipping")
+		}
+
+		inviter := directoryCaller(t, s, invite)
+		if inviter.AccountID == "" {
+			t.Skip("conformance: this subject does not surface the inviter's account, so there is no account to be invited into; skipping")
+		}
+
+		addressed := freshEmail()
+
+		invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
+			AccountId: inviter.AccountID,
+			ToEmail:   addressed,
+			ToName:    "Some Body",
+			Roles:     []string{s.Roles().Membership[0]},
+		})
+		must.NoError(t, err, must.Sprint("inviting somebody who has not registered"))
+
+		link := &signinpb.RegistrationInvitation{
+			InvitationId: invited.GetInvitation().GetId(),
+			Token:        invited.GetToken(),
+		}
+		must.NotEqOp(t, "", link.GetToken(), must.Sprint("a subject that returns the token returned none"))
+
+		by := registrar(t, s)
+
+		stranger := withPassword(registrationRequest(s))
+		stranger.Account, stranger.OwnerRoles = nil, nil
+		stranger.Invitation = link
+
+		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), stranger)
+		must.Error(t, err, must.Sprint("a copied link registered somebody it was not addressed to"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
+
+		request := withPassword(registrationRequest(s))
+		request.User.EmailAddress = addressed
+		request.Account, request.OwnerRoles = nil, nil
+		request.Invitation = link
+
+		_, registered := register(t, s, request)
+
+		test.Nil(t, registered.GetAccount(), test.Sprint("a registration by invitation minted an account of its own"))
+		test.EqOp(t, inviter.AccountID, registered.GetMembership().GetBelongsToAccount(),
+			test.Sprint("a copied link registered its addressee somewhere other than the inviting account"))
+		test.EqOp(t, identitypb.InvitationStatus_INVITATION_STATUS_ACCEPTED, registered.GetInvitation().GetStatus())
 	})
 }

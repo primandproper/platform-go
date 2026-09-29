@@ -52,7 +52,7 @@ options:
     # sweep acts on rather than a value it substitutes for.
     - {column: "*.oldest_seq", go_type: "*int64"}
     - {column: "*.first_kept_seq", go_type: "*int64"}
-    # The paged list's six selectors. Each is compared against its column in one
+    # The paged list's selectors. Each is compared against its column in one
     # arm of its predicate and against NULL in the other, and that second arm is
     # a cast MySQL resolves to a string type of its own — so the three engines
     # converge on nothing without being told. They are pointers because an
@@ -63,3 +63,4 @@ options:
     - {column: "*.resource_id_filter", go_type: "*string"}
     - {column: "*.resource_type_filter", go_type: "*string"}
     - {column: "*.event_type_filter", go_type: "*string"}
+    - {column: "*.actor_impersonator_filter", go_type: "*string"}

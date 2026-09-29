@@ -272,27 +272,47 @@ func TestRedeem_honorsAPerCodeLimit(t *testing.T) {
 	test.ErrorIs(t, err, ErrCodeInvalid)
 }
 
-// The hazard Store.Redeem documents, pinned so the documentation stays true: a
-// wrong code's count is written in the caller's transaction, and a caller that
-// propagates ErrCodeInvalid out of its callback rolls it back.
-func TestRedeem_theCountIsTheCallersToCommit(t *testing.T) {
+// A caller that returns Redeem's error straight out of its callback — the
+// natural code — still has every wrong guess counted, because a refusal is not
+// an error: up to the limit that way, and the right code is dead.
+func TestRedeem_theNaturalReturnErrCommitsTheCount(t *testing.T) {
 	t.Parallel()
 
 	store, _ := newTestStore(t)
 
 	issuance := issue(t, store)
 
-	err := withTx(t, store, func(tx database.Tx) error {
-		_, redeemErr := store.Redeem(t.Context(), tx, testScope(), testPhone, wrong(issuance.Plaintext))
+	naive := func(code string) (*Code, bool) {
+		t.Helper()
 
-		return redeemErr
-	})
-	must.ErrorIs(t, err, ErrCodeInvalid)
-	test.EqOp(t, 0, readRow(t, store, testScope(), testPhone).Attempts)
+		var (
+			spent    *Code
+			redeemed bool
+		)
 
-	_, err = redeem(t, store, testScope(), testPhone, wrong(issuance.Plaintext))
-	must.ErrorIs(t, err, ErrCodeInvalid)
-	test.EqOp(t, 1, readRow(t, store, testScope(), testPhone).Attempts)
+		err := withTx(t, store, func(tx database.Tx) error {
+			var err error
+
+			spent, redeemed, err = store.Redeem(t.Context(), tx, testScope(), testPhone, code)
+
+			return err
+		})
+		must.NoError(t, err)
+
+		return spent, redeemed
+	}
+
+	for attempt := range DefaultMaxAttempts {
+		spent, redeemed := naive(wrong(issuance.Plaintext))
+		must.False(t, redeemed)
+		must.Nil(t, spent)
+		test.EqOp(t, attempt+1, readRow(t, store, testScope(), testPhone).Attempts)
+	}
+
+	spent, redeemed := naive(issuance.Plaintext)
+	test.False(t, redeemed)
+	test.Nil(t, spent)
+	test.Nil(t, readRow(t, store, testScope(), testPhone).RedeemedAt)
 }
 
 // One live code per number: the second issue replaces the first.
@@ -474,8 +494,10 @@ func TestRedeem_refusals(T *testing.T) {
 	T.Run("a nil transaction", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := store.Redeem(t.Context(), nil, testScope(), testPhone, "123456")
+		spent, redeemed, err := store.Redeem(t.Context(), nil, testScope(), testPhone, "123456")
 		test.ErrorIs(t, err, ErrNilExecutor)
+		test.False(t, redeemed)
+		test.Nil(t, spent)
 	})
 }
 

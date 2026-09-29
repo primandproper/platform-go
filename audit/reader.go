@@ -66,7 +66,18 @@ type Query struct {
 	// tenancy.ErrNoScope rather than widening the read to cover it.
 	Scope *tenancy.Scope
 	// ActorID restricts to one principal. Empty does not filter.
+	//
+	// It matches the actor the entry is filed under, which on an impersonated
+	// entry is the subject and not the operator. What an operator did while
+	// acting as somebody else is ImpersonatorID's to ask; the two are separate
+	// selectors because every selector here is a conjunct, and a caller who
+	// wants both — everything a person is accountable for — reads twice, as
+	// audit/privacy does.
 	ActorID string
+	// ImpersonatorID restricts to the entries one principal recorded while
+	// acting through somebody else's identity. Empty does not filter. See
+	// Actor.Impersonator.
+	ImpersonatorID string
 	// ActorType restricts to one kind of principal. Empty does not filter.
 	ActorType ActorType
 	// ResourceID restricts to one instance. Empty does not filter. Pair it with
@@ -87,6 +98,7 @@ type selectors struct {
 	resourceID   *string
 	resourceType *string
 	eventType    *string
+	impersonator *string
 }
 
 // selectors renders the query's narrowings, each of which an absent value
@@ -108,6 +120,7 @@ func (q *Query) selectors() selectors {
 		resourceID:   optional(q.ResourceID),
 		resourceType: optional(q.ResourceType),
 		eventType:    optional(string(q.EventType)),
+		impersonator: optional(q.ImpersonatorID),
 	}
 }
 
@@ -133,7 +146,7 @@ func (q *Query) validate() error {
 // are deliberately different types: the predicate compares this argument
 // against the column in one arm and against NULL in the other, and that second
 // arm resolves to a type of its own on MySQL. See SelectorArgSuffix in
-// audit/internal/queries, where the split is argued for all six selectors.
+// audit/internal/queries, where the split is argued for every selector.
 func scopeFilter(scope *tenancy.Scope) *string {
 	if scope == nil {
 		return nil
@@ -539,6 +552,8 @@ func (r *SQLReader) listRows(
 		ResourceIDFilter:   narrowings.resourceID,
 		ResourceTypeFilter: narrowings.resourceType,
 		EventTypeFilter:    narrowings.eventType,
+
+		ActorImpersonatorFilter: narrowings.impersonator,
 
 		// The window maps onto recorded_at, so the createdBefore and
 		// createdAfter query parameters an HTTP caller already knows how to
@@ -990,5 +1005,8 @@ func (q *Query) attachTo(op observability.Operation) {
 	}
 	if q.EventType != "" {
 		op.Set(eventTypeKey, string(q.EventType))
+	}
+	if q.ImpersonatorID != "" {
+		op.Set(impersonatorKey, q.ImpersonatorID)
 	}
 }

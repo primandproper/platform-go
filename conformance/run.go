@@ -43,7 +43,11 @@ type Suite struct {
 // Session is what a suite's assertions are handed: the seams, resolved, plus
 // the few things every suite does the same way.
 type Session struct {
-	seams Seams
+	// mounted is the surfaces the subject mounts, as the caller Run probed
+	// with reports them: what a caller built from a connection alone is
+	// rebuilt over.
+	mounted Surfaces
+	seams   Seams
 }
 
 // Seams returns what the subject supplied.
@@ -301,9 +305,7 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 	}
 
 	checkOperatorMethods(t, seams.OperatorMethods)
-	checkRoles(t, seams.Roles)
-
-	session := &Session{seams: seams}
+	checkRoles(t, &seams.Roles)
 
 	probe, err := seams.NewSubject(t.Context())
 	if err != nil {
@@ -313,6 +315,8 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 	if probe == nil {
 		t.Fatal("conformance: the subject factory returned no caller and no error")
 	}
+
+	session := &Session{seams: seams, mounted: probe.Surfaces}
 
 	for i := range suites {
 		suite := &suites[i]

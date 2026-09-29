@@ -70,6 +70,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "administrative sign-in is not available",
 			grpcCode: codes.PermissionDenied,
 		},
+		"impersonation disabled": {
+			err:      signin.ErrImpersonationDisabled,
+			httpCode: httperrors.ErrUserIsNotAuthorized,
+			httpMsg:  "impersonation is not available",
+			grpcCode: codes.PermissionDenied,
+		},
 		"second factor not enrolled": {
 			err:      signin.ErrSecondFactorNotEnrolled,
 			httpCode: httperrors.ErrResourceConflict,
@@ -86,6 +92,24 @@ func TestMappers(T *testing.T) {
 			err:      signin.ErrNoPasswordCredential,
 			httpCode: httperrors.ErrResourceConflict,
 			httpMsg:  "account holds no password to change",
+			grpcCode: codes.FailedPrecondition,
+		},
+		"email address already verified": {
+			err:      signin.ErrEmailAddressAlreadyVerified,
+			httpCode: httperrors.ErrResourceConflict,
+			httpMsg:  "email address is already verified",
+			grpcCode: codes.FailedPrecondition,
+		},
+		"password change required": {
+			err:      signin.ErrPasswordChangeRequired,
+			httpCode: httperrors.ErrUserIsNotAuthorized,
+			httpMsg:  "a password change is required",
+			grpcCode: codes.FailedPrecondition,
+		},
+		"a sign-in that cannot be identified": {
+			err:      signin.ErrSignInNotIdentified,
+			httpCode: httperrors.ErrResourceConflict,
+			httpMsg:  "the sign-in this request came through cannot be identified",
 			grpcCode: codes.FailedPrecondition,
 		},
 	}
@@ -165,7 +189,7 @@ func TestClientSafeSentinels(T *testing.T) {
 	// necessary here. The count is pinned because a sentinel added to the package
 	// and left out of this list is one a gRPC client is told the code's name for,
 	// and nothing else reports that.
-	must.SliceLen(T, 13, signin.ClientSafeSentinels)
+	must.SliceLen(T, 17, signin.ClientSafeSentinels)
 
 	for _, err := range signin.ClientSafeSentinels {
 		_, _, ok := signin.HTTPMapper.Map(err)

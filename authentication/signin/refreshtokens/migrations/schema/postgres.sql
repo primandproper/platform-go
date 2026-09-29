@@ -42,3 +42,9 @@ UPDATE signin_refresh_tokens AS t
 ALTER TABLE signin_refresh_tokens
     ALTER COLUMN signed_in_at SET NOT NULL;
 
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN IF NOT EXISTS access_token_id TEXT;
+
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN IF NOT EXISTS actor_id TEXT;
+

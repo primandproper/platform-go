@@ -442,10 +442,13 @@ func (s *Service) Register(
 // they just committed for an invitation that turned out to be dead, and there
 // is no good answer to that question.
 //
-// The invitation is answered by token, exactly as AcceptInvitation answers one:
-// whoever holds the link may answer it, and whether the address it was sent to
-// is the address being registered is the consumer's check, before the call.
-// This package decides who may do what no more here than anywhere else.
+// The invitation is answered exactly as AcceptInvitation answers one: by its
+// token, and only for the address it was sent to. A registrant whose address is
+// not the invitation's is refused as a wrong token is, and the refusal takes the
+// user down with it like any other. That address is unverified by construction
+// — the registration is what mails the link that verifies it — so a copied link
+// admits only somebody who types the invited address and still has to prove
+// they can read it.
 //
 // The verification token the registrant's link will carry rides in on
 // User.EmailAddressVerificationToken, as it does for any registration —
@@ -494,7 +497,8 @@ func (s *Service) RegisterWithInvitation(
 		// the store's read of the invitation, its pending predicate and its
 		// membership write all see a user who does not exist to anybody else
 		// yet. A refusal here — expired, withdrawn, already answered, wrong
-		// token — aborts the registration rather than leaving a user behind.
+		// token, somebody else's address — aborts the registration rather than
+		// leaving a user behind.
 		membership, err := s.store.AcceptInvitation(ctx, tx, scope, invitationID, token, registered.ID, statusNote)
 		if err != nil {
 			return err
@@ -574,9 +578,11 @@ func (s *Service) Invite(ctx context.Context, scope tenancy.Scope, invitation *I
 // it is the first they hold anywhere, which is what a registration by
 // invitation relies on.
 //
-// The token is checked by the store against the invitation the ID names, and an
-// expired one comes back as ErrInvitationExpired rather than
-// ErrInvitationNotFound so the recipient can be told to ask for another. Two
+// The token is checked by the store against the invitation the ID names, and so
+// is the acceptor's address against the one the invitation was sent to: a
+// leaked link admits nobody but its addressee. Either mismatch is
+// ErrInvitationNotFound. An expired invitation presented by its addressee comes
+// back as ErrInvitationExpired so they can be told to ask for another. Two
 // clicks on one link produce one membership: the second finds nothing pending.
 //
 // statusNote is the acceptor's, and lands beside the sender's untouched note.

@@ -110,6 +110,10 @@ type Invitation struct {
 	// invitation is reachable by the address of whoever registers against it
 	// however either was spelled — see "Handles are folded" in the package
 	// documentation.
+	//
+	// It is also who may answer it. Accepting requires the acceptor's address
+	// to be this one, so the token alone admits nobody: see
+	// InvitationStore.AcceptInvitation.
 	ToEmail string `json:"toEmail"`
 
 	// ToName is what to call the recipient in the email. Optional.

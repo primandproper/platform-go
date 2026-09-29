@@ -73,6 +73,25 @@ type Seams struct {
 	// subjects carry no HTTP, skips the HTTP half.
 	AnonymousHTTP func(ctx context.Context) (*http.Client, error)
 
+	// SignedIn turns a token the sign-in surface issued into a caller: a
+	// connection carrying that token the way the deployment's clients carry
+	// one. Nil skips the assertions that call as somebody the suite signed in
+	// itself, with the reason printed.
+	//
+	// It is the conformance face of the Authorizer seam docs/client-contract.md
+	// describes, and a seam for that seam's reason: nothing in this module
+	// fixes how an access token reaches a server, so no suite can attach one.
+	// A deployment whose clients send the contract's default dials with
+	// "authorization: Bearer <token>" on every call and is done.
+	//
+	// It is what lets an assertion be about a person whose every credential
+	// the suite chose — a registrant, with a password it typed and no second
+	// factor until it enrolls one — rather than a caller NewSubject minted,
+	// whose credentials are the deployment's. The connection is held to the
+	// calls declared for it exactly as a minted caller's is; see
+	// Session.SignedIn.
+	SignedIn func(ctx context.Context, token *signinpb.IssuedToken) (grpc.ClientConnInterface, error)
+
 	// VisitorScope is the tenant the deployment's waitlists surface places a
 	// request with nobody on it in — what its scope resolver answers for the
 	// Anonymous connection. Nil skips the assertions about the public half made
@@ -91,6 +110,12 @@ type Seams struct {
 	// "unknown".
 	VisitorScope *tenancy.Scope
 
+	// Roles is the deployment's role vocabulary, for the assertions that grant
+	// a role. The zero value is this package's own literals, which a deployment
+	// whose roles are open accepts; one whose roles are a closed vocabulary
+	// names the ones it declares. See Roles.
+	Roles Roles
+
 	// CommentTargetType is a target type the deployment's comments.Targets
 	// declares, for the reads that name a comment target. Which kinds of thing
 	// accept comments is the application's vocabulary, so no suite can guess
@@ -101,12 +126,6 @@ type Seams struct {
 	// type declared without an existence check accepts. A deployment whose
 	// types are checked supplies the action as well, and the action wins.
 	CommentTargetType string
-
-	// Roles is the deployment's role vocabulary, for the assertions that grant
-	// a role. The zero value is this package's own literals, which a deployment
-	// whose roles are open accepts; one whose roles are a closed vocabulary
-	// names the ones it declares. See Roles.
-	Roles Roles
 
 	// WebhookURL is an address the deployment's webhooks surface accepts an
 	// endpoint at, for the assertions that register one. Empty is not an
@@ -154,6 +173,20 @@ type Seams struct {
 	// spelled as a full method name.
 	OperatorMethods []string
 
+	// PasswordChangeGateDisabled says the deployment installs no gate holding a
+	// caller who owes a forced password change at the form — it built
+	// signin/grpc's PrincipalExtractor WithoutPasswordChangeGate, or
+	// authenticates through its own interceptor and installed no
+	// PasswordChangeGate behind it. True skips the assertion that
+	// such a caller's ordinary call is refused, with that printed; false, the
+	// zero value, asserts it, because the gate is on by default.
+	//
+	// It is a fact about the deployment rather than an action, and the only one
+	// the suite cannot find out for itself: a call that succeeds for a flagged
+	// caller is either a gate that is off or a gate that is broken, and only the
+	// deployment knows which it meant.
+	PasswordChangeGateDisabled bool
+
 	// ErrorReasonsStripped says the deployment's edge drops a refusal's
 	// client-safe reason before it reaches a client. True skips the reason half
 	// of each assertion that reads one, with that printed; the code half runs
@@ -172,6 +205,20 @@ type Seams struct {
 	// written down that it breaks R11 for its clients, which is the point of
 	// making it say so rather than making everybody else opt in.
 	ErrorReasonsStripped bool
+
+	// ImmediateRevocation says the deployment checks an access token's login on
+	// every request — signin.Service.CheckSignIn, which the sign-in extractor
+	// makes through its WithSignInCheck — so a login that ends stops its access
+	// token working at once rather than when it expires. True runs the
+	// assertion that it does; false skips it, with the reason printed.
+	//
+	// It is a declaration rather than something a suite could find out,
+	// because the default is the other answer and a legitimate one: an access
+	// token is a signed statement that stands until it expires, and a sign-out
+	// takes effect within one access-token lifetime. A deployment that bought
+	// the per-request read has promised its clients more than that, and this is
+	// where it says so and is held to it.
+	ImmediateRevocation bool
 
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
@@ -195,6 +242,19 @@ type Seams struct {
 	// guessed would either flake on the slow one or wait out a minute's
 	// silence on a fast one that had stopped.
 	FulfillmentBudget time.Duration
+
+	// InvitationTokenReturned says the deployment's identity server was built
+	// with identitygrpc.WithInvitationTokenReturned, so Invite answers the
+	// sender with the token beside the invitation and the sender can copy the
+	// link. True asserts that reading — the token comes back, it is the one the
+	// deployment delivered, and a copied link registers the addressed person
+	// into the inviting account and nobody else — in place of the default's,
+	// that it does not come back at all.
+	//
+	// False is the server's default, and so it is the zero value: a deployment
+	// that never opted in has nothing to say here, and one that did says so
+	// rather than having the suite accept either answer.
+	InvitationTokenReturned bool
 }
 
 // Subject is one caller, and the clients it calls through.
@@ -372,10 +432,12 @@ type Actions struct {
 	// InvitationToken reports the token the deployment delivered to an
 	// invitation's recipient — the secret in the link a real invitee clicks.
 	//
-	// There is no RPC that returns it, and that is the point of the design:
+	// By default no RPC returns it, and that is the point of the design:
 	// identity's Invite answers the sender with a redacted invitation, and the
 	// token reaches the recipient through whatever the deployment's AfterInvite
-	// hook queues. A consumer implements this by reading the mail their
+	// hook queues. A deployment that returns it to the sender (see
+	// Seams.InvitationTokenReturned) still delivers it this way, and the suite
+	// checks the two agree. A consumer implements this by reading the mail their
 	// deployment sent; this module's harnesses by a hook that remembers what it
 	// was handed. Either way the token is the deployment's, which is what makes
 	// accepting with it a real acceptance.
@@ -437,17 +499,23 @@ type Actions struct {
 	// what the deployment reports rather than by words it guessed.
 	Notified func(ctx context.Context, scope tenancy.Scope, userID string) (string, error)
 
-	// VerificationToken reports the secret the deployment mailed to an address
-	// when somebody registered with it — the link that proves the address and
-	// finishes the registration.
+	// VerificationToken reports the secret the deployment most recently mailed
+	// to an address as a verification link — the one sent when somebody
+	// registered with it, or the one a later RequestVerificationEmail sent in
+	// its place. It is the link that proves the address and finishes the
+	// registration.
 	//
 	// There is no RPC that returns it: sign-in's Register answers whoever
 	// called it with the registrant and never with the link, because the
-	// person who clicks it is not the client that registered them. The secret
-	// reaches the registrant through whatever the deployment queues from its
-	// identity registration hook. A consumer implements this by reading the
-	// mail their deployment sent; this module's harnesses by a hook that
-	// remembers what it was handed.
+	// person who clicks it is not the client that registered them, and a
+	// resend answers with nothing at all. The secret reaches the registrant
+	// through whatever the deployment queues from its identity registration
+	// hook, and a resend's through its sign-in VerificationMailer. A consumer
+	// implements this by reading the newest such mail their deployment sent;
+	// this module's harnesses by a hook and a mailer that remember what they
+	// were handed. "Most recently" matters: the resend assertions compare the
+	// link read after a resend with the one read before it, and an action that
+	// kept answering with the first would fail them.
 	VerificationToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
 
 	// MagicLinkToken reports the secret the deployment most recently mailed to

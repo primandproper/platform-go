@@ -13,8 +13,8 @@ import (
 )
 
 // mappedSentinels is every sentinel both mappers are expected to have an answer
-// for: the four absences, the two collisions, the two states an act is refused
-// from, the expired invitation, the three writes the directory will not store
+// for: the four absences, the two collisions, the three states an act is
+// refused from, the expired invitation, the three writes the directory will not store
 // as written and the one refusal on authority.
 //
 // One list rather than one per transport, deliberately. A service exposing both
@@ -30,6 +30,7 @@ var mappedSentinels = []error{
 	ErrEmailAddressTaken,
 	ErrLastAccountOwner,
 	ErrNoDefaultAccount,
+	ErrEmailAddressAlreadyVerified,
 	ErrInvitationExpired,
 	ErrScopeMismatch,
 	ErrDisplayNameTooLong,
@@ -163,6 +164,24 @@ func TestMappers_theTwoRefusalsSayWhichActComesFirst(T *testing.T) {
 		must.True(T, grpcOK)
 		test.EqOp(T, codes.FailedPrecondition, grpcCode)
 	}
+}
+
+// TestMappers_anAlreadyVerifiedAddressIsAState: nothing was forbidden and
+// nothing was malformed, the address is simply proven already, so it is the
+// conflict and FailedPrecondition every other refused-from state is.
+func TestMappers_anAlreadyVerifiedAddressIsAState(T *testing.T) {
+	T.Parallel()
+
+	err := platformerrors.Wrap(ErrEmailAddressAlreadyVerified, "minting a link")
+
+	code, msg, ok := HTTPMapper.Map(err)
+	must.True(T, ok)
+	test.EqOp(T, httperrors.ErrResourceConflict, code)
+	test.EqOp(T, "email address is already verified", msg)
+
+	grpcCode, grpcOK := GRPCMapper.Map(err)
+	must.True(T, grpcOK)
+	test.EqOp(T, codes.FailedPrecondition, grpcCode)
 }
 
 // TestMappers_aScopeMismatchIsABadRequest: nothing was refused on authority, the
