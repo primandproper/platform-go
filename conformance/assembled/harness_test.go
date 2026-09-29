@@ -41,6 +41,7 @@ import (
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
+	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -519,6 +520,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	t.Run("staff calls reserved", func(t *testing.T) {
 		conformanceall.Run(t, seams(staffOnly))
+	})
+
+	// And the record the reservations suite skips by, held to the handlers it
+	// describes, which here sit behind this module's own authorizers.
+	t.Run("empty requests refused", func(t *testing.T) {
+		conformance.Run(t, seams(nil), conformancereservations.RosterSuite())
 	})
 }
 
