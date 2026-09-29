@@ -63,6 +63,10 @@ func (s *Session) Dialect() dialect.Dialect { return s.seams.Dialect }
 // standing buys, and AsMember for an ordinary caller regardless, skipping
 // where the subject reserves a call it names.
 //
+// Attempting is the one way to put a reserved call in an ordinary caller's
+// hands: it mints a member to attempt calls it expects to be refused, for the
+// assertion that the deployment refuses them.
+//
 // The skip is the load-bearing half. A deployment with no administrative role
 // is not a deployment that fails this suite; it is one that does not have the
 // idea the assertion was about, and a suite that could not tell the two apart
@@ -93,7 +97,9 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 		t.Fatal("conformance: a caller was asked for as both a member and an administrator")
 	}
 
-	reserved := s.reservedAmong(req.Methods)
+	reserved := s.reservedAmong(slices.DeleteFunc(slices.Clone(req.Methods), func(m string) bool {
+		return slices.Contains(req.attempting, m)
+	}))
 
 	switch {
 	case reserved != "" && req.member:

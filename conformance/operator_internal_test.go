@@ -60,6 +60,22 @@ func skipped(t *testing.T, mint func(t *testing.T)) bool {
 	return inner.Skipped()
 }
 
+// minted runs mint in a subtest and fails where it skipped, for the cases
+// whose assertions would otherwise pass by never being reached.
+func minted(t *testing.T, mint func(t *testing.T)) {
+	t.Helper()
+
+	var inner *testing.T
+
+	t.Run("mint", func(t *testing.T) {
+		inner = t
+
+		mint(t)
+	})
+
+	test.False(t, inner.Skipped(), test.Sprint("the mint skipped where it should have minted"))
+}
+
 func TestSession_Subject_routesByReservation(T *testing.T) {
 	T.Parallel()
 
@@ -117,6 +133,78 @@ func TestSession_Subject_routesByReservation(T *testing.T) {
 			t.Helper()
 
 			minting(true, create).Subject(t, Making(create), AsMember())
+		}))
+	})
+}
+
+func TestAttempting(T *testing.T) {
+	T.Parallel()
+
+	create, list := billingpb.BillingService_CreateProduct_FullMethodName, billingpb.BillingService_ListProducts_FullMethodName
+
+	T.Run("a caller attempting a reserved call is a member", func(t *testing.T) {
+		t.Parallel()
+
+		minted(t, func(t *testing.T) {
+			t.Helper()
+
+			test.EqOp(t, "", minting(true, create).Subject(t, Attempting(create)).UserID)
+		})
+	})
+
+	T.Run("the factory is handed the attempted call among the methods, and asked for no administrator", func(t *testing.T) {
+		t.Parallel()
+
+		var asked *SubjectRequest
+
+		s := &Session{seams: Seams{
+			OperatorMethods: []string{create},
+			NewSubject: func(_ context.Context, opts ...SubjectOption) (*Subject, error) {
+				asked = NewSubjectRequest(opts...)
+
+				return &Subject{}, nil
+			},
+		}}
+
+		minted(t, func(t *testing.T) {
+			t.Helper()
+
+			s.Subject(t, Attempting(create), Making(list))
+		})
+
+		must.NotNil(t, asked)
+		test.SliceContainsAll(t, []string{create, list}, asked.Methods)
+		test.False(t, asked.Admin)
+	})
+
+	T.Run("the attempted call is admitted on the caller's connection", func(t *testing.T) {
+		t.Parallel()
+
+		inner := &answering{}
+		s := &Session{seams: Seams{
+			OperatorMethods: []string{create},
+			NewSubject: func(context.Context, ...SubjectOption) (*Subject, error) {
+				return &Subject{Conn: inner, Surfaces: Surfaces{Billing: billingpb.NewBillingServiceClient(inner)}}, nil
+			},
+		}}
+
+		minted(t, func(t *testing.T) {
+			t.Helper()
+
+			sub := s.Subject(t, Attempting(create))
+
+			test.NoError(t, sub.Conn.Invoke(t.Context(), create, nil, nil))
+			test.Eq(t, []string{create}, inner.calls)
+		})
+	})
+
+	T.Run("a member attempting one reserved call and making another skips", func(t *testing.T) {
+		t.Parallel()
+
+		test.True(t, skipped(t, func(t *testing.T) {
+			t.Helper()
+
+			minting(true, create, list).Subject(t, Attempting(create), Making(list))
 		}))
 	})
 }
