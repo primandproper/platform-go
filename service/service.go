@@ -264,8 +264,10 @@ func (s *Service) resolveHealth(r *resolver, checks []healthcheck.Checker) {
 //     every other loop writes into, so it has to go on polling while they stop
 //     and write their last rows — which is exactly what its Run taking no
 //     context was for.
-//   - The jobs pool is up before the scheduler that enqueues into it, so the
-//     scheduler stops producing before the pool stops consuming.
+//   - The jobs pool, and the application's pool group beside it, are up before
+//     the scheduler that enqueues into them, so the scheduler stops producing
+//     before the pools stop consuming. The scheduler is handed the
+//     application's []jobs.Job here too, since Register has to precede Run.
 //   - The saga worker writes outbox rows, so it stops while the relay is still
 //     draining.
 //   - The remaining loops own their own tables and depend on nothing above
@@ -283,7 +285,8 @@ func (s *Service) resolveHealth(r *resolver, checks []healthcheck.Checker) {
 func (s *Service) resolveRunners(r *resolver) {
 	resolve(r, func(relay *outbox.Relay) { s.addRunner("outbox relay", relay) })
 	resolve(r, func(p *jobs.Pool) { s.addRunner("jobs pool", p) })
-	resolve(r, func(sch *jobs.Scheduler) { s.addRunner("jobs scheduler", sch) })
+	s.resolvePoolGroup(r)
+	s.resolveScheduler(r)
 	resolve(r, func(w *saga.Worker) { s.addRunner("saga worker", w) })
 	resolve(r, func(w *webhooks.Worker) { s.addRunner("webhooks worker", w) })
 	resolve(r, func(w *operations.Worker) { s.addRunner("operations worker", newOperationsRunner(w)) })
@@ -293,11 +296,15 @@ func (s *Service) resolveRunners(r *resolver) {
 // resolveFlushes collects the drains that have no loop of their own and have to
 // happen once, on the way out, after every producer has stopped.
 //
-// There are two, and neither is a loop for the same reason: a Runner's Close is
+// There are three, and none is a loop for the same reason: a Runner's Close is
 // where a single-shot drain belongs when there is a loop to hang it on, which is
 // why eventcapture.Recorder — the third buffered thing in this module — is not
 // here. It drains and closes its sink inside its own Close and rides along as a
 // Runner. An application's single-shot drain belongs there for the same reason.
+//
+// The search index registry is the third: its stamp buffers belong to no loop,
+// and the pool group whose handlers fill them is a runner, so it has closed by
+// the time this slot runs.
 //
 // They are independent of each other, so the order between them is stable
 // rather than meaningful. What is meaningful is the slot: flushes run after the
@@ -316,6 +323,7 @@ func (s *Service) resolveFlushes(r *resolver) {
 	})
 
 	s.resolveOperationsQueue(r)
+	s.resolveSearchIndexing(r)
 }
 
 // resolveOperationsQueue joins the operations work queue's final flush.

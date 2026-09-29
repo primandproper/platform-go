@@ -54,6 +54,21 @@ func (s *Service) Run(ctx context.Context) error {
 		go runner.v.Run()
 	}
 
+	// A loop whose start can fail is started once every loop is running, so a
+	// failure here shuts down loops that were actually run. Closed before Run,
+	// a jobs.Scheduler or jobs.Pool has nothing to end the wait on, and would
+	// spend the whole shutdown budget finding that out.
+	for _, runner := range s.runners {
+		st, ok := runner.v.(starter)
+		if !ok {
+			continue
+		}
+
+		if err := st.Start(ctx); err != nil {
+			return finish(platformerrors.Wrapf(err, "starting the %s", runner.name))
+		}
+	}
+
 	// Serve blocks, so each server gets a goroutine. The channel is buffered to
 	// one slot per server: shutdown stops reading after the first result, and
 	// an unbuffered channel would strand the other goroutines forever.
