@@ -56,6 +56,12 @@ type Service struct {
 	flushes []named[func(context.Context) error]
 	servers []named[Server]
 
+	// poolGroup is the application's *jobs.PoolGroup, when it registered one.
+	// It is also in runners, which close it; it is held here as well because
+	// it is the one loop whose start can fail, and Run starts it by name rather
+	// than by asking every runner whether it has a Start.
+	poolGroup *poolGroupRunner
+
 	// surfaces is what RegisterTransports mounted, in mount order. It is not a
 	// lifecycle slot: a surface has nothing to start and nothing to close, and
 	// the server it is mounted on owns both. It is held because what a service

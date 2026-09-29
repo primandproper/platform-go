@@ -125,6 +125,45 @@ func TestService_PoolGroup(T *testing.T) {
 	})
 }
 
+// startingRunner is an application's runner that happens to have a Start of
+// its own — which the application calls, and Run must not.
+type startingRunner struct {
+	*fakeRunner
+}
+
+func (r *startingRunner) Start(context.Context) error {
+	r.journal.record("start:" + r.name)
+
+	return platformerrors.New("started by somebody who was not told to")
+}
+
+func TestService_StartsOnlyThePoolGroup(T *testing.T) {
+	T.Parallel()
+
+	T.Run("an application runner with a Start of its own is not started", func(t *testing.T) {
+		t.Parallel()
+
+		j := &journal{}
+		i := lifecycleInjector(t, j, nil)
+
+		loop := &startingRunner{fakeRunner: newFakeRunner(j, "app")}
+
+		svc, err := New(i, WithRunners(loop))
+		must.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+
+		errs := make(chan error, 1)
+		go func() { errs <- svc.Run(ctx) }()
+
+		waitFor(t, j, "run:app")
+		cancel()
+
+		must.NoError(t, <-errs)
+		test.SliceNotContains(t, j.all(), "start:app")
+	})
+}
+
 // stampedIndex is a searchsync source and target over one document, which is
 // as much of an index as the registry's shutdown obligation needs: the target
 // accepts it, and the accepted ID is what the stamp buffer holds until Close.

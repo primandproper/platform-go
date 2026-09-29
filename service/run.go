@@ -54,18 +54,17 @@ func (s *Service) Run(ctx context.Context) error {
 		go runner.v.Run()
 	}
 
-	// A loop whose start can fail is started once every loop is running, so a
-	// failure here shuts down loops that were actually run. Closed before Run,
-	// a jobs.Scheduler or jobs.Pool has nothing to end the wait on, and would
-	// spend the whole shutdown budget finding that out.
-	for _, runner := range s.runners {
-		st, ok := runner.v.(starter)
-		if !ok {
-			continue
-		}
-
-		if err := st.Start(ctx); err != nil {
-			return finish(platformerrors.Wrapf(err, "starting the %s", runner.name))
+	// The pool group's start can fail, so it is started once every loop is
+	// running, and a failure here shuts down loops that were actually run.
+	// Closed before Run, a jobs.Scheduler or jobs.Pool has nothing to end the
+	// wait on, and would spend the whole shutdown budget finding that out.
+	//
+	// It is started by name. An application's own runner that happens to have
+	// a Start of its own is the application's to call; Run calls none it was
+	// not told about.
+	if s.poolGroup != nil {
+		if err := s.poolGroup.Start(ctx); err != nil {
+			return finish(platformerrors.Wrap(err, "starting the jobs pool group"))
 		}
 	}
 

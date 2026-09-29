@@ -18,25 +18,15 @@ var ErrScheduledJobsWithoutScheduler = platformerrors.New(
 	"scheduled jobs were provided but no job scheduler is registered to run them",
 )
 
-// starter is a background loop whose start can fail.
-//
-// Runner.Run reports nothing, which is right for a loop that has nothing to
-// set up, and wrong for one that subscribes to a broker on its way up: a
-// subscription that cannot be established is a startup failure, and Run has
-// nowhere to put it. A Runner that is also a starter is started by
-// Service.Run, which takes the service down with the error rather than serving
-// without the loop.
-type starter interface {
-	Start(ctx context.Context) error
-}
-
 // poolGroupRunner joins a *jobs.PoolGroup to the runner slot.
 //
 // A group is not a Runner, and says why: its Start reports whether every pool
-// came up, which a Run returning nothing cannot. So this adapter is a starter
-// as well, and Service.Run calls Start and reports its failure. Its Run only
-// blocks until Close, which is what Runner promises — the pools consume on
-// goroutines the group owns, so there is no loop here for Run to be.
+// came up, which a Run returning nothing cannot. So Service holds this adapter
+// by name as well as in its runners, and Service.Run calls Start and reports
+// its failure — a subscription the broker refuses is a startup failure, not a
+// worker that drains nothing. Its Run only blocks until Close, which is what
+// Runner promises — the pools consume on goroutines the group owns, so there
+// is no loop here for Run to be.
 //
 // It is closed from the runner slot rather than as a flush because the group is
 // a consumer with producers upstream of it: the scheduler that enqueues into it
@@ -48,10 +38,7 @@ type poolGroupRunner struct {
 	once  sync.Once
 }
 
-var (
-	_ Runner  = (*poolGroupRunner)(nil)
-	_ starter = (*poolGroupRunner)(nil)
-)
+var _ Runner = (*poolGroupRunner)(nil)
 
 func newPoolGroupRunner(group *jobs.PoolGroup) *poolGroupRunner {
 	return &poolGroupRunner{group: group, stop: make(chan struct{})}
@@ -84,7 +71,10 @@ func (r *poolGroupRunner) Close(ctx context.Context) error {
 // the standing source of them, which is why the registry and the group arrive
 // together in a worker process.
 func (s *Service) resolvePoolGroup(r *resolver) {
-	resolve(r, func(g *jobs.PoolGroup) { s.addRunner("jobs pool group", newPoolGroupRunner(g)) })
+	resolve(r, func(g *jobs.PoolGroup) {
+		s.poolGroup = newPoolGroupRunner(g)
+		s.addRunner("jobs pool group", s.poolGroup)
+	})
 }
 
 // resolveScheduler joins the jobs scheduler and hands it the application's
