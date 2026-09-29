@@ -39,9 +39,12 @@ takes that answer as a function and assembles the rest.
 
 [Service] runs them: registration, the named login and the discoverable one,
 and the list and archive a settings page offers. It mints nothing — a finished
-login answers with the credential that proved somebody, and issuing them a
-session is authentication/signin's IssueForPrincipal. What it adds is the order
-the steps run in and four decisions every hand-written copy got wrong.
+login answers with the credential that proved somebody and whether the
+authenticator verified them, and issuing them a session is
+authentication/signin's IssueForPrincipal — given its MultiFactor option only
+when [Login.UserVerified] says so, since a passkey is two factors only then.
+What it adds is the order the steps run in and four decisions every
+hand-written copy got wrong.
 
 An unknown username is answered rather than refused. [Service.BeginLogin]
 hands a username nobody holds the same options it hands a known one, and no

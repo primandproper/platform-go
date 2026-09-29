@@ -170,7 +170,8 @@ type Seams struct {
 	//
 	// A deployment's own list is the one to hand over — the one its
 	// authorization interceptor reads. Run checks only that each entry is
-	// spelled as a full method name.
+	// spelled as a full method name; conformance/reservations checks that the
+	// deployment refuses a member each entry on one of this module's surfaces.
 	OperatorMethods []string
 
 	// PasswordChangeGateDisabled says the deployment installs no gate holding a
@@ -688,11 +689,16 @@ type SubjectRequest struct {
 	// keeps each suite honest about naming every call it makes.
 	Methods []string
 
+	// attempting are the calls among Methods named with Attempting, which
+	// Session.Subject leaves out when it reads Methods against
+	// Seams.OperatorMethods.
+	attempting []string
+
 	// Admin asks for a caller holding whatever service role the deployment
 	// treats as administrative.
 	Admin bool
 
-	// member is AsMember: the suite asked for a caller with no administrative
+	// member is AsMember or Attempting: the suite asked for a caller with no administrative
 	// standing, and has already skipped where Methods names a reserved call.
 	// A factory has nothing to do with it, so it is not exported.
 	member bool

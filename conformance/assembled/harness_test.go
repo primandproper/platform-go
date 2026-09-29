@@ -41,6 +41,7 @@ import (
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
+	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
@@ -375,8 +376,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				// through the administrative door, which is what their service
 				// role — and so adminRole, the grants the surfaces ask inside a
 				// handler — rides on: the extractor keeps it off an
-				// ordinary-door token.
-				var issueOpts []signin.IssueOption
+				// ordinary-door token. The credential is taken to have been two
+				// factors, as a verified passkey is, which the administrative door
+				// requires.
+				issueOpts := []signin.IssueOption{signin.MultiFactor()}
 				if req.Admin {
 					issueOpts = append(issueOpts, signin.Administrative())
 				}
@@ -523,6 +526,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	t.Run("staff calls reserved", func(t *testing.T) {
 		conformanceall.Run(t, seams(staffOnly))
+	})
+
+	// And the record the reservations suite skips by, held to the handlers it
+	// describes, which here sit behind this module's own authorizers.
+	t.Run("empty requests refused", func(t *testing.T) {
+		conformance.Run(t, seams(nil), conformancereservations.RosterSuite())
 	})
 }
 

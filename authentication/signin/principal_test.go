@@ -60,14 +60,70 @@ func TestService_IssueForPrincipal(T *testing.T) {
 		test.EqOp(t, user.ID, signedIn.Principal.User.ID)
 	})
 
-	T.Run("the second-factor policy is the credential's, not this door's", func(t *testing.T) {
+	T.Run("a credential that was two factors is asked for no third", func(t *testing.T) {
 		t.Parallel()
 
 		e := newEnv(t, signin.WithSecondFactorPolicy(signin.SecondFactorRequired))
 		e.enrollTOTP(t)
 
-		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "")
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.MultiFactor())
 		must.NoError(t, err)
+	})
+
+	// A passkey the authenticator did not verify the person for: a key tap is
+	// possession alone, and a user with a second factor is asked for it.
+	T.Run("a single-factor credential is asked for the second factor", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		e.enrollTOTP(t)
+
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithCredentialKind("passkey"))
+		test.ErrorIs(t, err, signin.ErrSecondFactorRequired)
+
+		test.SliceEmpty(t, e.hooks.signIns)
+		must.SliceLen(t, 1, e.hooks.failures)
+		test.EqOp(t, e.user.ID, e.hooks.failures[0].UserID)
+		test.ErrorIs(t, e.hooks.failures[0].Reason, signin.ErrSecondFactorRequired)
+	})
+
+	T.Run("a single-factor credential signs in beside its second factor", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		secret := e.enrollTOTP(t)
+
+		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "",
+			signin.WithCredentialKind("passkey"), signin.WithTOTPCode(code(t, secret)))
+		must.NoError(t, err)
+		test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
+
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.EqOp(t, signin.CredentialKind("passkey"), e.hooks.authentications[0].CredentialKind)
+		test.SliceEmpty(t, e.hooks.failures)
+	})
+
+	T.Run("a wrong second-factor code is invalid credentials", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		e.enrollTOTP(t)
+
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithTOTPCode("000000"))
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		test.SliceEmpty(t, e.hooks.signIns)
+		must.SliceLen(t, 1, e.hooks.failures)
+	})
+
+	T.Run("a single-factor credential answers to the service's policy", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithSecondFactorPolicy(signin.SecondFactorRequired))
+
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "")
+		test.ErrorIs(t, err, signin.ErrSecondFactorNotEnrolled)
+		test.SliceEmpty(t, e.hooks.signIns)
 	})
 
 	T.Run("mints a refresh token an exchange accepts", func(t *testing.T) {
@@ -190,15 +246,50 @@ func TestService_IssueForPrincipal_Administrative(T *testing.T) {
 		test.EqOp(t, e.user.ID, e.hooks.failures[0].UserID)
 	})
 
+	// A passkey the authenticator did not verify the person for, at the door
+	// where possession alone is not an answer. No code rescues it: the door
+	// takes none.
+	T.Run("a single-factor credential is refused", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"))
+		e.setServiceRoles(t, "service_admin")
+		secret := e.enrollTOTP(t)
+
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative())
+		test.ErrorIs(t, err, signin.ErrMultiFactorRequired)
+
+		_, err = e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "",
+			signin.Administrative(), signin.WithTOTPCode(code(t, secret)))
+		test.ErrorIs(t, err, signin.ErrMultiFactorRequired)
+
+		test.SliceEmpty(t, e.hooks.signIns)
+		must.SliceLen(t, 2, e.hooks.failures)
+		test.True(t, e.hooks.failures[0].Administrative)
+		test.EqOp(t, e.user.ID, e.hooks.failures[0].UserID)
+		test.ErrorIs(t, e.hooks.failures[0].Reason, signin.ErrMultiFactorRequired)
+	})
+
+	// The role is checked first, so the refusal for a weak credential is not
+	// how a non-administrator learns the door exists.
+	T.Run("the role is checked before the credential's strength", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"))
+
+		_, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative())
+		test.ErrorIs(t, err, signin.ErrNotAnAdministrator)
+	})
+
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		e := newRefreshEnv(t, signin.WithAdminServiceRoles("service_admin"))
 		e.setServiceRoles(t, "service_admin")
 
-		// No second factor is enrolled, and none is asked for: whether the
-		// credential in front of this door was strong enough is the consumer's.
-		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative())
+		// No TOTP secret is enrolled, and none is asked for: the credential was
+		// two factors on its own.
+		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.Administrative(), signin.MultiFactor())
 		must.NoError(t, err)
 
 		test.True(t, signedIn.Administrative)
@@ -247,7 +338,8 @@ func TestService_IssueForPrincipal_WithCredentialKind(T *testing.T) {
 		e.setServiceRoles(t, "service_admin")
 		passkey := signin.CredentialKind("passkey")
 
-		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "", signin.WithCredentialKind(passkey), signin.Administrative())
+		signedIn, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "",
+			signin.WithCredentialKind(passkey), signin.Administrative(), signin.MultiFactor())
 		must.NoError(t, err)
 		test.True(t, signedIn.Administrative)
 
