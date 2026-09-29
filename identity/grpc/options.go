@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
@@ -46,6 +47,16 @@ const defaultInvitationTokenBytes = 32
 // is an account takeover, and there is no second reasonable answer — where the
 // lifetime above genuinely is one.
 type TokenMinter func(ctx context.Context) (string, error)
+
+// PermissionResolver turns role names into the permissions they grant.
+//
+// It is the one method GetPrincipal needs of a role policy, and it is
+// rbac.Resolver's own signature, so a deployment hands that over as it is and
+// this package does not import rbac to take it. Any
+// authorization.PolicyResolver satisfies it too.
+type PermissionResolver interface {
+	PermissionsForRoles(ctx context.Context, roles ...string) (*authorization.PermissionSet, error)
+}
 
 // Option configures a Server.
 type Option func(*Server)
@@ -154,6 +165,39 @@ func WithTargetAuthorizer(authorizer TargetAuthorizer) Option {
 	return func(s *Server) {
 		if authorizer != nil {
 			s.targets = authorizer
+		}
+	}
+}
+
+// WithPermissionResolver makes GetPrincipal answer what the caller may do as
+// well as who they are, on GetPrincipalResponse.permissions. A nil resolver is
+// ignored.
+//
+// Absent, a deployment serves no permissions field at all — not an empty one.
+// A client reads an absent field as "the server did not say" and an empty one
+// as "this caller may do nothing here", and a server with no role policy to
+// consult can only honestly give the first answer.
+//
+// What is resolved is the union of two halves, in one call to the resolver:
+//
+//   - The service roles the request's principal carries — not the ones the
+//     directory holds. A principal is read for them only when it carries the
+//     directory's answer, as signin/grpc's Caller does through Identity; that
+//     copy has already been narrowed by the door the session came through, so
+//     an administrator who signed in the ordinary way is told what an
+//     ordinary session may do. A principal that carries no identity
+//     contributes no service roles.
+//   - The roles the directory says the caller holds in the account GetPrincipal
+//     resolved, which is the one the request named when it named one. A
+//     caller with no membership contributes none.
+//
+// It is not the request's grants. A consumer's GrantsExtractor answers for
+// the session's active account, and GetPrincipal may have been asked about a
+// different one, which would pair one account with another's permissions.
+func WithPermissionResolver(resolver PermissionResolver) Option {
+	return func(s *Server) {
+		if resolver != nil {
+			s.permissions = resolver
 		}
 	}
 }

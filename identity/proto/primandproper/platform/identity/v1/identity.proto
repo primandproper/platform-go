@@ -798,6 +798,42 @@ message GetPrincipalResponse {
   // Absent for a caller who holds no memberships, whose active_account_id is
   // empty.
   Account active_account = 2;
+
+  // permissions is what this session may do in principal.active_account_id:
+  // the union of what its service roles grant and what the caller's roles in
+  // that account grant. A caller who holds no memberships gets the service
+  // half alone.
+  //
+  // The service half is the session's and not the directory's. It is resolved
+  // from the service roles the request's credential carries, so it depends on
+  // which door the session came through: a user who holds a service role and
+  // signed in the ordinary way is told they hold none of its permissions,
+  // because every call they make would be refused them. The account half is
+  // the directory's, for whichever account was resolved -- including one
+  // active_account_id named other than the session's own.
+  //
+  // Absent when the deployment serves no permissions at all, which a client
+  // must not read as "holds nothing": a present value with an empty list is a
+  // caller who may do nothing here, and an absent one is a server that did not
+  // say.
+  //
+  // A permission name is not a method. A client that enables a control
+  // because a permission is listed assumes the deployment requires that
+  // permission for the call behind it, which is this module's default
+  // requirement table. A deployment that has overridden a method's
+  // requirement -- reserved it to operators, or asked for a different
+  // permission -- makes that control wrong until the client learns the
+  // override. The server still refuses the call; the control is only a hint.
+  EffectivePermissions permissions = 3;
+}
+
+// EffectivePermissions wraps a permission list so that its absence is
+// distinguishable from an empty one. See GetPrincipalResponse.permissions.
+message EffectivePermissions {
+  reserved "scope";
+
+  // permissions are sorted, and each is named once.
+  repeated string permissions = 1;
 }
 
 message GetUserRequest {
