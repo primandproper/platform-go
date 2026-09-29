@@ -29,6 +29,7 @@ import (
 	conformancenotifications "github.com/primandproper/platform-go/v14/conformance/notifications"
 	conformanceoauth2clients "github.com/primandproper/platform-go/v14/conformance/oauth2clients"
 	conformancepagination "github.com/primandproper/platform-go/v14/conformance/pagination"
+	conformancepasskeys "github.com/primandproper/platform-go/v14/conformance/passkeys"
 	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
 	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
 	conformancesettings "github.com/primandproper/platform-go/v14/conformance/settings"
@@ -46,7 +47,7 @@ func Suites() []conformance.Suite {
 	return []conformance.Suite{
 		// The cross-cutting one goes first: it reads every mounted surface's
 		// descriptor, so a subject whose wiring refuses everybody finds out
-		// here rather than in twelve surfaces' worth of confusing failures.
+		// here rather than in every surface's worth of confusing failures.
 		conformanceanonymous.Suite(),
 		conformancefilters.Suite(),
 		conformancepagination.Suite(),
@@ -66,6 +67,7 @@ func Suites() []conformance.Suite {
 		conformancecomments.Suite(),
 		conformancewebhooks.Suite(),
 		conformancesignin.Suite(),
+		conformancepasskeys.Suite(),
 	}
 }
 

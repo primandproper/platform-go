@@ -321,6 +321,52 @@ is the consumer's to change. A client whose user is resetting *because* they thi
 is in their account should sign them in afterwards and call `SignOutEverywhere`, which is the one
 sequence that actually ends the other sessions.
 
+## Signing in with a passkey
+
+From v14.2.0, `primandproper.platform.passkeys.v1`. A client generates it beside the sign-in one
+and dials it on the same connection, with the same tenant (R12) and the same `Transport` seam.
+Its login half is anonymous; enrolling, listing and archiving are about the caller and name
+nobody else.
+
+| RPC | what a client does |
+| --- | --- |
+| `BeginRegistration()` | "add a passkey": hand `options` to `navigator.credentials.create` |
+| `FinishRegistration(friendly_name, response)` | send back what `create` resolved with |
+| `BeginLogin(username)` | hand `options` to `navigator.credentials.get`; an empty `username` is the discoverable login |
+| `FinishLogin(username, response, active_account_id, totp_code)` | send back what `get` resolved with, and the same `username` |
+| `ListPasskeys()` / `ArchivePasskey(id)` | the settings page |
+
+The ceremony travels as the JSON the WebAuthn specification defines, in `bytes` fields: the
+options are what a browser's `parseCreationOptionsFromJSON` and `parseRequestOptionsFromJSON`
+read, and the response is the credential's `toJSON()`.
+
+**R18 — a passkey sign-in is a sign-in.** `FinishLogin` answers with the `IssuedToken`
+`LoginForToken` answers with, and everything this document says about that token holds for it:
+the same access token, the same refresh token and rotation (R7), the same `SignOut`. A client
+keeps one token store, not one per credential.
+
+**R19 — a key tap is one factor.** A passkey whose authenticator verified the person — a PIN, a
+biometric — is two factors on its own. One asserted on a tap alone is not, and a person holding
+a proven second factor who signs in with it is refused `SECOND_FACTOR_REQUIRED` exactly as after
+a password: prompt for a code and send `FinishLogin` again with `totp_code` and a fresh
+assertion, since the first one's challenge is spent. A client that requests
+`userVerification: "required"` never meets this.
+
+A refused login is `UNAUTHENTICATED` whatever refused it, an unknown username included, and a
+`BeginLogin` for a username nobody holds answers exactly as one for a username somebody does —
+show the same prompt either way. A key the server reads as cloned is `PERMISSION_DENIED`, and
+no token is issued. Archiving the last passkey of somebody with no other way in is
+`FAILED_PRECONDITION`. The refusals a client branches on carry reasons in the domain
+`passkeys.platform-go.primandproper.github.com`:
+
+| reason | code | what it means for a client |
+| --- | --- | --- |
+| `PASSKEY_LOGIN_FAILED` | `UNAUTHENTICATED` | offer the passkey prompt again, or another door |
+| `PASSKEY_SIGN_COUNT_REGRESSED` | `PERMISSION_DENIED` | stop; this key looks cloned, and the person should remove it and enroll a new one |
+| `PASSKEY_NOT_FOUND` | `NOT_FOUND` | the passkey named is not the caller's live one; refresh the list |
+| `PASSKEY_ALREADY_REGISTERED` | `ALREADY_EXISTS` | this authenticator is already enrolled |
+| `LAST_PASSKEY` | `FAILED_PRECONDITION` | enroll another way in first, then archive this one |
+
 ## Signing out
 
 Two RPCs, and a client wants both. `SignOut` carries the refresh token and needs no caller;

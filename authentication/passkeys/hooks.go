@@ -26,8 +26,8 @@ import (
 // and let something else deliver it.
 type Hooks interface {
 	// AfterRegisterPasskey runs once a registration's credential is written,
-	// on the transaction [Service.FinishRegistration] was handed, with the row
-	// the write answered with.
+	// on the transaction [Service.FinishRegistration] opens for the write, with
+	// the row the write answered with.
 	AfterRegisterPasskey(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *Credential) error
 
 	// AfterArchivePasskey runs once a passkey is revoked, on the transaction

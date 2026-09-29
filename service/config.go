@@ -7,6 +7,7 @@ import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
@@ -144,6 +145,7 @@ type Config struct {
 	OAuth2Server         *oauth2serverstorecfg.Config `env:",init" envPrefix:"OAUTH2_SERVER_"          json:"oauth2Server,omitempty"         yaml:"oauth2Server,omitempty"`
 	Operations           *operationscfg.Config        `env:",init" envPrefix:"OPERATIONS_"             json:"operations,omitempty"           yaml:"operations,omitempty"`
 	Outbox               *outboxcfg.Config            `env:",init" envPrefix:"OUTBOX_"                 json:"outbox,omitempty"               yaml:"outbox,omitempty"`
+	Passkeys             *passkeyscfg.Config          `env:",init" envPrefix:"PASSKEYS_"               json:"passkeys,omitempty"             yaml:"passkeys,omitempty"`
 	PasswordReset        *passwordresetcfg.Config     `env:",init" envPrefix:"PASSWORD_RESET_"         json:"passwordReset,omitempty"        yaml:"passwordReset,omitempty"`
 	RateLimiting         *ratelimitingcfg.Config      `env:",init" envPrefix:"RATE_LIMITING_"          json:"rateLimiting,omitempty"         yaml:"rateLimiting,omitempty"`
 	Retention            *retentioncfg.Config         `env:",init" envPrefix:"RETENTION_"              json:"retention,omitempty"            yaml:"retention,omitempty"`
@@ -318,6 +320,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.OAuth2Server),
 		validation.Field(&cfg.Operations),
 		validation.Field(&cfg.Outbox),
+		validation.Field(&cfg.Passkeys),
 		validation.Field(&cfg.PasswordReset),
 		validation.Field(&cfg.RateLimiting),
 		validation.Field(&cfg.Retention),

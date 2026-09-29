@@ -1,17 +1,18 @@
-// Package services is the twelve gRPC services this module mounts, as the
+// Package services is the gRPC services this module mounts, as the
 // cross-cutting suites find them: a name, a message from the service's package
 // to reach its descriptor through, and the field of conformance.Surfaces it is
 // called through.
 //
 // It is one list because two suites read it, and a second copy is a list that
 // can disagree with the first about which services exist. The anonymous
-// suite's roster test checks it against the protobuf registry, so a thirteenth
-// service fails there until it is added here.
+// suite's roster test checks it against the protobuf registry, so a service
+// added later fails there until it is added here.
 package services
 
 import (
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	oauth2clientspb "github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
@@ -67,6 +68,8 @@ func All() []Service {
 			Mounted: func(s conformance.Surfaces) bool { return s.Notifications != nil }},
 		{Name: "oauth2clients", Service: "OAuth2ClientsService", Sample: &oauth2clientspb.GetOAuth2ClientRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.OAuth2Clients != nil }},
+		{Name: "passkeys", Service: "PasskeysService", Sample: &passkeyspb.BeginLoginRequest{},
+			Mounted: func(s conformance.Surfaces) bool { return s.Passkeys != nil }},
 		{Name: "passwordreset", Service: "PasswordResetService", Sample: &passwordresetpb.RequestPasswordResetRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.PasswordReset != nil }},
 		{Name: "settings", Service: "SettingsService", Sample: &settingspb.GetDefinitionRequest{},

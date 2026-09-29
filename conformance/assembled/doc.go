@@ -36,6 +36,9 @@ it would be proving a service nobody could run.
     its block, so its surface is proven to come from a service.Config. What the
     harness supplies for it is what only an application can: the authenticator,
     which the hand-built reset flow resolves too, and the sign-in link mailer.
+    passkeys is mounted through its block too, beside a WebAuthn block whose
+    ceremony state is the SQL table, and the harness supplies the resolvers and
+    the enrollment gate an application owes it.
     A surface over a service nobody built stays absent. That is the absence
     rule working, not a gap in it.
   - The declarations no environment variable can express: comments.Targets and
@@ -102,7 +105,7 @@ alone meets the same rule.
 
 # Every surface, or a failure
 
-All twelve gRPC surfaces are mounted on every dialect, and the harness hands
+Every gRPC surface is mounted on every dialect, and the harness hands
 every suite a client for each regardless of what mounted. That is deliberate: a surface the
 composition root failed to mount answers Unimplemented, and the anonymous suite
 reads that as a failure rather than skipping, so a regression in what

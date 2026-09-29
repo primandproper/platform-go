@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
@@ -137,7 +138,7 @@ func declare(t *testing.T, sub *Subject, methods []string) *Subject {
 func mountsGRPC(s *Surfaces) bool {
 	return s.Audit != nil || s.Billing != nil || s.Comments != nil || s.Identity != nil ||
 		s.IssueReports != nil || s.Notifications != nil || s.OAuth2Clients != nil ||
-		s.PasswordReset != nil || s.Settings != nil || s.SignIn != nil ||
+		s.Passkeys != nil || s.PasswordReset != nil || s.Settings != nil || s.SignIn != nil ||
 		s.Waitlists != nil || s.Webhooks != nil
 }
 
@@ -171,6 +172,10 @@ func surfacesOver(mounted *Surfaces, conn grpc.ClientConnInterface) Surfaces {
 
 	if mounted.OAuth2Clients != nil {
 		out.OAuth2Clients = oauth2clientspb.NewOAuth2ClientsServiceClient(conn)
+	}
+
+	if mounted.Passkeys != nil {
+		out.Passkeys = passkeyspb.NewPasskeysServiceClient(conn)
 	}
 
 	if mounted.PasswordReset != nil {
