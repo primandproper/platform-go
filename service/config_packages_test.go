@@ -21,24 +21,49 @@ import (
 // happen to say.
 const thisModule = "github.com/primandproper/platform-go/v14"
 
+// exemptionKind is why a config package has no field on Config.
+type exemptionKind int
+
+const (
+	// generic is a package whose Register bridge takes a type argument, so one
+	// field could only switch on one instantiation of it, and which
+	// instantiations a service wants is a fact about the service's own types.
+	// The test checks the bridge really is generic.
+	generic exemptionKind = iota + 1
+
+	// standalone is a package meant to be composed by its caller rather than
+	// switched on by a service's Config: it is complete on its own, and
+	// mounting it from Config would make service carry a sub-config for a
+	// domain only some deployments compose. Nothing about the tree can say
+	// so, which is why the reason beside it is required.
+	standalone
+)
+
+// exemption is one roster entry: the kind of exemption, and the reason in
+// prose.
+type exemption struct {
+	reason string
+	kind   exemptionKind
+}
+
 // exemptConfigPackages are the config packages in this module that deliberately
 // have no field on Config, each with the reason it has none.
 //
-// It is a roster rather than a rule because "generic" is not a property a test
-// can read off a directory: what makes these three different is that their
-// Register functions take a type argument, so one field could only switch on one
-// instantiation of them, and which instantiations a service wants is a fact
-// about the service's own types. The alternative — a Config field per concrete
-// type somebody might want a queue of — is not a config, so these stay explicit
-// calls on the injector Register does not hide.
+// It is a roster rather than a rule because neither kind is fully a property a
+// test can read off a directory. A generic bridge is checked for its type
+// parameter, but the decision that a Config field per concrete type somebody
+// might want a queue of is not a config is still this roster's. A standalone
+// package is one whose own caller composes it — Config not reaching it is the
+// design rather than the gap this test exists to catch — and only its reason
+// says so.
 //
 // An entry here is a decision. A package that acquires a field is deleted from
 // this map, and a package added to the module with no field has to be argued for
 // in a line of prose before this test goes green, which is the point.
-var exemptConfigPackages = map[string]string{
-	"sessions/config":  "sessions.Manager[T] is registered per session payload type",
-	"timers/config":    "timers.Timers[T] is registered per timer payload type",
-	"workqueue/config": "workqueue.Queue[T] is registered per queued message type",
+var exemptConfigPackages = map[string]exemption{
+	"sessions/config":  {kind: generic, reason: "sessions.Manager[T] is registered per session payload type"},
+	"timers/config":    {kind: generic, reason: "timers.Timers[T] is registered per timer payload type"},
+	"workqueue/config": {kind: generic, reason: "workqueue.Queue[T] is registered per queued message type"},
 }
 
 // TestEveryConfigPackageHasAField asserts that every config package in this
@@ -60,19 +85,101 @@ func TestEveryConfigPackageHasAField(t *testing.T) {
 	t.Parallel()
 
 	fielded := configPackagePaths(t)
+	bridges := configPackagesWithBridges(t)
 
-	for _, pkg := range configPackagesWithBridges(t) {
-		if reason, exempt := exemptConfigPackages[pkg]; exempt {
-			test.False(t, fielded[pkg],
-				test.Sprintf("%s has a field on Config and is still listed as exempt (%s); delete the roster entry", pkg, reason))
+	for pkg, bridge := range bridges {
+		if err := judgeConfigPackage(pkg, fielded[pkg], bridge, exemptConfigPackages); err != "" {
+			t.Error(err)
+		}
+	}
 
-			continue
+	for pkg := range exemptConfigPackages {
+		_, found := bridges[pkg]
+		test.True(t, found, test.Sprintf("%s is listed as exempt and declares no Register bridge; delete the roster entry", pkg))
+	}
+}
+
+// judgeConfigPackage is TestEveryConfigPackageHasAField's ruling on one
+// package, as the failure it would report or "" for none. It is a function of
+// its arguments, so the roster's rules are testable against rosters other than
+// the one this module ships.
+func judgeConfigPackage(pkg string, fielded bool, bridge bridgeShape, roster map[string]exemption) string {
+	entry, exempt := roster[pkg]
+	if !exempt {
+		if !fielded {
+			return pkg + " registers something with do but no Config field switches it on, " +
+				"so a deployment can only reach it by assembling the sub-config by hand; " +
+				"give it a field, or list it in exemptConfigPackages with its reason"
 		}
 
-		test.True(t, fielded[pkg],
-			test.Sprintf("%s registers something with do but no Config field switches it on, "+
-				"so a deployment can only reach it by assembling the sub-config by hand", pkg))
+		return ""
 	}
+
+	switch {
+	case fielded:
+		return pkg + " has a field on Config and is still listed as exempt (" + entry.reason + "); delete the roster entry"
+	case strings.TrimSpace(entry.reason) == "":
+		return pkg + " is listed as exempt with no reason; an exemption is a decision, and its reason is the record of it"
+	case entry.kind == generic && !bridge.generic:
+		return pkg + " is exempt as generic and its Register bridge takes no type argument; " +
+			"give it a field, or list it as standalone with its reason"
+	case entry.kind != generic && entry.kind != standalone:
+		return pkg + " is listed as exempt with no kind"
+	}
+
+	return ""
+}
+
+func TestJudgeConfigPackage(T *testing.T) {
+	T.Parallel()
+
+	roster := map[string]exemption{
+		"queue/config":      {kind: generic, reason: "Queue[T] is registered per message type"},
+		"composed/config":   {kind: standalone, reason: "composed by the service that owns its surface, never by Config"},
+		"unreasoned/config": {kind: standalone, reason: " "},
+	}
+
+	T.Run("a package with a field needs no exemption", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "", judgeConfigPackage("fielded/config", true, bridgeShape{}, roster))
+	})
+
+	T.Run("a package with neither a field nor an exemption fails", func(t *testing.T) {
+		t.Parallel()
+
+		test.StrContains(t, judgeConfigPackage("orphan/config", false, bridgeShape{}, roster), "no Config field")
+	})
+
+	T.Run("a generic exemption over a generic bridge passes", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "", judgeConfigPackage("queue/config", false, bridgeShape{generic: true}, roster))
+	})
+
+	T.Run("a generic exemption over a bridge with no type argument fails", func(t *testing.T) {
+		t.Parallel()
+
+		test.StrContains(t, judgeConfigPackage("queue/config", false, bridgeShape{}, roster), "takes no type argument")
+	})
+
+	T.Run("a standalone package with its reason stated passes", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "", judgeConfigPackage("composed/config", false, bridgeShape{}, roster))
+	})
+
+	T.Run("an exemption with no reason fails", func(t *testing.T) {
+		t.Parallel()
+
+		test.StrContains(t, judgeConfigPackage("unreasoned/config", false, bridgeShape{}, roster), "no reason")
+	})
+
+	T.Run("an exempt package that has acquired a field fails", func(t *testing.T) {
+		t.Parallel()
+
+		test.StrContains(t, judgeConfigPackage("composed/config", true, bridgeShape{}, roster), "delete the roster entry")
+	})
 }
 
 // configPackagePaths returns the module-relative directory of every config
@@ -103,6 +210,13 @@ func configPackagePaths(t *testing.T) map[string]bool {
 	return paths
 }
 
+// bridgeShape is what a package's Register bridges look like, as far as the
+// roster cares.
+type bridgeShape struct {
+	// generic is whether any of them takes a type argument.
+	generic bool
+}
+
 // configPackagesWithBridges returns the module-relative directory of every
 // package in this repository declaring an exported function whose name starts
 // with Register and whose only parameter is a do.Injector.
@@ -116,13 +230,13 @@ func configPackagePaths(t *testing.T) map[string]bool {
 // reason the exempt roster exists, so excluding them by signature would answer
 // the question this test asks by never asking it of the three packages it
 // matters for.
-func configPackagesWithBridges(t *testing.T) []string {
+func configPackagesWithBridges(t *testing.T) map[string]bridgeShape {
 	t.Helper()
 
 	root, err := filepath.Abs("..")
 	must.NoError(t, err)
 
-	var packages []string
+	packages := map[string]bridgeShape{}
 
 	must.NoError(t, filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -143,7 +257,8 @@ func configPackagesWithBridges(t *testing.T) []string {
 			return nil
 		}
 
-		if !fileDeclaresInjectorBridge(t, path) {
+		found, isGeneric := fileDeclaresInjectorBridge(t, path)
+		if !found {
 			return nil
 		}
 
@@ -152,19 +267,21 @@ func configPackagesWithBridges(t *testing.T) []string {
 			return relErr
 		}
 
-		packages = append(packages, filepath.ToSlash(rel))
+		pkg := filepath.ToSlash(rel)
+		packages[pkg] = bridgeShape{generic: packages[pkg].generic || isGeneric}
 
 		return nil
 	}))
 
-	must.SliceNotEmpty(t, packages, must.Sprint("found no Register bridges anywhere in the module; the walk, not the tree, is what broke"))
+	must.MapNotEmpty(t, packages, must.Sprint("found no Register bridges anywhere in the module; the walk, not the tree, is what broke"))
 
 	return packages
 }
 
 // fileDeclaresInjectorBridge reports whether path declares an exported
-// Register* function taking exactly one do.Injector.
-func fileDeclaresInjectorBridge(t *testing.T, path string) bool {
+// Register* function taking exactly one do.Injector, and whether one that it
+// declares takes a type argument.
+func fileDeclaresInjectorBridge(t *testing.T, path string) (found, generic bool) {
 	t.Helper()
 
 	source, err := os.ReadFile(path)
@@ -172,7 +289,7 @@ func fileDeclaresInjectorBridge(t *testing.T, path string) bool {
 
 	// A cheap reject before the parse, because most of the tree is neither.
 	if !strings.Contains(string(source), "do.Injector") {
-		return false
+		return false, false
 	}
 
 	file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
@@ -189,9 +306,10 @@ func fileDeclaresInjectorBridge(t *testing.T, path string) bool {
 		}
 
 		if sel, isSel := fn.Type.Params.List[0].Type.(*ast.SelectorExpr); isSel && sel.Sel.Name == "Injector" {
-			return true
+			found = true
+			generic = generic || (fn.Type.TypeParams != nil && len(fn.Type.TypeParams.List) > 0)
 		}
 	}
 
-	return false
+	return found, generic
 }
