@@ -376,12 +376,16 @@ func TestSQLStore_WriteFaults(T *testing.T) {
 func TestDurableRecorder_DropsEveryRecord(T *testing.T) {
 	T.Parallel()
 
-	recorder, env, store, _ := newTestRecorder(T)
+	env := newSQLiteEnv(T)
+	store := env.newStore(T)
+
+	recorder, err := NewDurableRecorder(T.Context(),
+		&RecorderConfig{AllowUnknownMeters: true}, store, newTestRegistry(T, BehaviorBlock, 10))
+	must.NoError(T, err)
 
 	// Every record named an unregistered meter, so nothing survives preparation
 	// and there is nothing to hand the store. Reported as success, because the
-	// record that named an unknown meter is not the caller's to fix — see
-	// RecorderConfig.RejectUnknownMeters.
+	// deployment opted into dropping them — see RecorderConfig.AllowUnknownMeters.
 	must.NoError(T, recordThrough(T, env, recorder,
 		Usage{Subject: testSubject, Meter: "not_registered", Quantity: 1, IdempotencyKey: "req-1"},
 		Usage{Subject: testSubject, Meter: "also_not_registered", Quantity: 2, IdempotencyKey: "req-2"},
