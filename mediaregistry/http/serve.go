@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/internal/routeguard"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 
-	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -108,13 +108,12 @@ type Handler struct {
 	client  database.Client
 	manager uploads.UploadManager
 
-	resolver    CallerResolver
 	entitlement Entitlement
 
-	// enforcer checks PermissionReadObjects before the row is read. It is never
-	// nil: New substitutes one that refuses the route where the consumer
-	// supplied none. See WithEnforcer.
-	enforcer *authzhttp.Enforcer
+	// guard checks PermissionReadObjects before the row is read, and resolves
+	// the caller once for the check and the read behind it. It refuses the
+	// route where the consumer supplied no enforcer. See WithEnforcer.
+	guard *routeguard.Guard[Caller]
 
 	// codec renders the refusals, which are the only bodies this package writes
 	// that are not an object. It is pinned to JSON rather than negotiated: a
@@ -162,17 +161,16 @@ func New(
 		return nil, ErrNilCallerResolver
 	}
 
-	enforcer, err := enforcerOrRefusal(o.enforcer, o.logger)
+	guard, err := routeguard.New(o.enforcer, o.resolver, o.logger)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Handler{
-		enforcer:    enforcer,
+		guard:       guard,
 		store:       store,
 		client:      client,
 		manager:     manager,
-		resolver:    o.resolver,
 		entitlement: o.entitlement,
 		codec: encoding.NewClientEncoder(encoding.ContentTypeJSON,
 			encoding.WithLogger(o.logger),
@@ -198,7 +196,7 @@ func New(
 func (h *Handler) Mount(r *routing.Router) *routing.Route {
 	pattern := h.pattern()
 
-	r.Handle(nethttp.MethodGet, pattern, nethttp.HandlerFunc(h.serve), h.guard(PermissionReadObjects))
+	r.Handle(nethttp.MethodGet, pattern, nethttp.HandlerFunc(h.serve), h.guard.Require(PermissionReadObjects))
 
 	h.describe(r)
 
@@ -266,7 +264,7 @@ func (h *Handler) read(ctx context.Context, span observability.Operation, object
 		return nil, platformerrors.Wrap(mediaregistry.ErrObjectNotFound, "no object named")
 	}
 
-	caller, err := h.resolver(ctx)
+	caller, err := h.guard.Caller(ctx)
 	if err != nil {
 		return nil, span.Error(err, "resolving the caller")
 	}

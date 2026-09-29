@@ -62,35 +62,46 @@ func untouched(svc *dataprivacymock.ServiceMock) bool {
 // for in place of a fail-closed table: every route this surface mounts either
 // requires a permission or is reached on the caller's own standing, and never
 // both.
-func TestPermissions_coverEveryRoute(t *testing.T) {
-	t.Parallel()
+func TestPermissions_coverEveryRoute(T *testing.T) {
+	T.Parallel()
 
-	handlers, router := build(t, &dataprivacymock.ServiceMock{})
+	for _, basePath := range []string{BasePath, "/elsewhere/privacy"} {
+		T.Run(basePath, func(t *testing.T) {
+			t.Parallel()
 
-	mounted := map[string]bool{}
-	for _, route := range handlers.Mount(router) {
-		mounted[route.Method+" "+route.Path] = true
-	}
+			handlers, router := build(t, &dataprivacymock.ServiceMock{}, WithBasePath(basePath))
 
-	must.NoError(t, router.Err())
+			mounted := map[string]bool{}
+			for _, route := range handlers.Mount(router) {
+				mounted[route.Method+" "+route.Path] = true
+			}
 
-	guarded := Permissions()
-	own := OwnStandingRoutes()
+			must.NoError(t, router.Err())
 
-	for route := range mounted {
-		_, isGuarded := guarded[route]
-		isOwn := slices.Contains(own, route)
+			guarded := handlers.Permissions()
+			own := handlers.OwnStandingRoutes()
 
-		test.True(t, isGuarded != isOwn,
-			test.Sprintf("%s must be in exactly one of Permissions and OwnStandingRoutes (guarded=%t, own=%t)", route, isGuarded, isOwn))
-	}
+			for route := range mounted {
+				_, isGuarded := guarded[route]
+				isOwn := slices.Contains(own, route)
 
-	for _, route := range append(slices.Collect(maps.Keys(guarded)), own...) {
-		test.True(t, mounted[route], test.Sprintf("%s is declared and not mounted", route))
-	}
+				test.True(t, isGuarded != isOwn,
+					test.Sprintf("%s must be in exactly one of Permissions and OwnStandingRoutes (guarded=%t, own=%t)", route, isGuarded, isOwn))
+			}
 
-	for route, perms := range guarded {
-		test.SliceNotEmpty(t, perms, test.Sprintf("%s requires no permission, which Require reads as refusing everybody", route))
+			for _, route := range append(slices.Collect(maps.Keys(guarded)), own...) {
+				test.True(t, mounted[route], test.Sprintf("%s is declared and not mounted", route))
+			}
+
+			for route, perms := range guarded {
+				test.SliceNotEmpty(t, perms, test.Sprintf("%s requires no permission, which Require reads as refusing everybody", route))
+			}
+
+			if basePath == BasePath {
+				test.Eq(t, Permissions(), guarded)
+				test.Eq(t, OwnStandingRoutes(), own)
+			}
+		})
 	}
 }
 

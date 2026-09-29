@@ -31,18 +31,29 @@ func enforcerGranting(t *testing.T, perms ...authorization.Permission) *authzhtt
 // for in place of a fail-closed table: every route this surface mounts either
 // requires a permission or is reached on the caller's own standing, and never
 // both.
-func TestPermissions_coverEveryRoute(t *testing.T) {
-	t.Parallel()
+func TestPermissions_coverEveryRoute(T *testing.T) {
+	T.Parallel()
 
-	route := newHandler(t, storeReturning(testObject()), newObjects()).Mount(router(t))
-	key := route.Method + " " + route.Path
+	for _, basePath := range []string{BasePath, "/elsewhere/media"} {
+		T.Run(basePath, func(t *testing.T) {
+			t.Parallel()
 
-	perms, guarded := Permissions()[key]
-	test.True(t, guarded, test.Sprintf("%s is mounted and requires no permission", key))
-	test.SliceNotEmpty(t, perms)
-	test.SliceNotContains(t, OwnStandingRoutes(), key)
-	test.MapLen(t, 1, Permissions())
-	test.SliceEmpty(t, OwnStandingRoutes(), test.Sprint("this surface has no route reached on the caller's own standing"))
+			handler := newHandler(t, storeReturning(testObject()), newObjects(), WithBasePath(basePath))
+			route := handler.Mount(router(t))
+			key := route.Method + " " + route.Path
+
+			perms, guarded := handler.Permissions()[key]
+			test.True(t, guarded, test.Sprintf("%s is mounted and requires no permission", key))
+			test.SliceNotEmpty(t, perms)
+			test.SliceNotContains(t, handler.OwnStandingRoutes(), key)
+			test.MapLen(t, 1, handler.Permissions())
+			test.SliceEmpty(t, handler.OwnStandingRoutes(), test.Sprint("this surface has no route reached on the caller's own standing"))
+
+			if basePath == BasePath {
+				test.Eq(t, Permissions(), handler.Permissions())
+			}
+		})
+	}
 }
 
 func TestHandler_permissions(T *testing.T) {

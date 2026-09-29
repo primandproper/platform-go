@@ -1,13 +1,12 @@
 package http
 
 import (
-	"context"
 	nethttp "net/http"
+
+	"github.com/primandproper/platform-go/v14/internal/routeguard"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
-	"github.com/primandproper/primitives-go/v2/observability/logging"
-	"github.com/primandproper/primitives-go/v2/routing"
 )
 
 // The permissions this surface's routes require, in authorization's
@@ -89,6 +88,20 @@ func OwnStandingRoutes() []string {
 	return []string{RouteGet, RouteEvents}
 }
 
+// Permissions is the package's Permissions as this Handlers mounts them: keyed
+// by the path at the base path it was built with, rather than the default one.
+// It is the list to read off a surface mounted with WithBasePath; the
+// package-level one names each route the way Seams.OperatorRoutes does.
+func (h *Handlers) Permissions() map[string][]authorization.Permission {
+	return routeguard.RebaseKeys(Permissions(), BasePath, h.basePath)
+}
+
+// OwnStandingRoutes is the package's OwnStandingRoutes as this Handlers mounts
+// them, keyed the way its Permissions method is.
+func (h *Handlers) OwnStandingRoutes() []string {
+	return routeguard.RebaseAll(OwnStandingRoutes(), BasePath, h.basePath)
+}
+
 // WithEnforcer supplies the authorization middleware each guarded route is
 // checked by — the HTTP counterpart of the authorization interceptor a
 // consumer installs on its gRPC server, built over the same grants extractor.
@@ -100,60 +113,4 @@ func OwnStandingRoutes() []string {
 // unaffected either way.
 func WithEnforcer(enforcer *authzhttp.Enforcer) Option {
 	return func(o *options) { o.enforcer = enforcer }
-}
-
-// enforcerOrRefusal is enforcer, or where there is none an Enforcer whose every
-// check fails for want of grants — which writes the same 403 a consumer's
-// enforcer writes for a caller holding nothing, and counts it as the
-// misconfiguration it is.
-func enforcerOrRefusal(enforcer *authzhttp.Enforcer, logger logging.Logger) (*authzhttp.Enforcer, error) {
-	if enforcer != nil {
-		return enforcer, nil
-	}
-
-	return authzhttp.NewEnforcer(func(context.Context) (authorization.Grants, bool) {
-		return authorization.Grants{}, false
-	}, authzhttp.WithLogger(logging.EnsureLogger(logger)))
-}
-
-// guard is the middleware in front of a route that requires perms.
-//
-// The grant is checked before the handler runs, so before anything is read:
-// a caller without it is refused as 403 whether or not the operation they
-// named exists, and the refusal says nothing about which identifiers are real.
-//
-// A request whose owners do not resolve — nobody on it — goes straight to the
-// handler instead, which refuses it the way it always has, as the resolver's
-// own error, before it reads anything either. That keeps a request with nobody
-// on it the 401 it is, rather than a 403 claiming somebody was asked about and
-// found wanting.
-func (h *Handlers) guard(perms ...authorization.Permission) routing.Middleware {
-	require := h.enforcer.Require(perms...)
-
-	return func(next nethttp.Handler) nethttp.Handler {
-		required := require(next)
-
-		return nethttp.HandlerFunc(func(res nethttp.ResponseWriter, req *nethttp.Request) {
-			if !h.identified(req.Context()) {
-				next.ServeHTTP(res, req)
-
-				return
-			}
-
-			required.ServeHTTP(res, req)
-		})
-	}
-}
-
-// identified reports whether the request's owners resolve.
-func (h *Handlers) identified(ctx context.Context) bool {
-	if h.owners != nil {
-		owners, err := h.owners(ctx)
-
-		return err == nil && len(owners) > 0
-	}
-
-	_, err := h.resolver(ctx)
-
-	return err == nil
 }

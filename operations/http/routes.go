@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/internal/routeguard"
 	"github.com/primandproper/platform-go/v14/operations"
 
-	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httpx "github.com/primandproper/primitives-go/v2/errors/http"
@@ -128,19 +128,18 @@ type Handlers struct {
 	// types would not survive the newline normalization the framing does.
 	codec encoding.Codec
 
-	watcher  *operations.Watcher
-	resolver OwnerResolver
-	owners   OwnersResolver
+	watcher *operations.Watcher
 
 	// upgrader is built once rather than per request, because the reconnection
 	// hint it writes is the same bytes for every stream and because an Upgrader
 	// assembled from validated options cannot fail to be assembled.
 	upgrader *sse.Upgrader
 
-	// enforcer checks the grant each route in Permissions requires. It is never
-	// nil: New substitutes one that refuses every guarded route where the
-	// consumer supplied none. See WithEnforcer.
-	enforcer *authzhttp.Enforcer
+	// guard checks the grant each route in Permissions requires, and resolves
+	// the request's owners once for the check and the handler behind it. It
+	// refuses every guarded route where the consumer supplied no enforcer. See
+	// WithEnforcer.
+	guard *routeguard.Guard[[]tenancy.Scope]
 
 	basePath string
 	tags     []string
@@ -199,18 +198,16 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 	// comparison and answers identically.
 	httpx.RegisterHTTPErrorMapper(operations.HTTPMapper)
 
-	enforcer, err := enforcerOrRefusal(o.enforcer, o.logger)
+	guard, err := routeguard.New(o.enforcer, resolveOwners(o.resolver, o.owners), o.logger)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Handlers{
-		enforcer: enforcer,
-		svc:      svc,
-		watcher:  o.watcher,
-		resolver: o.resolver,
-		owners:   o.owners,
-		codec:    encoding.NewClientEncoder(encoding.ContentTypeJSON, encoding.WithLogger(o.logger), encoding.WithTracerProvider(o.tracerProvider)),
+		guard:   guard,
+		svc:     svc,
+		watcher: o.watcher,
+		codec:   encoding.NewClientEncoder(encoding.ContentTypeJSON, encoding.WithLogger(o.logger), encoding.WithTracerProvider(o.tracerProvider)),
 		upgrader: sse.NewUpgrader(
 			sse.WithLogger(o.logger),
 			sse.WithTracerProvider(o.tracerProvider),
@@ -295,7 +292,7 @@ func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 	return routing.Get(r, h.basePath, h.list,
 		routing.WithSummary("List long-running operations"),
 		routing.WithTags(h.tags...),
-		routing.WithMiddleware(h.guard(PermissionListOperations)),
+		routing.WithMiddleware(h.guard.Require(PermissionListOperations)),
 	)
 }
 
@@ -320,7 +317,7 @@ func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 		// finished, the cancellation is complete by the time this returns.
 		routing.WithResponseStatus(nethttp.StatusOK),
 		routing.WithTags(h.tags...),
-		routing.WithMiddleware(h.guard(PermissionCancelOperations)),
+		routing.WithMiddleware(h.guard.Require(PermissionCancelOperations)),
 	)
 }
 
@@ -503,44 +500,59 @@ func filterFrom(in listInput) *filtering.QueryFilter {
 //
 // It is one function rather than a call in each handler so that a handler cannot
 // be written that reads without resolving one: there is no path to svc.Get or
-// svc.List from here that does not come through resolved owners. A deployment
-// that supplied the single resolver has a set of one.
+// svc.List from here that does not come through resolved owners. On a guarded
+// route the owners are the ones the guard resolved before checking the grant,
+// rather than a second resolution of the same request.
 func (h *Handlers) scopes(ctx context.Context, span observability.Operation) ([]tenancy.Scope, error) {
-	if h.owners == nil {
-		scope, err := h.resolver(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		span.Set(ownerKey, scope.String())
-
-		return []tenancy.Scope{scope}, nil
-	}
-
-	resolved, err := h.owners(ctx)
+	owners, err := h.guard.Caller(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	owners := make([]tenancy.Scope, 0, len(resolved))
-	names := make([]string, 0, len(resolved))
-
-	for _, owner := range resolved {
-		if slices.Contains(owners, owner) {
-			continue
-		}
-
-		owners = append(owners, owner)
+	names := make([]string, 0, len(owners))
+	for _, owner := range owners {
 		names = append(names, owner.String())
-	}
-
-	if len(owners) == 0 {
-		return nil, ErrNoOwners
 	}
 
 	span.Set(ownerKey, strings.Join(names, ","))
 
 	return owners, nil
+}
+
+// resolveOwners is every owner a request's resolvers answer, deduplicated. A
+// deployment that supplied the single resolver has a set of one; one whose
+// OwnersResolver answered nobody is ErrNoOwners.
+func resolveOwners(resolver OwnerResolver, resolveAll OwnersResolver) func(context.Context) ([]tenancy.Scope, error) {
+	if resolveAll == nil {
+		return func(ctx context.Context) ([]tenancy.Scope, error) {
+			scope, err := resolver(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			return []tenancy.Scope{scope}, nil
+		}
+	}
+
+	return func(ctx context.Context) ([]tenancy.Scope, error) {
+		resolved, err := resolveAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		owners := make([]tenancy.Scope, 0, len(resolved))
+		for _, owner := range resolved {
+			if !slices.Contains(owners, owner) {
+				owners = append(owners, owner)
+			}
+		}
+
+		if len(owners) == 0 {
+			return nil, ErrNoOwners
+		}
+
+		return owners, nil
+	}
 }
 
 // firstOwner asks call under each of the request's owners in turn and answers
