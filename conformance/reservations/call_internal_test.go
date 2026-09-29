@@ -151,3 +151,15 @@ func TestCall(T *testing.T) {
 		test.NoError(t, call(t.Context(), c, "/conformance.reservations.Streamer/Download", method))
 	})
 }
+
+func TestEmptyRequestRefused_NamesMethodsOnThisModulesSurfaces(t *testing.T) {
+	t.Parallel()
+
+	for full, reason := range emptyRequestRefused {
+		test.NotEq(t, "", reason, test.Sprintf("%s is listed with no reason", full))
+
+		surface, method := resolve(t, full)
+		test.NotNil(t, surface, test.Sprintf("%s names no service this module ships", full))
+		test.NotNil(t, method, test.Sprintf("%s names no method", full))
+	}
+}

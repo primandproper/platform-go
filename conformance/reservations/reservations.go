@@ -66,10 +66,15 @@ func assertReserved(t *testing.T, s *conformance.Session, probe *conformance.Sub
 
 	admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(full))
 
-	switch status.Code(call(admin.Context(t.Context()), admin.Conn, full, method)) {
+	switch control := call(admin.Context(t.Context()), admin.Conn, full, method); status.Code(control) {
 	case codes.PermissionDenied:
-		t.Skipf("conformance: %s refused an administrator's empty request as PermissionDenied too; "+
-			"the handler refuses an empty request that way, so a reservation cannot be told from it", full)
+		if reason, listed := emptyRequestRefused[full]; listed {
+			t.Skipf("conformance: %s refuses an administrator's empty request as PermissionDenied too (%s), "+
+				"so a reservation cannot be told from it", full, reason)
+		}
+
+		t.Fatalf("%s refused an administrator as PermissionDenied (%v); the subject reserves it to its operators "+
+			"and refuses them it, and its handler is not one emptyRequestRefused says refuses an empty request", full, control)
 	case codes.Unauthenticated:
 		t.Fatalf("%s refused an administrator as unauthenticated; the subject's administrator credential is not reaching the service", full)
 	default:

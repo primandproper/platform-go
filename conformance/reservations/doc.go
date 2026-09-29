@@ -40,6 +40,16 @@ administrator's empty request is refused exactly as the member's is. There the
 entry skips, saying that a reservation cannot be told from the handler, rather
 than guessing a request that would get past it.
 
+Which calls those are is written down rather than read off the answer. An
+administrator refused as PermissionDenied is also what a deployment whose
+interceptor refuses its own operators looks like, and a skip taken on the
+answer alone would pass that deployment on every entry. So the skip is taken
+only for a call this package lists as one whose handler refuses an empty
+request, and an administrator refused any other reserved call fails the entry.
+RosterSuite, which this module's assembled subject runs and conformance/all
+does not, holds each listed call to that claim, so an entry that stops
+describing its handler reds rather than excusing a skip nothing causes.
+
 # What it does not assert
 
 A reserved call on a service this module does not ship. What this suite
