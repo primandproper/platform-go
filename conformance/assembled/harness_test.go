@@ -234,6 +234,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	do.ProvideValue(i, links)
 	do.ProvideValue[signin.MagicLinkMailer](i, links)
 
+	// And the consumer's registration policy, which refuses a registrant who
+	// has not accepted every agreement — so the sign-in suite runs against a
+	// deployment that requires them.
+	do.ProvideValue[signin.RegistrationPolicy](i, requireAgreements)
+
 	// And, on a run that confirms, the consumer's waitlist confirmation mailer,
 	// whose presence is what mounts the loop — over the minter the Links block
 	// above registered.
