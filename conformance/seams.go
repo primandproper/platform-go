@@ -3,6 +3,7 @@ package conformance
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
@@ -172,6 +173,18 @@ type Seams struct {
 	// spelled as a full method name; conformance/reservations checks that the
 	// deployment refuses a member each entry on one of this module's surfaces.
 	OperatorMethods []string
+
+	// FulfillmentBudget is how long this deployment may take to pick queued
+	// work up and finish it — a privacy request submitted to its worker, say.
+	// Zero is DefaultFulfillmentBudget. Session.Await waits this long, or until
+	// the test's own deadline if that comes first.
+	//
+	// A fact about the deployment rather than an action, and the deployment's
+	// because nothing else knows it: one worker is woken the moment work is
+	// queued, another sleeps a whole poll interval first, and a suite that
+	// guessed would either flake on the slow one or wait out a minute's
+	// silence on a fast one that had stopped.
+	FulfillmentBudget time.Duration
 
 	// PasswordChangeGateDisabled says the deployment installs no gate holding a
 	// caller who owes a forced password change at the form — it built
@@ -577,6 +590,27 @@ type Actions struct {
 	// same target type too, since the moderation read is asserted across two
 	// targets of one type.
 	CommentTarget func(ctx context.Context, scope tenancy.Scope) (targetType, targetID string, err error)
+
+	// ArtifactExpired brings a completed export's artifact window to an end,
+	// and runs the deployment's sweep over it: the artifact is gone and the
+	// request reads expired, the way it does once the days a deployment keeps
+	// an export for have passed and its scheduled sweep has come round.
+	//
+	// An action because no client can bring either about. The window is
+	// stamped onto the row by the worker that completed the export, so a
+	// shorter one in configuration reaches only exports not yet made, and the
+	// sweep is a job the deployment schedules rather than a call anybody
+	// makes. How the subject gets there — a sweep run at a clock past the
+	// request's expiry, most likely — is its own business, and the suite only
+	// reads the row afterwards.
+	//
+	// A sweep is usually deployment-wide, so a subject whose sweep would expire
+	// other exports as well confines it however it can — to this request, or
+	// behind a lock its own tests share — rather than let the suite's
+	// assertions about a live artifact race it. It returns an error when the
+	// request's artifact was not expired, rather than reporting success on a
+	// sweep that found nothing.
+	ArtifactExpired func(ctx context.Context, scope tenancy.Scope, requestID string) error
 }
 
 // WaitlistLinks are the two secrets a confirming deployment mails to an address

@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -202,6 +203,91 @@ func (s *Session) NeedsAction(t *testing.T, present bool, what string) {
 
 	if !present {
 		t.Skipf("conformance: this subject supplies no %s action, and no client can bring that state about on its own", what)
+	}
+}
+
+// DefaultFulfillmentBudget is how long Session.Await waits where the subject
+// named no Seams.FulfillmentBudget: long enough for a worker that polls its
+// queue every few seconds to pick work up and finish it several times over.
+const DefaultFulfillmentBudget = 2 * time.Minute
+
+const (
+	// awaitInterval is how often Await asks again.
+	awaitInterval = 250 * time.Millisecond
+
+	// awaitGrace is how far short of the test binary's own deadline Await
+	// gives up, so a wait that runs out fails its test by name rather than
+	// panicking the whole binary with every other test's goroutines.
+	awaitGrace = 5 * time.Second
+)
+
+// errBudgetSpent is what poll reports when the deadline came first.
+var errBudgetSpent = platformerrors.New("the fulfillment budget was spent first")
+
+// Await asks probe until it reports done, failing the test naming what it was
+// waiting for if probe errs or the subject's fulfillment budget runs out first.
+//
+// It is for the assertions about work the deployment finishes after answering
+// — a privacy request fulfilled by a worker, say — and it waits on whatever a
+// client can see rather than on the machinery: probe reads the row the caller
+// would read, so work that finished without moving it is a timeout here, which
+// is the bug it is. The budget is Seams.FulfillmentBudget, or
+// DefaultFulfillmentBudget, and never runs past the test's own deadline.
+func (s *Session) Await(t *testing.T, what string, probe func() (done bool, err error)) {
+	t.Helper()
+
+	testDeadline, bounded := t.Deadline()
+	deadline := awaitDeadline(time.Now(), s.seams.FulfillmentBudget, testDeadline, bounded)
+
+	if err := poll(t.Context(), deadline, awaitInterval, probe); err != nil {
+		t.Fatalf("conformance: waiting for %s: %v", what, err)
+	}
+}
+
+// awaitDeadline is when a wait begun at now gives up: the budget from now, or
+// awaitGrace short of the test's deadline where that comes first.
+func awaitDeadline(now time.Time, budget time.Duration, testDeadline time.Time, bounded bool) time.Time {
+	if budget <= 0 {
+		budget = DefaultFulfillmentBudget
+	}
+
+	deadline := now.Add(budget)
+	if bounded && testDeadline.Add(-awaitGrace).Before(deadline) {
+		deadline = testDeadline.Add(-awaitGrace)
+	}
+
+	return deadline
+}
+
+// poll asks probe every interval until it is done, it errs, ctx ends, or the
+// deadline passes. probe is always asked at least once, so a deadline already
+// behind it still reads the state once rather than failing unseen.
+func poll(ctx context.Context, deadline time.Time, interval time.Duration, probe func() (bool, error)) error {
+	started := time.Now()
+
+	for {
+		done, err := probe()
+		if err != nil {
+			return err
+		}
+
+		if done {
+			return nil
+		}
+
+		if !time.Now().Before(deadline) {
+			return platformerrors.Wrapf(errBudgetSpent, "after %s", time.Since(started).Round(time.Millisecond))
+		}
+
+		timer := time.NewTimer(min(interval, time.Until(deadline)))
+
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 }
 

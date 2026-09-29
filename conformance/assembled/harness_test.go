@@ -42,6 +42,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
 	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
+	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -213,7 +214,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// services Register does not build, the interceptors the gRPC server
 	// resolves, the extractor, and the rules about rows.
 	commentable := &things{}
-	registerApplication(i, prefix, commentable)
+	people := &directories{}
+	registerApplication(i, prefix, commentable, people)
 
 	// The consumer's identity hooks, which is where an invitation's token goes
 	// to be mailed. identity/config resolves them when it builds the service.
@@ -367,6 +369,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					return nil, registerErr
 				}
 
+				people.remember(reg.User.ID, scope)
+
 				// The subject's credential is a token the sign-in service minted
 				// for them, the way a sign-in would have. An administrator's comes
 				// through the administrative door, which is what their service
@@ -421,6 +425,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				Registered: register(client,
 					do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
 				CommentTarget: commentable.bring,
+				ArtifactExpired: expireArtifact(client,
+					do.MustInvoke[dataprivacy.Store](i), do.MustInvoke[uploads.UploadManager](i)),
 
 				// The recorder the composition root built, inside a transaction on
 				// the client it built — the end of the path a consumer's handler
