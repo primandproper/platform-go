@@ -2,6 +2,7 @@ package signin
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -237,6 +238,13 @@ func freshEmail() string { return identifiers.New() + "@conformance.invalid" }
 
 // registrationRequest is a registration for somebody nobody has registered,
 // naming no credential; each caller names the one it is about.
+//
+// It accepts every agreement. Whether any are required is the deployment's,
+// through its signin.RegistrationPolicy, and a policy insisting on the terms
+// being accepted is the seam doing what it was added for — so a registration
+// naming none would be refused before the suite asserted anything. Agreements
+// are a closed set, so naming every one satisfies any such policy, and a
+// deployment requiring none only stamps them, which no assertion reads.
 func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
 	username := "conf_" + identifiers.New()
 
@@ -248,7 +256,24 @@ func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
 		},
 		Account:    &identitypb.AccountCreationInput{Name: username + "'s"},
 		OwnerRoles: []string{s.Roles().Owner},
+		Agreements: everyAgreement(),
 	}
+}
+
+// everyAgreement is every document a registrant can accept, read off the enum
+// so that a third one is accepted the day it is added.
+func everyAgreement() []identitypb.Agreement {
+	var agreements []identitypb.Agreement
+
+	for number := range identitypb.Agreement_name {
+		if agreement := identitypb.Agreement(number); agreement != identitypb.Agreement_AGREEMENT_UNSPECIFIED {
+			agreements = append(agreements, agreement)
+		}
+	}
+
+	slices.Sort(agreements)
+
+	return agreements
 }
 
 // withPassword names password as a registration's credential.
