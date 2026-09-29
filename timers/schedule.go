@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/timers/internal/timersdb"
 
+	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -21,12 +22,12 @@ type encodedTimer struct {
 	payload []byte
 }
 
-// Schedule writes timers, and returns once they are durably scheduled.
+// Schedule writes timers on tx, and they are durably scheduled once tx commits.
 //
 // This is the whole of the package's durability claim, and it is why an
 // in-process time.AfterFunc is not an implementation of it: the schedule is a
-// row before this returns, so it survives the process, the deploy, and the
-// machine. A wakeup is only ever the news that a row exists.
+// row, so it survives the process, the deploy, and the machine. A wakeup is
+// only ever the news that a row exists.
 //
 // Scheduling a key that already has a timer moves that timer rather than adding
 // a second one, and the new instant wins outright — later as readily as earlier.
@@ -49,43 +50,43 @@ type encodedTimer struct {
 // when it redelivers "start trial": treating it as a move would free a row
 // somebody is firing and let a second worker fire it too.
 //
-// The whole batch is one statement on Postgres and one transaction elsewhere,
-// so either every timer in it is scheduled or none is. Unlike a work queue's
-// enqueue there is no group commit across concurrent callers: scheduling is not
-// a per-request write path — one row is created when a trial starts, not on
-// every read of it — so the contention that makes merging worth its complexity
-// does not arise. If you find yourself scheduling on every request, you want a
-// work queue.
+// The whole batch is one statement on Postgres and a statement per timer
+// elsewhere, all on tx, so either every timer in it is scheduled or none is.
+// Unlike a work queue's enqueue there is no group commit across concurrent
+// callers: scheduling is not a per-request write path — one row is created when
+// a trial starts, not on every read of it — so the contention that makes merging
+// worth its complexity does not arise. If you find yourself scheduling on every
+// request, you want a work queue.
 //
-// What that statement does not join is the caller's transaction. Schedule writes
-// on this set's own handle and there is no variant taking a database.Tx. Unlike
-// a work queue's enqueue, where a batch shared between callers makes one
-// impossible, that is a choice with a reason rather than a constraint: the write
-// runs under pgretry, which re-runs it when Postgres reports one of the two
-// class 40 conditions it resolves by asking for the statement to be run again.
-// Inside somebody else's transaction there is nothing to re-run — the failure
-// has already aborted that transaction, and only its owner can open another — so
-// a transactional Schedule would hand a deadlock back as an error on a table
-// whose ordered locking exists precisely because concurrent writers meet there.
+// The write joins the caller's transaction, which is the point of taking one: a
+// trial and the timer that expires it are one fact, so a schedule written in the
+// transaction that creates the trial commits with it and rolls back with it. A
+// rolled-back subject leaves no timer to fire for it, and a committed one cannot
+// be left with no timer to expire it — the direction that costs most, because a
+// firing that never comes is not an error anybody is holding. It is silence.
 //
-// A choice costs something, and the cost belongs in the open. A trial and the
-// timer that expires it commit separately, in both directions: a schedule
-// written inside client.WithTransaction outlives that transaction's rollback and
-// fires for a subject that was never created, and a schedule that fails after
-// the subject's transaction committed leaves a trial nothing will ever expire.
-// The second is the expensive direction, because a firing that never comes is
-// not an error anybody is holding — it is silence.
+// What the caller takes on in exchange is the retry. A deadlock or a
+// serialization failure aborts the transaction it happens in, and only the
+// transaction's owner can open another, so Schedule returns it rather than
+// re-running the statement. It is rare — every writer here locks in key order —
+// and it is loud, which is the right way round: run the transaction under
+// database.WithTransaction with database.RetryOnConflict and the whole of it is
+// re-run, the subject's write along with the schedule.
 //
-// So where the schedule must not be lost, write the fact into the transaction
-// that created the subject — an outbox message is the shape — and Schedule from
-// whatever consumes it: the message lives or dies with the row, and the consumer
-// retries until the schedule lands. Otherwise schedule after the commit, and
-// keep the handler tolerant of a key whose subject is gone, which it has to be
-// regardless: Cancel and the subject's own deletion are two writes, so a firing
-// that finds nothing to do is done rather than failed.
-func (t *Timers[K]) Schedule(ctx context.Context, scheduled ...Timer[K]) error {
+// A timer is not tenant data, so there is no tenancy.Scope to bind. The set is
+// the component's own partition of its table, and the key is opaque to it: a
+// caller whose timers belong to tenants names the tenant in the key.
+//
+// On Postgres, with Config.NotifyChannel set, the wakeup is sent on tx too, and
+// Postgres delivers a notification only when its transaction commits — so a
+// poller is never woken for a timer that was rolled back.
+func (t *Timers[K]) Schedule(ctx context.Context, tx database.Tx, scheduled ...Timer[K]) error {
 	ctx, op := t.o11y.Begin(ctx, observability.WithValue(timerCountKey, len(scheduled)))
 	defer op.End()
+
+	if tx == nil {
+		return op.Error(ErrNilTransaction, "scheduling timers")
+	}
 
 	if len(scheduled) == 0 {
 		return nil
@@ -119,12 +120,10 @@ func (t *Timers[K]) Schedule(ctx context.Context, scheduled ...Timer[K]) error {
 	rows = sortAndDedupeTimers(rows)
 
 	// MySQL and SQLite have no array to bind a column of, so the batch is a
-	// statement per timer there instead, in one transaction. Nothing is
-	// notified: New has refused a channel on a dialect with no NOTIFY.
+	// statement per timer there instead. Nothing is notified: New has refused a
+	// channel on a dialect with no NOTIFY.
 	if t.split != nil {
-		if err := t.retrier.Do(ctx, "schedule", func() error {
-			return t.scheduleSplit(ctx, rows)
-		}); err != nil {
+		if err := t.scheduleSplit(ctx, tx, rows); err != nil {
 			return op.Error(err, "scheduling timers")
 		}
 
@@ -147,24 +146,20 @@ func (t *Timers[K]) Schedule(ctx context.Context, scheduled ...Timer[K]) error {
 		payloads = append(payloads, rows[i].payload)
 	}
 
-	if err := t.retrier.Do(ctx, "schedule", func() error {
-		if execErr := t.q.ScheduleTimers(ctx, t.client.Writer(), timersdb.ScheduleTimersParams{
-			TimerSet:  t.cfg.Name,
-			TimerKeys: keys,
-			RunAts:    instants,
-			Payloads:  payloads,
-		}); execErr != nil {
-			return platformerrors.Wrap(execErr, "writing timers")
-		}
-
-		return nil
+	if err := t.q.ScheduleTimers(ctx, tx, timersdb.ScheduleTimersParams{
+		TimerSet:  t.cfg.Name,
+		TimerKeys: keys,
+		RunAts:    instants,
+		Payloads:  payloads,
 	}); err != nil {
+		return op.Error(platformerrors.Wrap(err, "writing timers"), "scheduling timers")
+	}
+
+	if err := t.notify(ctx, tx); err != nil {
 		return op.Error(err, "scheduling timers")
 	}
 
 	t.scheduledCounter.Add(ctx, int64(len(rows)), t.attrs)
-
-	t.notify(ctx)
 
 	return nil
 }
@@ -172,8 +167,8 @@ func (t *Timers[K]) Schedule(ctx context.Context, scheduled ...Timer[K]) error {
 // ScheduleAt is Schedule for one timer named by an absolute instant, which is
 // the shape most callers have: the deadline came from a subscription, a contract,
 // or a policy, and is already a time.Time.
-func (t *Timers[K]) ScheduleAt(ctx context.Context, key K, runAt time.Time, payload []byte) error {
-	return t.Schedule(ctx, Timer[K]{Key: key, RunAt: runAt, Payload: payload})
+func (t *Timers[K]) ScheduleAt(ctx context.Context, tx database.Tx, key K, runAt time.Time, payload []byte) error {
+	return t.Schedule(ctx, tx, Timer[K]{Key: key, RunAt: runAt, Payload: payload})
 }
 
 // ScheduleIn is Schedule for one timer named by a delay from now — "remind them
@@ -189,28 +184,30 @@ func (t *Timers[K]) ScheduleAt(ctx context.Context, key K, runAt time.Time, payl
 // allowed — a timer fired as soon as a worker gets to it is a meaningful request
 // — where a zero RunAt is not, because a zero RunAt is what a forgotten
 // assignment looks like.
-func (t *Timers[K]) ScheduleIn(ctx context.Context, key K, delay time.Duration, payload []byte) error {
-	return t.Schedule(ctx, Timer[K]{Key: key, RunAt: t.clock.Now().Add(delay), Payload: payload})
+func (t *Timers[K]) ScheduleIn(ctx context.Context, tx database.Tx, key K, delay time.Duration, payload []byte) error {
+	return t.Schedule(ctx, tx, Timer[K]{Key: key, RunAt: t.clock.Now().Add(delay), Payload: payload})
 }
 
-// notify wakes whoever is listening, after the rows are committed and never
+// notify wakes whoever is listening, on the transaction that wrote the rows.
+// Postgres queues a notification until its transaction commits and discards it
+// on a rollback, so a poller is woken after the rows are visible and never
 // before — a poller woken early would re-read a next-due time that has not
 // changed yet and go back to sleep for however long the old one said, which is
 // precisely the latency this exists to remove.
 //
-// A failure here is logged rather than returned. The timers are already durably
-// scheduled; reporting an error would tell the caller its schedule failed when it
-// did not, and the only consequence of a missing notification is that a poller
-// finds the row on its next poll — exactly what happens when a listener is
-// reconnecting.
-func (t *Timers[K]) notify(ctx context.Context) {
+// A failure is returned rather than logged, because on Postgres a failed
+// statement aborts the transaction it ran in: the schedule is not durable
+// either, and the caller's commit will say so if this does not.
+func (t *Timers[K]) notify(ctx context.Context, tx database.Tx) error {
 	if t.cfg.NotifyChannel == "" {
-		return
+		return nil
 	}
 
-	if _, err := t.client.Writer().ExecContext(ctx, dialect.PostgresNotifyStatement, t.cfg.NotifyChannel); err != nil {
-		t.o11y.Logger().WithValue(notifyChannelKey, t.cfg.NotifyChannel).Error("notifying timer channel", err)
+	if _, err := tx.ExecContext(ctx, dialect.PostgresNotifyStatement, t.cfg.NotifyChannel); err != nil {
+		return platformerrors.Wrapf(err, "notifying timer channel %q", t.cfg.NotifyChannel)
 	}
+
+	return nil
 }
 
 // roundUpToMicrosecond moves an instant to the next whole microsecond, and

@@ -10,6 +10,12 @@ var (
 	// wraps errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil timers database client")
 
+	// ErrNilTransaction indicates Schedule, ScheduleAt, ScheduleIn or Cancel was
+	// handed no transaction. The argument is the caller's proof that the timer
+	// lands or rolls back with the subject it fires about. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilTransaction = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil timers transaction")
+
 	// ErrNilConfig indicates a nil Config was passed to New. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilConfig = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil timers config")
