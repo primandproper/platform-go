@@ -572,10 +572,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrSignInSuperseded": {Err: signin.ErrSignInSuperseded, Is: Mapped},
 
 		// Proven, and refused anyway. The PermissionDenials: two statuses an
-		// operator set, the two halves of the administrative door, and the
-		// impersonation door a deployment never opened.
+		// operator set, the two halves of the administrative door, a credential
+		// too weak for that door, and the impersonation door a deployment never
+		// opened.
 		"ErrAdminLoginDisabled":    {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
 		"ErrImpersonationDisabled": {Err: signin.ErrImpersonationDisabled, Is: Mapped},
+		"ErrMultiFactorRequired":   {Err: signin.ErrMultiFactorRequired, Is: Mapped},
 		"ErrNotAnAdministrator":    {Err: signin.ErrNotAnAdministrator, Is: Mapped},
 		"ErrUserBanned":            {Err: signin.ErrUserBanned, Is: Mapped},
 		"ErrUserTerminated":        {Err: signin.ErrUserTerminated, Is: Mapped},

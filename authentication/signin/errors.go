@@ -26,7 +26,8 @@ var (
 	ErrInvalidCredentials = platformerrors.New("invalid credentials")
 
 	// ErrSecondFactorRequired indicates a user who holds a proven second factor
-	// and sent no code with their password.
+	// and sent no code with their password, or with a single-factor credential
+	// through Service.IssueForPrincipal.
 	//
 	// It tells the caller the password was right, which is a disclosure and is
 	// unavoidable: a client that cannot be told to ask for a code cannot ask for
@@ -48,6 +49,17 @@ var (
 	// everybody out — which is why the policy's own documentation says to enroll
 	// first.
 	ErrSecondFactorNotEnrolled = platformerrors.New("no proven second factor is enrolled")
+
+	// ErrMultiFactorRequired indicates an administrative principal door whose
+	// caller did not say the credential it proved was two factors on its own —
+	// a passkey the authenticator did not verify the person for, or anything
+	// else that proved possession alone.
+	//
+	// It is not ErrSecondFactorRequired, because no code would help: the
+	// administrative principal door takes none, and the remedy is signing in
+	// again with a credential that verifies the person. Like that refusal it
+	// says the credential was good, which is no disclosure to whoever held it.
+	ErrMultiFactorRequired = platformerrors.New("a credential that verifies the person is required")
 
 	// ErrUserUnverified indicates a user who has not yet proven whatever
 	// registration asked of them. It is identity.StatusUnverified, which is the

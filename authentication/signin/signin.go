@@ -41,6 +41,10 @@ const (
 	// adminKey records which door an attempt came through.
 	adminKey = "signin.administrative"
 
+	// multiFactorKey is whether a principal door's caller said the credential
+	// it proved was two factors on its own.
+	multiFactorKey = "signin.multi_factor"
+
 	// actorKey is the operator on an impersonation — who is really acting,
 	// beside userIDKey's subject.
 	actorKey = "signin.actor_id"

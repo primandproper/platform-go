@@ -174,7 +174,9 @@ func (h *extractorHarness) extractor(t *testing.T, opts ...signingrpc.ExtractorO
 func (h *extractorHarness) issue(t *testing.T, reg *identity.Registration, administrative bool) *signin.SignIn {
 	t.Helper()
 
-	var opts []signin.IssueOption
+	// The credential behind it is taken to have been two factors, as a
+	// verified passkey is; which factors is not what an extractor is about.
+	opts := []signin.IssueOption{signin.MultiFactor()}
 	if administrative {
 		opts = append(opts, signin.Administrative())
 	}

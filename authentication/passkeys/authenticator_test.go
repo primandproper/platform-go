@@ -22,7 +22,8 @@ import (
 // here rather than exported from there: a real ES256 key, a COSE public key,
 // authenticator data, and a signature over the bytes the specification says to
 // sign, registering with the "none" attestation format a passkey deployment
-// asks for. It sets neither backup flag, in either ceremony.
+// asks for. It sets neither backup flag, in either ceremony, and verifies the
+// user on every assertion unless it is told it is a key with no PIN.
 const (
 	flagUserPresent            = 0x01
 	flagUserVerified           = 0x04
@@ -47,6 +48,9 @@ type virtualAuthenticator struct {
 	credentialID []byte
 	handle       []byte
 	signCount    uint32
+	// unverified makes the device a bare security key: its assertions carry
+	// user presence and not user verification.
+	unverified bool
 }
 
 // newAuthenticator mints a device holding one discoverable credential for the
@@ -95,7 +99,12 @@ func (a *virtualAuthenticator) assert(tb testing.TB, challenge string) []byte {
 	a.signCount++
 
 	clientData := clientData(tb, "webauthn.get", challenge)
-	authData := a.authenticatorData(flagUserPresent|flagUserVerified, nil)
+	flags := byte(flagUserPresent | flagUserVerified)
+	if a.unverified {
+		flags = flagUserPresent
+	}
+
+	authData := a.authenticatorData(flags, nil)
 
 	clientDataHash := sha256.Sum256(clientData)
 	signed := sha256.Sum256(append(append([]byte{}, authData...), clientDataHash[:]...))

@@ -94,6 +94,7 @@ var ClientSafeSentinels = []error{
 	ErrInvalidCredentials,
 	ErrSecondFactorRequired,
 	ErrSecondFactorNotEnrolled,
+	ErrMultiFactorRequired,
 	ErrUserUnverified,
 	ErrUserBanned,
 	ErrUserTerminated,
@@ -189,6 +190,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrInvalidCredentials, Reason: "INVALID_CREDENTIALS", Domain: ClientReasonDomain},
 	{Err: ErrSecondFactorRequired, Reason: "SECOND_FACTOR_REQUIRED", Domain: ClientReasonDomain},
 	{Err: ErrSecondFactorNotEnrolled, Reason: "SECOND_FACTOR_NOT_ENROLLED", Domain: ClientReasonDomain},
+	{Err: ErrMultiFactorRequired, Reason: "MULTI_FACTOR_REQUIRED", Domain: ClientReasonDomain},
 	{Err: ErrUserUnverified, Reason: "USER_UNVERIFIED", Domain: ClientReasonDomain},
 	{Err: ErrUserBanned, Reason: "USER_SUSPENDED", Domain: ClientReasonDomain},
 	{Err: ErrUserTerminated, Reason: "USER_TERMINATED", Domain: ClientReasonDomain},
@@ -265,6 +267,11 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// service with no such door from one they are not admitted through.
 	case errors.Is(err, ErrNotAnAdministrator), errors.Is(err, ErrAdminLoginDisabled):
 		return httperrors.ErrUserIsNotAuthorized, "administrative sign-in is not available", true
+	// Admitted through the door, and refused for the credential rather than
+	// the person: an operator signs in with one that verified them, and the
+	// message says so, because it is the one remedy.
+	case errors.Is(err, ErrMultiFactorRequired):
+		return httperrors.ErrUserIsNotAuthorized, "a credential that verifies the person is required", true
 
 	// The impersonation door, answered like the administrative one: a service
 	// with no such door is refused as its operators would be. Its caller is an
@@ -340,6 +347,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrUserTerminated),
 		errors.Is(err, ErrNotAnAdministrator),
 		errors.Is(err, ErrAdminLoginDisabled),
+		errors.Is(err, ErrMultiFactorRequired),
 		errors.Is(err, ErrImpersonationDisabled):
 		return codes.PermissionDenied, true
 

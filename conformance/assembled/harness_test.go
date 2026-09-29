@@ -366,8 +366,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				// through the administrative door, which is what their service
 				// role — and so adminRole, the grants the surfaces ask inside a
 				// handler — rides on: the extractor keeps it off an
-				// ordinary-door token.
-				var issueOpts []signin.IssueOption
+				// ordinary-door token. The credential is taken to have been two
+				// factors, as a verified passkey is, which the administrative door
+				// requires.
+				issueOpts := []signin.IssueOption{signin.MultiFactor()}
 				if req.Admin {
 					issueOpts = append(issueOpts, signin.Administrative())
 				}
