@@ -85,6 +85,23 @@ func WithHooks(hooks Hooks) ServiceOption {
 	}
 }
 
+// WithInvitationMailer attaches the mailer Service.Invite hands an issued
+// invitation's token to, after the transaction commits. A nil InvitationMailer
+// is ignored.
+//
+// Configuring one moves the token out of Hooks.AfterInvite: the hook then
+// receives the invitation redacted, and the mailer is the only place the
+// secret goes. Without one the hook keeps receiving it, so a consumer that
+// queues the link from the hook is not broken by upgrading. See
+// InvitationMailer.
+func WithInvitationMailer(mailer InvitationMailer) ServiceOption {
+	return func(s *Service) {
+		if mailer != nil {
+			s.invitationMailer = mailer
+		}
+	}
+}
+
 // WithServiceLogger attaches a logger. An absent logger logs nowhere.
 func WithServiceLogger(logger logging.Logger) ServiceOption {
 	return func(s *Service) { s.logger = logger }

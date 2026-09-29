@@ -76,12 +76,15 @@ type Hooks interface {
 	// and the creation time the database stamped, rather than the value the
 	// caller assembled.
 	//
-	// It is the one invitation a hook sees carrying its Token. The column holds
-	// only a digest, so the secret is the one the caller minted, put back onto
-	// this read-back — which is also not redacted, unlike the invitations the
-	// other three hooks receive. A hook that queues the link for mailing takes
-	// the token from here, and one that records the invitation must not record
-	// the token with it.
+	// Whether it carries its Token depends on the Service. Built
+	// WithInvitationMailer, it does not: the invitation is redacted like the
+	// ones the other three hooks receive, and the token goes to the mailer
+	// after the commit and nowhere else. Built without one, this is the one
+	// invitation a hook sees carrying its Token — the column holds only a
+	// digest, so the secret is the one the caller minted, put back onto this
+	// read-back — and a hook that queues the link for mailing takes the token
+	// from here, while one that records the invitation must not record the
+	// token with it.
 	AfterInvite(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *Invitation) error
 
 	// AfterAcceptInvitation is called with the answered invitation and the

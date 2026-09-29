@@ -956,6 +956,118 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, InvitationPending, read.Status)
 	})
 
+	t.Run("with a mailer, mails the token after the commit and withholds it from the hook", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		store := env.newStore(t)
+
+		var (
+			mails     []*InvitationMail
+			committed *Invitation
+		)
+
+		mailer := InvitationMailerFunc(func(ctx context.Context, mail *InvitationMail) error {
+			mails = append(mails, mail)
+
+			// Read on a connection of its own: the row is there only if the
+			// transaction that wrote it has already committed.
+			read, err := store.GetInvitation(ctx, env.reader(), testScope, mail.Invitation.ID)
+			committed = read
+
+			return err
+		})
+
+		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		must.NoError(t, err)
+
+		registration := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(registration.User,
+			registration.Account.ID, "grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		// The hook sees the invitation, and nothing that would let whatever it
+		// fans out to join the account.
+		test.EqOp(t, 1, hooks.ran("invite"))
+		must.NotNil(t, hooks.invitation)
+		test.EqOp(t, issued.ID, hooks.invitation.ID)
+		test.EqOp(t, "", hooks.invitation.Token)
+		test.EqOp(t, "", hooks.invitation.TokenDigest)
+
+		// The mailer is where the secret went, once, beside an invitation that
+		// does not carry it.
+		must.SliceLen(t, 1, mails)
+		test.EqOp(t, "the-token", mails[0].Token)
+		test.EqOp(t, issued.ID, mails[0].Invitation.ID)
+		test.EqOp(t, "grace@example.com", mails[0].Invitation.ToEmail)
+		test.EqOp(t, "", mails[0].Invitation.Token)
+		test.EqOp(t, "", mails[0].Invitation.TokenDigest)
+
+		must.NotNil(t, committed)
+		test.EqOp(t, InvitationPending, committed.Status)
+
+		// The caller minted the token, and still gets back the row carrying it.
+		test.EqOp(t, "the-token", issued.Token)
+	})
+
+	t.Run("a failing mailer fails the invite with the invitation committed", func(t *testing.T) {
+		t.Parallel()
+
+		errMailerDown := platformerrors.New("mail provider down")
+
+		hooks := &recordingHooks{}
+		store := env.newStore(t)
+
+		var mailedID string
+
+		mailer := InvitationMailerFunc(func(_ context.Context, mail *InvitationMail) error {
+			mailedID = mail.Invitation.ID
+			return errMailerDown
+		})
+
+		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		must.NoError(t, err)
+
+		registration := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(registration.User,
+			registration.Account.ID, "grace@example.com", "the-token", futureExpiry()))
+		must.ErrorIs(t, err, errMailerDown)
+		test.Nil(t, issued)
+
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, mailedID)
+		must.NoError(t, err)
+		test.EqOp(t, InvitationPending, read.Status)
+	})
+
+	t.Run("a failing invite hook mails nothing", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		store := env.newStore(t)
+
+		mailed := 0
+
+		mailer := InvitationMailerFunc(func(context.Context, *InvitationMail) error {
+			mailed++
+			return nil
+		})
+
+		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		must.NoError(t, err)
+
+		registration := registerAda(t, service, "ada")
+
+		hooks.probe = func(context.Context, database.Tx) error { return errHookRefused }
+
+		_, err = service.Invite(t.Context(), testScope, newInvitation(registration.User,
+			registration.Account.ID, "grace@example.com", "the-token", futureExpiry()))
+		must.ErrorIs(t, err, errHookRefused)
+
+		test.EqOp(t, 0, mailed)
+	})
+
 	t.Run("a failing invite hook leaves no invitation", func(t *testing.T) {
 		t.Parallel()
 
