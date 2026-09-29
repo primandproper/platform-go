@@ -64,6 +64,10 @@ import (
 // permission could protect: the thing that must not be abused there is the rate
 // it is called at, which is the consumer's to bound in front of it.
 //
+// RequestHandleReminder is the request half of that argument again: it names an
+// address, is answered identically whoever holds it, and is for somebody who
+// cannot sign in because they have forgotten what they sign in as.
+//
 // The last is SignOut, which is ExchangeRefreshToken's argument read backwards.
 // It presents the same credential and it is the moment a client is least likely
 // to hold a live access token: an application closed for a week has an expired
@@ -79,6 +83,7 @@ func AnonymousMethods() []string {
 		signinpb.SignInService_VerifyEmailAddress_FullMethodName,
 		signinpb.SignInService_RequestMagicLink_FullMethodName,
 		signinpb.SignInService_RedeemMagicLink_FullMethodName,
+		signinpb.SignInService_RequestHandleReminder_FullMethodName,
 		signinpb.SignInService_SignOut_FullMethodName,
 	}
 }

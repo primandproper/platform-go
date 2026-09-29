@@ -33,7 +33,8 @@ type Directory interface {
 // from the injector. Registration left open requires WithRegistrar, and a
 // present MagicLinks block requires WithMagicLinkMailer. Either one missing is
 // refused here, so it is never discovered by a caller of a door that refuses
-// every request.
+// every request. WithHandleReminderMailer is optional, and the handle reminder
+// door is on exactly when it is supplied.
 //
 // The refresh token and recovery code stores are always built, so their tables
 // must be migrated before the service is used.
@@ -80,6 +81,8 @@ func NewService(
 		signin.WithSecondFactorPolicy(secondFactors[cfg.SecondFactor]),
 		signin.WithTokenTTL(cfg.TokenTTL),
 		signin.WithAdminTokenTTL(cfg.AdminTokenTTL),
+		signin.WithHandleReminderMailer(options.handleReminderMailer),
+		signin.WithHandleReminderFloor(cfg.HandleReminderFloor),
 	}
 
 	if block := cfg.Registration; !block.Disabled {

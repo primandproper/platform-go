@@ -252,6 +252,14 @@ var (
 	// misconfiguration indistinguishable from working.
 	ErrMagicLinksNotConfigured = platformerrors.New("no sign-in link store is configured")
 
+	// ErrHandleRemindersNotConfigured indicates the handle reminder door on a
+	// service built without WithHandleReminderMailer.
+	//
+	// It is a wiring failure and no status is mapped for it, for
+	// ErrMagicLinksNotConfigured's reason: the silence this door gives an
+	// address nobody holds is the one answer a misconfiguration must not borrow.
+	ErrHandleRemindersNotConfigured = platformerrors.New("no handle reminder mailer is configured")
+
 	// ErrInvalidMagicLink indicates a sign-in link that named nobody: expired,
 	// already followed, withdrawn, simply wrong, or mailed to an address its
 	// subject has since moved away from.

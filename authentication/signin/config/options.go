@@ -32,6 +32,8 @@ type options struct {
 	registrar       signin.Registrar
 	magicLinkMailer signin.MagicLinkMailer
 
+	handleReminderMailer signin.HandleReminderMailer
+
 	service       []signin.ServiceOption
 	refreshTokens []refreshtokens.Option
 	magicLinks    []magiclinks.Option
@@ -89,6 +91,13 @@ func WithRegistrar(registrar signin.Registrar) Option {
 // present.
 func WithMagicLinkMailer(mailer signin.MagicLinkMailer) Option {
 	return func(o *options) { o.magicLinkMailer = mailer }
+}
+
+// WithHandleReminderMailer supplies what delivers a handle reminder, which
+// switches that door on. Unlike the magic-link mailer it is never required: the
+// door has no block, so the mailer's presence is the switch.
+func WithHandleReminderMailer(mailer signin.HandleReminderMailer) Option {
+	return func(o *options) { o.handleReminderMailer = mailer }
 }
 
 // WithServiceOptions passes opts to signin.NewService, applied after the

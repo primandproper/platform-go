@@ -129,6 +129,10 @@ const (
 	// question the refresh token revocation beside it answers rather than the
 	// one the two doors above do.
 	opRevokeMagicLinksSubject = "revoke_magic_links_for_subject"
+	// The handle reminder is a series of its own rather than part of the
+	// passwordless one: it signs nobody in, and what a dashboard asks of it is
+	// how often people forget what they sign in as.
+	opRequestHandleReminder = "request_handle_reminder"
 
 	//nolint:gosec // G101: these are instrument labels naming two operations, not credentials.
 	opRefreshTOTPSecret = "refresh_totp_secret"
@@ -442,6 +446,11 @@ type Service struct {
 	// store.
 	magicLinkMailer MagicLinkMailer
 
+	// handleReminderMailer is nil until WithHandleReminderMailer names one, and
+	// nil is what "this service reminds nobody of their handle" means: the door
+	// refuses with ErrHandleRemindersNotConfigured.
+	handleReminderMailer HandleReminderMailer
+
 	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
 	// any password that is not empty.
 	passwordPolicy PasswordPolicy
@@ -484,6 +493,10 @@ type Service struct {
 	// which refuses a zero one — see DefaultVerificationLinkTTL.
 	verificationLinkTTL time.Duration
 	magicLinkFloor      time.Duration
+
+	// handleReminderFloor is the handle reminder door's own floor, apart from
+	// magicLinkFloor so the two anonymous mail doors can be tuned apart.
+	handleReminderFloor time.Duration
 
 	secondFactor SecondFactorPolicy
 }
@@ -568,6 +581,7 @@ func NewService(
 
 		verificationLinkTTL: DefaultVerificationLinkTTL,
 		magicLinkFloor:      DefaultMagicLinkRequestFloor,
+		handleReminderFloor: DefaultHandleReminderFloor,
 	}
 
 	for _, opt := range opts {

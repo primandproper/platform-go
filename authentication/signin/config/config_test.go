@@ -52,6 +52,10 @@ type discardingMailer struct{}
 
 func (discardingMailer) SendMagicLink(context.Context, *signin.MagicLinkMail) error { return nil }
 
+func (discardingMailer) SendHandleReminder(context.Context, *signin.HandleReminderMail) error {
+	return nil
+}
+
 // stubRegistrar is a registrar these tests attach and never reach.
 type stubRegistrar struct{ signin.Registrar }
 
@@ -123,6 +127,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		test.Error(t, (&Config{
 			MagicLinks: &MagicLinksConfig{TablePrefix: "ddb", RequestFloor: -time.Second},
 		}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{HandleReminderFloor: -time.Second}).ValidateWithContext(t.Context()))
 		test.Error(t, (&Config{
 			RecoveryCodes: RecoveryCodesConfig{TablePrefix: "ddb", Count: -1},
 		}).ValidateWithContext(t.Context()))
@@ -233,6 +238,22 @@ func TestNewService(T *testing.T) {
 		test.False(t, errors.Is(err, signin.ErrRegistrationNotConfigured))
 
 		test.ErrorIs(t, svc.RequestMagicLink(t.Context(), scope, ""), signin.ErrMagicLinksNotConfigured)
+	})
+
+	// The handle reminder door has no block, so the mailer is the switch.
+	T.Run("a handle reminder mailer switches its door on", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := noSweepers()
+		cfg.HandleReminderFloor = time.Millisecond
+
+		off, err := build(t, cfg)
+		must.NoError(t, err)
+		test.ErrorIs(t, off.RequestHandleReminder(t.Context(), scope, ""), signin.ErrHandleRemindersNotConfigured)
+
+		on, err := build(t, cfg, WithHandleReminderMailer(discardingMailer{}))
+		must.NoError(t, err)
+		test.ErrorIs(t, on.RequestHandleReminder(t.Context(), scope, ""), signin.ErrEmptyHandle)
 	})
 
 	T.Run("a present magic links block switches its door on", func(t *testing.T) {

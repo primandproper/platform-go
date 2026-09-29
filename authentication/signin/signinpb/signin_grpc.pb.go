@@ -136,23 +136,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SignInService_Register_FullMethodName             = "/primandproper.platform.signin.v1.SignInService/Register"
-	SignInService_AttachPassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/AttachPassword"
-	SignInService_VerifyEmailAddress_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/VerifyEmailAddress"
-	SignInService_RequestMagicLink_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/RequestMagicLink"
-	SignInService_RedeemMagicLink_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/RedeemMagicLink"
-	SignInService_LoginForToken_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
-	SignInService_AdminLoginForToken_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
-	SignInService_ExchangeRefreshToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
-	SignInService_SignOut_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/SignOut"
-	SignInService_SignOutEverywhere_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
-	SignInService_ListSignIns_FullMethodName          = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
-	SignInService_EndSignIn_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/EndSignIn"
-	SignInService_GetAuthStatus_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
-	SignInService_GetSelf_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/GetSelf"
-	SignInService_UpdatePassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
-	SignInService_RefreshTOTPSecret_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
-	SignInService_VerifyTOTPSecret_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
+	SignInService_Register_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/Register"
+	SignInService_AttachPassword_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/AttachPassword"
+	SignInService_VerifyEmailAddress_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/VerifyEmailAddress"
+	SignInService_RequestMagicLink_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/RequestMagicLink"
+	SignInService_RedeemMagicLink_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/RedeemMagicLink"
+	SignInService_RequestHandleReminder_FullMethodName = "/primandproper.platform.signin.v1.SignInService/RequestHandleReminder"
+	SignInService_LoginForToken_FullMethodName         = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
+	SignInService_AdminLoginForToken_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
+	SignInService_ExchangeRefreshToken_FullMethodName  = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
+	SignInService_SignOut_FullMethodName               = "/primandproper.platform.signin.v1.SignInService/SignOut"
+	SignInService_SignOutEverywhere_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
+	SignInService_ListSignIns_FullMethodName           = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
+	SignInService_EndSignIn_FullMethodName             = "/primandproper.platform.signin.v1.SignInService/EndSignIn"
+	SignInService_GetAuthStatus_FullMethodName         = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
+	SignInService_GetSelf_FullMethodName               = "/primandproper.platform.signin.v1.SignInService/GetSelf"
+	SignInService_UpdatePassword_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
+	SignInService_RefreshTOTPSecret_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
+	SignInService_VerifyTOTPSecret_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
 )
 
 // SignInServiceClient is the client API for SignInService service.
@@ -183,9 +184,14 @@ type SignInServiceClient interface {
 	// name a user, so neither is a way to ask about one.
 	//
 	// Rate limiting is the consumer's, in front of RequestMagicLink, and it is not
-	// optional: this is the one RPC in this service that sends mail on request.
+	// optional: it sends mail on request.
 	RequestMagicLink(ctx context.Context, in *RequestMagicLinkRequest, opts ...grpc.CallOption) (*RequestMagicLinkResponse, error)
 	RedeemMagicLink(ctx context.Context, in *RedeemMagicLinkRequest, opts ...grpc.CallOption) (*RedeemMagicLinkResponse, error)
+	// The door for somebody who has forgotten what they sign in as. It is
+	// anonymous and answered the same way whoever holds the address, as
+	// RequestMagicLink is, and its rate limit is the consumer's for the same
+	// reason: it sends mail on request.
+	RequestHandleReminder(ctx context.Context, in *RequestHandleReminderRequest, opts ...grpc.CallOption) (*RequestHandleReminderResponse, error)
 	// The two doors, and the one that keeps a sign-in alive without reopening
 	// either of them.
 	LoginForToken(ctx context.Context, in *LoginForTokenRequest, opts ...grpc.CallOption) (*LoginForTokenResponse, error)
@@ -266,6 +272,16 @@ func (c *signInServiceClient) RedeemMagicLink(ctx context.Context, in *RedeemMag
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RedeemMagicLinkResponse)
 	err := c.cc.Invoke(ctx, SignInService_RedeemMagicLink_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) RequestHandleReminder(ctx context.Context, in *RequestHandleReminderRequest, opts ...grpc.CallOption) (*RequestHandleReminderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestHandleReminderResponse)
+	err := c.cc.Invoke(ctx, SignInService_RequestHandleReminder_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -420,9 +436,14 @@ type SignInServiceServer interface {
 	// name a user, so neither is a way to ask about one.
 	//
 	// Rate limiting is the consumer's, in front of RequestMagicLink, and it is not
-	// optional: this is the one RPC in this service that sends mail on request.
+	// optional: it sends mail on request.
 	RequestMagicLink(context.Context, *RequestMagicLinkRequest) (*RequestMagicLinkResponse, error)
 	RedeemMagicLink(context.Context, *RedeemMagicLinkRequest) (*RedeemMagicLinkResponse, error)
+	// The door for somebody who has forgotten what they sign in as. It is
+	// anonymous and answered the same way whoever holds the address, as
+	// RequestMagicLink is, and its rate limit is the consumer's for the same
+	// reason: it sends mail on request.
+	RequestHandleReminder(context.Context, *RequestHandleReminderRequest) (*RequestHandleReminderResponse, error)
 	// The two doors, and the one that keeps a sign-in alive without reopening
 	// either of them.
 	LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error)
@@ -473,6 +494,9 @@ func (UnimplementedSignInServiceServer) RequestMagicLink(context.Context, *Reque
 }
 func (UnimplementedSignInServiceServer) RedeemMagicLink(context.Context, *RedeemMagicLinkRequest) (*RedeemMagicLinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RedeemMagicLink not implemented")
+}
+func (UnimplementedSignInServiceServer) RequestHandleReminder(context.Context, *RequestHandleReminderRequest) (*RequestHandleReminderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestHandleReminder not implemented")
 }
 func (UnimplementedSignInServiceServer) LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LoginForToken not implemented")
@@ -617,6 +641,24 @@ func _SignInService_RedeemMagicLink_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SignInServiceServer).RedeemMagicLink(ctx, req.(*RedeemMagicLinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_RequestHandleReminder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestHandleReminderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).RequestHandleReminder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_RequestHandleReminder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).RequestHandleReminder(ctx, req.(*RequestHandleReminderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -863,6 +905,10 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RedeemMagicLink",
 			Handler:    _SignInService_RedeemMagicLink_Handler,
+		},
+		{
+			MethodName: "RequestHandleReminder",
+			Handler:    _SignInService_RequestHandleReminder_Handler,
 		},
 		{
 			MethodName: "LoginForToken",

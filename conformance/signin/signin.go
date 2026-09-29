@@ -37,6 +37,7 @@ const (
 	loginForToken         = signinpb.SignInService_LoginForToken_FullMethodName
 	redeemMagicLink       = signinpb.SignInService_RedeemMagicLink_FullMethodName
 	refreshTOTPSecret     = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
+	requestHandleReminder = signinpb.SignInService_RequestHandleReminder_FullMethodName
 	requestMagicLink      = signinpb.SignInService_RequestMagicLink_FullMethodName
 	signOut               = signinpb.SignInService_SignOut_FullMethodName
 	signOutEverywhere     = signinpb.SignInService_SignOutEverywhere_FullMethodName
@@ -79,6 +80,11 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("magic links", func(t *testing.T) {
 		t.Parallel()
 		magicLinks(t, s)
+	})
+
+	t.Run("handle reminders", func(t *testing.T) {
+		t.Parallel()
+		handleReminders(t, s)
 	})
 }
 

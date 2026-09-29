@@ -49,8 +49,9 @@ Three secrets reach a person through mail rather than a response, and each
 assertion that needs one reads it through an action: VerificationToken for the
 link a registration mails, MagicLinkToken for a sign-in link, and
 PasswordResetToken, which is how an existing caller is given a password the
-suite knows without the suite writing one. A subject that cannot say what it
-mailed skips those assertions with the reason printed.
+suite knows without the suite writing one. A handle is mailed too, and the
+HandleReminder action reads it. A subject that cannot say what it mailed skips
+those assertions with the reason printed.
 
 Refresh tokens are optional — a deployment built without a store answers a
 sign-in with none, which the client contract calls a valid shape — so the

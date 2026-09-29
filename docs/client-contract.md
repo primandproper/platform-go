@@ -264,6 +264,11 @@ client and their authority differs sharply:
 for an account that already holds a password, because it exists for somebody who registered
 without one. Forgetting a password you have is [the next section](#resetting-a-forgotten-password).
 
+Forgetting the handle you sign in with is **`RequestHandleReminder`**, which is anonymous and
+answers exactly as `RequestMagicLink` does: identically for every address, padded, with the
+handle travelling by mail to the address that asked and never back in the response. Show the
+same screen either way.
+
 ## Resetting a forgotten password
 
 A second service, on its own schema: `PasswordResetService`, in

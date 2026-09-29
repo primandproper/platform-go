@@ -507,10 +507,9 @@ func (s *Server) VerifyEmailAddress(
 //
 // It is anonymous for the reason the two registration doors are: the person
 // asking cannot sign in yet, which is the dead end it exists to open. Rate
-// limiting is the consumer's, in front of this call — it is the one RPC in this
-// service that sends mail on request, so a deployment without a limit in front
-// of it is a way to send mail through their own domain at somebody else's
-// direction.
+// limiting is the consumer's, in front of this call — it sends mail on request,
+// so a deployment without a limit in front of it is a way to send mail through
+// their own domain at somebody else's direction.
 func (s *Server) RequestMagicLink(
 	ctx context.Context,
 	request *signinpb.RequestMagicLinkRequest,
@@ -527,6 +526,35 @@ func (s *Server) RequestMagicLink(
 	}
 
 	return &signinpb.RequestMagicLinkResponse{}, nil
+}
+
+// RequestHandleReminder mails somebody the handle they sign in with, and answers
+// the same way whatever it found.
+//
+// It is RequestMagicLink's contract with a different mail in it: an address
+// nobody holds, one whose owner is banned or terminated, and one that got a mail
+// are an empty response and no error, the service pads its own timing, and the
+// only non-empty answers are this service failing. The same silence is owed by a
+// consumer's own transport, and the same rate limit is owed in front of it.
+//
+// It is anonymous because the person asking cannot sign in, which is the whole
+// of why they are asking.
+func (s *Server) RequestHandleReminder(
+	ctx context.Context,
+	request *signinpb.RequestHandleReminderRequest,
+) (*signinpb.RequestHandleReminderResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_RequestHandleReminder_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.RequestHandleReminder(ctx, req.scope, request.GetEmailAddress()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "requesting a handle reminder")
+	}
+
+	return &signinpb.RequestHandleReminderResponse{}, nil
 }
 
 // RedeemMagicLink answers a sign-in link: it spends the link, proves the address

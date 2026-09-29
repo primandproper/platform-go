@@ -780,6 +780,23 @@ message RedeemMagicLinkResponse {
   IssuedToken token = 1;
 }
 
+// RequestHandleReminderRequest asks for the handle the holder of an address signs
+// in with to be mailed to them.
+//
+// There is no scope field, for RequestMagicLinkRequest's reason.
+message RequestHandleReminderRequest {
+  reserved "scope";
+
+  // email_address is who to mail. It is folded the way the directory folds a
+  // handle, so it reads the row the password door would have read.
+  string email_address = 1;
+}
+
+// RequestHandleReminderResponse is empty, for RequestMagicLinkResponse's reason:
+// no field here could differ between an address somebody holds and one nobody
+// does, and a consumer's own handler owes the same silence.
+message RequestHandleReminderResponse {}
+
 // SignInService is sign-in.
 //
 // Some of its RPCs are anonymous by definition and the rest require a caller.
@@ -805,9 +822,15 @@ service SignInService {
   // name a user, so neither is a way to ask about one.
   //
   // Rate limiting is the consumer's, in front of RequestMagicLink, and it is not
-  // optional: this is the one RPC in this service that sends mail on request.
+  // optional: it sends mail on request.
   rpc RequestMagicLink(RequestMagicLinkRequest) returns (RequestMagicLinkResponse);
   rpc RedeemMagicLink(RedeemMagicLinkRequest) returns (RedeemMagicLinkResponse);
+
+  // The door for somebody who has forgotten what they sign in as. It is
+  // anonymous and answered the same way whoever holds the address, as
+  // RequestMagicLink is, and its rate limit is the consumer's for the same
+  // reason: it sends mail on request.
+  rpc RequestHandleReminder(RequestHandleReminderRequest) returns (RequestHandleReminderResponse);
 
   // The two doors, and the one that keeps a sign-in alive without reopening
   // either of them.
