@@ -9,10 +9,12 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -198,6 +200,99 @@ func TestRegisterService(T *testing.T) {
 		test.Nil(t, svc)
 		test.ErrorIs(t, err, do.ErrServiceNotFound)
 	})
+}
+
+func TestRegisterService_InvitationMailer(T *testing.T) {
+	T.Parallel()
+
+	// invite issues an invitation through a service built from a container
+	// holding the given mailer registration, over a store that answers the
+	// write, and reports the invitation AfterInvite was handed.
+	invite := func(t *testing.T, register func(do.Injector)) (hooked *identity.Invitation, err error) {
+		t.Helper()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+		do.ProvideValue[identity.Store](i, &identitymock.StoreMock{
+			CreateInvitationFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, invitation *identity.Invitation) (*identity.Invitation, error) {
+				created := *invitation
+				created.ID, created.Token = "invitation", "secret"
+
+				return &created, nil
+			},
+		})
+		do.ProvideValue[identity.Hooks](i, recordingInviteHooks{seen: &hooked})
+		register(i)
+		RegisterService(i)
+
+		svc, err := do.Invoke[*identity.Service](i)
+		must.NoError(t, err)
+
+		_, err = svc.Invite(t.Context(), tenancy.Global(), &identity.Invitation{})
+
+		return hooked, err
+	}
+
+	T.Run("with none registered the hook keeps the token", func(t *testing.T) {
+		t.Parallel()
+
+		hooked, err := invite(t, func(do.Injector) {})
+		must.NoError(t, err)
+		must.NotNil(t, hooked)
+		test.EqOp(t, "secret", hooked.Token)
+	})
+
+	T.Run("a registered mailer is attached", func(t *testing.T) {
+		t.Parallel()
+
+		var mailed *identity.InvitationMail
+
+		hooked, err := invite(t, func(i do.Injector) {
+			do.ProvideValue[identity.InvitationMailer](i, identity.InvitationMailerFunc(
+				func(_ context.Context, mail *identity.InvitationMail) error {
+					mailed = mail
+
+					return nil
+				}))
+		})
+		must.NoError(t, err)
+		must.NotNil(t, mailed)
+		test.EqOp(t, "secret", mailed.Token)
+		must.NotNil(t, hooked)
+		test.EqOp(t, "", hooked.Token)
+	})
+
+	T.Run("a registered mailer that fails to build fails the service", func(t *testing.T) {
+		t.Parallel()
+
+		boom := errors.New("mail relay unreachable")
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+		do.Provide(i, func(do.Injector) (identity.InvitationMailer, error) { return nil, boom })
+		RegisterStore(i)
+		RegisterService(i)
+
+		svc, err := do.Invoke[*identity.Service](i)
+		test.Nil(t, svc)
+		test.ErrorIs(t, err, boom)
+	})
+}
+
+// recordingInviteHooks records the invitation AfterInvite was handed.
+type recordingInviteHooks struct {
+	identity.NoopHooks
+	seen **identity.Invitation
+}
+
+func (h recordingInviteHooks) AfterInvite(_ context.Context, _ database.Tx, _ tenancy.Scope, invitation *identity.Invitation) error {
+	*h.seen = invitation
+
+	return nil
 }
 
 // unregisteredRecorder stands in for a dependency a consumer's hooks provider

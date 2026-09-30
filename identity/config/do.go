@@ -63,6 +63,11 @@ func RegisterStore(i do.Injector) {
 // one registered could not be built" is a failure, and a Service that quietly
 // ran the noop in its place would commit every identity write with none of the
 // companions the consumer registered hooks to get.
+//
+// An identity.InvitationMailer is resolved the same way. Registering one is
+// what moves an invitation's token out of Hooks.AfterInvite and into the
+// mailer, as identity.WithInvitationMailer describes; registering none leaves
+// the hook holding it.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*identity.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -79,6 +84,15 @@ func RegisterService(i do.Injector) {
 
 		if hooks != nil {
 			opts = append(opts, WithHooks(hooks))
+		}
+
+		mailer, err := injection.InvokeOptional[identity.InvitationMailer](i)
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "invoking identity invitation mailer")
+		}
+
+		if mailer != nil {
+			opts = append(opts, WithServiceOptions(identity.WithInvitationMailer(mailer)))
 		}
 
 		ctx, err := do.Invoke[context.Context](i)

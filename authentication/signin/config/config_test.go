@@ -113,6 +113,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		test.Error(t, (&Config{TokenTTL: -time.Second}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{ImpersonationTokenTTL: -time.Second}).ValidateWithContext(t.Context()))
 		test.Error(t, (&Config{
 			RefreshTokens: RefreshTokensConfig{TablePrefix: "ddb", AdminTTL: -time.Second},
 		}).ValidateWithContext(t.Context()))
@@ -184,6 +185,7 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 			"TOTP_ISSUER":                             "Example",
 			"ADMIN_SERVICE_ROLES":                     "service_admin,operator",
 			"REFRESH_TOKENS_REFUSE_SUPERSEDED_TOKENS": "true",
+			"IMPERSONATION_TOKEN_TTL":                 "5m",
 		})
 
 		must.NotNil(t, cfg.MagicLinks)
@@ -193,6 +195,7 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 		test.EqOp(t, "Example", cfg.TOTPIssuer)
 		test.Eq(t, []string{"service_admin", "operator"}, cfg.AdminServiceRoles)
 		test.True(t, cfg.RefreshTokens.RefuseSupersededTokens)
+		test.EqOp(t, 5*time.Minute, cfg.ImpersonationTokenTTL)
 	})
 
 	T.Run("registration is closed by name", func(t *testing.T) {

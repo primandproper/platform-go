@@ -3,6 +3,7 @@ package dataprivacycfg
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/shredding"
@@ -11,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/uploads"
 
@@ -63,9 +65,19 @@ func RegisterStore(i do.Injector) {
 // happened to build the Service first would refuse every submission with
 // operations.ErrUnknownKind.
 //
+// It reads artifacts from the uploads.UploadManager RegisterFulfiller writes
+// them to, out of the same container, so Download and Open reach what the
+// Fulfiller stored. RegisterFulfiller already requires one, so it is required
+// here too rather than absorbed: a Service without it answers every download
+// with dataprivacy.ErrArtifactUnavailable.
+//
+// A registered audit.Recorder and dataprivacy.ActorResolver are attached, as
+// they are to the Fulfiller — see invokeAudit.
+//
 // Prerequisites: *Config, dataprivacy.Store (see RegisterStore),
-// *dataprivacy.Fulfiller (see RegisterFulfiller), and operations.Service must be
-// registered in the injector before the Service is invoked.
+// *dataprivacy.Fulfiller (see RegisterFulfiller), operations.Service and
+// uploads.UploadManager must be registered in the injector before the Service
+// is invoked.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (dataprivacy.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -111,6 +123,24 @@ func RegisterService(i do.Injector) {
 			return nil, err
 		}
 
+		uploadManager, err := do.Invoke[uploads.UploadManager](i)
+		if err != nil {
+			return nil, err
+		}
+
+		recorder, actor, err := invokeAudit(i)
+		if err != nil {
+			return nil, err
+		}
+
+		serviceOpts := []dataprivacy.ServiceOption{dataprivacy.WithServiceUploadManager(uploadManager)}
+		if recorder != nil {
+			serviceOpts = append(serviceOpts, dataprivacy.WithServiceAuditRecorder(recorder))
+		}
+		if actor != nil {
+			serviceOpts = append(serviceOpts, dataprivacy.WithActorResolver(actor))
+		}
+
 		return NewService(
 			ctx,
 			cfg,
@@ -120,6 +150,7 @@ func RegisterService(i do.Injector) {
 			WithPillars(pillars),
 			WithCompressor(compressor),
 			WithEncryptor(encryptor),
+			WithServiceOptions(serviceOpts...),
 		)
 	})
 }
@@ -136,6 +167,11 @@ func RegisterService(i do.Injector) {
 // key, which is what carries an erasure into backups already taken. Its absence
 // means erasure deletes rows and nothing more — the older, narrower guarantee,
 // and the right one for an application that encrypts nothing per subject.
+//
+// A registered dataprivacy.Notifier is who the Fulfiller tells when a request
+// finishes, and it is the only way an export's link reaches the subject: with
+// none, the export is produced and nobody is told. A registered audit.Recorder
+// and dataprivacy.ActorResolver are attached, as they are to the Service.
 //
 // Prerequisites: *Config, dataprivacy.Store (see RegisterStore),
 // *dataprivacy.Registry (the application's collectors and erasers),
@@ -161,6 +197,27 @@ func RegisterFulfiller(i do.Injector) {
 		var fulfillerOpts []dataprivacy.FulfillerOption
 		if keys != nil {
 			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerShredder(keys))
+		}
+
+		notifier, err := injection.InvokeOptional[dataprivacy.Notifier](i)
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "invoking the data privacy notifier")
+		}
+
+		if notifier != nil {
+			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerNotifier(notifier))
+		}
+
+		recorder, actor, err := invokeAudit(i)
+		if err != nil {
+			return nil, err
+		}
+
+		if recorder != nil {
+			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerAuditRecorder(recorder))
+		}
+		if actor != nil {
+			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerActorResolver(actor))
 		}
 
 		ctx, err := do.Invoke[context.Context](i)
@@ -270,4 +327,28 @@ func invokeCodecs(i do.Injector) (compression.Compressor, encryption.EncryptorDe
 	}
 
 	return compressor, encryptorDecryptor, nil
+}
+
+// invokeAudit resolves the audit log this package records to and who its
+// entries name, for the Service and the Fulfiller alike. Either may be absent:
+// no recorder records nothing, and no resolver attributes every entry to
+// audit.ActorSystem, as dataprivacy.ActorResolver describes.
+//
+// Only absence is absorbed. A recorder that is registered and fails to build is
+// returned, because the package calls auditing "not decoration" — an export is
+// the most sensitive object an application produces, and a Service that
+// quietly ran without the log it was configured with would produce one with
+// no record of who asked.
+func invokeAudit(i do.Injector) (audit.Recorder, dataprivacy.ActorResolver, error) {
+	recorder, err := injection.InvokeOptional[audit.Recorder](i)
+	if err != nil {
+		return nil, nil, platformerrors.Wrap(err, "invoking the audit recorder")
+	}
+
+	actor, err := injection.InvokeOptional[dataprivacy.ActorResolver](i)
+	if err != nil {
+		return nil, nil, platformerrors.Wrap(err, "invoking the data privacy actor resolver")
+	}
+
+	return recorder, actor, nil
 }

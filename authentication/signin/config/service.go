@@ -81,6 +81,7 @@ func NewService(
 		signin.WithSecondFactorPolicy(secondFactors[cfg.SecondFactor]),
 		signin.WithTokenTTL(cfg.TokenTTL),
 		signin.WithAdminTokenTTL(cfg.AdminTokenTTL),
+		signin.WithImpersonationTokenTTL(cfg.ImpersonationTokenTTL),
 		signin.WithHandleReminderMailer(options.handleReminderMailer),
 		signin.WithHandleReminderFloor(cfg.HandleReminderFloor),
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -58,6 +59,12 @@ func RegisterStore(i do.Injector) {
 // why the authenticator in particular must not. A container missing either
 // fails when the Service is invoked — at boot, for a service built through
 // service.New — with an error naming the one it wanted.
+//
+// A passwordreset.PasswordPolicy is used if the application registered one. It
+// is an alias of signin.PasswordPolicy, so it is the same key signincfg
+// resolves: one registration governs every door that writes a password, and
+// this one cannot be the door a policy forgot. Only absence is absorbed; one
+// that is registered and fails to build is returned.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*passwordreset.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -105,6 +112,14 @@ func RegisterService(i do.Injector) {
 				do.NameOf[passwordreset.Mailer]())
 		}
 
-		return NewService(ctx, cfg, client, store, directory, authenticator, mailer, WithPillars(pillars))
+		policy, err := injection.InvokeOptional[passwordreset.PasswordPolicy](i)
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "invoking password reset password policy")
+		}
+
+		return NewService(ctx, cfg, client, store, directory, authenticator, mailer,
+			WithPillars(pillars),
+			WithServiceOptions(passwordreset.WithPasswordPolicy(policy)),
+		)
 	})
 }

@@ -26,7 +26,10 @@ import (
 //
 // It is required and has no default. passwordresetcfg resolves the same key,
 // so a container holding both blocks hashes a reset's password with the engine
-// sign-in verifies it with. The context bounds the sweepers' lives.
+// sign-in verifies it with. It resolves signin.PasswordPolicy too —
+// passwordreset.PasswordPolicy is an alias of it — so one registered policy
+// governs the reset door as well as this service's. The context bounds the
+// sweepers' lives.
 //
 // Two more are required when their door is on. Registration, unless
 // Registration.Disabled is set, needs the *identity.Service
@@ -49,6 +52,11 @@ import (
 // turns on, because it needs nothing but the mailer. Only absence is absorbed, as
 // identitycfg absorbs it for identity.Hooks. One that is registered and fails to
 // build is returned.
+//
+// A signin.ImpersonationPolicy is used if the application registered one, and
+// registering it is what opens IssueImpersonationToken: without one every call
+// is signin.ErrImpersonationDisabled, which is the service's own default and the
+// right one for a deployment that never asked for the door.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*signin.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -191,6 +199,15 @@ func optionalServiceOptions(i do.Injector) ([]signin.ServiceOption, error) {
 
 	if verificationMailer != nil {
 		opts = append(opts, signin.WithVerificationMailer(verificationMailer))
+	}
+
+	impersonation, err := injection.InvokeOptional[signin.ImpersonationPolicy](i)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "invoking sign-in impersonation policy")
+	}
+
+	if impersonation != nil {
+		opts = append(opts, signin.WithImpersonationPolicy(impersonation))
 	}
 
 	claims, err := injection.InvokeOptional[signin.ClaimsBuilder](i)

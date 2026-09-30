@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -81,6 +83,47 @@ func TestRegisterService(T *testing.T) {
 		svc, err := do.Invoke[*passwordreset.Service](i)
 		must.NoError(t, err)
 		test.NotNil(t, svc)
+	})
+
+	T.Run("applies the password policy registered for sign-in", func(t *testing.T) {
+		t.Parallel()
+
+		// Registered under signin's name, because that is the registration an
+		// application already makes for its other doors. The reset door has to
+		// read the same key or it is the one a weak password walks through.
+		errTooShort := errors.New("too short")
+
+		i := withApplication(base(t, &Config{}))
+		do.ProvideValue(i, signin.PasswordPolicy(func(context.Context, string) error { return errTooShort }))
+		RegisterStore(i)
+		RegisterService(i)
+
+		svc, err := do.Invoke[*passwordreset.Service](i)
+		must.NoError(t, err)
+
+		// The policy runs before the token is looked at, so a secret nobody
+		// issued is enough to reach it.
+		token, err := svc.Complete(t.Context(), tenancy.Global(), "never-issued", "weak")
+		test.Nil(t, token)
+		test.ErrorIs(t, err, passwordreset.ErrPasswordRefused)
+		test.ErrorIs(t, err, errTooShort)
+	})
+
+	T.Run("a registered policy that fails to build is returned", func(t *testing.T) {
+		t.Parallel()
+
+		// Only absence is absorbed. A policy the application meant to have and
+		// could not build must not degrade into admitting every password.
+		errBuild := errors.New("loading the breached-password list")
+
+		i := withApplication(base(t, &Config{}))
+		do.Provide(i, func(do.Injector) (passwordreset.PasswordPolicy, error) { return nil, errBuild })
+		RegisterStore(i)
+		RegisterService(i)
+
+		svc, err := do.Invoke[*passwordreset.Service](i)
+		test.Nil(t, svc)
+		test.ErrorIs(t, err, errBuild)
 	})
 
 	T.Run("a missing mailer fails naming it", func(t *testing.T) {
