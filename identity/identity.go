@@ -62,7 +62,7 @@ const UserAttributeKey = userIDKey
 // AccountAttributeKey is UserAttributeKey for accounts.
 const AccountAttributeKey = accountIDKey
 
-// timeZoneRule validates an IANA time zone name by loading it.
+// checkTimeZone validates an IANA time zone name by loading it.
 //
 // Loading rather than pattern-matching, because the only useful definition of a
 // valid zone name is one the runtime can turn into a *time.Location — and a
@@ -82,9 +82,14 @@ const AccountAttributeKey = accountIDKey
 // reader's host happens to think — which makes two replicas of one service
 // disagree about when an account's day starts, and makes a value written on a
 // laptop mean something else in production.
-var timeZoneRule = validation.By(func(value any) error {
-	name, ok := value.(string)
-	if !ok || name == "" {
+//
+// It is a function rather than a validation rule for the reason
+// checkUsernameWhitespace is: ozzo's validation.Errors has no Unwrap, so
+// ErrInvalidTimeZone returned from a validation.By would reach a transport as
+// something no mapper can find, and a client would be told its typo was the
+// server's fault.
+func checkTimeZone(name string) error {
+	if name == "" {
 		// Empty is "not stated", which is a legitimate answer — see
 		// Account.Location for what reads it.
 		return nil
@@ -99,7 +104,7 @@ var timeZoneRule = validation.By(func(value any) error {
 	}
 
 	return nil
-})
+}
 
 // emailAddressRule is the validation both a User and an Invitation apply to an
 // address, written once because it is a rule that can be got wrong twice — and
