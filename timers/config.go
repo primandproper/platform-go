@@ -43,8 +43,8 @@ const (
 	// the whole fleet's firing budget on one row.
 	DefaultMaxAttempts = 20
 
-	// DefaultWriteAttempts is how many times a writer re-runs a statement
-	// Postgres asked it to retry. Ordered locking makes a deadlock between two
+	// DefaultWriteAttempts is how many times one of the set's own writers
+	// re-runs a statement Postgres asked it to retry. Ordered locking makes a deadlock between two
 	// of this package's writers impossible; this covers the residual case where
 	// something else in the consumer's schema touches these rows.
 	DefaultWriteAttempts = 3
@@ -135,6 +135,11 @@ type Config struct {
 	// resolves by asking the caller to try the whole thing again. Anything else
 	// is returned on the first failure, and that includes every failure on MySQL
 	// and SQLite: the conditions retried are Postgres's SQLSTATEs.
+	//
+	// It governs the set's own writes — Claim, Complete, Release and Reap.
+	// Schedule and Cancel run on the caller's transaction, where a failure has
+	// already aborted it, so their retry is the caller's: see
+	// database.RetryOnConflict.
 	WriteAttempts uint `env:"WRITE_ATTEMPTS" json:"writeAttempts,omitempty" yaml:"writeAttempts,omitempty"`
 
 	// MinWakeInterval floors how long Wait sleeps. It bounds both a wake storm

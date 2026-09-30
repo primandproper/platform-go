@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/timers"
 	"github.com/primandproper/platform-go/v14/timers/migrations"
 
@@ -37,17 +36,23 @@ type trialID string
 func Example() {
 	ctx := context.Background()
 
-	var client database.Client // built through database/config, speaking Postgres
-
-	set, err := timers.New[trialID](ctx, &timers.Config{Name: "trials"}, client)
+	// exampleClient is built through database/config, speaking Postgres.
+	set, err := timers.New[trialID](ctx, &timers.Config{Name: "trials"}, exampleClient)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// The trial starts, so its expiry is written down. It is a row before this
-	// returns, which is what makes it survive the deploy that happens next
-	// Tuesday.
-	if err = set.ScheduleIn(ctx, "trial-9f1c", 14*24*time.Hour, nil); err != nil {
+	// The trial starts, so its expiry is written down in the same transaction.
+	// It is a row once that commits, which is what makes it survive the deploy
+	// that happens next Tuesday.
+	err = exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		if startErr := startTrial(ctx, tx, "trial-9f1c"); startErr != nil {
+			return startErr
+		}
+
+		return set.ScheduleIn(ctx, tx, "trial-9f1c", 14*24*time.Hour, nil)
+	})
+	if err != nil {
 		log.Print(err)
 
 		return
@@ -71,71 +76,30 @@ func Example() {
 	}
 }
 
-// Schedule does not join the caller's transaction, so the subject commits first
-// and its timer is written afterwards.
+// Schedule joins the caller's transaction, so the trial and the timer that
+// expires it are one commit: a rollback leaves no timer firing for a trial that
+// was never created, and a commit cannot leave a trial nothing will expire.
+//
+// A deadlock aborts the whole transaction, so it is the transaction that is
+// retried, not the schedule — RetryOnConflict re-runs the callback.
 //
 //nolint:testableexamples // needs a live database, as above.
-func ExampleTimers_Schedule_afterCommit() {
+func ExampleTimers_Schedule_inTransaction() {
 	ctx := context.Background()
 
 	var set *timers.Timers[trialID]
 
 	trial := trialID("trial-9f1c")
 
-	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
-		return startTrial(ctx, tx, trial)
-	})
-	if err != nil {
-		log.Print(err)
-
-		return
-	}
-
-	// Only now. A Schedule inside that callback would outlive the transaction's
-	// rollback and fire for a trial that was never created.
-	if err = set.ScheduleIn(ctx, trial, 14*24*time.Hour, nil); err != nil {
-		// The trial is committed and now has no expiry, which nothing
-		// downstream will notice on its own — hence the route below when that
-		// matters.
-		log.Print(err)
-	}
-}
-
-// The route for a schedule that must not be lost: the fact goes into the
-// transaction that created the subject, and the timer is written from whatever
-// consumes it.
-//
-//nolint:testableexamples // needs a live database, as above.
-func ExampleTimers_Schedule_outbox() {
-	ctx := context.Background()
-
-	var (
-		writer *outbox.Writer
-		set    *timers.Timers[trialID]
-	)
-
-	trial := trialID("trial-9f1c")
-
-	// outbox.Writer.Enqueue takes the caller's transaction, so the message
-	// lives or dies with the trial row.
-	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+	err := database.WithTransaction(ctx, exampleClient, func(tx database.Tx) error {
 		if err := startTrial(ctx, tx, trial); err != nil {
 			return err
 		}
 
-		return writer.Enqueue(ctx, tx, outbox.Message{Topic: "trials", Payload: trial})
-	})
+		return set.ScheduleIn(ctx, tx, trial, 14*24*time.Hour, nil)
+	}, database.RetryOnConflict(3))
 	if err != nil {
 		log.Print(err)
-
-		return
-	}
-
-	// The consumer schedules, and is retried until the row lands. Scheduling a
-	// key that already has a timer for the same instant is not a move, so a
-	// redelivered message costs nothing.
-	_ = func(ctx context.Context, id trialID, expiry time.Time) error {
-		return set.ScheduleAt(ctx, id, expiry, nil)
 	}
 }
 
@@ -198,15 +162,26 @@ func Example_rescheduling() {
 
 	// Support extends the trial by a week. The new instant wins outright — a
 	// merge rule that only moved things earlier could not express this.
-	if err := set.ScheduleIn(ctx, "trial-9f1c", 21*24*time.Hour, nil); err != nil {
+	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		return set.ScheduleIn(ctx, tx, "trial-9f1c", 21*24*time.Hour, nil)
+	})
+	if err != nil {
 		log.Print(err)
 
 		return
 	}
 
-	// They convert to a paid plan instead, so the expiry is called off. A zero
-	// here means it had already fired.
-	cancelled, err := set.Cancel(ctx, "trial-9f1c")
+	// They convert to a paid plan instead, so the expiry is called off in the
+	// transaction that records the conversion. A zero here means it had already
+	// fired.
+	var cancelled int64
+
+	err = exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		var cancelErr error
+		cancelled, cancelErr = set.Cancel(ctx, tx, "trial-9f1c")
+
+		return cancelErr
+	})
 	if err != nil {
 		log.Print(err)
 
@@ -243,7 +218,7 @@ func Example_wakeup() {
 	defer func() { _ = listener.Close(ctx) }()
 
 	// The same channel on both ends: Config.NotifyChannel makes Schedule emit the
-	// notification once its rows have landed.
+	// notification on the caller's transaction, delivered when it commits.
 	set, err := timers.New[trialID](ctx, &timers.Config{
 		Name:          "trials",
 		NotifyChannel: "timers",

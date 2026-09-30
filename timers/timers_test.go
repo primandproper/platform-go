@@ -48,6 +48,10 @@ func (c *stubClient) WithTransaction(context.Context, func(database.Tx) error) e
 
 func postgresClient() *stubClient { return &stubClient{dialect: dialect.Postgres} }
 
+// noTx is a transaction over no executor, for the tests that stop before a
+// statement would be issued on it.
+func noTx() database.Tx { return database.NewTxForTesting(nil) }
+
 func TestNew(T *testing.T) {
 	T.Parallel()
 
@@ -203,11 +207,11 @@ func TestTimers_EmptyBatchesTouchNothing(T *testing.T) {
 		set, err := New[string](t.Context(), validConfig(), postgresClient())
 		must.NoError(t, err)
 
-		test.NoError(t, set.Schedule(t.Context()))
+		test.NoError(t, set.Schedule(t.Context(), noTx()))
 		test.NoError(t, set.Complete(t.Context()))
 		test.NoError(t, set.Release(t.Context(), time.Minute, nil))
 
-		cancelled, err := set.Cancel(t.Context())
+		cancelled, err := set.Cancel(t.Context(), noTx())
 		test.NoError(t, err)
 		test.EqOp(t, int64(0), cancelled)
 	})
@@ -294,7 +298,9 @@ func TestTimers_SurfacesDatabaseFailures(T *testing.T) {
 		"Schedule": func(t *testing.T, set *Timers[string]) error {
 			t.Helper()
 
-			return set.ScheduleAt(t.Context(), "a", time.Now(), nil)
+			return set.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+				return set.ScheduleAt(t.Context(), tx, "a", time.Now(), nil)
+			})
 		},
 		"Claim": func(t *testing.T, set *Timers[string]) error {
 			t.Helper()
@@ -316,9 +322,11 @@ func TestTimers_SurfacesDatabaseFailures(T *testing.T) {
 		"Cancel": func(t *testing.T, set *Timers[string]) error {
 			t.Helper()
 
-			_, err := set.Cancel(t.Context(), "a")
+			return set.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+				_, err := set.Cancel(t.Context(), tx, "a")
 
-			return err
+				return err
+			})
 		},
 		"Reap": func(t *testing.T, set *Timers[string]) error {
 			t.Helper()
@@ -361,7 +369,7 @@ func TestTimers_Cancel_RejectsAKeyItCannotEncode(T *testing.T) {
 	set, err := New[string](T.Context(), validConfig(), postgresClient())
 	must.NoError(T, err)
 
-	_, err = set.Cancel(T.Context(), "")
+	_, err = set.Cancel(T.Context(), noTx(), "")
 
 	test.True(T, stderrors.Is(err, ErrEmptyKey))
 }
