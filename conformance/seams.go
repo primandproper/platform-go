@@ -588,6 +588,17 @@ type Actions struct {
 	// whose deployment mails no sign-in links leaves it nil.
 	MagicLinkToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
 
+	// HandleReminder reports the handle the deployment most recently mailed to
+	// an address that asked what it signs in with.
+	//
+	// There is no RPC that returns it, for MagicLinkToken's reason:
+	// RequestHandleReminder answers a known address and an unknown one
+	// identically, and the handle reaches the person through the deployment's
+	// signin.HandleReminderMailer. An address that was mailed nothing is an
+	// error, which is how the suite tells a reminder that was sent from one that
+	// was not. A subject whose deployment reminds nobody leaves it nil.
+	HandleReminder func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
+
 	// WaitlistLinks reports the links the deployment most recently mailed to
 	// an address that joined a list — the confirmation link a person follows
 	// to make their signup count, and the unsubscribe link beside it.

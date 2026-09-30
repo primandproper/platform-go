@@ -24,6 +24,13 @@ every deployment wants and leaves opt-in only what has a reason to be:
     application supplies what delivers the mail, so a deployment switches it on
     by supplying that and naming the block.
 
+The handle reminder door has no block. It mints nothing and has no table, so the
+one thing it needs is what delivers the mail, and supplying that is the switch:
+a service handed a signin.HandleReminderMailer reminds people of their handle,
+and one handed none refuses that door with
+signin.ErrHandleRemindersNotConfigured. HandleReminderFloor is the door's one
+setting, and it is read whether or not the mailer is there.
+
 MagicLinks' presence means what service.Config means by it, because the rule
 is the same one applied one level further down. Environment parsing allocates
 the block, and a block that holds nothing beyond what an empty environment
@@ -139,6 +146,12 @@ type Config struct {
 	// AdminTokenTTL is how long an administrative sign-in's token lives. Unset
 	// takes signin.DefaultAdminTokenTTL.
 	AdminTokenTTL time.Duration `env:"ADMIN_TOKEN_TTL" json:"adminTokenTTL,omitempty" yaml:"adminTokenTTL,omitempty"`
+
+	// HandleReminderFloor is the minimum time Service.RequestHandleReminder
+	// takes. Unset takes signin.DefaultHandleReminderFloor. Set it above the
+	// slowest mail send the deployment makes, as signin.WithHandleReminderFloor
+	// explains.
+	HandleReminderFloor time.Duration `env:"HANDLE_REMINDER_FLOOR" json:"handleReminderFloor,omitempty" yaml:"handleReminderFloor,omitempty"`
 }
 
 // RefreshTokensConfig is refresh-token rotation's block.
@@ -317,6 +330,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		})),
 		validation.Field(&cfg.TokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.AdminTokenTTL, validation.Min(time.Duration(0))),
+		validation.Field(&cfg.HandleReminderFloor, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.RefreshTokens, byValue(&cfg.RefreshTokens)),
 		validation.Field(&cfg.MagicLinks),
 		validation.Field(&cfg.RecoveryCodes, byValue(&cfg.RecoveryCodes)),

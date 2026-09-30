@@ -47,11 +47,12 @@ everybody — the reading the passwordreset suite takes of the same question.
 
 Two secrets reach a person through mail rather than a response, and each
 assertion that needs one reads it through an action: VerificationToken for the
-link a registration mails, and MagicLinkToken for a sign-in link. A subject
-that cannot say what it mailed skips those assertions with the reason printed.
-A registration answering an invitation is asserted through the link its sender
-copied, which exists only where the deployment returns an invitation's token
-to its sender and says so in Seams.InvitationTokenReturned; elsewhere it skips.
+link a registration mails, and MagicLinkToken for a sign-in link. A handle is
+mailed too, and the HandleReminder action reads it. A subject that cannot say
+what it mailed skips those assertions with the reason printed. A registration
+answering an invitation is asserted through the link its sender copied, which
+exists only where the deployment returns an invitation's token to its sender
+and says so in Seams.InvitationTokenReturned; elsewhere it skips.
 
 Refresh tokens are optional — a deployment built without a store answers a
 sign-in with none, which the client contract calls a valid shape — so the

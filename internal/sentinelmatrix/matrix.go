@@ -704,7 +704,8 @@ var Matrix = map[string]map[string]Decision{
 		// alternative would be answering with the silence that door gives an
 		// address nobody holds, which is a misconfiguration that looks exactly
 		// like working.
-		"ErrMagicLinksNotConfigured": {Err: signin.ErrMagicLinksNotConfigured, Is: Unhandled},
+		"ErrMagicLinksNotConfigured":      {Err: signin.ErrMagicLinksNotConfigured, Is: Unhandled},
+		"ErrHandleRemindersNotConfigured": {Err: signin.ErrHandleRemindersNotConfigured, Is: Unhandled},
 
 		// A recovery code door on a service that was given no store. It is wiring
 		// rather than anything a caller sent, so a 500 is the honest answer and

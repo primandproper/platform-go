@@ -784,6 +784,11 @@ func (s *Service) recordFailure(
 // it is this package's policy rather than the directory's fact. identity's
 // reading — only good standing admits a sign-in — is right for every caller that
 // is not holding a proof of the address the account was registered with.
+//
+// Service.RequestHandleReminder reads standing through it too. A reminder proves
+// nothing and signs nobody in, so it has no reason of its own to be stricter or
+// looser than the other anonymous mail door, and two copies of one reading are
+// two readings free to drift.
 func admitsMagicLink(status identity.AccountStatus) bool {
 	return status.AdmitsSignIn() || status == identity.StatusUnverified
 }

@@ -173,6 +173,31 @@ func TestRegisterService(T *testing.T) {
 		test.ErrorIs(t, svc.RequestMagicLink(t.Context(), tenancy.Of("tenant"), ""), signin.ErrEmptyHandle)
 	})
 
+	T.Run("a registered handle reminder mailer switches its door on", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			RefreshTokens:       RefreshTokensConfig{SweepInterval: pointer.To(time.Duration(0))},
+			HandleReminderFloor: time.Millisecond,
+		}
+
+		i := withRegistrar(withAuthenticator(base(t, cfg)))
+		RegisterService(i)
+
+		off, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+		test.ErrorIs(t, off.RequestHandleReminder(t.Context(), tenancy.Of("tenant"), ""),
+			signin.ErrHandleRemindersNotConfigured)
+
+		i = withRegistrar(withAuthenticator(base(t, cfg)))
+		do.ProvideValue[signin.HandleReminderMailer](i, discardingMailer{})
+		RegisterService(i)
+
+		on, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+		test.ErrorIs(t, on.RequestHandleReminder(t.Context(), tenancy.Of("tenant"), ""), signin.ErrEmptyHandle)
+	})
+
 	T.Run("no verification mailer leaves the resend door refusing", func(t *testing.T) {
 		t.Parallel()
 

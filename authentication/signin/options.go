@@ -842,6 +842,53 @@ func WithMagicLinkRequestFloor(floor time.Duration) ServiceOption {
 	}
 }
 
+// DefaultHandleReminderFloor is how long Service.RequestHandleReminder takes at
+// the least, whatever it found.
+//
+// It is DefaultMagicLinkRequestFloor's value and for that constant's reason: the
+// floor is the timing half of the enumeration defense, and without it the
+// difference between an address somebody holds and one nobody does is a
+// directory read and an SMTP conversation. It is a constant of its own so that
+// the two anonymous mail doors can be tuned apart — see WithHandleReminderFloor.
+const DefaultHandleReminderFloor = DefaultMagicLinkRequestFloor
+
+// WithHandleReminderMailer attaches what delivers a handle reminder, which is
+// what turns that door on.
+//
+// Absent, Service.RequestHandleReminder refuses with
+// ErrHandleRemindersNotConfigured. There is no store to go with it: a reminder
+// mints nothing, so the mailer is the whole of what the door needs.
+//
+// The service mails rather than handing the handle back, for the reason
+// WithMagicLinkMailer gives: an answer that carried a handle for a known address
+// and nothing for an unknown one would be an enumeration oracle in the shape of a
+// response body.
+func WithHandleReminderMailer(mailer HandleReminderMailer) ServiceOption {
+	return func(s *Service) {
+		if mailer != nil {
+			s.handleReminderMailer = mailer
+		}
+	}
+}
+
+// WithHandleReminderFloor sets how long Service.RequestHandleReminder takes at
+// the least. A non-positive duration is ignored, leaving
+// DefaultHandleReminderFloor.
+//
+// It is apart from WithMagicLinkRequestFloor because the two doors do different
+// work: this one reads and mails, and that one reads, mints, commits and mails.
+// Raise it above the slowest mail send the deployment makes, for the reason
+// WithMagicLinkRequestFloor gives, which applies here unchanged — including what
+// it cannot cover, which is a consumer's transport answering the two cases
+// differently after this call returns.
+func WithHandleReminderFloor(floor time.Duration) ServiceOption {
+	return func(s *Service) {
+		if floor > 0 {
+			s.handleReminderFloor = floor
+		}
+	}
+}
+
 // DefaultRecoveryCodeCount is how many recovery codes a set holds when
 // WithRecoveryCodeCount names nothing.
 //

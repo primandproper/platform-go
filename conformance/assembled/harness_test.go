@@ -257,6 +257,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	do.ProvideValue(i, links)
 	do.ProvideValue[signin.MagicLinkMailer](i, links)
 
+	// And the consumer's handle reminder mailer, whose presence is what turns
+	// that door on — it has no block of its own.
+	reminders := &handleReminderMailbox{}
+	do.ProvideValue[signin.HandleReminderMailer](i, reminders)
+
 	// And the consumer's registration policy, which refuses a registrant who
 	// has not accepted every agreement — so the sign-in suite runs against a
 	// deployment that requires them.
@@ -450,6 +455,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				Notified:           notify(client, do.MustInvoke[notifications.Inbox](i)),
 				VerificationToken:  invites.verificationToken,
 				MagicLinkToken:     links.token,
+				HandleReminder:     reminders.handle,
 				WaitlistLinks:      waitlistLinks(waitlists, waitlistMail),
 				Registered: register(client,
 					do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),

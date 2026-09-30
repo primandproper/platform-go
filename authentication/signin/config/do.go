@@ -37,6 +37,10 @@ import (
 // invoked, and for a service built through service.New that means at boot, with
 // an error naming what was wanted.
 //
+// A signin.HandleReminderMailer is used if the application registered one, and
+// registering it is what switches the handle reminder door on: the door has no
+// block, so there is no presence for a missing mailer to contradict.
+//
 // signin.Hooks, signin.PasswordPolicy, signin.AccountPasswordPolicy,
 // signin.RegistrationPolicy and signin.ClaimsBuilder are used if the application registered them, and the
 // service's own defaults apply otherwise. So is a signin.VerificationMailer,
@@ -116,6 +120,15 @@ func RegisterService(i do.Injector) {
 			}
 
 			opts = append(opts, WithMagicLinkMailer(mailer))
+		}
+
+		reminders, err := injection.InvokeOptional[signin.HandleReminderMailer](i)
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "invoking the handle reminder mailer")
+		}
+
+		if reminders != nil {
+			opts = append(opts, WithHandleReminderMailer(reminders))
 		}
 
 		serviceOpts, err := optionalServiceOptions(i)
