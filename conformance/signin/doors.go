@@ -134,7 +134,7 @@ func doors(t *testing.T, s *conformance.Session) {
 		invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
 			AccountId: inviter.AccountID,
 			ToEmail:   who.email,
-			ToName:    "Some Body",
+			ToName:    inviteeName,
 			Roles:     []string{s.Roles().Membership[0]},
 		})
 		must.NoError(t, err, must.Sprint("inviting the registrant into a second account"))
@@ -165,6 +165,83 @@ func doors(t *testing.T, s *conformance.Session) {
 			test.Sprint("the status of a token issued for an account names another"))
 		test.SliceContains(t, standing.GetStatus().GetAccountIds(), inviter.AccountID)
 		test.SliceContains(t, standing.GetStatus().GetAccountIds(), who.accountID)
+	})
+
+	// The other half of choosing an account at the door: the choice is among
+	// the accounts the person belongs to, and naming somebody else's is
+	// refused rather than honored. Naming their own is the control, so the
+	// refusal is about whose account was named rather than about naming one,
+	// and the right password still getting in afterwards shows the refusal
+	// was not counted as a wrong one.
+	t.Run("a sign-in naming an account lands there, and one naming somebody else's is refused", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		who := signInAs(t, s, anon)
+		other := signInAs(t, s, anon)
+
+		must.NotEqOp(t, who.accountID, other.accountID, must.Sprint("two registrants share an account"))
+
+		own, err := loginInto(t.Context(), anon, who.username, password, who.accountID)
+		must.NoError(t, err, must.Sprint("signing in naming the registrant's own account"))
+		test.EqOp(t, who.accountID, own.GetActiveAccountId(),
+			test.Sprint("a sign-in naming the registrant's own account landed somewhere else"))
+
+		// The code alone: the membership is identity's, so the contract lists
+		// no sign-in reason for this refusal.
+		issued, err := loginInto(t.Context(), anon, who.username, password, other.accountID)
+		must.Error(t, err, must.Sprint("a sign-in naming somebody else's account was honored"))
+		test.EqOp(t, codes.NotFound, status.Code(err), test.Sprintf("the refusal was %v", err))
+		test.Nil(t, issued, test.Sprint("a refused sign-in answered with a token"))
+
+		loggedIn(t, anon, who.username, password)
+	})
+
+	// Being made an administrator does not waive the second factor the
+	// administrative door insists on, whatever the ordinary door's policy.
+	// The control is the same person before the grant, refused on the role:
+	// the move from that refusal to this one shows the grant took, and that
+	// the door now refuses on the factor.
+	t.Run("the administrative door refuses an administrator with no proven second factor", func(t *testing.T) {
+		t.Parallel()
+
+		role := s.Roles().Administrator
+		if role == "" {
+			conformance.Skip(t, "conformance: this subject names no Roles.Administrator, so nobody can be made one the administrative door admits; skipping")
+		}
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, adminLoginForToken)
+		granter := directoryCaller(t, s, setUserServiceRoles)
+		who := signInAs(t, s, anon)
+
+		_, before := adminLogin(t.Context(), anon, who.username, password, "")
+		must.Error(t, before, must.Sprint("somebody nobody made an administrator signed in as one"))
+		test.EqOp(t, codes.PermissionDenied, status.Code(before))
+
+		if reasons(t, s) && reason(before) == reasonAdminSignInUnavailable {
+			conformance.Skip(t, "conformance: this deployment has no administrative door, so there is nobody for it to hold to a second factor; skipping")
+		}
+
+		_, err := granter.Surfaces.Identity.SetUserServiceRoles(granter.Context(t.Context()),
+			&identitypb.SetUserServiceRolesRequest{UserId: who.userID, Roles: []string{role}})
+		must.NoError(t, err, must.Sprint("making the registrant an administrator"))
+
+		issued, err := adminLogin(t.Context(), anon, who.username, password, "")
+		refused(t, s, err, codes.FailedPrecondition, reasonSecondFactorNotEnrolled)
+		test.Nil(t, issued, test.Sprint("a refused administrative sign-in answered with a token"))
+
+		// The ordinary door holds them to the deployment's policy rather than
+		// the administrative door's. Where that policy demands a factor too,
+		// it answers as the administrative door did, and the refusal above
+		// stands on its own.
+		ordinary, err := login(t.Context(), anon, who.username, password, "")
+		if err != nil {
+			refused(t, s, err, codes.FailedPrecondition, reasonSecondFactorNotEnrolled)
+
+			return
+		}
+
+		test.False(t, ordinary.GetAdministrative(), test.Sprint("the ordinary door minted an administrative token"))
 	})
 
 	// The administrative door holds an administrator to the same second
