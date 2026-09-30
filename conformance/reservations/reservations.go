@@ -33,8 +33,8 @@ func Suite() conformance.Suite {
 func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
-	reserved := s.Seams().OperatorMethods
-	if len(reserved) == 0 {
+	reserved, reservedRoutes := s.Seams().OperatorMethods, s.Seams().OperatorRoutes
+	if len(reserved) == 0 && len(reservedRoutes) == 0 {
 		conformance.Skip(t, "conformance: this subject reserves nothing, so there is no reservation to hold it to")
 	}
 
@@ -45,6 +45,14 @@ func run(t *testing.T, s *conformance.Session) {
 			t.Parallel()
 
 			assertReserved(t, s, probe, full)
+		})
+	}
+
+	for _, route := range reservedRoutes {
+		t.Run(routeName(route), func(t *testing.T) {
+			t.Parallel()
+
+			assertRouteReserved(t, s, probe, route)
 		})
 	}
 }

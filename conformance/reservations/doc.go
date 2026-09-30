@@ -59,10 +59,21 @@ handler cannot survive. That the deployment refuses such a call to a member is
 the consumer's own test, beside its test that an operator may make it, and the
 entry skips saying so.
 
-Nor, yet, a route on one of the HTTP surfaces. A deployment names those in
-Seams.OperatorRoutes, and the suites mint an administrator for each one a
-caller declares, but nothing here yet asks whether the deployment refuses a
-member one of them.
+# Routes
+
+A deployment reserves a route on one of this module's HTTP surfaces in
+Seams.OperatorRoutes, and each entry is its own subtest the same way: an
+administrator's request is not refused as 403 or 401, and a member's is refused
+as 403. Every placeholder in the route is a fresh identifier nothing holds, and
+that is what makes the second promise observable: a reserved route refuses a
+member before it looks anything up. A surface that reads the row first finds
+none and answers 404, which tells non-staff which rows exist, and the entry
+fails with that ordering named. The administrator's answer for the same
+made-up identifier is usually 404 too, and that is the control passing.
+
+A route is only ever one of this module's, since Run refuses an entry naming
+anything else — and refuses one naming a route its surface serves on the
+caller's own standing, which asks for no grant and so cannot be reserved.
 
 Nothing here counts. Each entry is its own subtest, so a reservation of any
 length is asserted entry by entry.
