@@ -214,13 +214,12 @@ func doors(t *testing.T, s *conformance.Session) {
 		granter := directoryCaller(t, s, setUserServiceRoles)
 		who := signInAs(t, s, anon)
 
+		// Naming Roles.Administrator is the subject declaring it has the door,
+		// so the refusal before the grant is on the role and never on the door
+		// being absent: a door that answers ADMIN_SIGNIN_UNAVAILABLE here is a
+		// wiring regression, and fails rather than skipping.
 		_, before := adminLogin(t.Context(), anon, who.username, password, "")
-		must.Error(t, before, must.Sprint("somebody nobody made an administrator signed in as one"))
-		test.EqOp(t, codes.PermissionDenied, status.Code(before))
-
-		if reasons(t, s) && reason(before) == reasonAdminSignInUnavailable {
-			conformance.Skip(t, "conformance: this deployment has no administrative door, so there is nobody for it to hold to a second factor; skipping")
-		}
+		refused(t, s, before, codes.PermissionDenied, reasonNotAnAdministrator)
 
 		_, err := granter.Surfaces.Identity.SetUserServiceRoles(granter.Context(t.Context()),
 			&identitypb.SetUserServiceRolesRequest{UserId: who.userID, Roles: []string{role}})
