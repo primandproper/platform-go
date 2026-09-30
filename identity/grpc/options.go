@@ -155,9 +155,10 @@ func defaultTokenMinter(ctx context.Context) (string, error) {
 // real answer rather than a placeholder: a consumer who says nothing gets a
 // directory whose request-named RPCs are closed to accounts the caller is not a
 // member of, which is what the per-method permission fragment on its own could
-// not give them. The consumers who need something else — an operator console, a
-// support role that reads every account, a policy engine of their own — are the
-// ones who name it.
+// not give them. The consumers who need something else — a support role scoped
+// some other way, a policy engine of their own — are the ones who name it. An
+// operator who reads or acts on every row is not one of them: see
+// [WithOperatorPermission].
 //
 // See [TargetAuthorizer] for what an implementation owes and
 // [MembershipAuthorizer] for the three rules the default applies.

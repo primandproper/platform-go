@@ -140,6 +140,37 @@ const (
 	PermissionReadInvitations authorization.Permission = "identity.invitations.read"
 )
 
+// The operator permissions: what lets a caller past [TargetAuthorizer]'s
+// refusal, as opposed to what lets them call a method at all.
+//
+// Neither is in [Permissions], because neither gates a method. The method grant
+// still decides who may call GetAccount; these decide whether a caller who may
+// call it, and whom the row rule refused, is let through anyway — an operator
+// reading or acting on somebody else's account. Both are default names that
+// nothing in this module grants to anybody: a deployment gives them to the
+// roles it means to, and renames them with [WithOperatorPermission] if its
+// vocabulary already has a word.
+//
+// They are two rather than one because reading somebody's roster and changing
+// it are not the same trust. A support desk that has to see a customer's
+// account to answer a ticket holds the first; the role that may rename that
+// account, remove its members or cancel its invitations holds the second too.
+// Holding the act permission does not imply the read one — a deployment that
+// wants both grants both.
+//
+// Every admission they make is recorded; see [WithOperatorRecorder].
+const (
+	// PermissionOperatorRead lets its holder past the row rule on the reads
+	// that consult it: GetAccount, ListAccountsForUser, GetMembership,
+	// ListMembershipsForUser, ListAccountMembers and GetInvitation.
+	PermissionOperatorRead authorization.Permission = "identity.directory.read_any"
+
+	// PermissionOperatorAct lets its holder past the row rule on the writes
+	// that consult it: UpdateAccount, TransferAccountOwnership, ArchiveAccount,
+	// SetMembershipRoles, RemoveMembership, Invite and CancelInvitation.
+	PermissionOperatorAct authorization.Permission = "identity.directory.act_any"
+)
+
 // Permissions is the default map from this service's methods to what each
 // requires: the fragment a consumer composes into its own policy.
 //

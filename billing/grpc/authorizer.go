@@ -57,6 +57,33 @@ import (
 // [callers.ErrTargetNotPermitted] is the one value both match on — so the
 // common case is one argument rather than an implementation.
 //
+// # The owner, or an operator
+//
+// An operator reading somebody else's ledger is this seam's to admit, and it
+// is admitted on a permission rather than on a role's name. The implementation
+// already has what it needs: the same authorization.GrantsExtractor the
+// consumer hands the enforcer, and [WithGrantsExtractor] hands this server, is
+// callable from inside the closure. Composed over identity/grpc's default:
+//
+//	const readAnyLedger authorization.Permission = "billing.accounts.read_any"
+//
+//	authorizer := billinggrpc.AccountAuthorizerFunc(func(ctx context.Context,
+//		caller callers.Principal, accountID string) error {
+//		if grants, ok := grantsFor(ctx); ok && grants.Has(readAnyLedger) {
+//			return nil
+//		}
+//
+//		return members.AuthorizeAccount(ctx, caller, accountID)
+//	})
+//
+// The permission is the deployment's to name and grant; this package declares
+// none, since it ships no rule for one to bypass. Checking a role's name —
+// "service_admin" — in its place is the policy the permission fragment exists
+// to keep out of code: the next role that should read ledgers is a code change
+// rather than a grant. identity/grpc, which does ship a rule, records every
+// admission its operator permissions make as audit.OperatorBypassEntry, and a
+// deployment that wants the same trail here records one from this closure.
+//
 // # What implementations owe
 //
 // A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.

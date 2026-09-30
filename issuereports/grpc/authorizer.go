@@ -90,6 +90,29 @@ import (
 // its users' own words must be total wants to be told when this surface grows a
 // question that rule has not considered.
 //
+// # The owner, or an operator
+//
+// The triager in the composition below is the ordinary operator, and the
+// question "does this caller triage" is a permission rather than a role's
+// name. The implementation already has what it needs to ask it: the same
+// authorization.GrantsExtractor the consumer hands the enforcer, and
+// [WithGrantsExtractor] hands this server, is callable from inside the method:
+//
+//	const readAnyReport authorization.Permission = "issues.reports.read_any"
+//
+//	func triages(ctx context.Context) bool {
+//		grants, ok := grantsFor(ctx)
+//
+//		return ok && grants.Has(readAnyReport)
+//	}
+//
+// The permission is the deployment's to name and grant; this package declares
+// none, since the rule it would bypass is the consumer's. Checking a role's
+// name — "service_admin" — in its place is the policy the permission fragment
+// exists to keep out of code. identity/grpc, which does ship a rule, records
+// every admission its operator permissions make as audit.OperatorBypassEntry,
+// and a deployment that wants the same trail here records one from the method.
+//
 // # What implementations owe
 //
 // A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.
