@@ -16,8 +16,9 @@ import (
 )
 
 // Every example here is compiled but not run, and carries a nolint saying so.
-// The queue is Postgres-only, so an example with an Output comment would need a
-// live server to produce it — which is what the container-backed suite is for.
+// The queue runs on Postgres, MySQL and SQLite, but on every one of them an
+// example with an Output comment would need a live database to produce it —
+// which is what the container-backed suite is for.
 // These exist to show the shape of the calls, not to verify them.
 
 // exampleClient stands in for the database.Client a consumer builds through
@@ -36,7 +37,7 @@ type tileKey struct {
 
 // Enqueue, claim, work, complete — the whole loop a worker runs.
 //
-//nolint:testableexamples // Postgres-only: producing output would need a live server.
+//nolint:testableexamples // producing output would need a live server.
 func Example() {
 	ctx := context.Background()
 
@@ -90,7 +91,7 @@ func Example() {
 // Priority and delay are how a consumer expresses scheduling policy; the queue
 // itself has no opinion about what is urgent or what is stale.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_Enqueue() {
 	ctx := context.Background()
 
@@ -114,7 +115,7 @@ func ExampleQueue_Enqueue() {
 // An enqueue never joins the caller's transaction, so the row commits first and
 // the key is offered afterwards.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_Enqueue_afterCommit() {
 	ctx := context.Background()
 
@@ -146,7 +147,7 @@ func ExampleQueue_Enqueue_afterCommit() {
 // The other route, for work that must not be lost: the intent goes into the
 // transaction and something else does the enqueueing.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_Enqueue_outbox() {
 	ctx := context.Background()
 
@@ -184,7 +185,7 @@ func ExampleQueue_Enqueue_outbox() {
 // shrink each other's batches — a locked row is skipped and replaced rather than
 // counted — so an empty claim is the only signal that there is nothing to do.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_Claim() {
 	ctx := context.Background()
 
@@ -219,7 +220,7 @@ func ExampleQueue_Claim() {
 // the queue stores a name, and the thing named lives in a table this queue's
 // write neither waited for nor rolled back with.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_Claim_missingSubject() {
 	ctx := context.Background()
 
@@ -260,7 +261,7 @@ func ExampleQueue_Claim_missingSubject() {
 // leases on running handlers for as long as they run, and draining the batch it
 // is holding when the context is cancelled.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleNewRunner() {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
@@ -291,7 +292,7 @@ func ExampleNewRunner() {
 // is the obvious place — because a component that starts its own timers is one
 // that has to be told when to stop.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_Stats() {
 	ctx := context.Background()
 
@@ -320,7 +321,7 @@ func ExampleQueue_Stats() {
 // choose — the platform ships no numbered migration, since the number would
 // collide with theirs.
 //
-//nolint:testableexamples // Postgres-only, as above.
+//nolint:testableexamples // needs a live server, as above.
 func ExampleQueue_migrations() {
 	body, err := migrations.SQL(dialect.Postgres, workqueue.DefaultTablePrefix)
 	if err != nil {
