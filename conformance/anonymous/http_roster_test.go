@@ -39,10 +39,9 @@ func TestHTTPRosterMatchesWhatEachSurfaceMounts(t *testing.T) {
 	t.Parallel()
 
 	mounted := map[string][]*routing.Route{
-		"dataprivacy":          mountDataPrivacy(t),
-		"dataprivacy artifact": {mountDataPrivacyArtifact(t)},
-		"mediaregistry":        {mountMediaRegistry(t)},
-		"operations":           mountOperations(t),
+		"dataprivacy":   mountDataPrivacy(t),
+		"mediaregistry": {mountMediaRegistry(t)},
+		"operations":    mountOperations(t),
 	}
 
 	roster := httpRoster()
@@ -94,12 +93,6 @@ func mountDataPrivacy(t *testing.T) []*routing.Route {
 	t.Helper()
 
 	return newDataPrivacyHandlers(t).Mount(newRouter())
-}
-
-func mountDataPrivacyArtifact(t *testing.T) *routing.Route {
-	t.Helper()
-
-	return newDataPrivacyHandlers(t).MountArtifact(newRouter())
 }
 
 func mountMediaRegistry(t *testing.T) *routing.Route {

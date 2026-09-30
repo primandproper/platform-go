@@ -126,9 +126,10 @@ type Handlers struct {
 	operationsPath string
 	tags           []string
 
-	// artifactMounted is whether MountArtifact has been called, which is what
-	// a Receipt reads before it names an artifact path: a path to a route
-	// nobody mounted is a 404 the client was told to fetch.
+	// artifactMounted is whether MountArtifact has been called — by Mount, or
+	// by a deployment mounting piecemeal — which is what a Receipt reads before
+	// it names an artifact path: a path to a route nobody mounted is a 404 the
+	// client was told to fetch.
 	artifactMounted atomic.Bool
 }
 
@@ -227,8 +228,8 @@ type Receipt struct {
 	// and rooted at this surface's base path like the two above.
 	//
 	// It is present exactly while there is an artifact to fetch — a completed
-	// export whose artifact has not expired — and only where MountArtifact
-	// was called, so a client that finds it may follow it and one that does
+	// export whose artifact has not expired — and only where the artifact
+	// route was mounted, so a client that finds it may follow it and one that does
 	// not has not been pointed at a route nobody serves.
 	Artifact string `json:"artifact,omitempty"`
 }
@@ -270,6 +271,7 @@ func (h *Handlers) Mount(r *routing.Router) []*routing.Route {
 		h.MountGet(r),
 		h.MountConfirm(r),
 		h.MountCancel(r),
+		h.MountArtifact(r),
 	}
 }
 

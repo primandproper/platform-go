@@ -33,8 +33,8 @@ func completedExport(id string, subject dataprivacy.Subject) *dataprivacy.Reques
 	return req
 }
 
-// mountWithArtifact builds a router with the whole surface and the artifact
-// route on it, under one subject.
+// mountWithArtifact builds a router with the whole surface, the artifact route
+// included, under one subject.
 func mountWithArtifact(t *testing.T, svc dataprivacy.Service, subject dataprivacy.Subject, opts ...Option) nethttp.Handler {
 	t.Helper()
 
@@ -43,7 +43,6 @@ func mountWithArtifact(t *testing.T, svc dataprivacy.Service, subject dataprivac
 	handlers, router := build(t, svc, opts...)
 
 	handlers.Mount(router)
-	handlers.MountArtifact(router)
 
 	must.NoError(t, router.Err())
 
@@ -71,6 +70,22 @@ func downloading(req *dataprivacy.Request, err error) *dataprivacymock.ServiceMo
 
 func TestHandlers_MountArtifact(T *testing.T) {
 	T.Parallel()
+
+	T.Run("is part of Mount, so a subject can always collect what they asked for", func(t *testing.T) {
+		t.Parallel()
+
+		handlers, router := build(t, serviceReturning(nil))
+
+		routes := handlers.Mount(router)
+		must.NoError(t, router.Err())
+
+		var paths []string
+		for _, route := range routes {
+			paths = append(paths, route.Method+" "+route.Path)
+		}
+
+		test.SliceContains(t, paths, RouteArtifact)
+	})
 
 	T.Run("describes every answer the route gives", func(t *testing.T) {
 		t.Parallel()
@@ -261,10 +276,17 @@ func TestReceipt_artifact(T *testing.T) {
 		test.EqOp(t, BasePath+"/r1"+ArtifactSuffix, got.Artifact)
 	})
 
+	// The deployment mounting piecemeal that left the artifact route off.
 	T.Run("and names none where it is not", func(t *testing.T) {
 		t.Parallel()
 
-		got := read(t, mount(t, serviceReturning(completedExport("r1", subject)), subject), "r1")
+		errormappers.Register()
+
+		handlers, router := build(t, serviceReturning(completedExport("r1", subject)))
+		handlers.MountGet(router)
+		must.NoError(t, router.Err())
+
+		got := read(t, asSubject(subject, router.Handler()), "r1")
 
 		test.EqOp(t, "", got.Artifact)
 	})

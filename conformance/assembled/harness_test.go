@@ -455,11 +455,6 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						DataPrivacy:   true,
 						MediaRegistry: true,
 						Operations:    true,
-
-						// service mounts the artifact route wherever artifacts
-						// are kept, and this deployment keeps them in its
-						// uploads.
-						DataPrivacyArtifact: true,
 					},
 					Decorate: func(ctx context.Context) context.Context {
 						md := metadata.Pairs(

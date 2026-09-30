@@ -53,8 +53,9 @@ did.
 A completed export is also fetched, through dataprivacy/http's artifact route,
 by its subject and by a neighbor: the subject is handed it — as a redirect to
 storage, or as the artifact itself, with the headers that keep it an attachment
-nothing caches — and the neighbor is told it is not there. The route is opt-in
-in that package, so a subject says it serves one with
-HTTPSurfaces.DataPrivacyArtifact, and the assertion skips where it does not.
+nothing caches — and the neighbor is told it is not there. The route is part of
+that package's Mount, so a subject serving privacy requests serves it, and a
+deployment that left it off fails here: an export its subject cannot collect is
+one they were not given.
 */
 package dataprivacy

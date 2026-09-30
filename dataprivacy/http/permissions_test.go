@@ -75,7 +75,7 @@ func TestPermissions_coverEveryRoute(T *testing.T) {
 			// Mount and the opt-in artifact route between them are everything
 			// this surface can mount.
 			mounted := map[string]bool{}
-			for _, route := range append(handlers.Mount(router), handlers.MountArtifact(router)) {
+			for _, route := range handlers.Mount(router) {
 				mounted[route.Method+" "+route.Path] = true
 			}
 

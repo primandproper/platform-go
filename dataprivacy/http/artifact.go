@@ -69,10 +69,10 @@ const (
 // is in OwnStandingRoutes and requires no grant: it serves a subject their own
 // export, and nobody else's.
 //
-// It is not part of Mount, and that is deliberate rather than an oversight to
-// correct. A route added to Mount is a route added to every deployment already
-// calling it, which is a change to their surface they did not ask for; the
-// deployment that wants this one says so.
+// Mount calls it: collecting an export is the other half of asking for one,
+// and see the package documentation for why that makes it part of the
+// ordinary surface. It is its own method for the deployment that mounts
+// piecemeal, as MountConfirm is.
 //
 // A completed export whose storage can sign URLs, and whose artifact is not
 // encrypted, is answered 303 to a signed URL, so the bytes do not pass through

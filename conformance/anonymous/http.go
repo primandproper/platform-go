@@ -54,14 +54,6 @@ func httpRoster() []httpSurface {
 				{http.MethodGet, privacy + "/{requestID}"},
 				{http.MethodGet, privacy + "/{requestID}/confirm"},
 				{http.MethodPost, privacy + "/{requestID}/cancel"},
-			},
-		},
-		{
-			// Its own entry rather than a sixth route above, because it is
-			// mounted on its own: dataprivacy/http's Mount leaves it out.
-			name:    "dataprivacy artifact",
-			mounted: func(h *conformance.HTTPSurfaces) bool { return h.DataPrivacy && h.DataPrivacyArtifact },
-			routes: []httpRoute{
 				{http.MethodGet, privacy + "/{requestID}/artifact"},
 			},
 		},

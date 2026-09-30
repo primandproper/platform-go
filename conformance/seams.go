@@ -439,12 +439,6 @@ type HTTPSurfaces struct {
 	DataPrivacy   bool
 	MediaRegistry bool
 	Operations    bool
-
-	// DataPrivacyArtifact is whether the privacy surface also serves its
-	// artifact route, which dataprivacy/http leaves out of Mount: a
-	// deployment mounts it with MountArtifact, and service mounts it wherever
-	// artifacts are kept. It means nothing without DataPrivacy.
-	DataPrivacyArtifact bool
 }
 
 // Context applies Decorate, or returns ctx when there is nothing to add.

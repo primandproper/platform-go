@@ -89,9 +89,9 @@ func Permissions() map[string][]authorization.Permission {
 // The artifact download is the same standing arrived at from the other end:
 // it hands a subject the export they asked for, and only theirs. Holding the
 // grant to submit an export and then being refused the result would be the
-// surface keeping what it owes. It is listed here whether or not MountArtifact
-// was called, because what a route promises does not change with whether one
-// deployment mounted it.
+// surface keeping what it owes. It is listed here whether or not a deployment
+// mounted it, because what a route promises does not change with whether one
+// deployment did.
 func OwnStandingRoutes() []string {
 	return []string{RouteConfirm, RouteArtifact}
 }

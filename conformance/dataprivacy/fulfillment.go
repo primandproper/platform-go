@@ -138,10 +138,6 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		mine, theirs := twoPeople(t, s,
 			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet, dataprivacyhttp.RouteArtifact},
 			[]string{dataprivacyhttp.RouteArtifact})
-		if !mine.HTTP.DataPrivacyArtifact {
-			conformance.Skip(t, "conformance: this subject serves privacy requests but not the route their artifacts download from")
-		}
-
 		fulfilled := exported(t, s, mine)
 		path := dataprivacyhttp.BasePath + "/" + fulfilled.ID + dataprivacyhttp.ArtifactSuffix
 

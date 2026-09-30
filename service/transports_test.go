@@ -1228,9 +1228,9 @@ func auditServiceOverBufconn(
 }
 
 // TestRegisterTransports_dataPrivacyArtifactRoute pins that the privacy surface
-// serves its artifact route exactly where there is artifact storage to serve
-// from: dataprivacy/http leaves the route opt-in, and this package is where it
-// is opted into.
+// serves its artifact route whatever artifact storage was or was not
+// registered: the route is part of dataprivacy/http's Mount, because a subject
+// who cannot collect their export has not been given it.
 func TestRegisterTransports_dataPrivacyArtifactRoute(T *testing.T) {
 	T.Parallel()
 
@@ -1283,7 +1283,7 @@ func TestRegisterTransports_dataPrivacyArtifactRoute(T *testing.T) {
 		return res.Code
 	}
 
-	T.Run("mounted where artifacts are kept somewhere", func(t *testing.T) {
+	T.Run("mounted with artifact storage of its own", func(t *testing.T) {
 		t.Parallel()
 
 		handler := serve(t, &dataprivacycfg.ArtifactStorage{Manager: &uploadsmock.UploadManagerMock{}})
@@ -1291,12 +1291,12 @@ func TestRegisterTransports_dataPrivacyArtifactRoute(T *testing.T) {
 		test.EqOp(t, nethttp.StatusSeeOther, download(t, handler))
 	})
 
-	T.Run("absent where they are not", func(t *testing.T) {
+	T.Run("mounted with none registered", func(t *testing.T) {
 		t.Parallel()
 
 		handler := serve(t, nil)
 
-		test.NotEqOp(t, nethttp.StatusSeeOther, download(t, handler))
+		test.EqOp(t, nethttp.StatusSeeOther, download(t, handler))
 	})
 }
 

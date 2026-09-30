@@ -613,7 +613,7 @@ the whole list.
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                                 |
 | `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                             |
 | `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                              |
-| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                                       |
+| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request, and download an export — over `dataprivacy.Service`               |
 | `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                     |
 | `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                                |
 | `mediaregistry/grpc`                | resource surface | uploading, registering and reading back the caller's objects — over `mediaregistry.Store` and `uploads.UploadManager` |

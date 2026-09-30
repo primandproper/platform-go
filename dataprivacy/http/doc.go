@@ -15,15 +15,18 @@ It is imported as dataprivacyhttp.
 
 	errormappers.Register() // or service.Register, which makes this call
 
-Mount registers all five routes — submit, list, read one, confirm, cancel —
-which is the ordinary case. A consumer that wants some of them calls MountSubmit,
-MountList, MountGet, MountConfirm and MountCancel itself and leaves the rest out.
-Confirm is the one most likely to be left off, and the section on it below says
-why somebody would.
+Mount registers all six routes — submit, list, read one, confirm, cancel, and
+the download of an export's artifact — which is the ordinary case. A consumer
+that wants some of them calls MountSubmit, MountList, MountGet, MountConfirm,
+MountCancel and MountArtifact itself and leaves the rest out. Confirm is the one
+most likely to be left off, and the section on it below says why somebody would.
 
-MountArtifact is the sixth, and Mount does not call it: the route an export is
-downloaded from is opt-in, because adding a route to Mount adds it to every
-deployment already calling Mount. The section on it below says what it answers.
+The artifact route is in Mount because a subject who asked for their data and
+cannot collect it has not been given it. The right of access and the right to
+portability are both owed as the data itself, in a form the person can use, and
+an export that exists only in a bucket the deployment reads meets neither. A
+deployment that serves exports some other way leaves it out, which is a
+decision somebody made rather than a default nobody noticed.
 
 There is no route list to hand back for somebody else to register: routing.Route
 is what a registration returns rather than a value that can be registered, and
@@ -165,7 +168,7 @@ a click that arrives after the window has lapsed.
 
 # The artifact route
 
-MountArtifact registers GET {base}/{id}/artifact, confined exactly as the read
+Mount registers GET {base}/{id}/artifact through MountArtifact, confined exactly as the read
 of one request is: somebody else's request is absent, as 404, before anything is
 asked about its artifact.
 
