@@ -28,7 +28,11 @@ rights conditional on an account they may not even administer — so an owned
 account survives with an owner_user_id naming nobody. Resolve those before the
 request runs: transfer the accounts with other members, archive the ones
 without. Nothing here can make that decision, because archiving an account to
-satisfy one member's erasure takes the other members offline.
+satisfy one member's erasure takes the other members offline. Where the answer
+is to destroy the account rather than keep it — the subject was its only member
+— [identity.AdminWriter.DeleteAccount] is the tool, run on the same transaction
+as the rest of the consumer's erasure. It has no service method, hook or RPC by
+design: the privacy request driving it is the record of why it ran.
 
 Nothing is reported as retained. The invitations the subject sent stay in the
 table, and they are reported as anonymized rather than retained because what is
