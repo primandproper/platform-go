@@ -56,7 +56,9 @@ func RegisterStore(i do.Injector) {
 // unencrypted packages. Both are optional registrations, and both reach the
 // Service as [WithCompressor] and [WithEncryptor] — the same two options
 // RegisterFulfiller hands the Fulfiller, out of the same container, so the
-// codecs an artifact is written with are the ones it is read with.
+// codecs an artifact is written with are the ones it is read with. Where
+// RegisterArtifactStorage was called, its encryptor is the one used instead —
+// see invokeArtifacts.
 //
 // It depends on *dataprivacy.Fulfiller rather than only on the operations
 // Service, and the dependency is there to be ordered rather than used: the
@@ -67,9 +69,10 @@ func RegisterStore(i do.Injector) {
 //
 // It reads artifacts from the uploads.UploadManager RegisterFulfiller writes
 // them to, out of the same container, so Download and Open reach what the
-// Fulfiller stored. RegisterFulfiller already requires one, so it is required
-// here too rather than absorbed: a Service without it answers every download
-// with dataprivacy.ErrArtifactUnavailable.
+// Fulfiller stored — the *ArtifactStorage's where RegisterArtifactStorage was
+// called, and the container's own otherwise. RegisterFulfiller already requires
+// one, so it is required here too rather than absorbed: a Service without it
+// answers every download with dataprivacy.ErrArtifactUnavailable.
 //
 // A registered audit.Recorder and dataprivacy.ActorResolver are attached, as
 // they are to the Fulfiller — see invokeAudit.
@@ -85,7 +88,12 @@ func RegisterService(i do.Injector) {
 			return nil, err
 		}
 
-		compressor, encryptor, err := invokeCodecs(i)
+		compressor, err := invokeCompressor(i)
+		if err != nil {
+			return nil, err
+		}
+
+		uploadManager, encryptor, err := invokeArtifacts(i)
 		if err != nil {
 			return nil, err
 		}
@@ -119,11 +127,6 @@ func RegisterService(i do.Injector) {
 		}
 
 		service, err := do.Invoke[operations.Service](i)
-		if err != nil {
-			return nil, err
-		}
-
-		uploadManager, err := do.Invoke[uploads.UploadManager](i)
 		if err != nil {
 			return nil, err
 		}
@@ -163,6 +166,10 @@ func RegisterService(i do.Injector) {
 // carry a download link — see [WithEncryptor]. Their absence means
 // uncompressed, unencrypted packages and a link that works.
 //
+// Where RegisterArtifactStorage was called, the *ArtifactStorage it registered
+// is where artifacts are written and what they are sealed with, in place of the
+// container's own upload manager and encryptor — see invokeArtifacts.
+//
 // A registered shredding.Keys makes every erasure destroy the subject's data
 // key, which is what carries an erasure into backups already taken. Its absence
 // means erasure deletes rows and nothing more — the older, narrower guarantee,
@@ -184,7 +191,12 @@ func RegisterFulfiller(i do.Injector) {
 			return nil, err
 		}
 
-		compressor, encryptor, err := invokeCodecs(i)
+		compressor, err := invokeCompressor(i)
+		if err != nil {
+			return nil, err
+		}
+
+		uploadManager, encryptor, err := invokeArtifacts(i)
 		if err != nil {
 			return nil, err
 		}
@@ -250,11 +262,6 @@ func RegisterFulfiller(i do.Injector) {
 			return nil, err
 		}
 
-		uploadManager, err := do.Invoke[uploads.UploadManager](i)
-		if err != nil {
-			return nil, err
-		}
-
 		return NewFulfiller(
 			ctx,
 			cfg,
@@ -272,6 +279,10 @@ func RegisterFulfiller(i do.Injector) {
 }
 
 // RegisterSweeper registers a *dataprivacy.Sweeper with the injector.
+//
+// It deletes artifacts from where RegisterFulfiller wrote them: the
+// *ArtifactStorage's upload manager where RegisterArtifactStorage was called,
+// and the container's own otherwise.
 //
 // Prerequisites: *Config, dataprivacy.Store (see RegisterStore), and
 // uploads.UploadManager must be registered in the injector before the Sweeper
@@ -298,7 +309,7 @@ func RegisterSweeper(i do.Injector) {
 			return nil, err
 		}
 
-		uploadManager, err := do.Invoke[uploads.UploadManager](i)
+		uploadManager, _, err := invokeArtifacts(i)
 		if err != nil {
 			return nil, err
 		}
@@ -307,16 +318,123 @@ func RegisterSweeper(i do.Injector) {
 	})
 }
 
-// invokeCodecs resolves the two optional codecs an artifact is written with and
-// read with. Either may be absent, which is uncompressed and unencrypted.
+// RegisterArtifactStorage registers the *ArtifactStorage the Fulfiller writes
+// artifacts to, the Service reads them from and the Sweeper deletes them from,
+// built from Config.Artifacts.
 //
-// Both registrations are resolved here rather than in each provider so that the
-// Fulfiller and the Service are configured out of the same two lookups. There
-// is nothing to check them against each other: whether artifacts are encrypted
-// is whether this returned an encryptor, and no second statement of that fact
-// exists to disagree with it.
-func invokeCodecs(i do.Injector) (compression.Compressor, encryption.EncryptorDecryptor, error) {
-	compressor, err := injection.InvokeOptional[compression.Compressor](i)
+// What the block configures is built: an upload manager of the artifacts' own
+// from Storage, and from Encryption a keyring over the container's
+// encryption.Keyset, which must then be registered. What it leaves out is taken
+// from the container as it would be without this call — its
+// uploads.UploadManager, required, and its encryption.EncryptorDecryptor, if
+// any — so calling this changes nothing for a Config with no Artifacts block.
+//
+// It is registered once and resolved by all three, which is the point: a
+// manager built three times is three buckets' worth of clients, and three
+// separate buckets under the memory provider.
+//
+// Prerequisites: *Config, and uploads.UploadManager unless Artifacts.Storage is
+// configured, and encryption.Keyset when Artifacts.Encryption is.
+func RegisterArtifactStorage(i do.Injector) {
+	do.Provide(i, func(i do.Injector) (*ArtifactStorage, error) {
+		pillars, err := observability.InvokePillars(i)
+		if err != nil {
+			return nil, err
+		}
+
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		// Normalized before it is read, so an Artifacts block env parsing
+		// allocated and nobody filled in does not ask for a keyset.
+		if err = cfg.prepare(ctx); err != nil {
+			return nil, err
+		}
+
+		var keys encryption.Keyset
+		if cfg.Artifacts != nil && cfg.Artifacts.Encryption != nil {
+			if keys, err = do.Invoke[encryption.Keyset](i); err != nil {
+				return nil, platformerrors.Wrap(err, "invoking the data privacy artifact keyset")
+			}
+		}
+
+		storage, err := NewArtifactStorage(ctx, cfg, keys, WithPillars(pillars))
+		if err != nil {
+			return nil, err
+		}
+
+		if storage.Manager == nil {
+			if storage.Manager, err = do.Invoke[uploads.UploadManager](i); err != nil {
+				return nil, platformerrors.Join(err, storage.Close())
+			}
+		}
+
+		if storage.Encryptor == nil {
+			if storage.Encryptor, err = injection.InvokeOptional[encryption.EncryptorDecryptor](i); err != nil {
+				return nil, platformerrors.Join(err, storage.Close())
+			}
+		}
+
+		return storage, nil
+	})
+}
+
+// invokeCompressor resolves the optional codec an artifact is compressed with.
+// Absent is uncompressed.
+func invokeCompressor(i do.Injector) (compression.Compressor, error) {
+	return injection.InvokeOptional[compression.Compressor](i)
+}
+
+// invokeArtifacts resolves where artifacts are kept and what they are sealed
+// with, for the Fulfiller, the Service and the Sweeper alike.
+//
+// Where RegisterArtifactStorage was called its *ArtifactStorage answers both.
+// Otherwise the answer is the container's own, as it always was: its
+// uploads.UploadManager, required, and its encryption.EncryptorDecryptor, if
+// any. There is nothing to check the two against each other: whether artifacts
+// are encrypted is whether this returned an encryptor, and no second statement
+// of that fact exists to disagree with it.
+//
+// A Config whose Artifacts block configures something, in a container that
+// never registered the storage built from it, is refused with
+// ErrArtifactStorageUnregistered rather than quietly written to the shared
+// bucket in the clear.
+func invokeArtifacts(i do.Injector) (uploads.UploadManager, encryption.EncryptorDecryptor, error) {
+	registered, err := injection.InvokeOptional[*ArtifactStorage](i)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if registered != nil {
+		return registered.Manager, registered.Encryptor, nil
+	}
+
+	ctx, err := do.Invoke[context.Context](i)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cfg, err := do.Invoke[*Config](i)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err = cfg.prepare(ctx); err != nil {
+		return nil, nil, err
+	}
+
+	if cfg.Artifacts.configured() {
+		return nil, nil, ErrArtifactStorageUnregistered
+	}
+
+	uploadManager, err := do.Invoke[uploads.UploadManager](i)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -326,7 +444,7 @@ func invokeCodecs(i do.Injector) (compression.Compressor, encryption.EncryptorDe
 		return nil, nil, err
 	}
 
-	return compressor, encryptorDecryptor, nil
+	return uploadManager, encryptorDecryptor, nil
 }
 
 // invokeAudit resolves the audit log this package records to and who its

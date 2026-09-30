@@ -43,11 +43,12 @@ const (
 // method, a space, and the path at the default BasePath with its parameter in
 // braces — routing's own spelling of a pattern.
 const (
-	RouteSubmit  = nethttp.MethodPost + " " + BasePath
-	RouteList    = nethttp.MethodGet + " " + BasePath
-	RouteGet     = nethttp.MethodGet + " " + BasePath + "/{" + pathParam + "}"
-	RouteConfirm = nethttp.MethodGet + " " + BasePath + "/{" + pathParam + "}" + ConfirmSuffix
-	RouteCancel  = nethttp.MethodPost + " " + BasePath + "/{" + pathParam + "}" + CancelSuffix
+	RouteSubmit   = nethttp.MethodPost + " " + BasePath
+	RouteList     = nethttp.MethodGet + " " + BasePath
+	RouteGet      = nethttp.MethodGet + " " + BasePath + "/{" + pathParam + "}"
+	RouteConfirm  = nethttp.MethodGet + " " + BasePath + "/{" + pathParam + "}" + ConfirmSuffix
+	RouteCancel   = nethttp.MethodPost + " " + BasePath + "/{" + pathParam + "}" + CancelSuffix
+	RouteArtifact = nethttp.MethodGet + " " + BasePath + "/{" + pathParam + "}" + ArtifactSuffix
 )
 
 // Permissions is what each guarded route requires, keyed by route.
@@ -69,7 +70,7 @@ func Permissions() map[string][]authorization.Permission {
 }
 
 // OwnStandingRoutes are the routes reached on the strength of what the caller
-// is rather than of a grant: the confirmation link.
+// is rather than of a grant: the confirmation link, and the artifact download.
 //
 // It arrives in a mail sent to the person the erasure is about, and the person
 // clicking it is the authorization, the way waitlists' confirmation link is.
@@ -84,8 +85,15 @@ func Permissions() map[string][]authorization.Permission {
 // and conformance refuses the run that makes it rather than asserting against
 // it. A deployment that wants a human click rather than a link leaves it
 // unmounted, as the package documentation describes.
+//
+// The artifact download is the same standing arrived at from the other end:
+// it hands a subject the export they asked for, and only theirs. Holding the
+// grant to submit an export and then being refused the result would be the
+// surface keeping what it owes. It is listed here whether or not a deployment
+// mounted it, because what a route promises does not change with whether one
+// deployment did.
 func OwnStandingRoutes() []string {
-	return []string{RouteConfirm}
+	return []string{RouteConfirm, RouteArtifact}
 }
 
 // Permissions is the package's Permissions as this Handlers mounts them: keyed

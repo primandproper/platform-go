@@ -30,6 +30,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsmock "github.com/primandproper/platform-go/v14/comments/mock"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -1224,6 +1225,79 @@ func auditServiceOverBufconn(
 	})
 
 	return auditpb.NewAuditServiceClient(conn)
+}
+
+// TestRegisterTransports_dataPrivacyArtifactRoute pins that the privacy surface
+// serves its artifact route whatever artifact storage was or was not
+// registered: the route is part of dataprivacy/http's Mount, because a subject
+// who cannot collect their export has not been given it.
+func TestRegisterTransports_dataPrivacyArtifactRoute(T *testing.T) {
+	T.Parallel()
+
+	caller := testPrincipal{userID: "user_1", scope: tenancy.Global(), account: "acct_1"}
+
+	serve := func(t *testing.T, storage *dataprivacycfg.ArtifactStorage) nethttp.Handler {
+		t.Helper()
+
+		i := newTransportInjector(t)
+
+		router := newRouter()
+		do.ProvideValue(i, router)
+
+		if storage != nil {
+			do.ProvideValue(i, storage)
+		}
+
+		export := &dataprivacy.Request{
+			ID:          "r1",
+			Type:        dataprivacy.RequestExport,
+			Subject:     dataprivacy.Subject{ID: caller.userID, Type: dataprivacy.SubjectUser},
+			Status:      dataprivacy.StatusCompleted,
+			ArtifactRef: "privacy-exports/r1.json",
+		}
+
+		do.ProvideValue[dataprivacy.Service](i, &dataprivacymock.ServiceMock{
+			GetFunc: func(context.Context, *tenancy.Scope, string) (*dataprivacy.Request, error) {
+				return export, nil
+			},
+			DownloadFunc: func(context.Context, *tenancy.Scope, string) (string, error) {
+				return "https://storage.example/signed", nil
+			},
+		})
+
+		_, err := mountTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
+		must.NoError(t, err)
+
+		return nethttp.HandlerFunc(func(res nethttp.ResponseWriter, req *nethttp.Request) {
+			router.Handler().ServeHTTP(res, req.WithContext(context.WithValue(req.Context(), principalKey{}, callers.Principal(caller))))
+		})
+	}
+
+	download := func(t *testing.T, handler nethttp.Handler) int {
+		t.Helper()
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet,
+			dataprivacyhttp.BasePath+"/r1"+dataprivacyhttp.ArtifactSuffix, nethttp.NoBody))
+
+		return res.Code
+	}
+
+	T.Run("mounted with artifact storage of its own", func(t *testing.T) {
+		t.Parallel()
+
+		handler := serve(t, &dataprivacycfg.ArtifactStorage{Manager: &uploadsmock.UploadManagerMock{}})
+
+		test.EqOp(t, nethttp.StatusSeeOther, download(t, handler))
+	})
+
+	T.Run("mounted with none registered", func(t *testing.T) {
+		t.Parallel()
+
+		handler := serve(t, nil)
+
+		test.EqOp(t, nethttp.StatusSeeOther, download(t, handler))
+	})
 }
 
 // TestRegisterTransports_httpEnforcerReachesEveryHTTPSurface is the assertion

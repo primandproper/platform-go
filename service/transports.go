@@ -1637,6 +1637,8 @@ func (m *mount) dataPrivacy() {
 		return
 	}
 
+	// Mount includes the artifact route, so a subject can collect the export
+	// they asked for; see dataprivacy/http's package documentation.
 	handlers.Mount(router)
 
 	if !m.routesLanded(SurfaceDataPrivacy, router) {
