@@ -203,6 +203,8 @@ type Seams struct {
 	// mounts, and that none is a route its surface exports among its
 	// OwnStandingRoutes: those ask for no grant, so no deployment can keep them
 	// from its members, and a list naming one has contradicted itself.
+	// conformance/reservations checks that the deployment refuses a member
+	// each entry as 403, and before it reads the row the route names.
 	OperatorRoutes []string
 
 	// FulfillmentBudget is how long this deployment may take to pick queued
