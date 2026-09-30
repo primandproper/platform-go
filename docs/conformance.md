@@ -9,7 +9,7 @@ makes the change rather than be discovered afterwards.
 
 **Status:** in progress. All three subjects exist, and there is a suite for
 each of the twelve gRPC surfaces, one each for the dataprivacy and mediaregistry
-HTTP surfaces, and three that cut across every surface. The assembled subject
+HTTP surfaces, and the ones that cut across every surface. The assembled subject
 mounts all twelve gRPC surfaces and all three HTTP surfaces over all three
 dialects. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
@@ -189,6 +189,7 @@ all three files say so and point at each other.
 | `conformance/anonymous` | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
 | `conformance/filters` | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | every paged read reports the filter it applied |
+| `conformance/reservations` | every reserved call on this module's gRPC surfaces refuses a member, behind a positive control |
 | `conformance/identity` | accounts, memberships, invitations, users |
 | `conformance/settings` | definitions, values, reserved settings, confinement |
 | `conformance/waitlists` | both audiences: the console, and the public signup page |
@@ -262,6 +263,38 @@ A surface the composition root stops mounting fails here rather than skipping:
 the harness hands every suite a client for all twelve, and an unmounted one
 answers `Unimplemented`. Dropping billing's config block reds every one of
 its RPCs.
+
+`conformance/reservations` holds a deployment to the reservation it hands
+over. Every other suite reads `Seams.OperatorMethods` to decide who makes each
+call, and none of them ever puts a reserved call in a member's hands, so a list
+that drifted from the interceptor enforcing it passed all of them. For each
+entry on one of this module's surfaces, a member minted with
+`conformance.Attempting` makes the call with an empty request and must be
+refused as `PermissionDenied`, and an administrator making the same call must
+not be. The administrator is the control: without it a method refusing
+everybody, or a handler refusing an empty request as `PermissionDenied`, would
+pass, and where the handler does refuse that way the entry skips rather than
+guessing a request. A member answered `InvalidArgument` fails with the ordering
+named, since a deployment that validates before it authorizes discloses a
+reserved call's shape to non-staff. An entry on a consumer's own service skips:
+an empty request is no control there, and that the consumer refuses it is the
+consumer's test, beside its test that an operator may make it. The assembled
+subject's "staff calls reserved" run passes every entry, and a reservation its
+interceptor stops enforcing reds.
+
+An HTTP route is reserved the same way, in `Seams.OperatorRoutes`, keyed as
+each HTTP surface keys its `Permissions` map (`POST
+/operations/{operationID}/cancel`). A caller names the routes it requests with
+`conformance.Making` beside the methods it calls, is minted an administrator
+where it names a reserved one, and its HTTP client admits only the routes it
+declared — an undeclared request fails the test that minted it. `Run` refuses an
+entry that names no route this module's HTTP surfaces mount, and one a surface
+exports among its `OwnStandingRoutes`: a person following their own erasure or
+clicking their own confirmation link holds no grant a deployment could
+withhold, so a list reserving either has contradicted itself. The assembled
+subject's "staff calls reserved" run reserves one route on each HTTP surface
+and withholds the permissions those routes require from a member.
+`conformance/reservations` does not yet hold a deployment to that list.
 
 `conformance/anonymous` is the shape that pays, and the reason to prefer
 cross-cutting suites over per-surface ports where the promise allows it. It

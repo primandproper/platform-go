@@ -6,6 +6,7 @@ import (
 	"path"
 
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v14/internal/routeguard"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -103,10 +104,15 @@ func UnconfinedRequests(context.Context) (*tenancy.Scope, error) {
 
 // Handlers is the mountable data-privacy request surface.
 type Handlers struct {
-	svc      dataprivacy.Service
-	resolver SubjectResolver
-	scopes   ScopeResolver
-	o11y     observability.Observer
+	svc    dataprivacy.Service
+	scopes ScopeResolver
+	o11y   observability.Observer
+
+	// guard checks the grant each route in Permissions requires, and resolves
+	// the subject once for the check and the handler behind it. It refuses
+	// every guarded route where the consumer supplied no enforcer. See
+	// WithEnforcer.
+	guard *routeguard.Guard[dataprivacy.Subject]
 
 	basePath       string
 	operationsPath string
@@ -134,9 +140,14 @@ func New(svc dataprivacy.Service, opts ...Option) (*Handlers, error) {
 		return nil, ErrNilSubjectResolver
 	}
 
+	guard, err := routeguard.New(o.enforcer, subjectOf(o.resolver), o.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Handlers{
+		guard:          guard,
 		svc:            svc,
-		resolver:       o.resolver,
 		scopes:         o.scopes,
 		basePath:       o.basePath,
 		operationsPath: o.operationsPath,
@@ -233,7 +244,8 @@ func (h *Handlers) Mount(r *routing.Router) []*routing.Route {
 	}
 }
 
-// MountSubmit registers the submission endpoint.
+// MountSubmit registers the submission endpoint, behind
+// PermissionSubmitRequests.
 func (h *Handlers) MountSubmit(r *routing.Router) *routing.Route {
 	return routing.Post(r, h.basePath, h.submit,
 		routing.WithSummary("Submit a data-privacy request"),
@@ -253,10 +265,12 @@ func (h *Handlers) MountSubmit(r *routing.Router) *routing.Route {
 		// and readable throughout, which is what 202 says.
 		routing.WithResponseStatus(nethttp.StatusAccepted),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard.Require(PermissionSubmitRequests)),
 	)
 }
 
-// MountList registers the collection read, scoped to the calling subject.
+// MountList registers the collection read, scoped to the calling subject and
+// behind PermissionReadRequests.
 func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 	return routing.Get(r, h.basePath, h.list,
 		routing.WithSummary("List the calling subject's data-privacy requests"),
@@ -265,10 +279,11 @@ func (h *Handlers) MountList(r *routing.Router) *routing.Route {
 				"is scoped to one rather than global.",
 		),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard.Require(PermissionReadRequests)),
 	)
 }
 
-// MountGet registers the read of one request.
+// MountGet registers the read of one request, behind PermissionReadRequests.
 func (h *Handlers) MountGet(r *routing.Router) *routing.Route {
 	return routing.Get(r, path.Join(h.basePath, "/{"+pathParam+"}"), h.get,
 		routing.WithSummary("Read one data-privacy request"),
@@ -278,10 +293,12 @@ func (h *Handlers) MountGet(r *routing.Router) *routing.Route {
 				"which is the operations surface against this request's operation.",
 		),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard.Require(PermissionReadRequests)),
 	)
 }
 
-// MountConfirm registers the confirmation endpoint.
+// MountConfirm registers the confirmation endpoint. It is the one route in
+// OwnStandingRoutes, and requires no grant.
 //
 // It is a GET because it is reached by clicking a link in a mail, and a link
 // click is a GET. That is a state change on a verb that does not promise one, and
@@ -299,7 +316,8 @@ func (h *Handlers) MountConfirm(r *routing.Router) *routing.Route {
 	)
 }
 
-// MountCancel registers the withdrawal endpoint.
+// MountCancel registers the withdrawal endpoint, behind
+// PermissionCancelRequests.
 func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 	return routing.Post(r, path.Join(h.basePath, "/{"+pathParam+"}", CancelSuffix), h.cancel,
 		routing.WithSummary("Withdraw a data-privacy request"),
@@ -315,6 +333,7 @@ func (h *Handlers) MountCancel(r *routing.Router) *routing.Route {
 		// in_progress rather than by a status code promising less.
 		routing.WithResponseStatus(nethttp.StatusOK),
 		routing.WithTags(h.tags...),
+		routing.WithMiddleware(h.guard.Require(PermissionCancelRequests)),
 	)
 }
 
@@ -419,20 +438,23 @@ func (h *Handlers) cancel(ctx context.Context, in requestInput) (*Receipt, error
 	return h.receipt(req), nil
 }
 
-// subject resolves who is asking, and refuses a resolver that named nobody.
-func (h *Handlers) subject(ctx context.Context) (dataprivacy.Subject, error) {
-	subject, err := h.resolver(ctx)
-	if err != nil {
-		return dataprivacy.Subject{}, err
-	}
+// subjectOf resolves who is asking with resolver, and refuses a resolver that
+// named nobody.
+func subjectOf(resolver SubjectResolver) func(context.Context) (dataprivacy.Subject, error) {
+	return func(ctx context.Context) (dataprivacy.Subject, error) {
+		subject, err := resolver(ctx)
+		if err != nil {
+			return dataprivacy.Subject{}, err
+		}
 
-	if subject.ID == "" {
-		return dataprivacy.Subject{}, platformerrors.Wrap(
-			dataprivacy.ErrEmptySubjectID, "resolving the dataprivacy subject of a request",
-		)
-	}
+		if subject.ID == "" {
+			return dataprivacy.Subject{}, platformerrors.Wrap(
+				dataprivacy.ErrEmptySubjectID, "resolving the dataprivacy subject of a request",
+			)
+		}
 
-	return subject, nil
+		return subject, nil
+	}
 }
 
 // read fetches a request, enforces that it is the caller's, and hands back the
@@ -478,7 +500,7 @@ func (h *Handlers) read(ctx context.Context, requestID string) (*dataprivacy.Req
 // that could not decide whose data this is has not decided that everyone may
 // read everything.
 func (h *Handlers) caller(ctx context.Context) (dataprivacy.Subject, *tenancy.Scope, error) {
-	subject, err := h.subject(ctx)
+	subject, err := h.guard.Caller(ctx)
 	if err != nil {
 		return dataprivacy.Subject{}, nil, err
 	}

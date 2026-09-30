@@ -58,9 +58,14 @@ func entryFromRow(r *auditdb.GetAuditLogEntryRow) (*storedEntry, error) {
 			// since the epoch — which is zone-independent — but every
 			// comparison and every value handed to a caller should still read
 			// as UTC rather than as whatever the server was configured with.
-			RecordedAt:   r.RecordedAt.UTC(),
-			ID:           r.ID,
-			Actor:        Actor{ID: r.ActorID, Type: ActorType(r.ActorType), IP: r.ActorIP},
+			RecordedAt: r.RecordedAt.UTC(),
+			ID:         r.ID,
+			Actor: Actor{
+				ID:           r.ActorID,
+				Type:         ActorType(r.ActorType),
+				IP:           r.ActorIP,
+				Impersonator: r.ActorImpersonator,
+			},
 			Scope:        r.Scope,
 			ResourceType: r.ResourceType,
 			ResourceID:   r.ResourceID,
@@ -126,20 +131,21 @@ func pageValue(row pageRow) *Entry { return row.value }
 // this line rather than the meaning of the entry it produces.
 func entryPageRow(r *auditdb.ListAuditLogEntriesRow) (pageRow, error) {
 	stored, err := entryFromRow(&auditdb.GetAuditLogEntryRow{
-		ID:           r.ID,
-		Seq:          r.Seq,
-		Scope:        r.Scope,
-		RecordedAt:   r.RecordedAt,
-		EventType:    r.EventType,
-		ResourceType: r.ResourceType,
-		ResourceID:   r.ResourceID,
-		ActorID:      r.ActorID,
-		ActorType:    r.ActorType,
-		ActorIP:      r.ActorIP,
-		ChangeSet:    r.ChangeSet,
-		Metadata:     r.Metadata,
-		PrevHash:     r.PrevHash,
-		Hash:         r.Hash,
+		ID:                r.ID,
+		Seq:               r.Seq,
+		Scope:             r.Scope,
+		RecordedAt:        r.RecordedAt,
+		EventType:         r.EventType,
+		ResourceType:      r.ResourceType,
+		ResourceID:        r.ResourceID,
+		ActorID:           r.ActorID,
+		ActorType:         r.ActorType,
+		ActorIP:           r.ActorIP,
+		ChangeSet:         r.ChangeSet,
+		Metadata:          r.Metadata,
+		PrevHash:          r.PrevHash,
+		Hash:              r.Hash,
+		ActorImpersonator: r.ActorImpersonator,
 	})
 	if err != nil {
 		return pageRow{}, err
@@ -152,20 +158,21 @@ func entryPageRow(r *auditdb.ListAuditLogEntriesRow) (pageRow, error) {
 // already encoded — the same bytes the digest was taken over.
 func insertParams(entry *Entry, changes, metadata []byte) auditdb.InsertAuditLogEntryParams {
 	return auditdb.InsertAuditLogEntryParams{
-		ID:           entry.ID,
-		Seq:          entry.Seq,
-		Scope:        entry.Scope,
-		RecordedAt:   entry.RecordedAt,
-		EventType:    string(entry.EventType),
-		ResourceType: entry.ResourceType,
-		ResourceID:   entry.ResourceID,
-		ActorID:      entry.Actor.ID,
-		ActorType:    string(entry.Actor.Type),
-		ActorIP:      entry.Actor.IP,
-		ChangeSet:    changes,
-		Metadata:     metadata,
-		PrevHash:     entry.PrevHash,
-		Hash:         entry.Hash,
+		ID:                entry.ID,
+		Seq:               entry.Seq,
+		Scope:             entry.Scope,
+		RecordedAt:        entry.RecordedAt,
+		EventType:         string(entry.EventType),
+		ResourceType:      entry.ResourceType,
+		ResourceID:        entry.ResourceID,
+		ActorID:           entry.Actor.ID,
+		ActorType:         string(entry.Actor.Type),
+		ActorIP:           entry.Actor.IP,
+		ChangeSet:         changes,
+		Metadata:          metadata,
+		PrevHash:          entry.PrevHash,
+		Hash:              entry.Hash,
+		ActorImpersonator: entry.Actor.Impersonator,
 	}
 }
 

@@ -36,6 +36,7 @@ const (
 	userKey         = serviceName + ".user_id"
 	signCountKey    = serviceName + ".sign_count"
 	countKey        = serviceName + ".count"
+	userVerifiedKey = serviceName + ".user_verified"
 )
 
 // DefaultTablePrefix is the namespace the credential table carries when none is

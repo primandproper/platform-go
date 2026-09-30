@@ -92,8 +92,11 @@ import (
 // sub-config by hand, which is the composition root not being one. Nothing
 // reported it: a bridge nobody calls still compiles, and a field nobody wrote is
 // not a field anything can notice. TestEveryConfigPackageHasAField is what
-// notices now, by reading the tree rather than this sentence, and the generic
-// three are spelled out in its roster with the reason each is exempt.
+// notices now, by reading the tree rather than this sentence. Its roster names
+// the packages deliberately without a field, each with the reason: the generic
+// three, and any package a deployment composes itself rather than switching on
+// here, which a new package may be — there is no pressure to fit one to this
+// struct just to pass the test.
 //
 // The health registry is the one config-less thing this package does register,
 // because it is not a primitive: it is a reading of everything else that got

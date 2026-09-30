@@ -166,7 +166,12 @@ type Actor struct {
 	// recorded rather than derived at read time, because the association between
 	// a principal and an address is exactly what an investigation needs and is
 	// not recoverable afterwards.
-	Ip            string `protobuf:"bytes,3,opt,name=ip,proto3" json:"ip,omitempty"`
+	Ip string `protobuf:"bytes,3,opt,name=ip,proto3" json:"ip,omitempty"`
+	// impersonator is who was really acting when id was acting through somebody
+	// else's identity -- an operator signed in as a customer -- and empty when id
+	// was acting for themselves. id stays the subject the entry is filed under;
+	// this is what stops that entry saying the subject did it.
+	Impersonator  string `protobuf:"bytes,4,opt,name=impersonator,proto3" json:"impersonator,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -218,6 +223,13 @@ func (x *Actor) GetType() string {
 func (x *Actor) GetIp() string {
 	if x != nil {
 		return x.Ip
+	}
+	return ""
+}
+
+func (x *Actor) GetImpersonator() string {
+	if x != nil {
+		return x.Impersonator
 	}
 	return ""
 }
@@ -459,9 +471,13 @@ type EntryQuery struct {
 	// resource_type restricts to one kind of resource.
 	ResourceType string `protobuf:"bytes,4,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
 	// event_type restricts to one kind of event.
-	EventType     string `protobuf:"bytes,5,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	EventType string `protobuf:"bytes,5,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	// impersonator_id restricts to the entries one principal recorded while
+	// acting through somebody else's identity. actor_id does not find those: an
+	// impersonated entry is filed under the subject.
+	ImpersonatorId string `protobuf:"bytes,6,opt,name=impersonator_id,json=impersonatorID,proto3" json:"impersonator_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EntryQuery) Reset() {
@@ -525,6 +541,13 @@ func (x *EntryQuery) GetResourceType() string {
 func (x *EntryQuery) GetEventType() string {
 	if x != nil {
 		return x.EventType
+	}
+	return ""
+}
+
+func (x *EntryQuery) GetImpersonatorId() string {
+	if x != nil {
+		return x.ImpersonatorId
 	}
 	return ""
 }
@@ -1049,11 +1072,12 @@ var File_primandproper_platform_audit_v1_audit_proto protoreflect.FileDescriptor
 
 const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\n" +
-	"+primandproper/platform/audit/v1/audit.proto\x12\x1fprimandproper.platform.audit.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\";\n" +
+	"+primandproper/platform/audit/v1/audit.proto\x12\x1fprimandproper.platform.audit.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"_\n" +
 	"\x05Actor\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x0e\n" +
-	"\x02ip\x18\x03 \x01(\tR\x02ip\"r\n" +
+	"\x02ip\x18\x03 \x01(\tR\x02ip\x12\"\n" +
+	"\fimpersonator\x18\x04 \x01(\tR\fimpersonator\"r\n" +
 	"\x06Change\x123\n" +
 	"\told_value\x18\x01 \x01(\v2\x16.google.protobuf.ValueR\boldValue\x123\n" +
 	"\tnew_value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\bnewValue\"\x84\x05\n" +
@@ -1078,7 +1102,7 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2'.primandproper.platform.audit.v1.ChangeR\x05value:\x028\x01\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01R\x05scope\"\xb2\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01R\x05scope\"\xdb\x01\n" +
 	"\n" +
 	"EntryQuery\x12\x19\n" +
 	"\bactor_id\x18\x01 \x01(\tR\aactorID\x12\x1d\n" +
@@ -1088,7 +1112,8 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"resourceID\x12#\n" +
 	"\rresource_type\x18\x04 \x01(\tR\fresourceType\x12\x1d\n" +
 	"\n" +
-	"event_type\x18\x05 \x01(\tR\teventTypeR\x05scope\"\xae\x01\n" +
+	"event_type\x18\x05 \x01(\tR\teventType\x12'\n" +
+	"\x0fimpersonator_id\x18\x06 \x01(\tR\x0eimpersonatorIDR\x05scope\"\xae\x01\n" +
 	"\x05Break\x12\x19\n" +
 	"\bentry_id\x18\x01 \x01(\tR\aentryID\x12D\n" +
 	"\x06reason\x18\x02 \x01(\x0e2,.primandproper.platform.audit.v1.BreakReasonR\x06reason\x12\x1a\n" +

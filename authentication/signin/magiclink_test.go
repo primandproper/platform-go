@@ -2,6 +2,7 @@ package signin_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -827,4 +828,143 @@ func TestRevokeMagicLinksForSubject_refusals(T *testing.T) {
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), revoked)
 	})
+}
+
+// magicLinkTable is the table the link store writes to, named so an assertion
+// can count what a transaction has written without going through the store.
+func magicLinkTable(e *env) string {
+	return e.refreshPrefix + "_signin_magic_links"
+}
+
+// A requested link is an event a consumer's audit trail records like any other:
+// the hook runs once, on the transaction that stored the link, with the user it
+// is for and nothing that would let a reader of the record follow it.
+func TestRequestMagicLink_firesItsHook(t *testing.T) {
+	t.Parallel()
+
+	e := newMagicLinkEnv(t)
+
+	// Counted on the hook's own transaction, the row is already there: the hook
+	// is inside the write rather than after its commit.
+	var rowsInTx int
+
+	e.hooks.onMagicLink = func(ctx context.Context, tx database.Tx, _ *identity.User) error {
+		must.NotNil(t, tx)
+
+		return tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+magicLinkTable(e)).Scan(&rowsInTx)
+	}
+
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress))
+
+	must.SliceLen(t, 1, e.hooks.magicLinked)
+	hooked := e.hooks.magicLinked[0]
+	must.NotNil(t, hooked)
+	test.EqOp(t, e.user.ID, hooked.ID)
+	test.EqOp(t, e.user.EmailAddress, hooked.EmailAddress)
+	test.EqOp(t, "", hooked.HashedPassword)
+
+	test.EqOp(t, 1, rowsInTx)
+
+	mail := e.mailer.last(t)
+
+	encoded, err := json.Marshal(hooked)
+	must.NoError(t, err)
+	test.StrNotContains(t, string(encoded), mail.Issuance.Secret)
+	test.StrNotContains(t, string(encoded), e.magicLinks.Digest(mail.Issuance.Secret))
+}
+
+// The hook's failure is the request's: the link is rolled back and nothing is
+// mailed.
+func TestRequestMagicLink_hookFailureRollsBack(t *testing.T) {
+	t.Parallel()
+
+	e := newMagicLinkEnv(t)
+
+	errAuditDown := platformerrors.New("audit log refused the entry")
+	e.hooks.onMagicLink = func(context.Context, database.Tx, *identity.User) error { return errAuditDown }
+
+	err := e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress)
+	test.ErrorIs(t, err, errAuditDown)
+
+	test.EqOp(t, 0, e.mailer.count())
+
+	var rows int
+	must.NoError(t, e.client.Reader().QueryRowContext(t.Context(),
+		"SELECT COUNT(*) FROM "+magicLinkTable(e)).Scan(&rows))
+	test.EqOp(t, 0, rows)
+}
+
+// Every silent answer and every refusal wrote nothing, so there is nothing for
+// the hook to record — and a hook that fired for an address nobody holds would
+// be an enumerator handed to whoever reads the audit log.
+func TestRequestMagicLink_silenceFiresNoHook(T *testing.T) {
+	T.Parallel()
+
+	T.Run("an address nobody holds", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+
+		test.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, "nobody@example.com"))
+		test.SliceEmpty(t, e.hooks.magicLinked)
+	})
+
+	T.Run("a banned owner", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+		e.setStatus(t, identity.StatusBanned, "for cause")
+
+		test.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress))
+		test.SliceEmpty(t, e.hooks.magicLinked)
+	})
+
+	T.Run("a terminated owner", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+		e.setStatus(t, identity.StatusTerminated, "")
+
+		test.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress))
+		test.SliceEmpty(t, e.hooks.magicLinked)
+	})
+
+	T.Run("an address in another directory", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+
+		test.NoError(t, e.svc.RequestMagicLink(t.Context(), tenancy.Of("tenant_b"), e.user.EmailAddress))
+		test.SliceEmpty(t, e.hooks.magicLinked)
+	})
+
+	T.Run("an empty address", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+
+		test.ErrorIs(t, e.svc.RequestMagicLink(t.Context(), testScope, ""), signin.ErrEmptyHandle)
+		test.SliceEmpty(t, e.hooks.magicLinked)
+	})
+
+	T.Run("a service with no link store", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		test.ErrorIs(t,
+			e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress),
+			signin.ErrMagicLinksNotConfigured)
+		test.SliceEmpty(t, e.hooks.magicLinked)
+	})
+}
+
+// TestNoopHooks_requestsAMagicLink pins that the embeddable default admits the
+// request rather than refusing it.
+func TestNoopHooks_requestsAMagicLink(t *testing.T) {
+	t.Parallel()
+
+	var hooks signin.NoopHooks
+
+	test.NoError(t, hooks.AfterRequestMagicLink(t.Context(), nil, testScope, nil))
 }

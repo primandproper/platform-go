@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -42,7 +43,11 @@ type Suite struct {
 // Session is what a suite's assertions are handed: the seams, resolved, plus
 // the few things every suite does the same way.
 type Session struct {
-	seams Seams
+	// mounted is the surfaces the subject mounts, as the caller Run probed
+	// with reports them: what a caller built from a connection alone is
+	// rebuilt over.
+	mounted Surfaces
+	seams   Seams
 }
 
 // Seams returns what the subject supplied.
@@ -62,6 +67,10 @@ func (s *Session) Dialect() dialect.Dialect { return s.seams.Dialect }
 // administrator regardless, for the assertions about what administrative
 // standing buys, and AsMember for an ordinary caller regardless, skipping
 // where the subject reserves a call it names.
+//
+// Attempting is the one way to put a reserved call in an ordinary caller's
+// hands: it mints a member to attempt calls it expects to be refused, for the
+// assertion that the deployment refuses them.
 //
 // The skip is the load-bearing half. A deployment with no administrative role
 // is not a deployment that fails this suite; it is one that does not have the
@@ -93,7 +102,9 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 		t.Fatal("conformance: a caller was asked for as both a member and an administrator")
 	}
 
-	reserved := s.reservedAmong(req.Methods)
+	reserved := s.reservedAmong(slices.DeleteFunc(slices.Clone(req.Methods), func(m string) bool {
+		return slices.Contains(req.attempting, m)
+	}))
 
 	switch {
 	case reserved != "" && req.member:
@@ -195,6 +206,91 @@ func (s *Session) NeedsAction(t *testing.T, present bool, what string) {
 	}
 }
 
+// DefaultFulfillmentBudget is how long Session.Await waits where the subject
+// named no Seams.FulfillmentBudget: long enough for a worker that polls its
+// queue every few seconds to pick work up and finish it several times over.
+const DefaultFulfillmentBudget = 2 * time.Minute
+
+const (
+	// awaitInterval is how often Await asks again.
+	awaitInterval = 250 * time.Millisecond
+
+	// awaitGrace is how far short of the test binary's own deadline Await
+	// gives up, so a wait that runs out fails its test by name rather than
+	// panicking the whole binary with every other test's goroutines.
+	awaitGrace = 5 * time.Second
+)
+
+// errBudgetSpent is what poll reports when the deadline came first.
+var errBudgetSpent = platformerrors.New("the fulfillment budget was spent first")
+
+// Await asks probe until it reports done, failing the test naming what it was
+// waiting for if probe errs or the subject's fulfillment budget runs out first.
+//
+// It is for the assertions about work the deployment finishes after answering
+// — a privacy request fulfilled by a worker, say — and it waits on whatever a
+// client can see rather than on the machinery: probe reads the row the caller
+// would read, so work that finished without moving it is a timeout here, which
+// is the bug it is. The budget is Seams.FulfillmentBudget, or
+// DefaultFulfillmentBudget, and never runs past the test's own deadline.
+func (s *Session) Await(t *testing.T, what string, probe func() (done bool, err error)) {
+	t.Helper()
+
+	testDeadline, bounded := t.Deadline()
+	deadline := awaitDeadline(time.Now(), s.seams.FulfillmentBudget, testDeadline, bounded)
+
+	if err := poll(t.Context(), deadline, awaitInterval, probe); err != nil {
+		t.Fatalf("conformance: waiting for %s: %v", what, err)
+	}
+}
+
+// awaitDeadline is when a wait begun at now gives up: the budget from now, or
+// awaitGrace short of the test's deadline where that comes first.
+func awaitDeadline(now time.Time, budget time.Duration, testDeadline time.Time, bounded bool) time.Time {
+	if budget <= 0 {
+		budget = DefaultFulfillmentBudget
+	}
+
+	deadline := now.Add(budget)
+	if bounded && testDeadline.Add(-awaitGrace).Before(deadline) {
+		deadline = testDeadline.Add(-awaitGrace)
+	}
+
+	return deadline
+}
+
+// poll asks probe every interval until it is done, it errs, ctx ends, or the
+// deadline passes. probe is always asked at least once, so a deadline already
+// behind it still reads the state once rather than failing unseen.
+func poll(ctx context.Context, deadline time.Time, interval time.Duration, probe func() (bool, error)) error {
+	started := time.Now()
+
+	for {
+		done, err := probe()
+		if err != nil {
+			return err
+		}
+
+		if done {
+			return nil
+		}
+
+		if !time.Now().Before(deadline) {
+			return platformerrors.Wrapf(errBudgetSpent, "after %s", time.Since(started).Round(time.Millisecond))
+		}
+
+		timer := time.NewTimer(min(interval, time.Until(deadline)))
+
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 // Run asserts every suite the subject mounted a surface for.
 //
 // A suite whose surface is absent is skipped and said so, which is the
@@ -215,9 +311,8 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 	}
 
 	checkOperatorMethods(t, seams.OperatorMethods)
-	checkRoles(t, seams.Roles)
-
-	session := &Session{seams: seams}
+	checkOperatorRoutes(t, seams.OperatorRoutes)
+	checkRoles(t, &seams.Roles)
 
 	probe, err := seams.NewSubject(t.Context())
 	if err != nil {
@@ -227,6 +322,8 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 	if probe == nil {
 		t.Fatal("conformance: the subject factory returned no caller and no error")
 	}
+
+	session := &Session{seams: seams, mounted: probe.Surfaces}
 
 	for i := range suites {
 		suite := &suites[i]

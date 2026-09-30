@@ -22,6 +22,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	"github.com/primandproper/primitives-go/v2/authentication/tokens/jwt"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -73,9 +74,20 @@ type extractorHarness struct {
 	signer *jwt.Signer
 	svc    *signin.Service
 
+	// refresh is the store svc mints refresh tokens into, for the tests that
+	// build a second service over the same logins.
+	refresh *refreshtokens.SQLStore
+
 	member *identity.Registration
 	admin  *identity.Registration
+
+	// staff is an operator in staffScope, a directory apart from the
+	// customers in testScope.
+	staff *identity.Registration
 }
+
+// staffScope is where the harness's staff operator lives.
+var staffScope = tenancy.Of("staff_1")
 
 func newExtractorHarness(t *testing.T) *extractorHarness {
 	t.Helper()
@@ -111,22 +123,23 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	svc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), signer,
 		signin.WithAdminServiceRoles(serviceAdminRole),
 		signin.WithRefreshTokenStore(refreshStore),
+		signin.WithImpersonationPolicy(func(context.Context, *identity.User, *identity.User) error { return nil }),
 	)
 	must.NoError(t, err)
 
 	directory, err := identity.NewService(db, store)
 	must.NoError(t, err)
 
-	register := func(name string, serviceRoles ...string) *identity.Registration {
-		reg, regErr := directory.Register(t.Context(), testScope,
+	register := func(scope tenancy.Scope, name string, serviceRoles ...string) *identity.Registration {
+		reg, regErr := directory.Register(t.Context(), scope,
 			&identity.User{
 				Username:      name,
 				EmailAddress:  name + "@example.com",
 				AccountStatus: identity.StatusGood,
-				Scope:         testScope,
+				Scope:         scope,
 				ServiceRoles:  serviceRoles,
 			},
-			&identity.Account{Name: name + "'s", Scope: testScope},
+			&identity.Account{Name: name + "'s", Scope: scope},
 			[]string{"owner"},
 		)
 		must.NoError(t, regErr)
@@ -135,12 +148,14 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	}
 
 	return &extractorHarness{
-		db:     db,
-		store:  store,
-		signer: signer,
-		svc:    svc,
-		member: register("member"),
-		admin:  register("operator", serviceAdminRole),
+		db:      db,
+		store:   store,
+		signer:  signer,
+		svc:     svc,
+		refresh: refreshStore,
+		member:  register(testScope, "member"),
+		admin:   register(testScope, "operator", serviceAdminRole),
+		staff:   register(staffScope, "staff"),
 	}
 }
 
@@ -159,12 +174,14 @@ func (h *extractorHarness) extractor(t *testing.T, opts ...signingrpc.ExtractorO
 func (h *extractorHarness) issue(t *testing.T, reg *identity.Registration, administrative bool) *signin.SignIn {
 	t.Helper()
 
-	door := h.svc.IssueForPrincipal
+	// The credential behind it is taken to have been two factors, as a
+	// verified passkey is; which factors is not what an extractor is about.
+	opts := []signin.IssueOption{signin.MultiFactor()}
 	if administrative {
-		door = h.svc.AdminIssueForPrincipal
+		opts = append(opts, signin.Administrative())
 	}
 
-	issued, err := door(t.Context(), testScope, reg.User.ID, reg.Account.ID)
+	issued, err := h.svc.IssueForPrincipal(t.Context(), testScope, reg.User.ID, reg.Account.ID, opts...)
 	must.NoError(t, err)
 
 	return issued
@@ -300,6 +317,108 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
 	})
 
+	T.Run("an impersonation token is the subject's, acted through by the operator", func(t *testing.T) {
+		t.Parallel()
+
+		issued, err := h.svc.IssueImpersonationToken(t.Context(), testScope,
+			h.admin.User.ID, testScope, h.member.User.ID, h.member.Account.ID)
+		must.NoError(t, err)
+
+		caller, err := h.extractor(t).Authenticate(t.Context(), issued.Token)
+		must.NoError(t, err)
+
+		test.EqOp(t, h.member.User.ID, caller.UserID())
+		test.EqOp(t, h.member.Account.ID, caller.ActiveAccountID())
+		test.EqOp(t, h.admin.User.ID, caller.ActorID())
+		test.EqOp(t, h.admin.User.ID, callers.ActorOf(caller))
+		test.EqOp(t, h.admin.User.ID, callers.DelegatedActor(caller))
+
+		// Not administrative, whatever the operator holds: it is the subject's
+		// token, and the subject did not come through that door.
+		test.False(t, caller.Administrative())
+		test.SliceEmpty(t, caller.Identity().ServiceRoles())
+	})
+
+	T.Run("an ordinary token is nobody's but its user's", func(t *testing.T) {
+		t.Parallel()
+
+		caller, err := h.extractor(t).Authenticate(t.Context(), h.issue(t, h.member, false).Token)
+		must.NoError(t, err)
+
+		test.EqOp(t, "", caller.ActorID())
+		test.EqOp(t, h.member.User.ID, callers.ActorOf(caller))
+	})
+
+	T.Run("a banned operator's impersonation names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		fresh := newExtractorHarness(t)
+
+		issued, err := fresh.svc.IssueImpersonationToken(t.Context(), testScope,
+			fresh.admin.User.ID, testScope, fresh.member.User.ID, fresh.member.Account.ID)
+		must.NoError(t, err)
+
+		must.NoError(t, fresh.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return fresh.store.UpdateUserAccountStatus(t.Context(), tx, testScope, fresh.admin.User.ID, identity.StatusBanned, "")
+		}))
+
+		_, err = fresh.extractor(t).Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
+
+		// The subject's own token is untouched by the operator's ban.
+		_, err = fresh.extractor(t).Authenticate(t.Context(), fresh.issue(t, fresh.member, false).Token)
+		test.NoError(t, err)
+	})
+
+	T.Run("an operator from another scope is re-read in their own", func(t *testing.T) {
+		t.Parallel()
+
+		issued, err := h.svc.IssueImpersonationToken(t.Context(), staffScope,
+			h.staff.User.ID, testScope, h.member.User.ID, h.member.Account.ID)
+		must.NoError(t, err)
+
+		caller, err := h.extractor(t).Authenticate(t.Context(), issued.Token)
+		must.NoError(t, err)
+
+		test.EqOp(t, h.member.User.ID, caller.UserID())
+		test.EqOp(t, h.staff.User.ID, caller.ActorID())
+	})
+
+	T.Run("a ban in the operator's own scope ends their impersonation", func(t *testing.T) {
+		t.Parallel()
+
+		fresh := newExtractorHarness(t)
+
+		issued, err := fresh.svc.IssueImpersonationToken(t.Context(), staffScope,
+			fresh.staff.User.ID, testScope, fresh.member.User.ID, fresh.member.Account.ID)
+		must.NoError(t, err)
+
+		must.NoError(t, fresh.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return fresh.store.UpdateUserAccountStatus(t.Context(), tx, staffScope, fresh.staff.User.ID, identity.StatusBanned, "")
+		}))
+
+		_, err = fresh.extractor(t).Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
+	})
+
+	T.Run("an operator with no scope named is a token signin did not mint", func(t *testing.T) {
+		t.Parallel()
+
+		token, _, err := h.signer.IssueToken(t.Context(), h.member.User.ID, time.Minute, map[string]any{
+			signin.ClaimAccountID:      h.member.Account.ID,
+			signin.ClaimScope:          testScope.Owner(),
+			signin.ClaimAdministrative: false,
+			signin.ClaimActor:          h.admin.User.ID,
+		})
+		must.NoError(t, err)
+
+		_, err = h.extractor(t).Authenticate(t.Context(), token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+	})
+
 	T.Run("a directory that cannot answer is not a refusal of the credential", func(t *testing.T) {
 		t.Parallel()
 
@@ -310,6 +429,119 @@ func TestPrincipalExtractor_Authenticate(T *testing.T) {
 		must.Error(t, err)
 		test.False(t, platformerrors.Is(err, signingrpc.ErrUnauthenticated))
 	})
+}
+
+func TestPrincipalExtractor_WithSignInCheck(T *testing.T) {
+	T.Parallel()
+
+	h := newExtractorHarness(T)
+
+	// The difference the option makes: without it an ended login's token
+	// stands until it expires, and with it the next request is refused.
+	T.Run("an ended login's token names nobody from the next request", func(t *testing.T) {
+		t.Parallel()
+
+		issued := h.issue(t, h.member, false)
+		checked := h.extractor(t, signingrpc.WithSignInCheck(h.svc))
+
+		_, err := checked.Authenticate(t.Context(), issued.Token)
+		must.NoError(t, err, must.Sprint("a live login's token was refused"))
+
+		_, err = h.svc.EndSignIn(t.Context(), testScope, h.member.User.ID, issued.FamilyID)
+		must.NoError(t, err)
+
+		_, err = checked.Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, signin.ErrSignInEnded)
+
+		// The control: the token still verifies, and an extractor that does
+		// not check still accepts it.
+		_, err = h.extractor(t).Authenticate(t.Context(), issued.Token)
+		test.NoError(t, err)
+	})
+
+	T.Run("a token its login has replaced names nobody, where the service refuses them", func(t *testing.T) {
+		t.Parallel()
+
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+			signin.WithRefreshTokenStore(h.refresh),
+			signin.WithSupersededTokenRefusal(),
+		)
+		must.NoError(t, err)
+
+		first := h.issue(t, h.member, false)
+
+		second, err := h.svc.ExchangeRefreshToken(t.Context(), testScope, first.RefreshToken)
+		must.NoError(t, err)
+
+		checked := h.extractor(t, signingrpc.WithSignInCheck(refusing))
+
+		_, err = checked.Authenticate(t.Context(), first.Token)
+		test.ErrorIs(t, err, signingrpc.ErrUnauthenticated)
+		test.ErrorIs(t, err, signin.ErrSignInSuperseded)
+
+		_, err = checked.Authenticate(t.Context(), second.Token)
+		test.NoError(t, err, test.Sprint("the token the exchange handed back was refused"))
+	})
+
+	T.Run("a token naming no login is not one a check can admit", func(t *testing.T) {
+		t.Parallel()
+
+		token, _, err := h.signer.IssueToken(t.Context(), h.member.User.ID, time.Minute, map[string]any{
+			signin.ClaimAdministrative: false,
+			signin.ClaimScope:          testScope.String(),
+			signin.ClaimAccountID:      h.member.Account.ID,
+		})
+		must.NoError(t, err)
+
+		_, err = h.extractor(t).Authenticate(t.Context(), token)
+		must.NoError(t, err, must.Sprint("the control: without a check the token is a caller"))
+
+		_, err = h.extractor(t, signingrpc.WithSignInCheck(h.svc)).Authenticate(t.Context(), token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+	})
+
+	T.Run("a check that cannot answer is not a refusal of the credential", func(t *testing.T) {
+		t.Parallel()
+
+		e := h.extractor(t, signingrpc.WithSignInCheck(failingChecker{}))
+
+		_, err := e.Authenticate(t.Context(), h.issue(t, h.member, false).Token)
+		must.Error(t, err)
+		test.False(t, platformerrors.Is(err, signingrpc.ErrUnauthenticated))
+
+		saw := serveThrough(t, e, "Bearer "+h.issue(t, h.member, false).Token)
+		test.EqOp(t, http.StatusServiceUnavailable, saw.code)
+	})
+
+	// A signed-out token is still this module's, so the fallback is not asked
+	// for a second opinion on it.
+	T.Run("an ended login's token does not go to the fallback", func(t *testing.T) {
+		t.Parallel()
+
+		issued := h.issue(t, h.member, false)
+
+		_, err := h.svc.EndSignIn(t.Context(), testScope, h.member.User.ID, issued.FamilyID)
+		must.NoError(t, err)
+
+		e := h.extractor(t,
+			signingrpc.WithSignInCheck(h.svc),
+			signingrpc.WithFallback(func(context.Context) (callers.Principal, bool) {
+				return &signingrpc.Caller{}, true
+			}),
+		)
+
+		saw := serveThrough(t, e, "Bearer "+issued.Token)
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+	})
+}
+
+// failingChecker is a sign-in check whose database is down.
+type failingChecker struct{}
+
+func (failingChecker) CheckSignIn(context.Context, tenancy.Scope, string, string) error {
+	return platformerrors.New("the sign-in check's database is down")
 }
 
 // seen is what a handler behind HTTPMiddleware read off its request.
@@ -682,7 +914,55 @@ func TestPrincipalExtractor_interceptor(T *testing.T) {
 		_, err = dial(t, e, signInReqs).GetSelf(bearer(t.Context(), h.issue(t, h.member, false).Token), &signinpb.GetSelfRequest{})
 		test.EqOp(t, codes.Unavailable, status.Code(err))
 	})
+
+	// A token naming its login and no token ID is one a check that refuses
+	// superseded tokens has nothing to compare against: a bad credential,
+	// never the outage a check that could not answer is.
+	T.Run("a token with no ID, under a check refusing superseded tokens, is unauthenticated, not unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+			signin.WithRefreshTokenStore(h.refresh),
+			signin.WithSupersededTokenRefusal(),
+		)
+		must.NoError(t, err)
+
+		e, err := signingrpc.NewPrincipalExtractor(noTokenIDVerifier{h.signer}, h.db, h.store, signingrpc.WithSignInCheck(refusing))
+		must.NoError(t, err)
+
+		issued := h.issue(t, h.member, false)
+
+		_, err = e.Authenticate(t.Context(), issued.Token)
+		test.ErrorIs(t, err, signingrpc.ErrNotASignInToken)
+		test.ErrorIs(t, err, signin.ErrEmptyTokenID)
+
+		_, err = dial(t, e, signInReqs).GetSelf(bearer(t.Context(), issued.Token), &signinpb.GetSelfRequest{})
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+
+		saw := serveThrough(t, e, "Bearer "+issued.Token)
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+	})
 }
+
+// noTokenIDVerifier verifies with the harness's signer and hands back claims
+// with no "jti", which is the token a consumer's claims builder mints when it
+// leaves the ID out.
+type noTokenIDVerifier struct{ signingrpc.TokenVerifier }
+
+func (v noTokenIDVerifier) ParseToken(ctx context.Context, token string) (tokens.Claims, error) {
+	claims, err := v.TokenVerifier.ParseToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return noTokenIDClaims{claims}, nil
+}
+
+// noTokenIDClaims is a token's claims with its "jti" left out.
+type noTokenIDClaims struct{ tokens.Claims }
+
+func (noTokenIDClaims) JTI() string { return "" }
 
 // failingDirectory is a directory that cannot be read.
 type failingDirectory struct{}

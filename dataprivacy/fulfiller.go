@@ -217,9 +217,7 @@ func NewFulfiller(
 		store:    store,
 		registry: registry,
 		clock:    clock.NewClock(),
-		actor: func(context.Context) audit.Actor {
-			return audit.Actor{ID: serviceName, Type: audit.ActorSystem}
-		},
+		actor:    systemActor,
 	}
 	for _, opt := range opts {
 		if opt != nil {

@@ -174,6 +174,14 @@ type RefreshTokensConfig struct {
 	// AdminTTL is how long an administrative sign-in lasts. Unset takes
 	// signin.DefaultAdminRefreshTokenTTL.
 	AdminTTL time.Duration `env:"ADMIN_TTL" json:"adminTTL,omitempty" yaml:"adminTTL,omitempty"`
+
+	// RefuseSupersededTokens makes signin.Service.CheckSignIn refuse an access
+	// token its login has since replaced, as signin.WithSupersededTokenRefusal
+	// documents. Unset is false, which is the family model's own reading: an
+	// access token stands until its login ends or it expires. It is a yes rather
+	// than a no to opt out of, because it changes what a client that refreshes
+	// mid-request sees, and that is a deployment's decision to have made.
+	RefuseSupersededTokens bool `env:"REFUSE_SUPERSEDED_TOKENS" json:"refuseSupersededTokens,omitempty" yaml:"refuseSupersededTokens,omitempty"`
 }
 
 // MagicLinksConfig is the passwordless door's block.

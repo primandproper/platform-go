@@ -636,13 +636,14 @@ func TestRegistrar_shape(T *testing.T) {
 
 // TestVerifications_shape is the same for the other new seam, whose sentence
 // says three — the three doors that finish a registration — while the interface
-// carries four methods.
+// carries five methods.
 //
-// The numbers differ because the fourth, MarkUserEmailAddressProven, is not a
-// door: it is the write Service.RedeemMagicLink makes on the way through, for a
-// caller that proved the address without holding the link that was mailed for
-// it. The sentence counts operations a consumer calls; this counts methods a
-// consumer implements.
+// The numbers differ because two are not those doors. MarkUserEmailAddressProven
+// is the write Service.RedeemMagicLink makes on the way through, for a caller
+// that proved the address without holding the link that was mailed for it, and
+// SetUserEmailAddressVerificationToken is the write Service.RequestVerificationEmail
+// makes to mint another link. The sentence counts operations a consumer calls;
+// this counts methods a consumer implements.
 //
 // It is satisfied by the Store rather than the Service, and deliberately: the
 // two writes a verification makes have to land on one transaction, and every
@@ -650,7 +651,7 @@ func TestRegistrar_shape(T *testing.T) {
 func TestVerifications_shape(T *testing.T) {
 	T.Parallel()
 
-	test.EqOp(T, 4, reflect.TypeFor[signin.Verifications]().NumMethod())
+	test.EqOp(T, 5, reflect.TypeFor[signin.Verifications]().NumMethod())
 
 	var _ signin.Verifications = (*identity.SQLStore)(nil)
 }
@@ -716,6 +717,7 @@ func TestNoopHooks_finishesARegistration(T *testing.T) {
 
 	test.NoError(T, hooks.AfterAttachPassword(T.Context(), nil, testScope, nil))
 	test.NoError(T, hooks.AfterVerify(T.Context(), nil, testScope, nil))
+	test.NoError(T, hooks.AfterRequestVerificationEmail(T.Context(), nil, testScope, nil))
 }
 
 // staleStandingVerifications is identity's store with one lie in it: the read

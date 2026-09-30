@@ -75,6 +75,20 @@ type RefreshToken struct {
 	// was proven at sign-in.
 	ActiveAccountID string `json:"activeAccountID"`
 
+	// AccessTokenID is the "jti" of the access token minted alongside this
+	// refresh token — see [SignIn.TokenID] — and empty for a row whose store
+	// recorded none.
+	//
+	// It is what [Service.CheckSignIn] compares against on a service built
+	// with [WithSupersededTokenRefusal]: the family's live row names the access
+	// token its holder is meant to be presenting, and any other carrying the
+	// family was minted by a row since spent.
+	AccessTokenID string `json:"accessTokenID,omitempty"`
+
+	// ActorID is the operator acting as the subject on a login
+	// [Service.IssueImpersonationToken] began, and empty on every other row.
+	ActorID string `json:"actorID,omitempty"`
+
 	// Scope is the directory the sign-in was made in.
 	Scope tenancy.Scope `json:"scope"`
 
@@ -132,6 +146,19 @@ type RefreshTokenRequest struct {
 	// — who signs in and gets a token against nothing rather than being refused.
 	ActiveAccountID string `json:"activeAccountID"`
 
+	// AccessTokenID is the "jti" of the access token minted alongside this
+	// refresh token, which the store records so that [RefreshTokenStore.LiveToken]
+	// can hand it back. The mint that begins a login and the exchange that
+	// continues one both mint the access token first, so it is always known by
+	// the time this is.
+	AccessTokenID string `json:"accessTokenID"`
+
+	// ActorID is the operator on an impersonation's login, which the store
+	// records so that [RefreshTokenStore.ListActiveSignIns] can say which of a
+	// person's logins is somebody else acting as them. Empty on every other
+	// mint.
+	ActorID string `json:"actorID,omitempty"`
+
 	// TTL is how long the minted token may be exchanged for. It is the service's
 	// WithRefreshTokenTTL, resolved before the call, rather than something a
 	// store decides: how long a sign-in lasts is policy, and a store that held a
@@ -163,6 +190,76 @@ type RefreshTokenIssuance struct {
 	// recorded by a hook, or put in an error message.
 	Secret string `json:"-"`
 }
+
+// SignInSelector names the logins [RefreshTokenStore.EndSignIns] ends: one
+// person's, one family, one family only if it is that person's, or all of one
+// person's but one.
+//
+// SubjectID or FamilyID is set. Both empty would be every login in the scope,
+// which no door here ends.
+type SignInSelector struct {
+	_ struct{}
+
+	// SubjectID confines the selection to one person's logins. Alone, it
+	// selects every one of them.
+	SubjectID string
+
+	// FamilyID confines the selection to one login. With SubjectID, a family
+	// that is not that person's selects nothing.
+	FamilyID string
+
+	// ExceptFamilyID spares one login from a selection of every one a person
+	// holds — "sign out my other devices". It is honored only beside SubjectID
+	// and without FamilyID, and a store refuses it anywhere else rather than
+	// guessing which of two contradictory selections was meant. Empty spares
+	// nothing, which is why the door that sets it refuses an empty keep before
+	// it gets here.
+	ExceptFamilyID string
+}
+
+// EndedSignIn is one login a revocation ended: it was live when the store looked
+// and it is not now.
+type EndedSignIn struct {
+	_ struct{}
+
+	// FamilyID names the login.
+	FamilyID string
+
+	// SubjectID is whose login it was.
+	SubjectID string
+
+	// Revoked is how many of the family's refresh tokens the revocation
+	// withdrew — its live one, and the spent predecessors nothing had revoked
+	// yet.
+	Revoked int64
+}
+
+// RefreshTokenReusedError is how a [RefreshTokenStore] reports
+// [ErrRefreshTokenReused]: the sentinel, with the family it ended in answer.
+//
+// It unwraps to the sentinel, so errors.Is matches it everywhere the sentinel
+// did, and a transport answers it exactly as it answered the bare sentinel —
+// the family is a fact for this package's hooks rather than for the client.
+type RefreshTokenReusedError struct {
+	_ struct{}
+
+	// FamilyID is the login the reused token belonged to.
+	FamilyID string
+
+	// SubjectID is whose login it was.
+	SubjectID string
+
+	// Ended reports whether the family was live when the store revoked it. A
+	// token replayed after its family was already over — signed out, ended by
+	// an earlier reuse, or lapsed — is still a reuse, and ends nothing.
+	Ended bool
+}
+
+// Error is the sentinel's.
+func (e *RefreshTokenReusedError) Error() string { return ErrRefreshTokenReused.Error() }
+
+// Unwrap is the sentinel.
+func (e *RefreshTokenReusedError) Unwrap() error { return ErrRefreshTokenReused }
 
 // RefreshTokenStore is where a sign-in's refresh tokens live.
 //
@@ -201,9 +298,8 @@ type RefreshTokenIssuance struct {
 //
 // # The transaction is the caller's
 //
-// Every method is a write and every one takes a database.Tx, which is the module's
-// store convention — and here the reason is a correctness property rather than a
-// bookkeeping one. An exchange spends one token and mints its successor, and a
+// Every write takes a database.Tx, which is the module's store convention — and
+// here the reason is a correctness property rather than a bookkeeping one. An exchange spends one token and mints its successor, and a
 // window in which one of those has landed and the other has not is a window
 // where a sign-in has either two live refresh tokens or none. One transaction is
 // what removes it, and the transaction is the caller's so that the hooks a
@@ -211,14 +307,54 @@ type RefreshTokenIssuance struct {
 //
 // No carve-out is needed and none is taken: CLAUDE.md's enumerated six stays
 // closed. The mint runs inside the login transaction the service already opens.
+// The two reads, ListActiveSignIns and LiveToken, take the wider executor as
+// every read in the module does.
 //
-// # What it deliberately cannot answer
+// # A retry that is not a replay
 //
-// Nothing here can tell a client's own retry of an exchange from somebody else's
-// replay of it, and after an ambiguous failure — a timeout, a dropped
-// connection, a backgrounded app — that is a dropped packet ending a login. A
-// store that can tell them apart implements [IdempotentRefreshTokenStore] as
-// well; one that does not is complete, and behaves exactly as it does today.
+// RedeemIdempotently and RecordSuccessor tell a client's own retry of an
+// exchange from somebody else's replay of it. They exist because rotation's
+// central rule is unfollowable after an *ambiguous* failure. A spent refresh token is single-use with reuse detection, so a client
+// that retries an exchange must retry it with the successor it was given — and a
+// client whose request timed out, whose connection dropped, or that was
+// backgrounded mid-call has no successor, because none arrived. Re-sending the
+// token it still holds revokes a live login; giving up loses the session. A
+// dropped packet signs the user out, and there is no third answer without this.
+//
+// The third answer is a key the client mints once per logical exchange, outside
+// its retry loop, and sends on every attempt — the convention
+// [github.com/primandproper/primitives-go/v2/idempotency] already defines, and
+// the metadata entry this package's own gRPC client stamps on this one RPC. The
+// store records that key with the spend, so a later
+// presentation of the same token bearing the same key is recognizable as the
+// retry it is.
+//
+// What it does *not* do is replay a recorded response. The retry is answered
+// with a freshly minted successor, and the one the first attempt minted is
+// revoked. Two reasons, and the second is the stronger: this module keeps no
+// refresh token secret at rest to replay, and a replay would hand an attacker
+// who captured the request the very token the legitimate client holds — two
+// parties silently sharing one credential, which is the thing reuse detection
+// exists to prevent. Under a re-mint the same capture is loud: the client's next
+// call fails, it signs in again, and the theft surfaces.
+//
+// # The obligation the two methods share
+//
+// They are two halves of one exchange and belong in one transaction — the
+// caller's, as every other write here is. RedeemIdempotently
+// without RecordSuccessor leaves a row that is spent and cannot say what it
+// minted, which is the state the retry branch refuses; and a caller that ran one
+// and not the other has a login whose next dropped response ends it.
+// [Service.ExchangeRefreshToken] is the worked example.
+//
+// # Implementing it outside this module
+//
+// Every method here is one some door of [Service] calls, and there is no
+// narrower interface a store may implement instead and no method this package
+// type-asserts for. A consumer's own store implements all of them, or embeds a
+// [RefreshTokenStore] whose methods it does not mean to reach — and a door that
+// then calls one fails loudly rather than behaving as though the store had
+// answered.
 type RefreshTokenStore interface {
 	// Issue mints a token, stores its digest, and returns the secret exactly
 	// once.
@@ -249,7 +385,13 @@ type RefreshTokenStore interface {
 	// A secret whose row says it was already spent is ErrRefreshTokenReused, and
 	// the implementation revokes the whole family before returning it, in tx. The
 	// two are one act: a reuse reported without the revocation is a theft detected
-	// and then allowed to continue.
+	// and then allowed to continue. It is returned as a *RefreshTokenReusedError
+	// naming the family and whether it was live, which is what the service hands
+	// [Hooks.AfterRevokeSignIns]. A bare sentinel still has its revocation
+	// committed — the service does not let a broken report undo the response to
+	// a theft — but no hook runs, since nothing says what ended, and the caller
+	// is answered with [ErrRefreshTokenStoreContractViolated]: a 500, logged, in
+	// place of the refusal.
 	//
 	// That puts one obligation on the caller, and it is the only place in this
 	// module where an error arrives with work attached. The revocation is written
@@ -273,82 +415,6 @@ type RefreshTokenStore interface {
 		scope tenancy.Scope,
 		secret string,
 	) (*RefreshToken, error)
-
-	// RevokeFamily ends one login and reports how many tokens it withdrew.
-	//
-	// It is what a detected reuse triggers and what a sign-out calls. Already
-	// revoked rows are left alone, so the record still says when the family
-	// actually stopped working and a second call reports zero rather than moving
-	// the stamp.
-	RevokeFamily(
-		ctx context.Context,
-		tx database.Tx,
-		scope tenancy.Scope,
-		familyID string,
-	) (int64, error)
-
-	// RevokeForSubject ends every login one person holds and reports how many
-	// tokens it withdrew.
-	//
-	// It is "disable this account", "sign out everywhere", and the erasure a
-	// dataprivacy run performs. It is a method of its own rather than a loop over
-	// RevokeFamily, and it has to be: a caller holding a subject identifier
-	// cannot enumerate that person's families, and a loop would leave live
-	// whatever was issued while it ran.
-	RevokeForSubject(
-		ctx context.Context,
-		tx database.Tx,
-		scope tenancy.Scope,
-		subjectID string,
-	) (int64, error)
-}
-
-// IdempotentRefreshTokenStore is a [RefreshTokenStore] that can tell a client's
-// own retry of an exchange from somebody else's replay of it.
-//
-// It exists because rotation's central rule is unfollowable after an *ambiguous*
-// failure. A spent refresh token is single-use with reuse detection, so a client
-// that retries an exchange must retry it with the successor it was given — and a
-// client whose request timed out, whose connection dropped, or that was
-// backgrounded mid-call has no successor, because none arrived. Re-sending the
-// token it still holds revokes a live login; giving up loses the session. A
-// dropped packet signs the user out, and there is no third answer without this.
-//
-// The third answer is a key the client mints once per logical exchange, outside
-// its retry loop, and sends on every attempt — the convention
-// [github.com/primandproper/primitives-go/v2/idempotency] already defines, and
-// the metadata entry this package's own gRPC client stamps on this one RPC. A store
-// implementing this interface records that key with the spend, so a later
-// presentation of the same token bearing the same key is recognizable as the
-// retry it is.
-//
-// What it does *not* do is replay a recorded response. The retry is answered
-// with a freshly minted successor, and the one the first attempt minted is
-// revoked. Two reasons, and the second is the stronger: this module keeps no
-// refresh token secret at rest to replay, and a replay would hand an attacker
-// who captured the request the very token the legitimate client holds — two
-// parties silently sharing one credential, which is the thing reuse detection
-// exists to prevent. Under a re-mint the same capture is loud: the client's next
-// call fails, it signs in again, and the theft surfaces.
-//
-// # Why it is a second interface
-//
-// [RefreshTokenStore] is exported and injected through [WithRefreshTokenStore],
-// so it is meant to be implemented outside this module, and a method added to it
-// would stop every such implementation compiling. This one embeds it and is
-// type-asserted for at runtime: a store that does not implement it, or a request
-// that carries no key, takes exactly the path it takes today.
-//
-// # The obligation the two methods share
-//
-// They are two halves of one exchange and belong in one transaction — the
-// caller's, as every write on the embedded interface is. RedeemIdempotently
-// without RecordSuccessor leaves a row that is spent and cannot say what it
-// minted, which is the state the retry branch refuses; and a caller that ran one
-// and not the other has a login whose next dropped response ends it.
-// [Service.ExchangeRefreshToken] is the worked example.
-type IdempotentRefreshTokenStore interface {
-	RefreshTokenStore
 
 	// RedeemIdempotently spends a secret the way Redeem does, recording the key
 	// that spent it, and honors a retry presented with that same key.
@@ -388,7 +454,7 @@ type IdempotentRefreshTokenStore interface {
 	// be honored by revoking the successor the first attempt produced, and "the
 	// successor" is a row nothing else in the schema can name — so a spend
 	// committed without this is a login whose next ambiguous failure ends it,
-	// which is precisely the behavior this interface was added to remove.
+	// which is precisely the behavior this method pair exists to remove.
 	//
 	// It is called after a mint rather than before, because the secret it records
 	// does not exist until Issue has returned it.
@@ -399,6 +465,89 @@ type IdempotentRefreshTokenStore interface {
 		predecessor string,
 		successor string,
 	) error
+
+	// RevokeFamily ends one login and reports how many tokens it withdrew.
+	//
+	// It is what a detected reuse triggers and what a sign-out calls. Already
+	// revoked rows are left alone, so the record still says when the family
+	// actually stopped working and a second call reports zero rather than moving
+	// the stamp.
+	RevokeFamily(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		familyID string,
+	) (int64, error)
+
+	// EndSignIns ends the live logins selector names and answers with the ones
+	// it ended. It is what every door but SignOut ends a login through:
+	// SignOutEverywhere, EndSignIn, EndOtherSignIns and the two operator
+	// revocations.
+	//
+	// Live is the exchange's reading, as ListActiveSignIns's is. The
+	// implementation locks the selected families' live rows first, then revokes
+	// exactly those families, and answers with them — all in tx. The order is
+	// the point: a login that commits between a read and a revocation keyed on
+	// the subject would be ended without being reported, and an exchange racing
+	// the revocation would carry a login past it. Locked first, the exchange waits
+	// and then finds its token revoked, and a login this call did not see is one
+	// it did not end. MySQL has no RETURNING, so the read comes first on every
+	// engine.
+	//
+	// A login already over — ended, revoked, or lapsed — is not selected, and a
+	// selection matching nothing is an empty answer and no error. With both
+	// SubjectID and FamilyID set, a family that is not the subject's matches
+	// nothing, and that is not told apart from one that never existed. With
+	// SubjectID and ExceptFamilyID set, every login but that one is selected, and
+	// an ExceptFamilyID that is not the subject's spares nothing.
+	EndSignIns(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		selector SignInSelector,
+	) ([]*EndedSignIn, error)
+
+	// ListActiveSignIns answers one entry per live login a subject holds, most
+	// recently refreshed first, and no more than limit of them. It is what
+	// [Service.ListSignIns] reads.
+	//
+	// Live is the exchange's own reading: a login is listed while it has a
+	// refresh token that Redeem would still accept, and not once it has been
+	// revoked or has lapsed — whether or not anything has collected its rows.
+	//
+	// It is a read, so it takes the wider executor: a caller holding
+	// Client.Reader() and a caller inside a transaction both call it, and the
+	// second sees that transaction's own writes.
+	ListActiveSignIns(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		subjectID string,
+		limit uint16,
+	) ([]*ActiveSignIn, error)
+
+	// LiveToken answers one login's current refresh token, named by its
+	// family, or [ErrSignInEnded] where the login has none. It is what
+	// [Service.CheckSignIn] reads, and it may be read on every request.
+	//
+	// Live is the exchange's own reading, as it is for ListActiveSignIns: the
+	// token answered is the one Redeem would still accept, and a family that
+	// has been revoked or has lapsed has none, whether or not anything has
+	// collected its rows. A family has at most one such token — an exchange
+	// spends one and mints its successor in one transaction — so there is no
+	// second to choose between. A family unknown in scope is ErrSignInEnded
+	// too, and is not told apart from one that ended.
+	//
+	// The answer carries RefreshToken.AccessTokenID, which is what tells the
+	// login's current access token from the ones it has replaced.
+	//
+	// It is a read, so it takes the wider executor.
+	LiveToken(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		familyID string,
+	) (*RefreshToken, error)
 }
 
 // ExchangeRefreshToken spends a refresh token and answers with a fresh access
@@ -457,15 +606,13 @@ type IdempotentRefreshTokenStore interface {
 // A caller that puts an idempotency key on ctx —
 // [github.com/primandproper/primitives-go/v2/idempotency.WithKey], which this
 // module's gRPC surface fills from the conventional `idempotency-key` metadata —
-// gets the other answer, provided its store implements
-// [IdempotentRefreshTokenStore]. The retry is answered with a *fresh* successor
+// gets the other answer, through [RefreshTokenStore.RedeemIdempotently]. The retry is answered with a *fresh* successor
 // and the one the lost response carried is revoked, so the client ends up with
 // exactly one live refresh token either way. The key buys one such retry; a
 // second presentation of it is a reuse like any other.
 //
-// Neither half is conditional on the other being configured. No key on ctx, or a
-// store without that interface, takes the path above unchanged — which is what
-// makes this a minor rather than a break.
+// No key on ctx takes the path above unchanged: a client that sends no key has
+// not asked for this.
 func (s *Service) ExchangeRefreshToken(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -495,18 +642,18 @@ func (s *Service) ExchangeRefreshToken(
 	// caller is told afterwards. See RefreshTokenStore.Redeem.
 	var reuse error
 
-	// The store and the key, resolved once outside the transaction because
-	// neither can change inside it and because both being absent is the ordinary
-	// case rather than a fallback.
-	idempotent, key := s.idempotentExchange(ctx)
+	// The key, resolved once outside the transaction because it cannot change
+	// inside it and because its absence is the ordinary case rather than a
+	// fallback.
+	key := idempotentExchangeKey(ctx)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		spent, txErr := s.spend(ctx, tx, scope, refreshToken, idempotent, key)
+		spent, txErr := s.spend(ctx, tx, scope, refreshToken, key)
 		if txErr != nil {
 			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
 				reuse = txErr
 
-				return nil
+				return s.afterReuse(ctx, tx, scope, txErr)
 			}
 
 			return txErr
@@ -560,8 +707,8 @@ func (s *Service) ExchangeRefreshToken(
 		// spend committed without the successor it minted is a login whose next
 		// dropped response ends it, which is the failure this whole path exists
 		// to remove.
-		if idempotent != nil {
-			if txErr = idempotent.RecordSuccessor(ctx, tx, scope, refreshToken, signIn.RefreshToken); txErr != nil {
+		if key != "" {
+			if txErr = s.refreshTokens.RecordSuccessor(ctx, tx, scope, refreshToken, signIn.RefreshToken); txErr != nil {
 				return txErr
 			}
 		}
@@ -576,6 +723,10 @@ func (s *Service) ExchangeRefreshToken(
 	}
 
 	if reuse != nil {
+		if contractErr := reuseAnswer(reuse); contractErr != nil {
+			return nil, op.Error(contractErr, "reading the reuse a refresh token store reported")
+		}
+
 		return nil, op.Error(reuse, "exchanging a refresh token")
 	}
 
@@ -631,13 +782,28 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 		return op.Error(ErrEmptyRefreshToken, "reading the refresh token a sign-out presented")
 	}
 
+	// The reuse, if the presented token draws one, held for after the commit so
+	// a store that reported it bare can be named as broken once its revocation
+	// has landed. See reuseAnswer.
+	var reuse error
+
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		spent, txErr := s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
 		if txErr != nil {
 			// Both branches commit. A reuse has already had the family revoked
 			// into tx by the store, and every other refusal is a token that
 			// names no live login — neither is a reason to abandon the
-			// transaction, and the first is a reason not to.
+			// transaction, and the first is a reason not to. The reuse is
+			// reported as one, not as this sign-out: the token presented was
+			// spent, so it was not this caller's login that it ended.
+			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
+				op.SpanOnly(signOutNothingToEndKey, true)
+
+				reuse = txErr
+
+				return s.afterReuse(ctx, tx, scope, txErr)
+			}
+
 			if platformerrors.Is(txErr, ErrInvalidCredentials) {
 				op.SpanOnly(signOutNothingToEndKey, true)
 
@@ -649,31 +815,83 @@ func (s *Service) SignOut(ctx context.Context, scope tenancy.Scope, refreshToken
 
 		op.SetValues(map[string]any{userIDKey: spent.SubjectID, familyKey: spent.FamilyID})
 
-		_, txErr = s.refreshTokens.RevokeFamily(ctx, tx, scope, spent.FamilyID)
+		// The redemption is what proves the login was live, so this revocation
+		// always ends one: the spent row is the family's and is not yet revoked.
+		// It is a revocation by the family's id rather than EndSignIns, whose
+		// live-row lock would find nothing here — the one live row is the token
+		// this call just spent.
+		revoked, txErr := s.refreshTokens.RevokeFamily(ctx, tx, scope, spent.FamilyID)
+		if txErr != nil {
+			return txErr
+		}
 
-		return txErr
+		if revoked == 0 {
+			return nil
+		}
+
+		return s.hooks.AfterRevokeSignIns(ctx, tx, scope, &Revocation{
+			Reason:    RevocationSignOut,
+			SubjectID: spent.SubjectID,
+			ActorID:   spent.SubjectID,
+			FamilyIDs: []string{spent.FamilyID},
+		})
 	}); err != nil {
 		return op.Error(err, "signing out")
+	}
+
+	if reuse != nil {
+		if contractErr := reuseAnswer(reuse); contractErr != nil {
+			return op.Error(contractErr, "reading the reuse a refresh token store reported")
+		}
 	}
 
 	return nil
 }
 
+// RevocationOption adjusts what an operator's revocation reports to
+// [Hooks.AfterRevokeSignIns].
+type RevocationOption func(*revocationRequest)
+
+// revocationRequest is what the RevocationOptions an operator door was handed
+// resolve to.
+type revocationRequest struct {
+	actorID string
+}
+
+// RevokedBy names who asked for an operator's revocation, and is what
+// [Revocation.ActorID] carries for it.
+//
+// This package decides nothing about who may act for whom, so it cannot know
+// who is asking unless it is told: an operator surface that stands its own
+// authorization in front of [Service.RevokeRefreshTokenFamily] or
+// [Service.RevokeRefreshTokensForSubject] passes the principal it authorized.
+// Without it the revocation is reported with no actor.
+func RevokedBy(actorID string) RevocationOption {
+	return func(r *revocationRequest) { r.actorID = actorID }
+}
+
 // RevokeRefreshTokenFamily ends one login: every refresh token that sign-in ever
 // issued stops being exchangeable, and it reports how many it withdrew.
 //
-// It is sign-out. What it does not do is stop the access token already in
-// somebody's hands — nothing here can, because an access token is checked by the
+// It is an operator's sign-out, and it is reported to
+// [Hooks.AfterRevokeSignIns] as [RevocationOperator]. What it does on its own
+// is stop the access token already in somebody's hands being replaced, so a
+// sign-out takes effect within one access-token lifetime, which is what
+// [DefaultTokenTTL]'s hour is chosen against. An access token is checked by the
 // consumer's interceptor against the issuer's signature rather than against this
-// table. What it does is stop that access token being replaced, so a sign-out
-// takes effect within one access-token lifetime, which is what
-// [DefaultTokenTTL]'s hour is chosen against.
+// table, so the token itself goes on verifying until it expires — unless that
+// interceptor also asks [Service.CheckSignIn], which answers [ErrSignInEnded]
+// for this family from the moment this commits. That is a read per request in
+// exchange for a sign-out that takes effect at once, and it is the consumer's
+// trade to make.
 //
-// A family nobody holds tokens for is zero and no error.
+// A family nobody holds a live token for — never issued, already ended, or
+// lapsed — is zero and no error, and runs no hook.
 func (s *Service) RevokeRefreshTokenFamily(
 	ctx context.Context,
 	scope tenancy.Scope,
 	familyID string,
+	opts ...RevocationOption,
 ) (revoked int64, err error) {
 	ctx, op, done := s.begin(ctx, opRevokeRefreshFamily,
 		observability.WithValue(scopeKey, scope.String()),
@@ -693,34 +911,32 @@ func (s *Service) RevokeRefreshTokenFamily(
 		return 0, op.Error(ErrEmptyFamilyID, "reading a refresh token family")
 	}
 
-	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		var txErr error
+	request := resolveRevocation(opts)
 
-		revoked, txErr = s.refreshTokens.RevokeFamily(ctx, tx, scope, familyID)
-
-		return txErr
-	}); err != nil {
+	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{FamilyID: familyID}, RevocationOperator,
+		request.actorID); err != nil {
 		return 0, op.Error(err, "revoking a refresh token family")
 	}
 
 	return revoked, nil
 }
 
-// RevokeRefreshTokensForSubject ends every login one person holds, and reports
-// how many refresh tokens it withdrew.
+// RevokeRefreshTokensForSubject ends every login one person holds on somebody
+// else's say-so, and reports how many refresh tokens it withdrew.
 //
-// It is "sign out everywhere", the thing an operator runs when disabling an
-// account, and what a data erasure calls. It is a door of its own rather than a
-// loop over [Service.RevokeRefreshTokenFamily] for the reason
-// [RefreshTokenStore.RevokeForSubject] gives: a caller holding a user ID cannot
-// enumerate that person's families, and a loop would leave live whatever was
-// issued while it ran.
+// It is the thing an operator runs when disabling an account, and what a data
+// erasure calls, and it is reported to [Hooks.AfterRevokeSignIns] as
+// [RevocationOperator]. The person doing it to themselves is
+// [Service.SignOutEverywhere], which ends the same logins and is reported as
+// the person's own decision instead.
 //
-// A user who has never signed in is zero and no error.
+// A user who has never signed in, or whose logins are all over, is zero and no
+// error, and runs no hook.
 func (s *Service) RevokeRefreshTokensForSubject(
 	ctx context.Context,
 	scope tenancy.Scope,
 	userID string,
+	opts ...RevocationOption,
 ) (revoked int64, err error) {
 	ctx, op, done := s.begin(ctx, opRevokeRefreshSubject,
 		observability.WithValue(scopeKey, scope.String()),
@@ -728,75 +944,243 @@ func (s *Service) RevokeRefreshTokensForSubject(
 	)
 	defer func() { done(err) }()
 
-	if s.refreshTokens == nil {
-		return 0, op.Error(ErrRefreshTokensNotConfigured, "revoking a subject's refresh tokens")
-	}
-
-	if err = scope.Validate(); err != nil {
-		return 0, op.Error(err, "checking the scope a subject's refresh tokens were revoked in")
-	}
-
-	if userID == "" {
-		return 0, op.Error(ErrEmptyUserID, "reading the subject whose refresh tokens are revoked")
-	}
-
-	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		var txErr error
-
-		revoked, txErr = s.refreshTokens.RevokeForSubject(ctx, tx, scope, userID)
-
-		return txErr
-	}); err != nil {
+	if revoked, err = s.endSubjectSignIns(ctx, scope, userID, RevocationOperator,
+		resolveRevocation(opts).actorID); err != nil {
 		return 0, op.Error(err, "revoking a subject's refresh tokens")
 	}
 
 	return revoked, nil
 }
 
-// idempotentExchange reports which of the two exchange paths this request takes:
-// the store to use for it, and the key it was given.
+// SignOutEverywhere ends every login userID holds, this one included, and
+// reports how many refresh tokens it withdrew.
 //
-// Both halves have to be present, and the conjunction is the whole rule. A key
-// with a store that cannot record it would be protection a client was told it
-// had; a store that can record one, given no key, has nothing to record. Either
-// missing is today's exchange, which is the correct answer rather than a
-// degraded one — a client that sends no key has not asked for this.
+// It is [Service.RevokeRefreshTokensForSubject] done by the person themselves:
+// the same logins end, and [Hooks.AfterRevokeSignIns] is told
+// [RevocationSignOutEverywhere] with the person as the actor, because an audit
+// trail that could not tell "I signed out of everything" from "an operator
+// signed me out" would be missing the fact a security review asks for first.
+// Which of the two a request is, is the caller's to know —
+// authentication/signin/grpc's SignOutEverywhere takes userID off the caller.
+//
+// A user with no live login is zero and no error, and runs no hook.
+func (s *Service) SignOutEverywhere(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+) (revoked int64, err error) {
+	ctx, op, done := s.begin(ctx, opSignOutEverywhere,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer func() { done(err) }()
+
+	if revoked, err = s.endSubjectSignIns(ctx, scope, userID, RevocationSignOutEverywhere, userID); err != nil {
+		return 0, op.Error(err, "signing out everywhere")
+	}
+
+	return revoked, nil
+}
+
+// endSubjectSignIns is the body RevokeRefreshTokensForSubject and
+// SignOutEverywhere share: every live login one person holds, ended and
+// reported under reason.
+func (s *Service) endSubjectSignIns(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	reason RevocationReason,
+	actorID string,
+) (int64, error) {
+	if s.refreshTokens == nil {
+		return 0, ErrRefreshTokensNotConfigured
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, err
+	}
+
+	if userID == "" {
+		return 0, ErrEmptyUserID
+	}
+
+	return s.endSignIns(ctx, scope, SignInSelector{SubjectID: userID}, reason, actorID)
+}
+
+// endSignIns ends the live logins selector names and runs
+// [Hooks.AfterRevokeSignIns] for them, in one transaction, and answers with how
+// many refresh tokens it withdrew.
+//
+// The hook is handed what the store actually ended rather than what was asked
+// for, and runs only when that is something — see [RefreshTokenStore.EndSignIns]
+// for why the store locks before it revokes. A hook that refuses rolls the
+// revocation back.
+func (s *Service) endSignIns(
+	ctx context.Context,
+	scope tenancy.Scope,
+	selector SignInSelector,
+	reason RevocationReason,
+	actorID string,
+) (int64, error) {
+	ended, err := s.endSignInsReporting(ctx, scope, selector, reason, actorID)
+	if err != nil {
+		return 0, err
+	}
+
+	var revoked int64
+	for _, signIn := range ended {
+		revoked += signIn.Revoked
+	}
+
+	return revoked, nil
+}
+
+// endSignInsReporting is endSignIns answering with the logins it ended rather
+// than the tokens it withdrew, for the door that reports families.
+func (s *Service) endSignInsReporting(
+	ctx context.Context,
+	scope tenancy.Scope,
+	selector SignInSelector,
+	reason RevocationReason,
+	actorID string,
+) (ended []*EndedSignIn, err error) {
+	err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		var txErr error
+
+		if ended, txErr = s.refreshTokens.EndSignIns(ctx, tx, scope, selector); txErr != nil {
+			return txErr
+		}
+
+		return s.afterRevoke(ctx, tx, scope, reason, actorID, ended)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return ended, nil
+}
+
+// afterRevoke reports ended logins to [Hooks.AfterRevokeSignIns], once per
+// person they belonged to, and not at all when nothing ended.
+//
+// Every door ends one person's logins, so in practice this is one call; the
+// grouping is what keeps [Revocation.SubjectID] true should a store answer an
+// operator's family-only selection with rows that disagree about whose it is.
+func (s *Service) afterRevoke(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	reason RevocationReason,
+	actorID string,
+	ended []*EndedSignIn,
+) error {
+	var revocations []*Revocation
+
+	bySubject := map[string]*Revocation{}
+
+	for _, signIn := range ended {
+		revocation, ok := bySubject[signIn.SubjectID]
+		if !ok {
+			revocation = &Revocation{Reason: reason, SubjectID: signIn.SubjectID, ActorID: actorID}
+			bySubject[signIn.SubjectID] = revocation
+			revocations = append(revocations, revocation)
+		}
+
+		revocation.FamilyIDs = append(revocation.FamilyIDs, signIn.FamilyID)
+	}
+
+	for _, revocation := range revocations {
+		if err := s.hooks.AfterRevokeSignIns(ctx, tx, scope, revocation); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// afterReuse reports the family a detected reuse ended to
+// [Hooks.AfterRevokeSignIns], inside the transaction the store revoked it in.
+//
+// It runs from the two doors that capture the reuse and commit rather than
+// return it — see [RefreshTokenStore.Redeem] — and its error is returned out of
+// that transaction, so a hook that refuses rolls the revocation back with it.
+//
+// A store that reported the sentinel bare, without the family, gets nil here
+// and no hook: the revocation it wrote into tx is the response to a theft and
+// must commit whatever else is wrong, and a hook cannot be told what ended.
+// The door reports the broken contract after the commit — see [reuseAnswer].
+func (s *Service) afterReuse(ctx context.Context, tx database.Tx, scope tenancy.Scope, reuse error) error {
+	var reused *RefreshTokenReusedError
+	if !platformerrors.As(reuse, &reused) || !reused.Ended {
+		return nil
+	}
+
+	return s.hooks.AfterRevokeSignIns(ctx, tx, scope, &Revocation{
+		Reason:    RevocationReuse,
+		SubjectID: reused.SubjectID,
+		FamilyIDs: []string{reused.FamilyID},
+	})
+}
+
+// reuseAnswer is what a door says, once its transaction has committed, about a
+// reuse the store reported: nil for one that named its family, and
+// [ErrRefreshTokenStoreContractViolated] for one reported bare.
+//
+// The bare case is refused loudly rather than passed over. A reuse the hooks
+// never hear about is an audit trail silently missing its most important entry,
+// and answering it as the ordinary refusal would hide the wiring that produced
+// it; as a 500 it is logged and found on the first reuse rather than in an
+// incident review.
+func reuseAnswer(reuse error) error {
+	var reused *RefreshTokenReusedError
+	if platformerrors.As(reuse, &reused) {
+		return nil
+	}
+
+	return ErrRefreshTokenStoreContractViolated
+}
+
+// resolveRevocation applies an operator door's options in order.
+func resolveRevocation(opts []RevocationOption) *revocationRequest {
+	request := &revocationRequest{}
+	for _, opt := range opts {
+		opt(request)
+	}
+
+	return request
+}
+
+// idempotentExchangeKey reports the idempotency key this exchange was given,
+// or the empty string for the ordinary exchange.
 //
 // It reads the key off ctx rather than taking it as an argument, because that is
 // where the convention puts it: idempotency.WithKey is what the transports fill,
 // and a parameter here would be a second way to say the same thing that a
 // consumer's own handler would have to remember to wire.
-func (s *Service) idempotentExchange(ctx context.Context) (store IdempotentRefreshTokenStore, key string) {
-	store, ok := s.refreshTokens.(IdempotentRefreshTokenStore)
-	if !ok {
-		return nil, ""
-	}
-
+func idempotentExchangeKey(ctx context.Context) string {
 	minted, ok := idempotency.KeyFromContext(ctx)
 	if !ok {
-		return nil, ""
+		return ""
 	}
 
-	return store, string(minted)
+	return string(minted)
 }
 
 // spend redeems the presented token through whichever of the two doors this
 // request qualified for.
 //
-// It is a branch rather than a store method with a sometimes-empty key
-// parameter, so that a store which never learned about idempotency is never
-// handed one — and so that the ordinary exchange's call is the same line it has
-// always been.
+// It is a branch rather than one store method with a sometimes-empty key
+// parameter, because RedeemIdempotently refuses an empty key: a request with
+// none takes Redeem, which is the exchange that has no retry to honor.
 func (s *Service) spend(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	refreshToken string,
-	idempotent IdempotentRefreshTokenStore,
 	key string,
 ) (*RefreshToken, error) {
-	if idempotent != nil {
-		return idempotent.RedeemIdempotently(ctx, tx, scope, refreshToken, key)
+	if key != "" {
+		return s.refreshTokens.RedeemIdempotently(ctx, tx, scope, refreshToken, key)
 	}
 
 	return s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
@@ -837,6 +1221,7 @@ func (s *Service) mintRefreshToken(
 		SubjectID:       signIn.Principal.User.ID,
 		ActiveAccountID: signIn.Principal.ActiveAccountID,
 		Administrative:  signIn.Administrative,
+		AccessTokenID:   signIn.TokenID,
 	})
 	if err != nil {
 		return platformerrors.Wrap(err, "minting a refresh token")

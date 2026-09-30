@@ -1417,7 +1417,6 @@ type SetMembershipDefaultAccountParams struct {
 type SetUserEmailAddressVerificationTokenParams struct {
 	EmailAddressVerificationTokenDigest    string
 	EmailAddressVerificationTokenExpiresAt *time.Time
-	EmailAddressVerifiedAt                 *time.Time
 	ID                                     string
 	Scope                                  tenancy.Scope
 }

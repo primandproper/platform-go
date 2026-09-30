@@ -230,9 +230,17 @@ func runUpgradeSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 					test.Sprintf("family_laptop listed as beginning %v", began["family_laptop"]))
 			})
 
+			// Version 4 has no backfill: a login minted before it recorded no
+			// access token, and reads as having none rather than as ended.
+			t.Run("reads a login the earlier release minted as recording no access token", func(t *testing.T) {
+				live, liveErr := store.LiveToken(ctx, client.Writer(), tenancy.Of("tenant_a"), "family_laptop")
+				must.NoError(t, liveErr)
+				test.EqOp(t, "", live.AccessTokenID)
+			})
+
 			// Every column the later versions added is written here: the retry
-			// key and successor by the idempotent exchange, and signed_in_at by
-			// the successor's mint.
+			// key and successor by the idempotent exchange, and signed_in_at and
+			// access_token_id by the successor's mint.
 			t.Run("exchanges a token the earlier release minted", func(t *testing.T) {
 				scope := tenancy.Of("tenant_a")
 
@@ -251,6 +259,7 @@ func runUpgradeSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 						SignedInAt:      spent.SignedInAt,
 						SubjectID:       spent.SubjectID,
 						ActiveAccountID: spent.ActiveAccountID,
+						AccessTokenID:   "upgrade_jti_01",
 					})
 					if issueErr != nil {
 						return issueErr
@@ -262,6 +271,10 @@ func runUpgradeSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 				must.NotNil(t, successor)
 				test.True(t, began.Equal(successor.Token.SignedInAt),
 					test.Sprintf("the successor says its login began %v", successor.Token.SignedInAt))
+
+				live, liveErr := store.LiveToken(ctx, client.Writer(), scope, "family_phone")
+				must.NoError(t, liveErr)
+				test.EqOp(t, "upgrade_jti_01", live.AccessTokenID)
 			})
 		})
 	}

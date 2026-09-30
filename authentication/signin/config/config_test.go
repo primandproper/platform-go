@@ -178,11 +178,12 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 		t.Parallel()
 
 		cfg := parse(t, map[string]string{
-			"MAGIC_LINKS_TABLE_PREFIX":           "ddb",
-			"REFRESH_TOKENS_TABLE_PREFIX":        "ddb",
-			"REGISTRATION_VERIFICATION_LINK_TTL": "24h",
-			"TOTP_ISSUER":                        "Example",
-			"ADMIN_SERVICE_ROLES":                "service_admin,operator",
+			"MAGIC_LINKS_TABLE_PREFIX":                "ddb",
+			"REFRESH_TOKENS_TABLE_PREFIX":             "ddb",
+			"REGISTRATION_VERIFICATION_LINK_TTL":      "24h",
+			"TOTP_ISSUER":                             "Example",
+			"ADMIN_SERVICE_ROLES":                     "service_admin,operator",
+			"REFRESH_TOKENS_REFUSE_SUPERSEDED_TOKENS": "true",
 		})
 
 		must.NotNil(t, cfg.MagicLinks)
@@ -191,6 +192,7 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 		test.EqOp(t, 24*time.Hour, cfg.Registration.VerificationLinkTTL)
 		test.EqOp(t, "Example", cfg.TOTPIssuer)
 		test.Eq(t, []string{"service_admin", "operator"}, cfg.AdminServiceRoles)
+		test.True(t, cfg.RefreshTokens.RefuseSupersededTokens)
 	})
 
 	T.Run("registration is closed by name", func(t *testing.T) {
@@ -334,6 +336,27 @@ func TestNewService(T *testing.T) {
 		svc, err := build(t, cfg)
 		test.ErrorIs(t, err, signin.ErrRefreshTokenTTLTooShort)
 		test.Nil(t, svc)
+	})
+
+	// Only a service that refuses superseded tokens compares one, so only it
+	// refuses a check naming none before reading anything; the other goes on
+	// to the table nobody migrated.
+	T.Run("refuses superseded tokens only when the config says so", func(t *testing.T) {
+		t.Parallel()
+
+		refusing := noSweepers()
+		refusing.RefreshTokens.RefuseSupersededTokens = true
+
+		svc, err := build(t, refusing)
+		must.NoError(t, err)
+		test.ErrorIs(t, svc.CheckSignIn(t.Context(), scope, "family", ""), signin.ErrEmptyTokenID)
+
+		svc, err = build(t, noSweepers())
+		must.NoError(t, err)
+
+		err = svc.CheckSignIn(t.Context(), scope, "family", "")
+		must.Error(t, err)
+		test.False(t, errors.Is(err, signin.ErrEmptyTokenID))
 	})
 
 	T.Run("applies explicit service options after the config's", func(t *testing.T) {

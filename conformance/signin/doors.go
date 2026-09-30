@@ -8,6 +8,7 @@ import (
 	domain "github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 
@@ -90,24 +91,116 @@ func doors(t *testing.T, s *conformance.Session) {
 	t.Run("a user with a second factor is told to send a code, by reason", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s, loginForToken)
-		sub, user := passworded(t, s, refreshTOTPSecret, verifyTOTPSecret)
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, who := signedIn(t, s, anon, refreshTOTPSecret, verifyTOTPSecret)
 		secret := enroll(t, sub)
 
-		_, withoutCode := login(t.Context(), anon, user.GetUsername(), password, "")
+		_, withoutCode := login(t.Context(), anon, who.username, password, "")
 		refused(t, s, withoutCode, codes.Unauthenticated, reasonSecondFactorRequired)
 		test.EqOp(t, domain.ErrSecondFactorRequired.Error(), status.Convert(withoutCode).Message())
 
-		_, badPassword := login(t.Context(), anon, user.GetUsername(), wrongPassword, "")
-		_, badCode := login(t.Context(), anon, user.GetUsername(), password, wrongCode(t, secret))
+		_, badPassword := login(t.Context(), anon, who.username, wrongPassword, "")
+		_, badCode := login(t.Context(), anon, who.username, password, wrongCode(t, secret))
 		indistinguishable(t, s, badPassword, badCode, "a wrong code against a wrong password")
 		if reasons(t, s) {
 			test.EqOp(t, reasonInvalidCredentials, reason(badCode))
 		}
 
-		issued, err := login(t.Context(), anon, user.GetUsername(), password, code(t, secret))
+		issued, err := login(t.Context(), anon, who.username, password, code(t, secret))
 		must.NoError(t, err, must.Sprint("the right password and the right code did not sign in"))
 		test.NotEqOp(t, "", issued.GetToken())
+	})
+
+	// A token is for one account, and a person in two chooses which at the
+	// door. The control is the same person naming none, which lands in the
+	// account they registered with: so the name moved the token, rather than a
+	// second membership having moved their default.
+	t.Run("a member of two accounts lands in the one they name, and in their default when they name none", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		joiner, who := signedIn(t, s, anon, acceptInvitation)
+		inviter := directoryCaller(t, s, invite)
+
+		if inviter.AccountID == "" {
+			t.Skip("conformance: this subject does not surface the inviter's account, so there is no second account to name; skipping")
+		}
+
+		must.NotEqOp(t, who.accountID, inviter.AccountID, must.Sprint("the inviter is in the registrant's own account"))
+
+		delivered := s.Seams().Actions.InvitationToken
+		s.NeedsAction(t, delivered != nil, "invitation token")
+
+		invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
+			AccountId: inviter.AccountID,
+			ToEmail:   who.email,
+			ToName:    "Some Body",
+			Roles:     []string{s.Roles().Membership[0]},
+		})
+		must.NoError(t, err, must.Sprint("inviting the registrant into a second account"))
+
+		token, err := delivered(t.Context(), inviter.ScopeFor(identitySurface), invited.GetInvitation().GetId())
+		must.NoError(t, err, must.Sprint("reading the token the deployment delivered"))
+
+		_, err = joiner.Surfaces.Identity.AcceptInvitation(joiner.Context(t.Context()), &identitypb.AcceptInvitationRequest{
+			InvitationId: invited.GetInvitation().GetId(),
+			Token:        token,
+		})
+		must.NoError(t, err, must.Sprint("accepting the invitation into a second account"))
+
+		named, err := loginInto(t.Context(), anon, who.username, password, inviter.AccountID)
+		must.NoError(t, err, must.Sprint("signing in naming an account the registrant is a member of"))
+		test.EqOp(t, inviter.AccountID, named.GetActiveAccountId(),
+			test.Sprint("a sign-in naming an account landed somewhere else"))
+
+		unnamed := loggedIn(t, anon, who.username, password)
+		test.EqOp(t, who.accountID, unnamed.GetActiveAccountId(),
+			test.Sprint("a sign-in naming no account did not land in the registrant's default"))
+
+		there := caller(t, s, named, getAuthStatus)
+
+		standing, err := there.Surfaces.SignIn.GetAuthStatus(there.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
+		must.NoError(t, err)
+		test.EqOp(t, inviter.AccountID, standing.GetStatus().GetActiveAccountId(),
+			test.Sprint("the status of a token issued for an account names another"))
+		test.SliceContains(t, standing.GetStatus().GetAccountIds(), inviter.AccountID)
+		test.SliceContains(t, standing.GetStatus().GetAccountIds(), who.accountID)
+	})
+
+	// The administrative door holds an administrator to the same second
+	// factor the ordinary one holds everybody to, with the same refusals: a
+	// code is asked for by reason, and a wrong one is a wrong password.
+	t.Run("an enrolled administrator signs in through the administrative door", func(t *testing.T) {
+		t.Parallel()
+
+		role := s.Roles().Administrator
+		if role == "" {
+			t.Skip("conformance: this subject names no Roles.Administrator, so nobody can be made one the administrative door admits; skipping")
+		}
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, adminLoginForToken)
+		sub, who := signedIn(t, s, anon, refreshTOTPSecret, verifyTOTPSecret)
+		secret := enroll(t, sub)
+
+		granter := directoryCaller(t, s, setUserServiceRoles)
+		_, err := granter.Surfaces.Identity.SetUserServiceRoles(granter.Context(t.Context()),
+			&identitypb.SetUserServiceRolesRequest{UserId: who.userID, Roles: []string{role}})
+		must.NoError(t, err, must.Sprint("making the registrant an administrator"))
+
+		_, withoutCode := adminLogin(t.Context(), anon, who.username, password, "")
+		refused(t, s, withoutCode, codes.Unauthenticated, reasonSecondFactorRequired)
+
+		_, badPassword := adminLogin(t.Context(), anon, who.username, wrongPassword, "")
+		_, badCode := adminLogin(t.Context(), anon, who.username, password, wrongCode(t, secret))
+		indistinguishable(t, s, badPassword, badCode, "a wrong code against a wrong password, at the administrative door")
+		if reasons(t, s) {
+			test.EqOp(t, reasonInvalidCredentials, reason(badCode))
+		}
+
+		issued, err := adminLogin(t.Context(), anon, who.username, password, code(t, secret))
+		must.NoError(t, err, must.Sprint("an enrolled administrator with the right password and code was refused"))
+		test.NotEqOp(t, "", issued.GetToken())
+		test.True(t, issued.GetAdministrative(), test.Sprint("the administrative door minted an ordinary token"))
 	})
 
 	// Whether a deployment has an administrative door at all is its own

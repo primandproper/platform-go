@@ -190,10 +190,11 @@ this row's claim about `signin` itself rather than about everything under its
 path.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
-owns no table either, and it is not a flow: it is three names — the interface a
-consumer's authentication interceptor satisfies, the function that reads one off
-a context, and the refusal an authorizer returns — that every gRPC surface here
-names and no two of them may disagree about. It is a domain because a principal
+owns no table either, and it is not a flow: it is the interface a consumer's
+authentication interceptor satisfies, the function that reads one off a context,
+the refusal an authorizer returns, and the optional second identity an operator
+acting as somebody else fills — names that every gRPC surface here reads and no
+two of them may disagree about. It is a domain because a principal
 is a user, the directory they are in and the account their request is against,
 and an application with no users has nobody to extract. It is a package of its
 own because it was declared in `identity/grpc` until `/v14`, so a consumer
@@ -349,6 +350,28 @@ caller. The table is built from each surface's own method lists, and a method
 nobody declared is refused. The application installs it: `service` builds no
 extractor, so a composition root names it to `service.Transports` and puts its
 interceptor in the gRPC chain and its middleware on the router.
+
+**Somebody acting as somebody else.** This module once ruled impersonation not a
+platform notion: every layer had room for one identity, so the only way to fit
+an operator into a request was to put the subject's ID where the actor's
+belonged — a working system, and an audit trail that says the subject did it.
+The objection stands; it is the reason for a second slot rather than for none,
+because the deployments with an operator tool told that lie anyway, in their own
+interceptors. The platform owns the mechanism and the deployment owns the
+policy. `callers.Delegated` is the optional interface a principal answers with
+the operator behind it, and `callers.ActorOf` names who is really acting.
+`signin.Service.IssueImpersonationToken` mints a short-lived token with no
+refresh token behind it, carrying `signin.ClaimActor`, and refuses every call
+with `ErrImpersonationDisabled` until `WithImpersonationPolicy` names the rule
+— the platform names no permission for it. `signingrpc`'s extractor turns the
+claim back into a `Delegated` caller and refuses it once the operator is
+banned. `audit.Actor.Impersonator` records the operator beside the subject the
+entry is filed under, in a column inside the hash chain, so
+`audit.Query.ImpersonatorID`, `audit/privacy`'s export and
+`audit.Erasure.CountMentions` all find the operator. Whether an impersonated
+request carries the operator's grants or the subject's is the consumer's
+`GrantsResolver`'s call, and no RPC exposes the door: it belongs behind the
+deployment's own operator surface.
 
 `audit` crosses too, and it is the one that ships **strictly narrower than its
 own interface**. `audit/grpc` serves the `Reader` and nothing else:
@@ -562,6 +585,7 @@ the whole list.
 <!-- readmegen:transports -->
 | Transport                           | Kind             | Whose shape it is                                                                                         |
 |-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------|
+| `billing/http`                      | binding          | a payment provider's callback, whose status code the provider acts on                                     |
 | `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                 |
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                       |
 | `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                       |
@@ -580,7 +604,7 @@ the whole list.
 | `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store` |
 <!-- /readmegen:transports -->
 
-Two rows are bindings rather than surfaces. `sessions/http` binds a store to a
+The bindings are not surfaces. `sessions/http` binds a store to a
 cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
@@ -600,6 +624,13 @@ is never served inline, and nothing is cached by a shared proxy. There is no
 resource of yours in that either: what is on the wire is bytes and a content
 type.
 
+`billing/http` binds a payment provider's callback to `billing/sync`. The
+payload is the provider's and the verification is capitalism's; what is left is
+the status code, which the provider acts on and the hand-written endpoints got
+wrong — a 400 for a database that blinked tells the provider to drop the
+delivery. That code is decided here, once: 400 only for a delivery that failed
+verification or could not be parsed, 500 for anything a retry could fix.
+
 The rest are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
@@ -614,6 +645,27 @@ rule above rather than as an exception to it, and every resource surface but
 `operations/http` has crossed this way. All of those are gRPC but one, for the
 reason given above: `dataprivacy`'s flow was on HTTP before there was a
 handler in it.
+
+**Who may use a route.** Every gRPC surface declares a namespaced permission
+per method in its `permissions.go`, and the three HTTP ones do too, per route:
+`dataprivacy/http`, `mediaregistry/http` and `operations/http` each export a
+`Permissions` map keyed by route (`POST /operations/{operationID}/cancel`), the
+`Route…` constants those keys are spelled with, and `OwnStandingRoutes` — the
+routes reached on what the caller is rather than on a grant. There are three of
+those: following an operation by polling it or subscribing to it, which is how a
+person watches their own export or erasure, and `dataprivacy`'s confirmation
+link. The platform declares the permissions and grants none; which a member
+holds is the consumer's policy, exactly as on gRPC, and withholding a route's
+permission is how a deployment keeps that route to its operators. Each surface
+checks its routes with the `authorization/http` enforcer the consumer builds
+over the grants its gRPC interceptor reads — `WithEnforcer`, or
+`service.Transports.HTTPEnforcer` for all three — before anything is read, so a
+caller without the grant is refused as 403 whether or not the identifier they
+named exists. A surface given no enforcer refuses every route its `Permissions`
+names rather than serving it, which is what a fail-closed gRPC enforcer does
+with a method nobody declared. `authorization/http` cannot fail closed on a
+route nobody guarded, so each surface's own tests mount its real handlers and
+check that every route is in exactly one of the two lists.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and

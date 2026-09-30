@@ -1713,11 +1713,11 @@ WHERE archived_at IS NULL
 const setUserEmailAddressVerificationTokenSQLite = `UPDATE {{prefix}}identity_users SET
 	email_address_verification_token_digest = ?1,
 	email_address_verification_token_expires_at = ?2,
-	email_address_verified_at = ?3,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND id = ?4
-	AND scope = ?5`
+	AND id = ?3
+	AND scope = ?4
+	AND email_address_verified_at IS NULL`
 
 const setUserRequiresPasswordChangeSQLite = `UPDATE {{prefix}}identity_users SET
 	requires_password_change = ?1,
@@ -4279,7 +4279,6 @@ func (q *sqliteQueries) SetUserEmailAddressVerificationToken(ctx context.Context
 	result, err := db.ExecContext(ctx, q.setUserEmailAddressVerificationToken,
 		arg.EmailAddressVerificationTokenDigest,
 		timeTextPtr(arg.EmailAddressVerificationTokenExpiresAt),
-		timeTextPtr(arg.EmailAddressVerifiedAt),
 		arg.ID,
 		arg.Scope,
 	)
@@ -5601,7 +5600,6 @@ var (
 	_ = struct {
 		EmailAddressVerificationTokenDigest    string
 		EmailAddressVerificationTokenExpiresAt *time.Time
-		EmailAddressVerifiedAt                 *time.Time
 		ID                                     string
 		Scope                                  tenancy.Scope
 	}(SetUserEmailAddressVerificationTokenParams{})

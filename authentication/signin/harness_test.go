@@ -510,7 +510,15 @@ func (f *fakeIssuer) IssueToken(
 		return "", "", f.err
 	}
 
-	return "token-for-" + subject, "jti-" + subject, nil
+	// The first token a subject is issued is "jti-<subject>", and each after it
+	// is numbered, so a login that refreshes holds a different access token
+	// from the one it began with — which is what a superseded check compares.
+	jti = "jti-" + subject
+	if f.calls > 1 {
+		jti = fmt.Sprintf("%s-%d", jti, f.calls)
+	}
+
+	return "token-for-" + subject, jti, nil
 }
 
 // recordingHooks records every call, and can be made to fail one of them.
@@ -519,6 +527,8 @@ func (f *fakeIssuer) IssueToken(
 // token door runs the authentication hook first — the two slices below record
 // that both ran, and nothing in them records which was first.
 type recordingHooks struct {
+	signin.NoopHooks
+
 	authErr   error
 	issueErr  error
 	failedErr error
@@ -531,9 +541,21 @@ type recordingHooks struct {
 	refreshErr    error
 	verifyTOTPErr error
 
+	// revokeErr fails the revocation hook, so a test can prove the revocation
+	// it follows rolls back with it.
+	revokeErr error
+
 	// verified is the user the second-factor hook was handed: the row the
 	// directory's write answered with, rather than the copy read before it.
 	verified *identity.User
+
+	// onResend runs inside AfterRequestVerificationEmail, on the transaction it
+	// was handed, so a test can read what that transaction has written so far.
+	onResend func(ctx context.Context, tx database.Tx, user *identity.User) error
+
+	// onMagicLink runs inside AfterRequestMagicLink, on the transaction it was
+	// handed, for the same reason.
+	onMagicLink func(ctx context.Context, tx database.Tx, user *identity.User) error
 
 	calls           []string
 	authentications []*signin.Authentication
@@ -541,8 +563,9 @@ type recordingHooks struct {
 	failures        []*signin.FailedSignIn
 	attached        []*identity.User
 	verifieds       []*signin.Verification
-
-	signin.NoopHooks
+	resent          []*identity.User
+	magicLinked     []*identity.User
+	revocations     []*signin.Revocation
 
 	passwords,
 	refreshes,
@@ -604,6 +627,38 @@ func (h *recordingHooks) AfterVerify(
 	return h.verifyErr
 }
 
+func (h *recordingHooks) AfterRequestVerificationEmail(
+	ctx context.Context,
+	tx database.Tx,
+	_ tenancy.Scope,
+	user *identity.User,
+) error {
+	h.calls = append(h.calls, "resend")
+	h.resent = append(h.resent, user)
+
+	if h.onResend != nil {
+		return h.onResend(ctx, tx, user)
+	}
+
+	return nil
+}
+
+func (h *recordingHooks) AfterRequestMagicLink(
+	ctx context.Context,
+	tx database.Tx,
+	_ tenancy.Scope,
+	user *identity.User,
+) error {
+	h.calls = append(h.calls, "magic link")
+	h.magicLinked = append(h.magicLinked, user)
+
+	if h.onMagicLink != nil {
+		return h.onMagicLink(ctx, tx, user)
+	}
+
+	return nil
+}
+
 func (h *recordingHooks) AfterRefreshTOTPSecret(_ context.Context, _ database.Tx, _ tenancy.Scope, _ *identity.User) error {
 	h.refreshes++
 
@@ -620,6 +675,18 @@ func (h *recordingHooks) AfterVerifyTOTPSecret(
 	h.verified = user
 
 	return h.verifyTOTPErr
+}
+
+func (h *recordingHooks) AfterRevokeSignIns(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	revocation *signin.Revocation,
+) error {
+	h.calls = append(h.calls, "revoke")
+	h.revocations = append(h.revocations, revocation)
+
+	return h.revokeErr
 }
 
 // stubAuthenticator is an Authenticator with no argon2 behind it, for the tests

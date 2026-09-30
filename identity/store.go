@@ -303,9 +303,13 @@ type CredentialStore interface {
 	// SetUserEmailAddressVerificationToken stores the digest of the token a
 	// verification link will carry and the deadline it stops being answerable
 	// at, replacing any outstanding one — so re-sending a verification email
-	// invalidates the previous link rather than leaving two live — and dropping
-	// any proof the address already had, so the row never says both "proven" and
-	// "a link is outstanding".
+	// invalidates the previous link rather than leaving two live.
+	//
+	// An address that is already proven is refused with
+	// ErrEmailAddressAlreadyVerified and left proven, so the row never says both
+	// "proven" and "a link is outstanding" and no caller that can mint a link can
+	// un-verify somebody by minting one. The proof comes off only where the
+	// address changes, which is UpdateUser's to do — see below.
 	//
 	// The token itself is never stored. A caller mails the value it passed in,
 	// and no read of this Store can hand it back.
@@ -1133,6 +1137,15 @@ type InvitationStore interface {
 	// The accepting user must be a live user in the invitation's scope, and one
 	// who is not returns an error wrapping ErrUserNotFound rather than a
 	// membership spanning two directories.
+	//
+	// Their address must be the one the invitation was sent to, compared
+	// folded. The token travels wherever the mail and the events about it
+	// travel, and the address is what keeps a leaked one from being a bearer
+	// pass into the account. A user at another address is refused with
+	// ErrInvitationNotFound, as a wrong token is, and never with
+	// ErrInvitationExpired: that would tell them the token was right. Whether
+	// the address is verified is not asked — a registration by invitation holds
+	// an unverified one by construction.
 	//
 	// statusNote is why the answer went the way it did, and it lands in
 	// Invitation.StatusNote. The sender's Note is untouched — an invite email's

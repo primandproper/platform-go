@@ -107,6 +107,30 @@ exist. That is deliberate: a 403 for a request that exists and a 404 for one tha
 does not is an oracle telling whoever is guessing identifiers which of their
 guesses are real.
 
+# Who may use a route
+
+The subject decides whose requests a caller reaches; the grant decides which
+routes they may use at all, and it is checked first. Submitting, reading and
+withdrawing require PermissionSubmitRequests, PermissionReadRequests and
+PermissionCancelRequests, checked by the authorization/http Enforcer a consumer
+passes to WithEnforcer before anything is read — so a caller without the grant
+is refused as 403 whether or not the request they named exists, and a surface
+given no enforcer refuses those routes rather than serving them. Permissions keys
+each guarded route the way Seams.OperatorRoutes in conformance does, by the
+Route constants.
+
+The confirmation link is the one route in OwnStandingRoutes, and requires no
+grant: the person the erasure is about clicking the link in their own mail is
+the authorization, the way waitlists' confirmation link is, and the route still
+confirms only that person's own request. A deployment cannot reserve it to an
+operator; one that wants a human click leaves it unmounted, as below. Following
+the work a request started is operations/http's, whose polling and stream are
+reached on the same standing.
+
+A request with nobody on it is refused by the resolver, in its own words, rather
+than by the grant: a subject that does not resolve skips the check and reaches
+the handler, whose first act is to resolve one and fail.
+
 # The confirm route is a GET, and what that costs
 
 Confirm is registered as a GET because the link in the mail is how it is reached,

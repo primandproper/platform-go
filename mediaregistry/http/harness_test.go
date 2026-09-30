@@ -224,7 +224,9 @@ func readerOnlyClient() *databasemock.ClientMock {
 }
 
 // newHandler builds the handler over the two doubles, with the resolver these
-// tests wire in. It is separate from mount so a test that wants to reach the
+// tests wire in and an enforcer granting the route's permission — a test about
+// the grant passes an enforcer of its own, which replaces this one. It is
+// separate from mount so a test that wants to reach the
 // handler itself — to read its observations back, say — still gets one built
 // the same way every other test's is.
 func newHandler(
@@ -236,7 +238,10 @@ func newHandler(
 	t.Helper()
 
 	handler, err := New(store, readerOnlyClient(), manager,
-		append([]Option{WithCallerResolver(resolverFromContext)}, opts...)...)
+		append([]Option{
+			WithCallerResolver(resolverFromContext),
+			WithEnforcer(enforcerGranting(t, PermissionReadObjects)),
+		}, opts...)...)
 	must.NoError(t, err)
 
 	return handler

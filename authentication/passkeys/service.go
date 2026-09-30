@@ -78,8 +78,9 @@ type AlternativeSignIn func(ctx context.Context, q database.SQLQueryExecutor, sc
 // # What it does not do
 //
 // Mint anything. A finished login answers with the credential that proved
-// somebody, and a session or a token for them is the caller's to issue —
-// authentication/signin's IssueForPrincipal is the door for that.
+// somebody and whether the authenticator verified them, and a session or a
+// token for them is the caller's to issue — authentication/signin's
+// IssueForPrincipal is the door for that. See [Login.UserVerified].
 //
 // # Transactions
 //
@@ -459,9 +460,34 @@ func (s *Service) BeginDiscoverableLogin(ctx context.Context) (assertion *protoc
 	return assertion, nil
 }
 
+// Login is what a finished login proved: the credential, and whether the
+// person holding it was verified.
+type Login struct {
+	// Credential is the passkey that proved the user — BelongsToUser is who
+	// they are, ID is the row — as [Store.RecordUse] left it.
+	Credential *Credential
+	// UserVerified reports that the authenticator verified the person — a PIN
+	// or a biometric — rather than only that somebody touched it.
+	//
+	// It is the difference between one factor and two. A passkey asserted with
+	// user verification is something the person has and something they know or
+	// are; one asserted without it is a key that was present, which is
+	// possession alone. The relying party's UserVerification setting decides
+	// whether the second kind is refused or admitted, and primitives-go
+	// defaults it to "preferred", which admits it, so a login that succeeded
+	// says nothing about which kind it was. This field does.
+	//
+	// It is read off the authenticator data the signature covers, after the
+	// signature verified, so it is the authenticator's claim and nobody
+	// else's. A caller issuing a sign-in off this login passes it on — for
+	// authentication/signin, as the MultiFactor option on IssueForPrincipal —
+	// rather than treating every passkey as two factors.
+	UserVerified bool
+}
+
 // FinishLogin verifies the assertion a browser returned for a named login and
-// answers with the credential that proved the user — BelongsToUser is who
-// they are, ID is the row — as [Store.RecordUse] left it.
+// answers with the credential that proved the user and whether the
+// authenticator verified them. See [Login].
 //
 // Every refusal wraps ErrLoginFailed, and a username that names nobody is
 // refused the same way a signature that does not verify is, so the answer
@@ -487,7 +513,7 @@ func (s *Service) FinishLogin(
 	scope tenancy.Scope,
 	username string,
 	response []byte,
-) (proven *Credential, err error) {
+) (proven *Login, err error) {
 	ctx, op, done := s.begin(ctx, "finish_login", observability.WithValue(scopeKey, scope.String()))
 	defer func() { done(err) }()
 
@@ -521,7 +547,8 @@ func (s *Service) FinishLogin(
 
 // FinishDiscoverableLogin verifies the assertion a browser returned for a
 // discoverable login, and answers the way [Service.FinishLogin] does: with the
-// credential that proved somebody, after the sign count has committed.
+// credential that proved somebody and whether they were verified, after the
+// sign count has committed.
 //
 // The user is whoever the handle the authenticator returned resolves to
 // through the [UserSource]. Refusals, the failed-login hook and the sign-count
@@ -530,7 +557,7 @@ func (s *Service) FinishDiscoverableLogin(
 	ctx context.Context,
 	scope tenancy.Scope,
 	response []byte,
-) (proven *Credential, err error) {
+) (proven *Login, err error) {
 	ctx, op, done := s.begin(ctx, "finish_discoverable_login", observability.WithValue(scopeKey, scope.String()))
 	defer func() { done(err) }()
 
@@ -649,7 +676,8 @@ func concealed(cause error) error {
 }
 
 // recordUse writes a verified credential's sign count back in a transaction
-// of its own, after refusing a counter that did not advance.
+// of its own, after refusing a counter that did not advance, and answers with
+// the login it completes.
 func (s *Service) recordUse(
 	ctx context.Context,
 	op observability.Operation,
@@ -657,7 +685,7 @@ func (s *Service) recordUse(
 	parsed *parsedAssertion,
 	userID string,
 	verified *webauthn.Credential,
-) (*Credential, error) {
+) (*Login, error) {
 	if verified.Authenticator.CloneWarning {
 		return nil, s.refuse(ctx, op, scope, parsed, userID, ErrSignCountRegressed)
 	}
@@ -677,7 +705,9 @@ func (s *Service) recordUse(
 		return nil, platformerrors.Wrap(err, "recording passkey use")
 	}
 
-	return proven, nil
+	op.SpanOnly(userVerifiedKey, verified.Flags.UserVerified)
+
+	return &Login{Credential: proven, UserVerified: verified.Flags.UserVerified}, nil
 }
 
 // ListCredentials reads a user's live passkeys, oldest first, for a settings

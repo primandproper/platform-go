@@ -217,6 +217,10 @@ type Service struct {
 	hooks  Hooks
 	o11y   observability.Observer
 
+	// invitationMailer is where an issued invitation's token goes, when a
+	// consumer named one. Nil means the token goes to Hooks.AfterInvite.
+	invitationMailer InvitationMailer
+
 	instruments *metrics.OperationSet
 
 	// What the options wrote, kept only until the observer is built from it.
@@ -442,10 +446,13 @@ func (s *Service) Register(
 // they just committed for an invitation that turned out to be dead, and there
 // is no good answer to that question.
 //
-// The invitation is answered by token, exactly as AcceptInvitation answers one:
-// whoever holds the link may answer it, and whether the address it was sent to
-// is the address being registered is the consumer's check, before the call.
-// This package decides who may do what no more here than anywhere else.
+// The invitation is answered exactly as AcceptInvitation answers one: by its
+// token, and only for the address it was sent to. A registrant whose address is
+// not the invitation's is refused as a wrong token is, and the refusal takes the
+// user down with it like any other. That address is unverified by construction
+// — the registration is what mails the link that verifies it — so a copied link
+// admits only somebody who types the invited address and still has to prove
+// they can read it.
 //
 // The verification token the registrant's link will carry rides in on
 // User.EmailAddressVerificationToken, as it does for any registration —
@@ -494,7 +501,8 @@ func (s *Service) RegisterWithInvitation(
 		// the store's read of the invitation, its pending predicate and its
 		// membership write all see a user who does not exist to anybody else
 		// yet. A refusal here — expired, withdrawn, already answered, wrong
-		// token — aborts the registration rather than leaving a user behind.
+		// token, somebody else's address — aborts the registration rather than
+		// leaving a user behind.
 		membership, err := s.store.AcceptInvitation(ctx, tx, scope, invitationID, token, registered.ID, statusNote)
 		if err != nil {
 			return err
@@ -526,8 +534,15 @@ func (s *Service) RegisterWithInvitation(
 //
 // It is a single store write, and it is here anyway: the mail an invitation
 // exists to send is the companion that must not be sent for an invitation that
-// did not commit. A consumer queues it from the hook, on the transaction, and
-// the queue row and the invitation land together or neither does.
+// did not commit. Where the token goes depends on whether the Service was built
+// WithInvitationMailer. With a mailer, AfterInvite receives the invitation
+// redacted, the transaction commits, and the mailer is handed the token —
+// once, and only then. A mailer's error fails the call with the invitation
+// already committed, and the call returns that invitation beside the error;
+// see InvitationMailer. Without a mailer, AfterInvite
+// receives the token, and a consumer queues the mail from the hook, on the
+// transaction, so the queue row and the invitation land together or neither
+// does.
 //
 // The invitation is the caller's — its expiry, its token, its roles, its note.
 // Nothing here decides how long a link lives or what it may grant.
@@ -556,10 +571,27 @@ func (s *Service) Invite(ctx context.Context, scope tenancy.Scope, invitation *I
 
 		op.Set(invitationIDKey, created.ID).Set(accountIDKey, created.BelongsToAccount)
 
-		return s.hooks.AfterInvite(ctx, tx, scope, created)
+		// A configured mailer is the one place the token goes, so the hook —
+		// whose argument travels wherever the consumer's events do — is handed
+		// the invitation without it.
+		hooked := created
+		if s.invitationMailer != nil {
+			hooked = created.Redacted()
+		}
+
+		return s.hooks.AfterInvite(ctx, tx, scope, hooked)
 	})
 	if err != nil {
 		return nil, op.Error(err, "issuing identity invitation")
+	}
+
+	if s.invitationMailer != nil {
+		mail := &InvitationMail{Invitation: issued.Redacted(), Token: issued.Token}
+		if err = s.invitationMailer.SendInvitation(ctx, mail); err != nil {
+			// Committed and unmailed: the caller still gets the row, so the
+			// invitation that exists is one they can see and revoke.
+			return issued, op.Error(err, "mailing identity invitation")
+		}
 	}
 
 	return issued, nil
@@ -574,9 +606,11 @@ func (s *Service) Invite(ctx context.Context, scope tenancy.Scope, invitation *I
 // it is the first they hold anywhere, which is what a registration by
 // invitation relies on.
 //
-// The token is checked by the store against the invitation the ID names, and an
-// expired one comes back as ErrInvitationExpired rather than
-// ErrInvitationNotFound so the recipient can be told to ask for another. Two
+// The token is checked by the store against the invitation the ID names, and so
+// is the acceptor's address against the one the invitation was sent to: a
+// leaked link admits nobody but its addressee. Either mismatch is
+// ErrInvitationNotFound. An expired invitation presented by its addressee comes
+// back as ErrInvitationExpired so they can be told to ask for another. Two
 // clicks on one link produce one membership: the second finds nothing pending.
 //
 // statusNote is the acceptor's, and lands beside the sender's untouched note.

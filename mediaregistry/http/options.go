@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
@@ -93,6 +94,7 @@ type (
 	options struct {
 		resolver    CallerResolver
 		entitlement Entitlement
+		enforcer    *authzhttp.Enforcer
 
 		logger         logging.Logger
 		tracerProvider tracing.Provider

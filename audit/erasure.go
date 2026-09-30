@@ -182,7 +182,14 @@ func scopeOwners(scopes []tenancy.Scope) ([]string, error) {
 }
 
 // CountMentions counts the entries the chain will not let go of: the ones where
-// the subject acted inside another tenant's scope, or was the thing acted on.
+// the subject acted inside another tenant's scope, was the thing acted on, or
+// acted as somebody else.
+//
+// The third is Actor.Impersonator. An operator who impersonated a customer is
+// named in the entries that impersonation recorded, under the customer's ID
+// rather than theirs, and a count that read the actor column alone would tell
+// the operator none of those were retained. It is the predicate audit/privacy's
+// collector reads by, for the reason that package gives.
 //
 // It is counted rather than sampled, because the number is what goes in front
 // of the subject and "some" is not an answer. Call it after DeleteScopes, so

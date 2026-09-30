@@ -113,11 +113,23 @@ whose outcome depends on what else is running, which is a flake that will be
 read as a dialect bug.
 
 There is no seam by which a subject claims a database of its own, and none by
-which it hands over its clock. Nothing here asserts an expiry, a TTL, a pacing
-rule or a sweep: those promises are asserted in process, where a test owns both,
-and a consumer's own test of one is not something these suites replace. A
-time-based promise that later wants a suite comes back as a seam shaped for that
-suite rather than as a general flag every subject is asked to set.
+which it hands over its clock. A time-based promise is asserted in process,
+where a test owns both, and a consumer's own test of one is not something these
+suites replace. Where one does want a suite it comes back as an action shaped
+for that suite rather than as a general flag every subject is asked to set:
+"this export's window has lapsed and your sweep has run" is
+Actions.ArtifactExpired, and how the subject brings it about — a sweep at a
+clock past the expiry, confined to the one request — is its own business.
+
+# Waiting
+
+Some promises are kept after the answer: a privacy request is fulfilled by a
+worker, not by the call that submitted it. Session.Await is how an assertion
+waits for one. It polls what a client can see — the row the caller would read,
+never the machinery beneath it — until it reads done, and fails naming what it
+waited for once Seams.FulfillmentBudget is spent. The budget is the
+deployment's, because how soon its workers pick work up is a fact about it that
+no suite can guess, and it never runs past the test's own deadline.
 
 # Dialects
 

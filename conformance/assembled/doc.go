@@ -26,6 +26,8 @@ it would be proving a service nobody could run.
     service but sign-in is declared optional on the interceptor's table, so that
     whether a request with nobody on it is refused stays each surface's decision
     and the anonymous suite keeps asserting the surfaces rather than the table.
+    The forced-password-change gate is not registered separately: the
+    extractor runs it by default, and the sign-in suite asserts it is there.
   - The services Register does not build. identity/config's RegisterService is a
     call the application makes. oauth2clients and passwordreset have config
     blocks, and the harness leaves both unset and builds the two services by
@@ -69,6 +71,16 @@ it would be proving a service nobody could run.
     reservation takes exercised; that each caller makes only the calls it
     declared is checked by the suites themselves, on its own connection, in
     both.
+  - The HTTP half of authorization, which service does not build either: an
+    authorization/http Enforcer named to service.Transports as the
+    HTTPEnforcer the three HTTP surfaces check their routes with. Its grants
+    are the role policy's — a member holds every permission those surfaces'
+    Permissions maps name — except in the reserving run, where httpGrants
+    withholds from a member the permissions of staffOnlyRoutes, one route on
+    each surface. That is how a consumer reserves a route, and the only way
+    there is: nothing keyed by route sits in front of the surfaces. The run
+    rides beside the credential as a header, the way it rides in metadata on
+    gRPC.
   - The schema. Nothing in service runs migrations; a consumer renders each
     package's migrations.Statements with the prefix they configured, and so does
     this.
@@ -103,7 +115,13 @@ serves fewer reports it; this harness sets all three.
 
 dataprivacy refuses to start with no collector registered, so the harness
 registers identity's privacy adapter through privacyadapters — the call a
-consumer makes — over the directory the composition root built.
+consumer makes — over the directory the composition root built. service mounts
+the privacy surface with its default, which confines a request to its person
+and names no tenant, so the adapter's scope resolver is the harness's record of
+which directory it registered each caller into: that is where their data is.
+Actions.ArtifactExpired is dataprivacy's own Sweeper at a clock past the
+request's expiry, over a store narrowed to that one request, so a sweep never
+expires an artifact a parallel assertion is still reading.
 
 # Isolation
 

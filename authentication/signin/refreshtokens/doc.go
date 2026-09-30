@@ -55,8 +55,8 @@ proven at sign-in.
 Rotation's rule — retry with the successor you were given, never with the token
 you already sent — is unfollowable by a client that never received an answer.
 This store implements
-[github.com/primandproper/platform-go/v14/authentication/signin.IdempotentRefreshTokenStore]
-so that a retry carrying the idempotency key that spent the token is answered
+[github.com/primandproper/platform-go/v14/authentication/signin.RefreshTokenStore]'s
+RedeemIdempotently and RecordSuccessor so that a retry carrying the idempotency key that spent the token is answered
 with a *fresh* successor while the one the lost response carried is revoked,
 rather than being treated as the theft it is otherwise indistinguishable from.
 Two nullable columns carry it, written by the statements that were already being
@@ -84,9 +84,9 @@ was built with.
 
 # Listing a person's logins
 
-[signin.SignInListingStore] is implemented here: a person's live logins, one
-entry per family, and the revocation of one of them keyed on its owner as well
-as its family. A login is listed while its family has a row the exchange would
+[signin.RefreshTokenStore]'s listing pair is implemented here: a person's live
+logins, one entry per family, and the revocation of one of them keyed on its
+owner as well as its family. A login is listed while its family has a row the exchange would
 still accept, and each entry says when it began — signed_in_at, carried from the
 family's first token onto every successor, because that first row is swept at
 its purge deadline and the earliest surviving one would report whenever it

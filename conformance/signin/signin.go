@@ -2,10 +2,10 @@ package signin
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	domain "github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
@@ -29,25 +29,36 @@ const surface = "signin"
 // The calls this suite makes, as the names a caller is minted to make them by,
 // or that a door is reached by with nobody on it.
 const (
-	adminLoginForToken    = signinpb.SignInService_AdminLoginForToken_FullMethodName
-	attachPassword        = signinpb.SignInService_AttachPassword_FullMethodName
-	exchangeRefreshToken  = signinpb.SignInService_ExchangeRefreshToken_FullMethodName
-	getAuthStatus         = signinpb.SignInService_GetAuthStatus_FullMethodName
-	getSelf               = signinpb.SignInService_GetSelf_FullMethodName
-	loginForToken         = signinpb.SignInService_LoginForToken_FullMethodName
-	redeemMagicLink       = signinpb.SignInService_RedeemMagicLink_FullMethodName
-	refreshTOTPSecret     = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
-	requestHandleReminder = signinpb.SignInService_RequestHandleReminder_FullMethodName
-	requestMagicLink      = signinpb.SignInService_RequestMagicLink_FullMethodName
-	signOut               = signinpb.SignInService_SignOut_FullMethodName
-	signOutEverywhere     = signinpb.SignInService_SignOutEverywhere_FullMethodName
-	updatePassword        = signinpb.SignInService_UpdatePassword_FullMethodName
-	verifyEmailAddress    = signinpb.SignInService_VerifyEmailAddress_FullMethodName
-	verifyTOTPSecret      = signinpb.SignInService_VerifyTOTPSecret_FullMethodName
-	completePasswordReset = passwordresetpb.PasswordResetService_CompletePasswordReset_FullMethodName
-	requestPasswordReset  = passwordresetpb.PasswordResetService_RequestPasswordReset_FullMethodName
-	getPrincipal          = identitypb.IdentityService_GetPrincipal_FullMethodName
+	adminLoginForToken                = signinpb.SignInService_AdminLoginForToken_FullMethodName
+	attachPassword                    = signinpb.SignInService_AttachPassword_FullMethodName
+	endOtherSignIns                   = signinpb.SignInService_EndOtherSignIns_FullMethodName
+	endSignIn                         = signinpb.SignInService_EndSignIn_FullMethodName
+	exchangeRefreshToken              = signinpb.SignInService_ExchangeRefreshToken_FullMethodName
+	getAuthStatus                     = signinpb.SignInService_GetAuthStatus_FullMethodName
+	getSelf                           = signinpb.SignInService_GetSelf_FullMethodName
+	listSignIns                       = signinpb.SignInService_ListSignIns_FullMethodName
+	loginForToken                     = signinpb.SignInService_LoginForToken_FullMethodName
+	redeemMagicLink                   = signinpb.SignInService_RedeemMagicLink_FullMethodName
+	refreshTOTPSecret                 = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
+	requestHandleReminder             = signinpb.SignInService_RequestHandleReminder_FullMethodName
+	requestMagicLink                  = signinpb.SignInService_RequestMagicLink_FullMethodName
+	requestVerificationEmail          = signinpb.SignInService_RequestVerificationEmail_FullMethodName
+	requestVerificationEmailByAddress = signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName
+	signOut                           = signinpb.SignInService_SignOut_FullMethodName
+	signOutEverywhere                 = signinpb.SignInService_SignOutEverywhere_FullMethodName
+	updatePassword                    = signinpb.SignInService_UpdatePassword_FullMethodName
+	verifyEmailAddress                = signinpb.SignInService_VerifyEmailAddress_FullMethodName
+	verifyTOTPSecret                  = signinpb.SignInService_VerifyTOTPSecret_FullMethodName
+	acceptInvitation                  = identitypb.IdentityService_AcceptInvitation_FullMethodName
+	invite                            = identitypb.IdentityService_Invite_FullMethodName
+	setUserRequiresPasswordChange     = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
+	setUserServiceRoles               = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
+	updateUserAccountStatus           = identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName
 )
+
+// identitySurface is the identity suite's name, for the operators here whose
+// calls are identity's: the tenant they are asked into is read on that surface.
+const identitySurface = "identity"
 
 // Suite is the sign-in surface's behavioral assertions.
 func Suite() conformance.Suite {
@@ -99,7 +110,10 @@ const (
 	reasonNotAnAdministrator      = "NOT_AN_ADMINISTRATOR"
 	reasonAdminSignInUnavailable  = "ADMIN_SIGNIN_UNAVAILABLE"
 	reasonPasswordAlreadySet      = "PASSWORD_ALREADY_SET"
+	reasonEmailAlreadyVerified    = "EMAIL_ADDRESS_ALREADY_VERIFIED"
 	reasonNoCredentialNamed       = "NO_CREDENTIAL_NAMED" //nolint:gosec // G101: a refusal's name, not a credential.
+	reasonPasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
+	reasonSignInNotIdentified     = "SIGN_IN_NOT_IDENTIFIED"
 )
 
 // password is what the registrations here choose, and newPassword is what a
@@ -217,6 +231,7 @@ func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
 // registrant is somebody registered over the wire: what they would type to sign
 // in, and what the registration answered.
 type registrant struct {
+	userID    string
 	username  string
 	email     string
 	accountID string
@@ -229,6 +244,13 @@ func freshEmail() string { return identifiers.New() + "@conformance.invalid" }
 
 // registrationRequest is a registration for somebody nobody has registered,
 // naming no credential; each caller names the one it is about.
+//
+// It accepts every agreement. Whether any are required is the deployment's,
+// through its signin.RegistrationPolicy, and a policy insisting on the terms
+// being accepted is the seam doing what it was added for — so a registration
+// naming none would be refused before the suite asserted anything. Agreements
+// are a closed set, so naming every one satisfies any such policy, and a
+// deployment requiring none only stamps them, which no assertion reads.
 func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
 	username := "conf_" + identifiers.New()
 
@@ -240,7 +262,24 @@ func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
 		},
 		Account:    &identitypb.AccountCreationInput{Name: username + "'s"},
 		OwnerRoles: []string{s.Roles().Owner},
+		Agreements: everyAgreement(),
 	}
+}
+
+// everyAgreement is every document a registrant can accept, read off the enum
+// so that a third one is accepted the day it is added.
+func everyAgreement() []identitypb.Agreement {
+	var agreements []identitypb.Agreement
+
+	for number := range identitypb.Agreement_name {
+		if agreement := identitypb.Agreement(number); agreement != identitypb.Agreement_AGREEMENT_UNSPECIFIED {
+			agreements = append(agreements, agreement)
+		}
+	}
+
+	slices.Sort(agreements)
+
+	return agreements
 }
 
 // withPassword names password as a registration's credential.
@@ -272,6 +311,7 @@ func register(t *testing.T, s *conformance.Session, request *signinpb.RegisterRe
 	must.NotEqOp(t, "", registered.GetUser().GetId(), must.Sprint("a registration answered with no user"))
 
 	return &registrant{
+		userID:    registered.GetUser().GetId(),
 		username:  request.GetUser().GetUsername(),
 		email:     request.GetUser().GetEmailAddress(),
 		accountID: registered.GetAccount().GetId(),
@@ -330,6 +370,39 @@ func login(
 	return response.GetToken(), nil
 }
 
+// loginInto signs in through the password door, naming the account the token
+// is to be issued for.
+func loginInto(
+	ctx context.Context,
+	client signinpb.SignInServiceClient,
+	username, secret, accountID string,
+) (*signinpb.IssuedToken, error) {
+	response, err := client.LoginForToken(ctx, &signinpb.LoginForTokenRequest{
+		Credentials: &signinpb.Credentials{Username: username, Password: secret, ActiveAccountId: accountID},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetToken(), nil
+}
+
+// adminLogin signs in through the administrative door.
+func adminLogin(
+	ctx context.Context,
+	client signinpb.SignInServiceClient,
+	username, secret, code string,
+) (*signinpb.IssuedToken, error) {
+	response, err := client.AdminLoginForToken(ctx, &signinpb.AdminLoginForTokenRequest{
+		Credentials: &signinpb.Credentials{Username: username, Password: secret, TotpCode: code},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetToken(), nil
+}
+
 // loggedIn signs in and fails the test if the door refuses.
 func loggedIn(t *testing.T, client signinpb.SignInServiceClient, username, secret string) *signinpb.IssuedToken {
 	t.Helper()
@@ -341,47 +414,55 @@ func loggedIn(t *testing.T, client signinpb.SignInServiceClient, username, secre
 	return issued
 }
 
-// passworded is a signed-in caller in the global directory whose password the
-// suite knows, and that password.
-//
-// The password is set through the reset flow rather than written, because a
-// seam is an action rather than a row: the caller forgot a password they never
-// had, was mailed a link, and chose one. It therefore needs the password reset
-// surface and its action, and skips without either, or where the subject
-// reserves either door the flow knocks on. methods are what the caller goes on
-// to make.
-func passworded(t *testing.T, s *conformance.Session, methods ...string) (*conformance.Subject, *identitypb.User) {
+// caller is who a token the suite signed in for calls as, making methods: the
+// seam that turns an issued token back into a caller, over a connection held to
+// the calls it declares. It skips where the subject supplies no such seam.
+func caller(t *testing.T, s *conformance.Session, issued *signinpb.IssuedToken, methods ...string) *conformance.Subject {
 	t.Helper()
 
-	s.NeedsPublic(t, requestPasswordReset, completePasswordReset)
+	return s.SignedIn(t, issued, conformance.Making(methods...), conformance.InTenant(surface, tenancy.Global()))
+}
 
-	sub := member(t, s, append([]string{getPrincipal, requestPasswordReset, completePasswordReset}, methods...)...)
+// signedIn is somebody registered with a password, verified and signed in, and
+// the caller their token makes, making methods.
+//
+// A registrant rather than a minted caller, so every credential they hold is
+// one the suite chose: the password it typed, and no second factor until an
+// assertion enrolls one. That is what lets an assertion reauthenticate as them
+// against any deployment, including one whose minted callers hold a proven
+// factor the suite cannot read. anon must be able to make verifyEmailAddress
+// and loginForToken.
+func signedIn(
+	t *testing.T,
+	s *conformance.Session,
+	anon signinpb.SignInServiceClient,
+	methods ...string,
+) (*conformance.Subject, *registrant) {
+	t.Helper()
 
-	if sub.Surfaces.Identity == nil || sub.Surfaces.PasswordReset == nil {
-		t.Skip("conformance: this subject mounts no identity or password reset surface, so a caller cannot be given a password the suite knows")
+	if s.Seams().SignedIn == nil {
+		t.Skip("conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
 	}
 
-	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})
-	must.NoError(t, err, must.Sprint("a caller could not read its own principal"))
+	who := signInAs(t, s, anon)
 
-	user := found.GetPrincipal().GetUser()
-	must.NotEqOp(t, "", user.GetEmailAddress(), must.Sprint("the caller has no address to reset through"))
+	return caller(t, s, loggedIn(t, anon, who.username, password), methods...), who
+}
 
-	read := s.Seams().Actions.PasswordResetToken
-	s.NeedsAction(t, read != nil, "password reset token")
+// directoryCaller is a caller in the global directory — the one a registrant
+// is in — making identity's methods, for the states a registrant cannot bring
+// about on their own: an invitation into somebody else's account, a role or a
+// forced change only somebody with standing over them can impose. It skips
+// where the subject mounts no identity surface.
+func directoryCaller(t *testing.T, s *conformance.Session, methods ...string) *conformance.Subject {
+	t.Helper()
 
-	_, err = sub.Surfaces.PasswordReset.RequestPasswordReset(t.Context(),
-		&passwordresetpb.RequestPasswordResetRequest{EmailAddress: user.GetEmailAddress()})
-	must.NoError(t, err, must.Sprint("requesting a reset link"))
+	sub := s.Subject(t, conformance.Making(methods...), conformance.InTenant(identitySurface, tenancy.Global()))
+	if sub.Surfaces.Identity == nil {
+		t.Skip("conformance: this subject mounts no identity surface, so nobody can act on a registrant from the directory; skipping")
+	}
 
-	secret, err := read(t.Context(), sub.ScopeFor(surface), user.GetEmailAddress())
-	must.NoError(t, err, must.Sprint("reading the reset link the deployment mailed"))
-
-	_, err = sub.Surfaces.PasswordReset.CompletePasswordReset(t.Context(),
-		&passwordresetpb.CompletePasswordResetRequest{Token: secret, NewPassword: password})
-	must.NoError(t, err, must.Sprint("setting the caller's password through the link"))
-
-	return sub, user
+	return sub
 }
 
 // code is the second-factor code an authenticator app shows for secret now.

@@ -87,6 +87,12 @@ message Actor {
   // a principal and an address is exactly what an investigation needs and is
   // not recoverable afterwards.
   string ip = 3;
+
+  // impersonator is who was really acting when id was acting through somebody
+  // else's identity -- an operator signed in as a customer -- and empty when id
+  // was acting for themselves. id stays the subject the entry is filed under;
+  // this is what stops that entry saying the subject did it.
+  string impersonator = 4;
 }
 
 // Change is one field's before and after.
@@ -186,6 +192,11 @@ message EntryQuery {
 
   // event_type restricts to one kind of event.
   string event_type = 5;
+
+  // impersonator_id restricts to the entries one principal recorded while
+  // acting through somebody else's identity. actor_id does not find those: an
+  // impersonated entry is filed under the subject.
+  string impersonator_id = 6 [json_name = "impersonatorID"];
 
   reserved "scope";
 }

@@ -3,6 +3,7 @@ package conformance
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
@@ -72,6 +73,25 @@ type Seams struct {
 	// subjects carry no HTTP, skips the HTTP half.
 	AnonymousHTTP func(ctx context.Context) (*http.Client, error)
 
+	// SignedIn turns a token the sign-in surface issued into a caller: a
+	// connection carrying that token the way the deployment's clients carry
+	// one. Nil skips the assertions that call as somebody the suite signed in
+	// itself, with the reason printed.
+	//
+	// It is the conformance face of the Authorizer seam docs/client-contract.md
+	// describes, and a seam for that seam's reason: nothing in this module
+	// fixes how an access token reaches a server, so no suite can attach one.
+	// A deployment whose clients send the contract's default dials with
+	// "authorization: Bearer <token>" on every call and is done.
+	//
+	// It is what lets an assertion be about a person whose every credential
+	// the suite chose — a registrant, with a password it typed and no second
+	// factor until it enrolls one — rather than a caller NewSubject minted,
+	// whose credentials are the deployment's. The connection is held to the
+	// calls declared for it exactly as a minted caller's is; see
+	// Session.SignedIn.
+	SignedIn func(ctx context.Context, token *signinpb.IssuedToken) (grpc.ClientConnInterface, error)
+
 	// VisitorScope is the tenant the deployment's waitlists surface places a
 	// request with nobody on it in — what its scope resolver answers for the
 	// Anonymous connection. Nil skips the assertions about the public half made
@@ -90,6 +110,12 @@ type Seams struct {
 	// "unknown".
 	VisitorScope *tenancy.Scope
 
+	// Roles is the deployment's role vocabulary, for the assertions that grant
+	// a role. The zero value is this package's own literals, which a deployment
+	// whose roles are open accepts; one whose roles are a closed vocabulary
+	// names the ones it declares. See Roles.
+	Roles Roles
+
 	// CommentTargetType is a target type the deployment's comments.Targets
 	// declares, for the reads that name a comment target. Which kinds of thing
 	// accept comments is the application's vocabulary, so no suite can guess
@@ -100,12 +126,6 @@ type Seams struct {
 	// type declared without an existence check accepts. A deployment whose
 	// types are checked supplies the action as well, and the action wins.
 	CommentTargetType string
-
-	// Roles is the deployment's role vocabulary, for the assertions that grant
-	// a role. The zero value is this package's own literals, which a deployment
-	// whose roles are open accepts; one whose roles are a closed vocabulary
-	// names the ones it declares. See Roles.
-	Roles Roles
 
 	// WebhookURL is an address the deployment's webhooks surface accepts an
 	// endpoint at, for the assertions that register one. Empty is not an
@@ -150,8 +170,54 @@ type Seams struct {
 	//
 	// A deployment's own list is the one to hand over — the one its
 	// authorization interceptor reads. Run checks only that each entry is
-	// spelled as a full method name.
+	// spelled as a full method name; conformance/reservations checks that the
+	// deployment refuses a member each entry on one of this module's surfaces.
 	OperatorMethods []string
+
+	// OperatorRoutes are the routes on this module's HTTP surfaces the
+	// deployment reserves to an operator, keyed as each surface's own route
+	// constants key them — the method, a space, and the path at the surface's
+	// default base path with its parameters braced, as in
+	// operationshttp.RouteCancel, "POST /operations/{operationID}/cancel". Nil
+	// reserves nothing.
+	//
+	// They are OperatorMethods for the HTTP half, read the same way: a caller
+	// that declares a reserved route with Making is minted an administrator,
+	// and its client is held to the routes it declared. A deployment reserves a
+	// route by granting its members none of the permissions the surface's
+	// Permissions map says it requires, which is the list to hand over here.
+	//
+	// Run checks that each entry is a route one of this module's HTTP surfaces
+	// mounts, and that none is a route its surface exports among its
+	// OwnStandingRoutes: those ask for no grant, so no deployment can keep them
+	// from its members, and a list naming one has contradicted itself.
+	OperatorRoutes []string
+
+	// FulfillmentBudget is how long this deployment may take to pick queued
+	// work up and finish it — a privacy request submitted to its worker, say.
+	// Zero is DefaultFulfillmentBudget. Session.Await waits this long, or until
+	// the test's own deadline if that comes first.
+	//
+	// A fact about the deployment rather than an action, and the deployment's
+	// because nothing else knows it: one worker is woken the moment work is
+	// queued, another sleeps a whole poll interval first, and a suite that
+	// guessed would either flake on the slow one or wait out a minute's
+	// silence on a fast one that had stopped.
+	FulfillmentBudget time.Duration
+
+	// PasswordChangeGateDisabled says the deployment installs no gate holding a
+	// caller who owes a forced password change at the form — it built
+	// signin/grpc's PrincipalExtractor WithoutPasswordChangeGate, or
+	// authenticates through its own interceptor and installed no
+	// PasswordChangeGate behind it. True skips the assertion that
+	// such a caller's ordinary call is refused, with that printed; false, the
+	// zero value, asserts it, because the gate is on by default.
+	//
+	// It is a fact about the deployment rather than an action, and the only one
+	// the suite cannot find out for itself: a call that succeeds for a flagged
+	// caller is either a gate that is off or a gate that is broken, and only the
+	// deployment knows which it meant.
+	PasswordChangeGateDisabled bool
 
 	// ErrorReasonsStripped says the deployment's edge drops a refusal's
 	// client-safe reason before it reaches a client. True skips the reason half
@@ -172,6 +238,20 @@ type Seams struct {
 	// making it say so rather than making everybody else opt in.
 	ErrorReasonsStripped bool
 
+	// ImmediateRevocation says the deployment checks an access token's login on
+	// every request — signin.Service.CheckSignIn, which the sign-in extractor
+	// makes through its WithSignInCheck — so a login that ends stops its access
+	// token working at once rather than when it expires. True runs the
+	// assertion that it does; false skips it, with the reason printed.
+	//
+	// It is a declaration rather than something a suite could find out,
+	// because the default is the other answer and a legitimate one: an access
+	// token is a signed statement that stands until it expires, and a sign-out
+	// takes effect within one access-token lifetime. A deployment that bought
+	// the per-request read has promised its clients more than that, and this is
+	// where it says so and is held to it.
+	ImmediateRevocation bool
+
 	// MediaObjectsShared says the deployment's mediaregistry Entitlement lets
 	// somebody other than an object's owner read it — the attachments on a
 	// ticket everybody assigned to it may open. True skips the assertion that
@@ -182,6 +262,19 @@ type Seams struct {
 	// say here, and one that supplied a wider rule says so rather than having
 	// the suite guess which rule it wrote.
 	MediaObjectsShared bool
+
+	// InvitationTokenReturned says the deployment's identity server was built
+	// with identitygrpc.WithInvitationTokenReturned, so Invite answers the
+	// sender with the token beside the invitation and the sender can copy the
+	// link. True asserts that reading — the token comes back, it is the one the
+	// deployment delivered, and a copied link registers the addressed person
+	// into the inviting account and nobody else — in place of the default's,
+	// that it does not come back at all.
+	//
+	// False is the server's default, and so it is the zero value: a deployment
+	// that never opted in has nothing to say here, and one that did says so
+	// rather than having the suite accept either answer.
+	InvitationTokenReturned bool
 }
 
 // Subject is one caller, and the clients it calls through.
@@ -359,10 +452,12 @@ type Actions struct {
 	// InvitationToken reports the token the deployment delivered to an
 	// invitation's recipient — the secret in the link a real invitee clicks.
 	//
-	// There is no RPC that returns it, and that is the point of the design:
+	// By default no RPC returns it, and that is the point of the design:
 	// identity's Invite answers the sender with a redacted invitation, and the
 	// token reaches the recipient through whatever the deployment's AfterInvite
-	// hook queues. A consumer implements this by reading the mail their
+	// hook queues. A deployment that returns it to the sender (see
+	// Seams.InvitationTokenReturned) still delivers it this way, and the suite
+	// checks the two agree. A consumer implements this by reading the mail their
 	// deployment sent; this module's harnesses by a hook that remembers what it
 	// was handed. Either way the token is the deployment's, which is what makes
 	// accepting with it a real acceptance.
@@ -424,17 +519,23 @@ type Actions struct {
 	// what the deployment reports rather than by words it guessed.
 	Notified func(ctx context.Context, scope tenancy.Scope, userID string) (string, error)
 
-	// VerificationToken reports the secret the deployment mailed to an address
-	// when somebody registered with it — the link that proves the address and
-	// finishes the registration.
+	// VerificationToken reports the secret the deployment most recently mailed
+	// to an address as a verification link — the one sent when somebody
+	// registered with it, or the one a later RequestVerificationEmail sent in
+	// its place. It is the link that proves the address and finishes the
+	// registration.
 	//
 	// There is no RPC that returns it: sign-in's Register answers whoever
 	// called it with the registrant and never with the link, because the
-	// person who clicks it is not the client that registered them. The secret
-	// reaches the registrant through whatever the deployment queues from its
-	// identity registration hook. A consumer implements this by reading the
-	// mail their deployment sent; this module's harnesses by a hook that
-	// remembers what it was handed.
+	// person who clicks it is not the client that registered them, and a
+	// resend answers with nothing at all. The secret reaches the registrant
+	// through whatever the deployment queues from its identity registration
+	// hook, and a resend's through its sign-in VerificationMailer. A consumer
+	// implements this by reading the newest such mail their deployment sent;
+	// this module's harnesses by a hook and a mailer that remember what they
+	// were handed. "Most recently" matters: the resend assertions compare the
+	// link read after a resend with the one read before it, and an action that
+	// kept answering with the first would fail them.
 	VerificationToken func(ctx context.Context, scope tenancy.Scope, emailAddress string) (string, error)
 
 	// MagicLinkToken reports the secret the deployment most recently mailed to
@@ -519,6 +620,27 @@ type Actions struct {
 	// same target type too, since the moderation read is asserted across two
 	// targets of one type.
 	CommentTarget func(ctx context.Context, scope tenancy.Scope) (targetType, targetID string, err error)
+
+	// ArtifactExpired brings a completed export's artifact window to an end,
+	// and runs the deployment's sweep over it: the artifact is gone and the
+	// request reads expired, the way it does once the days a deployment keeps
+	// an export for have passed and its scheduled sweep has come round.
+	//
+	// An action because no client can bring either about. The window is
+	// stamped onto the row by the worker that completed the export, so a
+	// shorter one in configuration reaches only exports not yet made, and the
+	// sweep is a job the deployment schedules rather than a call anybody
+	// makes. How the subject gets there — a sweep run at a clock past the
+	// request's expiry, most likely — is its own business, and the suite only
+	// reads the row afterwards.
+	//
+	// A sweep is usually deployment-wide, so a subject whose sweep would expire
+	// other exports as well confines it however it can — to this request, or
+	// behind a lock its own tests share — rather than let the suite's
+	// assertions about a live artifact race it. It returns an error when the
+	// request's artifact was not expired, rather than reporting success on a
+	// sweep that found nothing.
+	ArtifactExpired func(ctx context.Context, scope tenancy.Scope, requestID string) error
 }
 
 // WaitlistLinks are the two secrets a confirming deployment mails to an address
@@ -588,20 +710,26 @@ type SubjectRequest struct {
 	// account of their own.
 	Surface string
 
-	// Methods are the calls the caller goes on to make, as full method names,
-	// which a suite names on every caller it mints with Making. A factory may
+	// Methods are the calls the caller goes on to make, as full method names
+	// and route keys, which a suite names on every caller it mints with
+	// Making. A factory may
 	// ignore them: Session.Subject has already read them against
-	// Seams.OperatorMethods and asked for an administrator where the subject
-	// reserves one. They are there for a harness that wants to refuse a caller
+	// Seams.OperatorMethods and Seams.OperatorRoutes and asked for an
+	// administrator where the subject reserves one. They are there for a harness that wants to refuse a caller
 	// every reserved call it was not minted for, which is how this module's own
 	// keeps each suite honest about naming every call it makes.
 	Methods []string
+
+	// attempting are the calls among Methods named with Attempting, which
+	// Session.Subject leaves out when it reads Methods against
+	// Seams.OperatorMethods.
+	attempting []string
 
 	// Admin asks for a caller holding whatever service role the deployment
 	// treats as administrative.
 	Admin bool
 
-	// member is AsMember: the suite asked for a caller with no administrative
+	// member is AsMember or Attempting: the suite asked for a caller with no administrative
 	// standing, and has already skipped where Methods names a reserved call.
 	// A factory has nothing to do with it, so it is not exported.
 	member bool

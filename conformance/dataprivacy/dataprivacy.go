@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/conformance"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
@@ -38,12 +39,22 @@ type envelope[T any] struct {
 	Data T `json:"data"`
 }
 
-// receipt is the part of a submission's answer the assertions read.
+// receipt is the part of a submission's answer, and of a read, the assertions
+// read.
 type receipt struct {
-	Request struct {
-		ID          string `json:"id"`
-		OperationID string `json:"operationID"`
-	} `json:"request"`
+	Request request `json:"request"`
+}
+
+// request is a privacy request as its subject is shown it.
+type request struct {
+	ExpiresAt   time.Time         `json:"expiresAt"`
+	CompletedAt *time.Time        `json:"completedAt"`
+	Failures    map[string]string `json:"failures"`
+	ID          string            `json:"id"`
+	OperationID string            `json:"operationID"`
+	ArtifactRef string            `json:"artifactRef"`
+	LastError   string            `json:"lastError"`
+	Status      string            `json:"status"`
 }
 
 // page is a listing, reduced to the identifiers in it.
@@ -64,7 +75,9 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a request is listed for its subject, and not for a neighbor", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s)
+		mine, theirs := twoPeople(t, s,
+			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteList},
+			[]string{dataprivacyhttp.RouteList})
 		submitted := submit(t, mine, "export")
 
 		test.SliceContains(t, listed(t, mine), submitted.Request.ID,
@@ -76,7 +89,9 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a request is read by its subject, and absent to a neighbor", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s)
+		mine, theirs := twoPeople(t, s,
+			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet},
+			[]string{dataprivacyhttp.RouteGet})
 		submitted := submit(t, mine, "export")
 		path := dataprivacyhttp.BasePath + "/" + submitted.Request.ID
 
@@ -92,7 +107,9 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a neighbor cannot cancel a request, and it survives their attempt", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s)
+		mine, theirs := twoPeople(t, s,
+			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet},
+			[]string{dataprivacyhttp.RouteCancel})
 		submitted := submit(t, mine, "export")
 		path := dataprivacyhttp.BasePath + "/" + submitted.Request.ID
 
@@ -106,7 +123,9 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("the operation fulfilling a request is its subject's alone", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s)
+		mine, theirs := twoPeople(t, s,
+			[]string{dataprivacyhttp.RouteSubmit, operationshttp.RouteGet},
+			[]string{operationshttp.RouteGet})
 		if !mine.HTTP.Operations {
 			t.Skip("conformance: this subject serves privacy requests but not the operations that fulfill them")
 		}
@@ -140,7 +159,8 @@ func run(t *testing.T, s *conformance.Session) {
 		// the wall between directories, for a deployment that has more than
 		// one: a request's scope is a second confinement beside its subject,
 		// and a caller elsewhere is refused by both.
-		mine, theirs := s.TwoTenants(t, surface)
+		mine, theirs := s.TwoTenants(t, surface, conformance.Making(
+			dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteList, dataprivacyhttp.RouteGet, operationshttp.RouteGet))
 		submitted := submit(t, mine, "export")
 
 		test.SliceContains(t, listed(t, mine), submitted.Request.ID,
@@ -161,10 +181,16 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a request of a kind nobody offers is refused", func(t *testing.T) {
 		t.Parallel()
 
-		caller := s.Subject(t)
+		caller := s.Subject(t, conformance.Making(dataprivacyhttp.RouteSubmit))
 
 		status, _ := call(t, caller, http.MethodPost, dataprivacyhttp.BasePath, []byte(`{"type":"sideways"}`))
 		test.EqOp(t, http.StatusBadRequest, status)
+	})
+
+	t.Run("fulfillment", func(t *testing.T) {
+		t.Parallel()
+
+		fulfillment(t, s)
 	})
 }
 
@@ -182,11 +208,14 @@ func run(t *testing.T, s *conformance.Session) {
 // It refuses to proceed if the subject handed back one caller twice — every
 // confinement assertion here would then compare a person with themselves and
 // pass.
-func twoPeople(t *testing.T, s *conformance.Session) (mine, theirs *conformance.Subject) {
+//
+// Each is minted Making the routes named for it, which are the routes it goes
+// on to call.
+func twoPeople(t *testing.T, s *conformance.Session, mineCalls, theirCalls []string) (mine, theirs *conformance.Subject) {
 	t.Helper()
 
-	mine = s.Subject(t)
-	theirs = s.Subject(t, conformance.InTenant(surface, mine.ScopeFor(surface)))
+	mine = s.Subject(t, conformance.Making(mineCalls...))
+	theirs = s.Subject(t, conformance.Making(theirCalls...), conformance.InTenant(surface, mine.ScopeFor(surface)))
 
 	must.StrNotEqFold(t, mine.UserID, theirs.UserID, must.Sprint("the subject minted two callers as one user"))
 

@@ -16,8 +16,6 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
-var _ signin.IdempotentRefreshTokenStore = (*SQLStore)(nil)
-
 // RemintGrace is how long after an exchange this store will honor a retry of
 // it presented with the key that spent the token.
 //

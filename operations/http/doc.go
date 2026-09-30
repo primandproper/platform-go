@@ -68,6 +68,29 @@ GlobalOwner instead, which is a name rather than an omission: it makes "every
 operation here belongs to no tenant" a decision somebody wrote down, and it is
 the counterpart of leaving operations.WithOwner off at Start.
 
+# Who may use a route
+
+Ownership decides which operations a caller reads; the grant decides which
+routes they may use at all, and it is checked first. Listing and cancelling
+require PermissionListOperations and PermissionCancelOperations, checked by the
+authorization/http Enforcer a consumer passes to WithEnforcer before any owner's
+operations are read — so a caller without the grant is refused as 403 whether or
+not the operation they named exists, and a surface given no enforcer refuses both
+routes rather than serving them. Permissions keys each guarded route the way
+Seams.OperatorRoutes in conformance does, by the Route constants.
+
+Reading one operation and subscribing to it are OwnStandingRoutes, and require no
+grant. They are the Location and Events a 202 hands back — and the progress
+paths a dataprivacy receipt hands the person an export or erasure is about — so
+the identifier is the caller's handle on work that is theirs, and the owners the
+resolver answers are what confine it. A deployment cannot reserve them to an
+operator; one that wants a member to see only their own work withholds the
+listing instead.
+
+A request with nobody on it is refused by the resolver, in its own words, rather
+than by the grant: an owner that does not resolve skips the check and reaches
+the handler, whose first act is to resolve one and fail.
+
 # The event stream is registered on the backend
 
 Every endpoint here goes through routing's typed registration and carries OpenAPI

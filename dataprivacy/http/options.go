@@ -3,6 +3,7 @@ package http
 import (
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
@@ -35,6 +36,7 @@ type (
 	options struct {
 		resolver       SubjectResolver
 		scopes         ScopeResolver
+		enforcer       *authzhttp.Enforcer
 		logger         logging.Logger
 		tracerProvider tracing.Provider
 

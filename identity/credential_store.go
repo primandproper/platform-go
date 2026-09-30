@@ -265,7 +265,8 @@ func (s *SQLStore) MarkUserTwoFactorSecretVerified(
 
 // SetUserEmailAddressVerificationToken stores the digest of the token a
 // verification link will carry and the deadline it stops being answerable at,
-// replacing any outstanding one and dropping any proof the address already had.
+// replacing any outstanding one. An address that is already proven is refused
+// with ErrEmailAddressAlreadyVerified and left as it was.
 //
 // The secret is the argument and the digest is the column, so the token this
 // method is handed is never written anywhere — see tokenDigest. A caller mails
@@ -327,25 +328,54 @@ func (s *SQLStore) SetUserEmailAddressVerificationToken(
 	// Any outstanding token is replaced, so re-sending a verification email
 	// invalidates the previous link rather than leaving two live.
 	//
-	// The stamp comes off with it, in the same statement and for the reason
-	// UpdateUserTwoFactorSecret enrolls a secret unverified: an outstanding link
-	// and a recorded proof are two answers to one question, and a row holding
-	// both leaves which one is true up to whichever column a reader consulted.
-	// Issuing a link is a statement that the address wants proving, so it is the
-	// column that says otherwise which has to go.
+	// The statement is guarded on the address being unproven, because an
+	// outstanding link and a recorded proof are two answers to one question and
+	// a row may not hold both. The stamp used to come off here to make room, and
+	// that made every caller able to mint a link a caller able to un-verify
+	// somebody; the one write that does withdraw a proof on the way to a new
+	// link is UpdateUser, which changes the address the proof was about.
 	count, err := s.q.SetUserEmailAddressVerificationToken(ctx, tx,
 		identitydb.SetUserEmailAddressVerificationTokenParams{
 			ID:                                     userID,
 			Scope:                                  scope,
 			EmailAddressVerificationTokenDigest:    tokenDigest(token),
 			EmailAddressVerificationTokenExpiresAt: pointer.To(expiresAt.UTC()),
-			EmailAddressVerifiedAt:                 nil,
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "setting identity email verification token"); err != nil {
+		if platformerrors.Is(err, ErrUserNotFound) {
+			err = s.unmatchedVerificationToken(ctx, tx, scope, userID)
+		}
+
 		return op.Error(err, "setting identity email verification token")
 	}
 
 	return nil
+}
+
+// unmatchedVerificationToken says why SetUserEmailAddressVerificationToken
+// matched no row: the user is not there, or their address is already proven.
+//
+// It reads on the transaction that wrote, after the write, so the answer is
+// about the row the statement's predicate just tested rather than a copy read
+// before it. The guard is what refuses; this only names the refusal.
+func (s *SQLStore) unmatchedVerificationToken(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) error {
+	user, err := s.readUser(ctx, tx, scope, userID)
+	if err != nil {
+		return err
+	}
+
+	if user.EmailAddressVerifiedAt != nil {
+		return ErrEmailAddressAlreadyVerified
+	}
+
+	// Found and unproven, which the statement would have matched. Whatever
+	// raced it in between, the honest answer is still that nothing was written.
+	return ErrUserNotFound
 }
 
 // MarkUserEmailAddressVerified stamps the address as proven and burns the token.

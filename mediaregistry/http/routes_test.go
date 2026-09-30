@@ -91,7 +91,8 @@ func TestHandler_Mount(T *testing.T) {
 		t.Parallel()
 
 		handler, err := New(storeReturning(testObject()), readerOnlyClient(), newRangingObjects(),
-			WithCallerResolver(resolverFromContext), WithBasePath("/api/v1/files"))
+			WithCallerResolver(resolverFromContext), WithBasePath("/api/v1/files"),
+			WithEnforcer(enforcerGranting(t, PermissionReadObjects)))
 		must.NoError(t, err)
 
 		r := router(t)

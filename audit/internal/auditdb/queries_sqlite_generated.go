@@ -22,7 +22,8 @@ WHERE scope = ?3`
 const countAuditLogEntriesForSubjectSQLite = `SELECT COUNT(*)
 FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.actor_id = ?1
-	OR {{prefix}}audit_log_entries.resource_id = ?1`
+	OR {{prefix}}audit_log_entries.resource_id = ?1
+	OR {{prefix}}audit_log_entries.actor_impersonator = ?1`
 
 const countPrunableAuditEntriesSQLite = `SELECT COUNT(*)
 FROM (
@@ -67,7 +68,8 @@ const getAuditLogEntrySQLite = `SELECT
 	{{prefix}}audit_log_entries.change_set,
 	{{prefix}}audit_log_entries.metadata,
 	{{prefix}}audit_log_entries.prev_hash,
-	{{prefix}}audit_log_entries.hash
+	{{prefix}}audit_log_entries.hash,
+	{{prefix}}audit_log_entries.actor_impersonator
 FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.id = ?1
 	AND (CAST(?2 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.scope = ?2)`
@@ -86,7 +88,8 @@ const getAuditLogEntryBySeqSQLite = `SELECT
 	{{prefix}}audit_log_entries.change_set,
 	{{prefix}}audit_log_entries.metadata,
 	{{prefix}}audit_log_entries.prev_hash,
-	{{prefix}}audit_log_entries.hash
+	{{prefix}}audit_log_entries.hash,
+	{{prefix}}audit_log_entries.actor_impersonator
 FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.scope = ?1
 	AND {{prefix}}audit_log_entries.seq = ?2`
@@ -120,7 +123,8 @@ const insertAuditLogEntrySQLite = `INSERT INTO {{prefix}}audit_log_entries (
 	change_set,
 	metadata,
 	prev_hash,
-	hash
+	hash,
+	actor_impersonator
 ) VALUES (
 	?1,
 	?2,
@@ -135,7 +139,8 @@ const insertAuditLogEntrySQLite = `INSERT INTO {{prefix}}audit_log_entries (
 	?11,
 	?12,
 	?13,
-	?14
+	?14,
+	?15
 )`
 
 const listAuditChainEntriesSQLite = `SELECT
@@ -152,7 +157,8 @@ const listAuditChainEntriesSQLite = `SELECT
 	{{prefix}}audit_log_entries.change_set,
 	{{prefix}}audit_log_entries.metadata,
 	{{prefix}}audit_log_entries.prev_hash,
-	{{prefix}}audit_log_entries.hash
+	{{prefix}}audit_log_entries.hash,
+	{{prefix}}audit_log_entries.actor_impersonator
 FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.scope = ?1
 	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
@@ -176,6 +182,7 @@ const listAuditLogEntriesSQLite = `SELECT
 	{{prefix}}audit_log_entries.metadata,
 	{{prefix}}audit_log_entries.prev_hash,
 	{{prefix}}audit_log_entries.hash,
+	{{prefix}}audit_log_entries.actor_impersonator,
 	(
 		SELECT COUNT({{prefix}}audit_log_entries.id)
 		FROM {{prefix}}audit_log_entries
@@ -185,8 +192,9 @@ const listAuditLogEntriesSQLite = `SELECT
 			AND (CAST(?4 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_id = ?4)
 			AND (CAST(?5 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_type = ?5)
 			AND (CAST(?6 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.event_type = ?6)
-			AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?7, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
-			AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (CAST(?7 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.actor_impersonator = ?7)
+			AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?9, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
 	) AS filtered_count,
 	(
 		SELECT COUNT({{prefix}}audit_log_entries.id)
@@ -197,6 +205,7 @@ const listAuditLogEntriesSQLite = `SELECT
 			AND (CAST(?4 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_id = ?4)
 			AND (CAST(?5 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_type = ?5)
 			AND (CAST(?6 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.event_type = ?6)
+			AND (CAST(?7 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.actor_impersonator = ?7)
 	) AS total_count
 FROM {{prefix}}audit_log_entries
 WHERE (CAST(?1 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.scope = ?1)
@@ -205,11 +214,12 @@ WHERE (CAST(?1 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.scope = ?1)
 	AND (CAST(?4 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_id = ?4)
 	AND (CAST(?5 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_type = ?5)
 	AND (CAST(?6 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.event_type = ?6)
-	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?7, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
-	AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
-	AND {{prefix}}audit_log_entries.id > COALESCE(?9, '')
+	AND (CAST(?7 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.actor_impersonator = ?7)
+	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?9, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND {{prefix}}audit_log_entries.id > COALESCE(?10, '')
 ORDER BY {{prefix}}audit_log_entries.id ASC
-LIMIT COALESCE(?10, 50)`
+LIMIT COALESCE(?11, 50)`
 
 const listAuditLogEntriesDescendingSQLite = `SELECT
 	{{prefix}}audit_log_entries.id,
@@ -226,6 +236,7 @@ const listAuditLogEntriesDescendingSQLite = `SELECT
 	{{prefix}}audit_log_entries.metadata,
 	{{prefix}}audit_log_entries.prev_hash,
 	{{prefix}}audit_log_entries.hash,
+	{{prefix}}audit_log_entries.actor_impersonator,
 	(
 		SELECT COUNT({{prefix}}audit_log_entries.id)
 		FROM {{prefix}}audit_log_entries
@@ -235,8 +246,9 @@ const listAuditLogEntriesDescendingSQLite = `SELECT
 			AND (CAST(?4 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_id = ?4)
 			AND (CAST(?5 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_type = ?5)
 			AND (CAST(?6 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.event_type = ?6)
-			AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?7, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
-			AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (CAST(?7 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.actor_impersonator = ?7)
+			AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?9, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
 	) AS filtered_count,
 	(
 		SELECT COUNT({{prefix}}audit_log_entries.id)
@@ -247,6 +259,7 @@ const listAuditLogEntriesDescendingSQLite = `SELECT
 			AND (CAST(?4 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_id = ?4)
 			AND (CAST(?5 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_type = ?5)
 			AND (CAST(?6 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.event_type = ?6)
+			AND (CAST(?7 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.actor_impersonator = ?7)
 	) AS total_count
 FROM {{prefix}}audit_log_entries
 WHERE (CAST(?1 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.scope = ?1)
@@ -255,11 +268,12 @@ WHERE (CAST(?1 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.scope = ?1)
 	AND (CAST(?4 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_id = ?4)
 	AND (CAST(?5 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.resource_type = ?5)
 	AND (CAST(?6 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.event_type = ?6)
-	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?7, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
-	AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
-	AND ({{prefix}}audit_log_entries.id <= COALESCE(?9, {{prefix}}audit_log_entries.id) AND {{prefix}}audit_log_entries.id <> COALESCE(?9, ''))
+	AND (CAST(?7 AS TEXT) IS NULL OR {{prefix}}audit_log_entries.actor_impersonator = ?7)
+	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?8, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?9, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND ({{prefix}}audit_log_entries.id <= COALESCE(?10, {{prefix}}audit_log_entries.id) AND {{prefix}}audit_log_entries.id <> COALESCE(?10, ''))
 ORDER BY {{prefix}}audit_log_entries.id DESC
-LIMIT COALESCE(?10, 50)`
+LIMIT COALESCE(?11, 50)`
 
 const listPrunableAuditScopesSQLite = `SELECT DISTINCT {{prefix}}audit_log_entries.scope
 FROM {{prefix}}audit_log_entries
@@ -515,6 +529,7 @@ func (q *sqliteQueries) GetAuditLogEntry(ctx context.Context, db DBTX, arg GetAu
 		&i.Metadata,
 		&i.PrevHash,
 		&i.Hash,
+		&i.ActorImpersonator,
 	)
 
 	return i, err
@@ -544,6 +559,7 @@ func (q *sqliteQueries) GetAuditLogEntryBySeq(ctx context.Context, db DBTX, arg 
 		&i.Metadata,
 		&i.PrevHash,
 		&i.Hash,
+		&i.ActorImpersonator,
 	)
 
 	return i, err
@@ -600,6 +616,7 @@ func (q *sqliteQueries) InsertAuditLogEntry(ctx context.Context, db DBTX, arg In
 		arg.Metadata,
 		arg.PrevHash,
 		arg.Hash,
+		arg.ActorImpersonator,
 	)
 
 	return err
@@ -640,6 +657,7 @@ func (q *sqliteQueries) ListAuditChainEntries(ctx context.Context, db DBTX, arg 
 			&i.Metadata,
 			&i.PrevHash,
 			&i.Hash,
+			&i.ActorImpersonator,
 		); err != nil {
 			return nil, err
 		}
@@ -663,6 +681,7 @@ func (q *sqliteQueries) ListAuditLogEntries(ctx context.Context, db DBTX, arg Li
 		arg.ResourceIDFilter,
 		arg.ResourceTypeFilter,
 		arg.EventTypeFilter,
+		arg.ActorImpersonatorFilter,
 		timeTextPtr(arg.CreatedAfter),
 		timeTextPtr(arg.CreatedBefore),
 		arg.PageCursor,
@@ -694,6 +713,7 @@ func (q *sqliteQueries) ListAuditLogEntries(ctx context.Context, db DBTX, arg Li
 			&i.Metadata,
 			&i.PrevHash,
 			&i.Hash,
+			&i.ActorImpersonator,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -719,6 +739,7 @@ func (q *sqliteQueries) ListAuditLogEntriesDescending(ctx context.Context, db DB
 		arg.ResourceIDFilter,
 		arg.ResourceTypeFilter,
 		arg.EventTypeFilter,
+		arg.ActorImpersonatorFilter,
 		timeTextPtr(arg.CreatedAfter),
 		timeTextPtr(arg.CreatedBefore),
 		arg.PageCursor,
@@ -750,6 +771,7 @@ func (q *sqliteQueries) ListAuditLogEntriesDescending(ctx context.Context, db DB
 			&i.Metadata,
 			&i.PrevHash,
 			&i.Hash,
+			&i.ActorImpersonator,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -927,40 +949,42 @@ var (
 		ScopeFilter *string
 	}(GetAuditLogEntryParams{})
 	_ = struct {
-		ID           string
-		Seq          int64
-		Scope        tenancy.Scope
-		RecordedAt   time.Time
-		EventType    string
-		ResourceType string
-		ResourceID   string
-		ActorID      string
-		ActorType    string
-		ActorIP      string
-		ChangeSet    []byte
-		Metadata     []byte
-		PrevHash     string
-		Hash         string
+		ID                string
+		Seq               int64
+		Scope             tenancy.Scope
+		RecordedAt        time.Time
+		EventType         string
+		ResourceType      string
+		ResourceID        string
+		ActorID           string
+		ActorType         string
+		ActorIP           string
+		ChangeSet         []byte
+		Metadata          []byte
+		PrevHash          string
+		Hash              string
+		ActorImpersonator string
 	}(GetAuditLogEntryRow{})
 	_ = struct {
 		Scope tenancy.Scope
 		Seq   int64
 	}(GetAuditLogEntryBySeqParams{})
 	_ = struct {
-		ID           string
-		Seq          int64
-		Scope        tenancy.Scope
-		RecordedAt   time.Time
-		EventType    string
-		ResourceType string
-		ResourceID   string
-		ActorID      string
-		ActorType    string
-		ActorIP      string
-		ChangeSet    []byte
-		Metadata     []byte
-		PrevHash     string
-		Hash         string
+		ID                string
+		Seq               int64
+		Scope             tenancy.Scope
+		RecordedAt        time.Time
+		EventType         string
+		ResourceType      string
+		ResourceID        string
+		ActorID           string
+		ActorType         string
+		ActorIP           string
+		ChangeSet         []byte
+		Metadata          []byte
+		PrevHash          string
+		Hash              string
+		ActorImpersonator string
 	}(GetAuditLogEntryBySeqRow{})
 	_ = struct {
 		Horizon time.Time
@@ -979,20 +1003,21 @@ var (
 		Hash string
 	}(GetAuditPruneTargetRow{})
 	_ = struct {
-		ID           string
-		Seq          int64
-		Scope        tenancy.Scope
-		RecordedAt   time.Time
-		EventType    string
-		ResourceType string
-		ResourceID   string
-		ActorID      string
-		ActorType    string
-		ActorIP      string
-		ChangeSet    []byte
-		Metadata     []byte
-		PrevHash     string
-		Hash         string
+		ID                string
+		Seq               int64
+		Scope             tenancy.Scope
+		RecordedAt        time.Time
+		EventType         string
+		ResourceType      string
+		ResourceID        string
+		ActorID           string
+		ActorType         string
+		ActorIP           string
+		ChangeSet         []byte
+		Metadata          []byte
+		PrevHash          string
+		Hash              string
+		ActorImpersonator string
 	}(InsertAuditLogEntryParams{})
 	_ = struct {
 		Scope          tenancy.Scope
@@ -1002,80 +1027,85 @@ var (
 		ResultLimit    int64
 	}(ListAuditChainEntriesParams{})
 	_ = struct {
-		ID           string
-		Seq          int64
-		Scope        tenancy.Scope
-		RecordedAt   time.Time
-		EventType    string
-		ResourceType string
-		ResourceID   string
-		ActorID      string
-		ActorType    string
-		ActorIP      string
-		ChangeSet    []byte
-		Metadata     []byte
-		PrevHash     string
-		Hash         string
+		ID                string
+		Seq               int64
+		Scope             tenancy.Scope
+		RecordedAt        time.Time
+		EventType         string
+		ResourceType      string
+		ResourceID        string
+		ActorID           string
+		ActorType         string
+		ActorIP           string
+		ChangeSet         []byte
+		Metadata          []byte
+		PrevHash          string
+		Hash              string
+		ActorImpersonator string
 	}(ListAuditChainEntriesRow{})
 	_ = struct {
-		ScopeFilter        *string
-		ActorIDFilter      *string
-		ActorTypeFilter    *string
-		ResourceIDFilter   *string
-		ResourceTypeFilter *string
-		EventTypeFilter    *string
-		CreatedAfter       *time.Time
-		CreatedBefore      *time.Time
-		PageCursor         *string
-		ResultLimit        int64
+		ScopeFilter             *string
+		ActorIDFilter           *string
+		ActorTypeFilter         *string
+		ResourceIDFilter        *string
+		ResourceTypeFilter      *string
+		EventTypeFilter         *string
+		ActorImpersonatorFilter *string
+		CreatedAfter            *time.Time
+		CreatedBefore           *time.Time
+		PageCursor              *string
+		ResultLimit             int64
 	}(ListAuditLogEntriesParams{})
 	_ = struct {
-		ID            string
-		Seq           int64
-		Scope         tenancy.Scope
-		RecordedAt    time.Time
-		EventType     string
-		ResourceType  string
-		ResourceID    string
-		ActorID       string
-		ActorType     string
-		ActorIP       string
-		ChangeSet     []byte
-		Metadata      []byte
-		PrevHash      string
-		Hash          string
-		FilteredCount int64
-		TotalCount    int64
+		ID                string
+		Seq               int64
+		Scope             tenancy.Scope
+		RecordedAt        time.Time
+		EventType         string
+		ResourceType      string
+		ResourceID        string
+		ActorID           string
+		ActorType         string
+		ActorIP           string
+		ChangeSet         []byte
+		Metadata          []byte
+		PrevHash          string
+		Hash              string
+		ActorImpersonator string
+		FilteredCount     int64
+		TotalCount        int64
 	}(ListAuditLogEntriesRow{})
 	_ = struct {
-		ScopeFilter        *string
-		ActorIDFilter      *string
-		ActorTypeFilter    *string
-		ResourceIDFilter   *string
-		ResourceTypeFilter *string
-		EventTypeFilter    *string
-		CreatedAfter       *time.Time
-		CreatedBefore      *time.Time
-		PageCursor         *string
-		ResultLimit        int64
+		ScopeFilter             *string
+		ActorIDFilter           *string
+		ActorTypeFilter         *string
+		ResourceIDFilter        *string
+		ResourceTypeFilter      *string
+		EventTypeFilter         *string
+		ActorImpersonatorFilter *string
+		CreatedAfter            *time.Time
+		CreatedBefore           *time.Time
+		PageCursor              *string
+		ResultLimit             int64
 	}(ListAuditLogEntriesDescendingParams{})
 	_ = struct {
-		ID            string
-		Seq           int64
-		Scope         tenancy.Scope
-		RecordedAt    time.Time
-		EventType     string
-		ResourceType  string
-		ResourceID    string
-		ActorID       string
-		ActorType     string
-		ActorIP       string
-		ChangeSet     []byte
-		Metadata      []byte
-		PrevHash      string
-		Hash          string
-		FilteredCount int64
-		TotalCount    int64
+		ID                string
+		Seq               int64
+		Scope             tenancy.Scope
+		RecordedAt        time.Time
+		EventType         string
+		ResourceType      string
+		ResourceID        string
+		ActorID           string
+		ActorType         string
+		ActorIP           string
+		ChangeSet         []byte
+		Metadata          []byte
+		PrevHash          string
+		Hash              string
+		ActorImpersonator string
+		FilteredCount     int64
+		TotalCount        int64
 	}(ListAuditLogEntriesDescendingRow{})
 	_ = struct {
 		Horizon     time.Time

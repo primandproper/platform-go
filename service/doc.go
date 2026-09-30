@@ -46,6 +46,55 @@ grpc_health_v1, from the one registry. What the platform cannot see — a domain
 dependency, a cache whose type no config can name — joins through
 WithHealthChecks.
 
+# A worker process
+
+A worker is a service built from a Config like any other, with no servers in
+it. It configures what it drains — JOBS_SCHEDULER_*, the message queue, the
+database — and provides the three things a worker is made of that no
+environment variable can name, before New:
+
+	service.Register(i, cfg)
+
+	registry := searchsync.NewRegistry(searchsync.WithRegistryPillars(pillars))
+	// searchsync.RegisterIndex(registry, ...) for each index.
+	do.ProvideValue(i, registry)
+
+	do.Provide(i, func(i do.Injector) (*jobs.PoolGroup, error) {
+		consumers, err := do.Invoke[messagequeue.ConsumerProvider](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return jobs.NewPoolGroup(ctx, append(registry.PoolSpecs(), handlerSpecs...), consumers)
+	})
+
+	do.ProvideValue(i, []jobs.Job{reapJob, rebuildJob})
+
+	svc, err := service.New(i)
+
+Each joins the lifecycle where its obligations put it:
+
+  - The *jobs.PoolGroup is a background loop, beside the single *jobs.Pool a
+    JOBS_POOL_* config builds. It is started by Run once every other loop is
+    running, and its Start is the one start that can fail — a subscription the
+    broker refuses — so Run returns that failure and takes the rest down
+    rather than running a worker that drains nothing. On the way out it closes
+    after the scheduler that enqueues into it and before the outbox relay.
+  - The *searchsync.Registry is a final flush: its stamp buffers are written
+    out after every loop, the pool group among them, has stopped, and before
+    the database client they write through is released.
+  - The []jobs.Job is handed to the *jobs.Scheduler in New, since
+    Scheduler.Register has to precede the Run that Service.Run calls. There is
+    one provider of it and it is the application's; samber/do refuses a second
+    one for a type, so a job the platform schedules for itself joins the same
+    Register call rather than a provider of its own. A list with no scheduler
+    to run it is ErrScheduledJobsWithoutScheduler, and a list the scheduler
+    refuses — a duplicate name, an invalid job — fails New whole.
+
+All three are optional. A process that provides none of them is the service it
+was before; one that provides the jobs without configuring a scheduler is the
+one combination refused, because those jobs would never run.
+
 # Transport surfaces
 
 Register wires the stores, the services and the loops. RegisterTransports wires
@@ -54,6 +103,7 @@ what a client talks to:
 	service.Register(i, cfg)
 	service.RegisterTransports(i, &service.Transports{
 		Extractor: principalFromContext,
+		TenantOf:  service.DirectoryTenant,
 		Authorizers: service.Authorizers{
 			BillingAccounts:  accounts,
 			IssueReports:     reports,
@@ -116,9 +166,10 @@ files its audit entries, its operations and its media under the account instead.
 Those two readings cannot both be Principal.Scope() — identity reads it as the
 directory — so a deployment where they differ supplies Transports.TenantOf,
 which reads the tenant off a principal this package has already found, and the
-three surfaces that mean the tenant are mounted with it. Left nil it is read
-from Principal.Scope() as before, which is right for every deployment whose
-directory is its tenant.
+three surfaces that mean the tenant are mounted with it. It has no default: a
+deployment mounting any of the three without one fails at startup with
+ErrNilTenantOf, and a deployment whose directory is its tenant names
+DirectoryTenant.
 
 The authorizers are the rules about which rows a caller who may make a call may
 make it against. Some are required, and a surface configured without one fails
@@ -139,6 +190,44 @@ withholds rather than one that mounts open, so nil stays legal, and a service
 that means to serve either feature supplies the same
 authorization.GrantsExtractor its authorization interceptor reads.
 
+The HTTP enforcer is the optional fifth, and the HTTP counterpart of that interceptor:
+an authorization/http Enforcer the consumer builds over the same grants, which
+the three HTTP surfaces check each route's permission with before they read
+anything. It is a field of its own rather than something built from Grants,
+because the two absences mean opposite things. Left nil, the HTTP surfaces do
+not mount open: each refuses every route its Permissions map names, as 403, and
+serves only the routes it exports as reached on the caller's own standing.
+
+# Configuring or replacing a mounted surface
+
+The seams above are the whole list, and it is closed. Anything else a surface
+takes — one of its own options, or a required seam of a surface added since —
+arrives through Transports.Options, one slice per surface in that surface's own
+Option type, passed to its constructor after everything this package supplies:
+
+	service.RegisterTransports(i, &service.Transports{
+		Extractor: principalFromContext,
+		TenantOf:  service.DirectoryTenant,
+		Options: service.SurfaceOptions{
+			Audit: []auditgrpc.Option{auditgrpc.WithChainsResolver(chains)},
+		},
+		Skip: []service.Surface{service.SurfaceOperations},
+	})
+
+So a surface's configuration is learned once, on the surface, rather than once
+there and again as a field here, and a surface joins the automatic mount only if
+every seam it has carries a default — the ones that do not are configured
+through Options and refuse the startup in their own words without it. A surface
+given options is not refused for a missing Extractor or TenantOf: the resolver
+those would have derived is skipped, and the surface is built from the
+application's options, refusing if they name no resolver either.
+
+Skip leaves a surface unmounted even when everything it is built from resolves,
+so an application can build its own over the same store and mount it through
+Transports.Registrations or on the router. A name this package does not mount is
+ErrUnknownSurface, because a misspelled skip is the platform's surface mounted
+beside its replacement.
+
 # What RegisterTransports owns, and what it leaves
 
 It owns the []grpcserver.RegistrationFunc key. There is no way to mount a gRPC
@@ -156,7 +245,8 @@ that surface rather than added by this one, and nothing else follows it.
 It declares no authorization requirements. Every gRPC surface ships a
 Require(*authzgrpc.RequirementsBuilder) naming the permission each of its
 methods needs, and installing those beside the interceptor that enforces them is
-still the consumer's. A mount is not a policy, which is the same thing
+still the consumer's. The HTTP surfaces install their own, route by route, and
+check them with the enforcer Transports.HTTPEnforcer names. A mount is not a policy, which is the same thing
 identity/config's RegisterServer says about the one surface it builds.
 
 sessions/http does not mount. Its constructor is NewManager[T] and a type

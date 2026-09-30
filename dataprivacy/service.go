@@ -8,6 +8,7 @@ import (
 	"maps"
 
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/operations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
@@ -72,7 +73,40 @@ type StoreService struct {
 //
 // Without one, actions are attributed to audit.ActorSystem, which is honest
 // for a self-service portal and misleading for a staff tool.
+// [PrincipalActorResolver] is the one to reach for where the request carries a
+// callers.Principal.
 type ActorResolver func(ctx context.Context) audit.Actor
+
+// PrincipalActorResolver attributes an action to the principal on the request,
+// through audit.PrincipalActor — its user, and, when somebody is acting through
+// that user, the operator as the entry's impersonator.
+//
+// The impersonator is the reason to use this rather than a resolver of one's
+// own. An operator running an export while signed in as a customer is the
+// case ActorResolver exists for, and a resolver reading only UserID files that
+// export as the customer's own request; this one files it under the customer
+// and names the operator beside them.
+//
+// A request with nobody on it is attributed to the system, as a service built
+// without a resolver attributes every action — which is what the Fulfiller's
+// worker is, since it runs on a timer with no request behind it.
+func PrincipalActorResolver(extract callers.PrincipalExtractor) ActorResolver {
+	return func(ctx context.Context) audit.Actor {
+		if extract != nil {
+			if principal, ok := extract(ctx); ok && principal != nil {
+				return audit.PrincipalActor(principal)
+			}
+		}
+
+		return systemActor(ctx)
+	}
+}
+
+// systemActor is the actor an action is attributed to when nothing says who
+// else it was: this package, acting as itself.
+func systemActor(context.Context) audit.Actor {
+	return audit.Actor{ID: serviceName, Type: audit.ActorSystem}
+}
 
 // encryptorPresent is a marker recording that artifacts are encrypted, without
 // the Service holding an encryptor it would never use.
@@ -128,9 +162,7 @@ func NewService(
 		store:      store,
 		operations: ops,
 		clock:      clock.NewClock(),
-		actor: func(context.Context) audit.Actor {
-			return audit.Actor{ID: serviceName, Type: audit.ActorSystem}
-		},
+		actor:      systemActor,
 	}
 	for _, opt := range opts {
 		if opt != nil {

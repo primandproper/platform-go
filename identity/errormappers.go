@@ -48,8 +48,8 @@ var (
 // purpose: each was given a status because a client acts on it, and a client
 // acting on it needs to know which one it got. gRPC derives its message from
 // the code, and the codes collide — the collisions are all AlreadyExists, an
-// expired invitation, a last owner and a missing default account are all
-// FailedPrecondition, and the refusals of a write's input are all
+// expired invitation, a last owner, a missing default account and an address
+// already verified are all FailedPrecondition, and the refusals of a write's input are all
 // InvalidArgument — so without this a client in a language with no access to
 // the encoded details is told one code's name over and over for different
 // remedies. None of them names a table, a key or a policy:
@@ -82,6 +82,7 @@ var ClientSafeSentinels = []error{
 	ErrLastAccountOwner,
 	ErrNoDefaultAccount,
 	ErrInvitationExpired,
+	ErrEmailAddressAlreadyVerified,
 	ErrScopeMismatch,
 	ErrDisplayNameTooLong,
 	ErrUsernameWhitespace,
@@ -139,13 +140,19 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrEmailAddressTaken):
 		return httperrors.ErrResourceConflict, "email address is already registered", true
 
-	// The two states an act is refused from rather than forbidden outright. Both
+	// The two states an act is refused from rather than forbidden outright that
 	// are fixable by the caller, in a specific order, and the message says which
 	// act comes first.
 	case errors.Is(err, ErrLastAccountOwner):
 		return httperrors.ErrResourceConflict, "account must be transferred to another owner first", true
 	case errors.Is(err, ErrNoDefaultAccount):
 		return httperrors.ErrResourceConflict, "user must be given a default account first", true
+
+	// A link asked for an address that is already proven. It is a state rather
+	// than a mistake, and the message says so, since the remedy is to stop
+	// asking: nothing is waiting on the link.
+	case errors.Is(err, ErrEmailAddressAlreadyVerified):
+		return httperrors.ErrResourceConflict, "email address is already verified", true
 
 	// The one refusal on authority this package makes. A user whose status does
 	// not admit sign-in is somebody the directory knows and will not answer for,
@@ -214,7 +221,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		return codes.AlreadyExists, true
 
 	case errors.Is(err, ErrLastAccountOwner),
-		errors.Is(err, ErrNoDefaultAccount):
+		errors.Is(err, ErrNoDefaultAccount),
+		errors.Is(err, ErrEmailAddressAlreadyVerified):
 		return codes.FailedPrecondition, true
 
 	// Known, and refused anyway, which is what PermissionDenied means. It is not

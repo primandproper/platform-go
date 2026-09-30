@@ -76,12 +76,15 @@ type Hooks interface {
 	// and the creation time the database stamped, rather than the value the
 	// caller assembled.
 	//
-	// It is the one invitation a hook sees carrying its Token. The column holds
-	// only a digest, so the secret is the one the caller minted, put back onto
-	// this read-back — which is also not redacted, unlike the invitations the
-	// other three hooks receive. A hook that queues the link for mailing takes
-	// the token from here, and one that records the invitation must not record
-	// the token with it.
+	// Whether it carries its Token depends on the Service. Built
+	// WithInvitationMailer, it does not: the invitation is redacted like the
+	// ones the other three hooks receive, and the token goes to the mailer
+	// after the commit and nowhere else. Built without one, this is the one
+	// invitation a hook sees carrying its Token — the column holds only a
+	// digest, so the secret is the one the caller minted, put back onto this
+	// read-back — and a hook that queues the link for mailing takes the token
+	// from here, while one that records the invitation must not record the
+	// token with it.
 	AfterInvite(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *Invitation) error
 
 	// AfterAcceptInvitation is called with the answered invitation and the
@@ -396,24 +399,20 @@ type Hooks interface {
 	) error
 
 	// AfterSetUserEmailAddressVerificationToken is called with the user a
-	// verification link was minted for, read back after the write and redacted,
-	// and the moment their address had last been proven.
+	// verification link was minted for, read back after the write and redacted.
 	//
 	// The token is not here, and the mail is not sent from here either — see
 	// what this interface says a held-open transaction costs. What belongs in
 	// the hook is the outbox row the mail is sent from, and the token belongs to
 	// whoever minted it, which is the caller.
 	//
-	// previousAddressVerifiedAt is the proof the write dropped, because a row
-	// may not say both "proven" and "a link is outstanding". It is nil for the
-	// ordinary case, a link minted for an address nobody has proven yet, and set
-	// for the one worth alerting on: an address that was proven and now is not.
+	// No previous stamp: the write is refused for an address that is already
+	// proven, so there is never one for it to have dropped.
 	AfterSetUserEmailAddressVerificationToken(
 		ctx context.Context,
 		tx database.Tx,
 		scope tenancy.Scope,
 		user *User,
-		previousAddressVerifiedAt *time.Time,
 	) error
 
 	// AfterMarkUserEmailAddressVerified is called with the user whose address is
@@ -433,7 +432,7 @@ type Hooks interface {
 	// AfterMarkUserEmailAddressUnverified is called with the user whose address
 	// stopped being proven, as the write answered with them, redacted.
 	//
-	// No previous stamp, unlike the two writes that drop a proof on the way to
+	// No previous stamp, unlike the write that drops a proof on the way to
 	// doing something else: withdrawing it is what this write is for, and what a
 	// record of that needs is the address the proof was withdrawn from rather
 	// than the moment it was made. That address is on the row, which is the
@@ -620,7 +619,7 @@ func (NoopHooks) AfterMarkUserTwoFactorSecretVerified(
 
 // AfterSetUserEmailAddressVerificationToken does nothing.
 func (NoopHooks) AfterSetUserEmailAddressVerificationToken(
-	context.Context, database.Tx, tenancy.Scope, *User, *time.Time,
+	context.Context, database.Tx, tenancy.Scope, *User,
 ) error {
 	return nil
 }

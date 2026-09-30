@@ -26,7 +26,8 @@ var (
 	ErrInvalidCredentials = platformerrors.New("invalid credentials")
 
 	// ErrSecondFactorRequired indicates a user who holds a proven second factor
-	// and sent no code with their password.
+	// and sent no code with their password, or with a single-factor credential
+	// through Service.IssueForPrincipal.
 	//
 	// It tells the caller the password was right, which is a disclosure and is
 	// unavoidable: a client that cannot be told to ask for a code cannot ask for
@@ -48,6 +49,17 @@ var (
 	// everybody out — which is why the policy's own documentation says to enroll
 	// first.
 	ErrSecondFactorNotEnrolled = platformerrors.New("no proven second factor is enrolled")
+
+	// ErrMultiFactorRequired indicates an administrative principal door whose
+	// caller did not say the credential it proved was two factors on its own —
+	// a passkey the authenticator did not verify the person for, or anything
+	// else that proved possession alone.
+	//
+	// It is not ErrSecondFactorRequired, because no code would help: the
+	// administrative principal door takes none, and the remedy is signing in
+	// again with a credential that verifies the person. Like that refusal it
+	// says the credential was good, which is no disclosure to whoever held it.
+	ErrMultiFactorRequired = platformerrors.New("a credential that verifies the person is required")
 
 	// ErrUserUnverified indicates a user who has not yet proven whatever
 	// registration asked of them. It is identity.StatusUnverified, which is the
@@ -78,6 +90,15 @@ var (
 	// second is a consumer's wiring and the first is a user's roles, and a
 	// consumer reading their own logs needs to know which.
 	ErrAdminLoginDisabled = platformerrors.New("administrative sign-in is not configured")
+
+	// ErrImpersonationDisabled indicates an impersonation against a service
+	// that named no ImpersonationPolicy.
+	//
+	// It is the posture ErrAdminLoginDisabled takes toward a service that named
+	// no administrative roles: the door does not exist until the deployment
+	// says who may use it, because a library has no way to know which of the
+	// deployment's permissions that is.
+	ErrImpersonationDisabled = platformerrors.New("impersonation is not configured")
 
 	// ErrNoPasswordCredential indicates a password change for a user who holds
 	// no password — a passkey-only or federated registration.
@@ -126,6 +147,33 @@ var (
 	// alarm on it.
 	ErrRefreshTokenReused = platformerrors.Wrap(ErrInvalidCredentials, "refresh token has already been exchanged")
 
+	// ErrSignInEnded indicates Service.CheckSignIn for a login that is over:
+	// its family was revoked — by a sign-out, EndSignIn, a detected reuse, an
+	// operator or an erasure — or it lapsed without being refreshed, or it was
+	// never begun in the scope named. They are one answer, because the remedy
+	// is one: sign in again.
+	//
+	// It wraps ErrInvalidCredentials and is absent from ClientSafeSentinels, the
+	// construction ErrRefreshTokenReused uses and for a narrower reason. An
+	// access token whose login has ended is a credential that no longer proves
+	// anything, which is what the wrapped sentinel says; and the specific words
+	// would tell whoever is holding a stolen one that the person they took it
+	// from has signed out.
+	ErrSignInEnded = platformerrors.Wrap(ErrInvalidCredentials, "sign-in has ended")
+
+	// ErrSignInSuperseded indicates Service.CheckSignIn, on a service built with
+	// WithSupersededTokenRefusal, for an access token its login has since
+	// replaced: the login is still going, and the access token its current
+	// refresh token was minted with is a different one.
+	//
+	// It is not ErrSignInEnded, because the login has not ended and a client
+	// that reads it as a sign-out discards a session it still holds. It wraps
+	// ErrInvalidCredentials and is absent from ClientSafeSentinels for that
+	// sentinel's reason: the client that refreshed holds the newer token and has
+	// no use for the distinction, and whoever holds the older copy is told
+	// nothing about what the other holder did.
+	ErrSignInSuperseded = platformerrors.Wrap(ErrInvalidCredentials, "access token has been superseded by its sign-in")
+
 	// ErrTOTPIssuerNotConfigured indicates Service.RefreshTOTPSecret on a
 	// service built without WithTOTPIssuer.
 	//
@@ -145,15 +193,19 @@ var (
 	// is mapped for it, so it is a 500, which is what it is.
 	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
 
-	// ErrSignInListingNotSupported indicates Service.ListSignIns or
-	// Service.EndSignIn on a service whose refresh token store does not
-	// implement SignInListingStore.
+	// ErrRefreshTokenStoreContractViolated indicates a RefreshTokenStore that
+	// reported a reuse with ErrRefreshTokenReused bare, rather than as a
+	// *RefreshTokenReusedError naming the family it ended.
 	//
-	// It is ErrRefreshTokensNotConfigured's sibling rather than a wrap of it:
-	// this service does mint refresh tokens, and its store cannot enumerate
-	// them. Like that one it is a wiring failure, has no status mapped, and is a
-	// 500 — which is what a door the deployment never gave a store for is.
-	ErrSignInListingNotSupported = platformerrors.New("the refresh token store cannot list or end a person's sign-ins")
+	// The store's revocation is still committed — it is the response to a theft,
+	// and losing it would leave the thief's successor token working — but
+	// Hooks.AfterRevokeSignIns cannot be told what ended, so the reuse is
+	// reported as the wiring failure it is instead of as the refusal a client
+	// would read past. It deliberately does not wrap ErrRefreshTokenReused or
+	// ErrInvalidCredentials: no status is mapped for it, so it is a 500 and is
+	// logged as one, which is how a broken store is found on its first reuse
+	// rather than in an incident review.
+	ErrRefreshTokenStoreContractViolated = platformerrors.New("refresh token store reported a reuse without naming the family it ended")
 
 	// ErrPasswordAlreadySet indicates Service.AttachPassword against somebody who
 	// already holds a password.
@@ -170,6 +222,16 @@ var (
 	// subject, so it tells them nothing about anybody else — the reading
 	// ErrNoPasswordCredential already takes from the other direction.
 	ErrPasswordAlreadySet = platformerrors.New("user already holds a password credential")
+
+	// ErrEmailAddressAlreadyVerified indicates Service.RequestVerificationEmail
+	// for somebody whose address is already proven.
+	//
+	// It is the refusal that keeps a resend from un-verifying anybody: a link and
+	// a proof may not stand on one row together, and the proof is the one that
+	// stays. It is the specific answer rather than a silent success because the
+	// caller is signed in as the person it is about, so it tells them nothing
+	// about anybody else — and "there is nothing to verify" is the remedy.
+	ErrEmailAddressAlreadyVerified = platformerrors.New("email address is already proven; no link was sent")
 
 	// ErrInvalidVerificationToken indicates a verification link that named
 	// nobody: expired, already answered, never issued, or simply wrong.
@@ -218,6 +280,18 @@ var (
 	// correct, and nothing was hashed, minted or written before it was refused.
 	ErrRegistrationRefused = platformerrors.New("registration does not meet this service's requirements")
 
+	// ErrPasswordChangeRequired indicates a call refused because an operator
+	// has forced the caller to change their password and they have not yet.
+	//
+	// The sign-in doors never answer with it: a user a forced change locked out
+	// of signing in could never reach the form. It is the answer of the gate
+	// signin/grpc's PasswordChangeGate puts in front of everything else, which
+	// lets through the calls a flagged caller needs to discharge the obligation
+	// and refuses the rest. It is a state to fix rather than a request to
+	// correct, and the remedy is the one the words name: change the password,
+	// and the same call then succeeds.
+	ErrPasswordChangeRequired = platformerrors.New("a password change is required")
+
 	// ErrRegistrationNotConfigured indicates Service.Register on a service built
 	// without WithRegistrar.
 	//
@@ -240,6 +314,13 @@ var (
 	// registration on a service built without WithVerifications. It is a wiring
 	// failure, and is a 500 for the reason above.
 	ErrVerificationsNotConfigured = platformerrors.New("no verifications directory is configured")
+
+	// ErrVerificationMailerNotConfigured indicates
+	// Service.RequestVerificationEmail on a service built without
+	// WithVerificationMailer: a link minted and never sent is a link nobody can
+	// answer, and one minted anyway would retire the link the person already
+	// has. It is a wiring failure, and is a 500 for the reason above.
+	ErrVerificationMailerNotConfigured = platformerrors.New("no verification mailer is configured")
 
 	// ErrMagicLinksNotConfigured indicates one of the two sign-in link doors on a
 	// service built without WithMagicLinkStore — or, for the request door,
@@ -330,10 +411,16 @@ var (
 	// ErrEmptyUserID indicates an operation on nobody.
 	ErrEmptyUserID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID")
 
+	// ErrSelfImpersonation indicates an impersonation whose operator and subject
+	// are the same user. The token it would mint carries an actor claim that
+	// callers.ActorOf reads as no delegation at all, so the audit trail would
+	// name one person twice and call it an impersonation.
+	ErrSelfImpersonation = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "an operator cannot impersonate themselves")
+
 	// ErrEmptyCredentialKind indicates a principal door whose caller named no
-	// credential. Service.IssueForPrincipal is the door for a caller with no
-	// name to give; an empty kind through Service.IssueForPrincipalVia is a
-	// caller who meant to give one and did not.
+	// credential. Service.IssueForPrincipal without WithCredentialKind is the
+	// door for a caller with no name to give; an empty kind through that option
+	// is a caller who meant to give one and did not.
 	ErrEmptyCredentialKind = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty credential kind")
 
 	// ErrEmptyHandle indicates credentials naming neither a username nor an
@@ -365,6 +452,13 @@ var (
 	// behind every empty request a bot sends.
 	ErrEmptyRefreshToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token")
 
+	// ErrEmptyTokenID indicates Service.CheckSignIn, on a service that refuses
+	// superseded tokens, naming no access token to compare. It is not
+	// ErrSignInSuperseded: a token this package minted always carries its
+	// issuer's "jti", so a check that has none to pass is a caller that did not
+	// read it rather than a token that lost.
+	ErrEmptyTokenID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty access token ID")
+
 	// ErrNilRegistration indicates a nil *Registration.
 	ErrNilRegistration = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil registration")
 
@@ -378,6 +472,22 @@ var (
 	// guess that missed, and answering it with a refusal would put a database
 	// round trip behind every empty request a bot sends.
 	ErrEmptyVerificationToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email verification token")
+
+	// ErrSignInNotIdentified indicates Service.EndOtherSignIns asked to keep a
+	// login it did not name.
+	//
+	// It is a refusal rather than ErrEmptyFamilyID because what it refuses is
+	// a request the caller cannot correct by sending another: the login to keep
+	// is the one the request came through, read off the access token, and a
+	// token that carries no "sid" claim has none to offer. What must not happen
+	// instead is the reading an empty keep invites — keep nothing, end every
+	// login — because that turns "sign out my other devices" into "sign out
+	// everywhere" for exactly the callers who cannot tell which device they are.
+	// SignOutEverywhere is the door for that, and it is a different request.
+	//
+	// It is client-safe, and so is its reason: the caller is the subject, and the
+	// only thing it discloses is that their own token names no sign-in.
+	ErrSignInNotIdentified = platformerrors.New("the sign-in this request came through cannot be identified")
 
 	// ErrEmptyFamilyID indicates a revocation that named no login.
 	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")

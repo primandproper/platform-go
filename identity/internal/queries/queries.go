@@ -769,11 +769,18 @@ func fieldWrites(g *querygen.Generator) []*querygen.Query {
 			querygen.Match{Column: twoFactorColumn, Against: querygen.EmptyString, Exclude: true},
 			querygen.Match{Column: twoFactorVerifiedAtColumn, Against: querygen.NoValue}),
 
-		// Issuing a link drops the proof, for the reason enrolling a second
-		// factor drops its verification: these columns are one state, and a
-		// row holding both says the address is proven and has an outstanding
-		// link at the same time. Which of the two a reader believes is then a
-		// question about which column it happened to look at.
+		// Issuing a link is guarded on the address being unproven, and assigns
+		// nothing to the proof. These columns are one state, and a row holding
+		// both says the address is proven and has an outstanding link at the
+		// same time — which of the two a reader believes is then a question
+		// about which column it happened to look at. So a proven address is
+		// refused a link rather than stripped of its proof to make room for
+		// one: "send me another link" is not a statement that an address
+		// somebody already proved has stopped being theirs, and a write that
+		// read it as one would let any caller who can ask for a resend
+		// un-verify the person asking. The write that does withdraw a proof on
+		// the way to a new link is the address change, UpdateUser, which moves
+		// the thing the proof was about.
 		//
 		// The deadline is assigned here and in every statement below that
 		// clears the digest, which is the same rule applied to the third
@@ -784,8 +791,9 @@ func fieldWrites(g *querygen.Generator) []*querygen.Query {
 			[]string{
 				UserEmailVerificationTokenDigestColumn,
 				userEmailVerificationTokenExpiresAtColumn,
-				EmailAddressVerifiedAtColumn,
-			}, Users.Nullable, scope),
+			}, Users.Nullable,
+			scope,
+			querygen.Match{Column: EmailAddressVerifiedAtColumn, Against: querygen.NoValue}),
 
 		g.UpdateQuery("MarkUserEmailAddressVerified", UsersTable, Users.Columns,
 			[]string{

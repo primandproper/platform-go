@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
 	"github.com/primandproper/primitives-go/v2/random"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // DefaultTokenTTL is how long an ordinary sign-in's token lives.
@@ -58,6 +59,17 @@ const DefaultRefreshTokenTTL = 30 * 24 * time.Hour
 // working after twelve hours signs in again; an operator who went home is not
 // carrying a live administrative session for a month.
 const DefaultAdminRefreshTokenTTL = 12 * time.Hour
+
+// DefaultImpersonationTokenTTL is how long a token minted by
+// [Service.IssueImpersonationToken] lives, and so how long an impersonation
+// lasts: there is no refresh token behind it.
+//
+// Fifteen minutes, the administrative token's lifetime, and for a sharper
+// version of its reason. An impersonation is an operator doing one piece of
+// work as somebody else, and it should end when that work does rather than when
+// somebody remembers to end it. An operator who needs longer asks again, and
+// the deployment's policy is asked again with them.
+const DefaultImpersonationTokenTTL = 15 * time.Minute
 
 // The claims DefaultClaims puts on a token beside the registered ones the
 // issuer owns. They are exported because a consumer's own interceptor reads
@@ -105,6 +117,32 @@ const (
 	// administrative door insists on — by withholding service-level permissions
 	// from any token on which it is false.
 	ClaimAdministrative = "administrative"
+
+	// ClaimActor is who is really acting on an impersonation token — the
+	// operator's user ID, beside the registered subject, which stays the user
+	// being impersonated. It is present only on a token
+	// [Service.IssueImpersonationToken] minted, and its absence is the answer
+	// "nobody is acting through this login": this service stamps it on an
+	// impersonation whatever the ClaimsBuilder returned, and strips it from
+	// every other token, so a builder can neither lose it nor forge it.
+	//
+	// It is a flat string under a key of its own rather than RFC 8693's "act",
+	// deliberately. "act" is a JSON object ({"sub": ...}), and a claim set that
+	// stringifies its values — which signin/grpc's extractor already reads
+	// booleans back from — cannot carry an object faithfully. A client reading
+	// "act" would also be entitled to the rest of RFC 8693's semantics, a chain
+	// of nested actors this package does not mint.
+	ClaimActor = "actor_id"
+
+	// ClaimActorScope is the scope the operator [ClaimActor] names is in — its
+	// owner identifier, which is the empty string for tenancy.Global, exactly
+	// as [ClaimScope] spells the subject's. It is stamped and stripped with
+	// ClaimActor and by the same rule, and it exists because an operator need
+	// not live where the subject does: signin/grpc's extractor re-reads the
+	// operator on every request, and reads them here. A token carrying
+	// ClaimActor without it is refused as a credential this service did not
+	// mint.
+	ClaimActorScope = "actor_scope"
 )
 
 // SecondFactorPolicy is what this service does about a user who holds no proven
@@ -181,6 +219,27 @@ type ClaimsInput struct {
 	// mints one token per sign-in still has a login to name.
 	FamilyID string `json:"familyID"`
 
+	// ActorID is the operator on a token [Service.IssueImpersonationToken]
+	// mints, and empty on every other. Principal is still the subject: the
+	// token is theirs, and so is every row a request made with it writes.
+	//
+	// A builder need not copy it into a claim, and cannot keep it out of one —
+	// the service stamps [ClaimActor] itself. It is here so the builder can
+	// decide what else an impersonation's token says.
+	//
+	// What such a token may do is not decided here. Whether an impersonated
+	// request carries the operator's grants or only the subject's is the
+	// consumer's grants resolver's call — signin/grpc's WithGrants, or whatever
+	// authorization.GrantsExtractor a deployment runs — which reads the actor
+	// back through callers.DelegatedActor. The claim is what makes either answer
+	// expressible; neither is this package's to pick.
+	ActorID string `json:"actorID,omitempty"`
+
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever
+	// ActorID is empty. Like ActorID, the service stamps it as
+	// [ClaimActorScope] itself.
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
+
 	// Administrative is whether the login came through the administrative door.
 	// A sign-in sets it from the door it was called at and an exchange carries
 	// it forward from the spent token's row, so every token in a family agrees.
@@ -227,12 +286,19 @@ func DefaultClaims(_ context.Context, input *ClaimsInput) (map[string]any, error
 		return nil, identity.ErrNilUser
 	}
 
-	return map[string]any{
+	claims := map[string]any{
 		ClaimAccountID:      input.Principal.ActiveAccountID,
 		ClaimScope:          input.Principal.User.Scope.Owner(),
 		ClaimFamilyID:       input.FamilyID,
 		ClaimAdministrative: input.Administrative,
-	}, nil
+	}
+
+	if input.ActorID != "" {
+		claims[ClaimActor] = input.ActorID
+		claims[ClaimActorScope] = input.ActorScope.Owner()
+	}
+
+	return claims, nil
 }
 
 // ServiceOption configures a Service.
@@ -334,6 +400,33 @@ func WithRegistrationPolicy(policy RegistrationPolicy) ServiceOption {
 	}
 }
 
+// WithImpersonationPolicy sets who may act as whom, which is what opens
+// [Service.IssueImpersonationToken]. A nil policy is ignored, leaving none.
+//
+// Naming none — which is the default — is what "this service has no
+// impersonation" means: every call is [ErrImpersonationDisabled]. That is the
+// posture [WithAdminServiceRoles] takes toward the administrative door, and for
+// the same reason: whether the door exists at all is the deployment's, and a
+// library cannot guess which of its permissions says so. See
+// [ImpersonationPolicy].
+func WithImpersonationPolicy(policy ImpersonationPolicy) ServiceOption {
+	return func(s *Service) {
+		if policy != nil {
+			s.impersonationPolicy = policy
+		}
+	}
+}
+
+// WithImpersonationTokenTTL sets how long an impersonation token lives. A
+// non-positive duration is ignored, leaving DefaultImpersonationTokenTTL.
+func WithImpersonationTokenTTL(ttl time.Duration) ServiceOption {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.impersonationTokenTTL = ttl
+		}
+	}
+}
+
 // WithTokenTTL sets how long an ordinary sign-in's token lives. A non-positive
 // duration is ignored, leaving DefaultTokenTTL.
 func WithTokenTTL(ttl time.Duration) ServiceOption {
@@ -410,6 +503,33 @@ func WithRefreshTokenStore(store RefreshTokenStore) ServiceOption {
 		if store != nil {
 			s.refreshTokens = store
 		}
+	}
+}
+
+// WithSupersededTokenRefusal makes [Service.CheckSignIn] refuse an access token
+// its login has since replaced, with [ErrSignInSuperseded], as well as one whose
+// login has ended.
+//
+// It is off by default, because the family model's premise is the other one:
+// an access token is a signed statement that stands on its own until it
+// expires, and a refresh mints a new one without withdrawing the last. A
+// deployment that turns this on has decided instead that a login holds one
+// working access token at a time — the one its latest exchange minted — which
+// is what a "this session was replaced" answer promises.
+//
+// What that costs is stated rather than left to be discovered. A client that
+// refreshes while a request carrying its previous access token is in flight
+// has that request refused, and has to retry it with the token the refresh
+// handed back. A login whose current refresh token was minted before its table
+// recorded access tokens — see the refreshtokens migrations' version 4 —
+// records none, so every access token it minted is refused until its next
+// exchange mints a successor that does; that is one refresh, forced, for a login
+// that predates the column.
+//
+// It has no effect on a service that never calls CheckSignIn.
+func WithSupersededTokenRefusal() ServiceOption {
+	return func(s *Service) {
+		s.refuseSuperseded = true
 	}
 }
 
@@ -665,8 +785,28 @@ func WithMagicLinkTTL(ttl time.Duration) ServiceOption {
 	}
 }
 
-// WithVerificationLinkTTL sets how long the verification link minted at
-// registration stays answerable. A non-positive duration is ignored, leaving
+// WithVerificationMailer attaches what delivers a verification link that
+// Service.RequestVerificationEmail mints, which is what turns that door on. A
+// nil value is ignored, leaving none, and the door refuses with
+// ErrVerificationMailerNotConfigured.
+//
+// It is a mailer of its own rather than a reuse of MagicLinkMailer, for the
+// reason the two doors are separate: a consumer implements only the mail for the
+// doors they mount, and a verification link and a sign-in link are different
+// messages with different URLs. Registration does not use it — Register hands
+// its link back on Registered, since a registration has already told its caller
+// the account exists.
+func WithVerificationMailer(mailer VerificationMailer) ServiceOption {
+	return func(s *Service) {
+		if mailer != nil {
+			s.verificationMailer = mailer
+		}
+	}
+}
+
+// WithVerificationLinkTTL sets how long a verification link stays answerable,
+// the one minted at registration and every one RequestVerificationEmail mints
+// after it. A non-positive duration is ignored, leaving
 // DefaultVerificationLinkTTL.
 //
 // It is the service's rather than the store's, for the reason WithMagicLinkTTL

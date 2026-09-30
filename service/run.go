@@ -54,6 +54,20 @@ func (s *Service) Run(ctx context.Context) error {
 		go runner.v.Run()
 	}
 
+	// The pool group's start can fail, so it is started once every loop is
+	// running, and a failure here shuts down loops that were actually run.
+	// Closed before Run, a jobs.Scheduler or jobs.Pool has nothing to end the
+	// wait on, and would spend the whole shutdown budget finding that out.
+	//
+	// It is started by name. An application's own runner that happens to have
+	// a Start of its own is the application's to call; Run calls none it was
+	// not told about.
+	if s.poolGroup != nil {
+		if err := s.poolGroup.Start(ctx); err != nil {
+			return finish(platformerrors.Wrap(err, "starting the jobs pool group"))
+		}
+	}
+
 	// Serve blocks, so each server gets a goroutine. The channel is buffered to
 	// one slot per server: shutdown stops reading after the first result, and
 	// an unbuffered channel would strand the other goroutines forever.

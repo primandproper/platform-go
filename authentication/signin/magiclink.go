@@ -330,6 +330,14 @@ func (f MagicLinkMailerFunc) SendMagicLink(ctx context.Context, mail *MagicLinkM
 // A banned or terminated user is mailed nothing, and the caller is told nothing
 // about that, which is the same posture the password door takes one step later.
 //
+// # What a consumer's audit sees
+//
+// [Hooks.AfterRequestMagicLink] runs in the transaction that stores the link,
+// told only who it is for: the secret reaches the [MagicLinkMailer] and nothing
+// else. It runs only where a link was minted, so the silent answers above fire
+// nothing, and whether it ran changes neither what the caller is told nor when.
+// An error from it rolls the link back and nothing is mailed.
+//
 // # Rate limiting is the consumer's
 //
 // In front of this call, and it is not optional. This door mails on every
@@ -418,8 +426,11 @@ func (s *Service) RequestMagicLink(
 			EmailAddress: identity.FoldHandle(user.EmailAddress),
 			TTL:          s.magicLinkTTL,
 		})
+		if err != nil {
+			return err
+		}
 
-		return err
+		return s.hooks.AfterRequestMagicLink(ctx, tx, scope, user.Redacted())
 	}); err != nil {
 		return op.Error(err, "issuing a sign-in link")
 	}

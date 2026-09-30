@@ -29,6 +29,7 @@ import (
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -40,6 +41,8 @@ import (
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
+	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
+	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -79,6 +82,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
+	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -171,7 +175,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Audit:         &auditcfg.Config{Dialect: d, TablePrefix: prefix},
 		Billing:       &billingcfg.Config{TablePrefix: prefix},
 		Comments:      &commentscfg.Config{TablePrefix: prefix},
-		Identity:      &identitycfg.Config{TablePrefix: prefix},
+		Identity:      &identitycfg.Config{TablePrefix: prefix, ReturnInvitationToken: true},
 		IssueReports:  &issuereportscfg.Config{TablePrefix: prefix},
 		Notifications: &notificationscfg.Config{TablePrefix: prefix},
 		Settings:      &settingscfg.Config{TablePrefix: prefix},
@@ -211,12 +215,17 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// services Register does not build, the interceptors the gRPC server
 	// resolves, the extractor, and the rules about rows.
 	commentable := &things{}
-	registerApplication(i, prefix, commentable)
+	people := &directories{}
+	registerApplication(i, prefix, commentable, people)
 
 	// The consumer's identity hooks, which is where an invitation's token goes
 	// to be mailed. identity/config resolves them when it builds the service.
 	invites := &invitationTokens{}
 	do.ProvideValue[identity.Hooks](i, invites)
+
+	// The same value is the consumer's verification mailer, so a resent link
+	// lands where the registration's did and the action reads the newest.
+	do.ProvideValue[signin.VerificationMailer](i, invites)
 
 	// And the consumer's reset mailer, which is where a reset link goes.
 	mailbox := &resetMailbox{}
@@ -234,6 +243,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	reminders := &handleReminderMailbox{}
 	do.ProvideValue[signin.HandleReminderMailer](i, reminders)
 
+	// And the consumer's registration policy, which refuses a registrant who
+	// has not accepted every agreement — so the sign-in suite runs against a
+	// deployment that requires them.
+	do.ProvideValue[signin.RegistrationPolicy](i, requireAgreements)
+
 	// And, on a run that confirms, the consumer's waitlist confirmation mailer,
 	// whose presence is what mounts the loop — over the minter the Links block
 	// above registered.
@@ -245,11 +259,16 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// the way a consumer's main installs it: its interceptor in the chain, its
 	// middleware on the router, and it named to Transports as the extractor
 	// and the grants every surface reads. service builds none of this.
+	//
+	// It checks each token's login as well, which is the per-request read a
+	// deployment buys immediate revocation with, and what lets this harness
+	// declare Seams.ImmediateRevocation.
 	extractor, err := signingrpc.NewPrincipalExtractor(
 		do.MustInvoke[tokens.Issuer](i),
 		do.MustInvoke[database.Client](i),
 		do.MustInvoke[identity.Store](i),
 		signingrpc.WithGrants(grantsOf),
+		signingrpc.WithSignInCheck(do.MustInvoke[*signin.Service](i)),
 	)
 	must.NoError(t, err)
 
@@ -262,12 +281,20 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// The HTTP half, on the router before anything mounts on it: chi refuses
 	// middleware added after the first route, which is a constraint a
 	// consumer's main meets in the same place.
-	do.MustInvoke[*routing.Router](i).Use(extractor.HTTPMiddleware)
+	do.MustInvoke[*routing.Router](i).Use(extractor.HTTPMiddleware, markReserving)
+
+	// And the HTTP half of authorization, which the three HTTP surfaces check
+	// their routes with. A consumer builds it over the grants its interceptor
+	// reads; this one's are the role policy, narrowed in the reserving run.
+	httpEnforcer, err := authzhttp.NewEnforcer(httpGrants(extractor))
+	must.NoError(t, err)
 
 	service.RegisterTransports(i, &service.Transports{
-		Extractor:   extractor.Extract,
-		Grants:      extractor.Grants,
-		Authorizers: authorizers(),
+		Extractor:    extractor.Extract,
+		TenantOf:     service.DirectoryTenant,
+		Grants:       extractor.Grants,
+		HTTPEnforcer: httpEnforcer,
+		Authorizers:  authorizers(),
 	})
 
 	svc, err := service.New(i)
@@ -304,11 +331,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	// Every run against this server is one of these, differing only in what
 	// it reserves.
-	seams := func(reserved []string) conformance.Seams {
-		reserving := strconv.FormatBool(len(reserved) > 0)
+	seams := func(reserved, reservedRoutes []string) conformance.Seams {
+		reserving := strconv.FormatBool(len(reserved) > 0 || len(reservedRoutes) > 0)
 
 		return conformance.Seams{
 			OperatorMethods: reserved,
+			OperatorRoutes:  reservedRoutes,
 
 			NewSubject: func(ctx context.Context, opts ...conformance.SubjectOption) (*conformance.Subject, error) {
 				req := conformance.NewSubjectRequest(opts...)
@@ -355,18 +383,22 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					return nil, registerErr
 				}
 
+				people.remember(reg.User.ID, scope)
+
 				// The subject's credential is a token the sign-in service minted
 				// for them, the way a sign-in would have. An administrator's comes
 				// through the administrative door, which is what their service
 				// role — and so adminRole, the grants the surfaces ask inside a
 				// handler — rides on: the extractor keeps it off an
-				// ordinary-door token.
-				door := signIn.IssueForPrincipal
+				// ordinary-door token. The credential is taken to have been two
+				// factors, as a verified passkey is, which the administrative door
+				// requires.
+				issueOpts := []signin.IssueOption{signin.MultiFactor()}
 				if req.Admin {
-					door = signIn.AdminIssueForPrincipal
+					issueOpts = append(issueOpts, signin.Administrative())
 				}
 
-				issued, issueErr := door(ctx, scope, reg.User.ID, reg.Account.ID)
+				issued, issueErr := signIn.IssueForPrincipal(ctx, scope, reg.User.ID, reg.Account.ID, issueOpts...)
 				if issueErr != nil {
 					return nil, issueErr
 				}
@@ -378,7 +410,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					Conn:      conn,
 					Surfaces:  surfaces,
 					HTTP: &conformance.HTTPSurfaces{
-						Client:        &http.Client{Transport: &credentialTransport{token: issued.Token}},
+						Client:        &http.Client{Transport: &credentialTransport{token: issued.Token, reserving: reserving}},
 						BaseURL:       baseURL,
 						DataPrivacy:   true,
 						MediaRegistry: true,
@@ -408,6 +440,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				Registered: register(client,
 					do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
 				CommentTarget: commentable.bring,
+				ArtifactExpired: expireArtifact(client,
+					do.MustInvoke[dataprivacy.Store](i), do.MustInvoke[uploads.UploadManager](i)),
 
 				// The recorder the composition root built, inside a transaction on
 				// the client it built — the end of the path a consumer's handler
@@ -456,12 +490,31 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				return http.DefaultClient, nil
 			},
 
+			// And a caller the suite signed in itself is the same connection
+			// with that token on every call, read back by the extractor as any
+			// minted subject's is — the contract's default Authorizer.
+			SignedIn: func(_ context.Context, issued *signinpb.IssuedToken) (grpc.ClientConnInterface, error) {
+				return &bearerConn{ClientConnInterface: conn, token: issued.GetToken(), reserving: reserving}, nil
+			},
+
+			// The extractor above checks every token's login on every request.
+			ImmediateRevocation: true,
+
 			// The one target type registerApplication declares, for the reads that
 			// name a target without writing to it. Its writes go through
 			// CommentTarget, since the type checks that a target exists.
 			CommentTargetType: string(thingType),
 
+			// The identity block above returns an invitation's token to its
+			// sender, so the suites assert that reading here and the
+			// identity harness, built on the server's default, asserts the
+			// other.
+			InvitationTokenReturned: true,
+
 			Dialect: d,
+
+			// The one role the sign-in block's administrative door admits.
+			Roles: conformance.Roles{Administrator: adminServiceRole},
 
 			// service mounts waitlists with its default scope resolver, which is
 			// the single-tenant answer: a visitor is in the global directory.
@@ -475,7 +528,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// The first run is this module's own answer, where a member holds every
 	// grant but the archive ones and so makes every call: it is what keeps each
 	// promise asserted of a member. The second reserves staffOnly, which
-	// reserveStaffCalls refuses to anybody but an administrator: it is what
+	// reserveStaffCalls refuses to anybody but an administrator, and
+	// staffOnlyRoutes, whose permissions httpGrants withholds from a member: it is what
 	// keeps the path a consumer's reservation takes exercised, each reserved
 	// call made by an administrator minted for it and each assertion about a
 	// member of a reserved call skipping rather than failing. That every call a
@@ -483,11 +537,17 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// connection. Sequential rather than parallel, because each claims the
 	// database as its own.
 	t.Run("members make every call", func(t *testing.T) {
-		conformanceall.Run(t, seams(nil))
+		conformanceall.Run(t, seams(nil, nil))
 	})
 
 	t.Run("staff calls reserved", func(t *testing.T) {
-		conformanceall.Run(t, seams(staffOnly))
+		conformanceall.Run(t, seams(staffOnly, staffOnlyRoutes))
+	})
+
+	// And the record the reservations suite skips by, held to the handlers it
+	// describes, which here sit behind this module's own authorizers.
+	t.Run("empty requests refused", func(t *testing.T) {
+		conformance.Run(t, seams(nil, nil), conformancereservations.RosterSuite())
 	})
 }
 
@@ -670,15 +730,47 @@ func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirem
 	return reqs
 }
 
+// bearerConn puts one signed-in caller's token on every call, beside which run
+// the call is made in, which is what a consumer's authenticated client
+// connection does with the first half.
+type bearerConn struct {
+	grpc.ClientConnInterface
+
+	token     string
+	reserving string
+}
+
+func (c *bearerConn) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
+	return c.ClientConnInterface.Invoke(c.carrying(ctx), method, args, reply, opts...)
+}
+
+func (c *bearerConn) NewStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	return c.ClientConnInterface.NewStream(c.carrying(ctx), desc, method, opts...)
+}
+
+func (c *bearerConn) carrying(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.token, mdReserving, c.reserving)
+}
+
 // credentialTransport puts one subject's bearer token on every request, which
 // is what a consumer's authenticated HTTP client does.
+//
+// It carries the run the subject was minted in beside the credential, as
+// headerReserving, the way Decorate carries mdReserving beside the gRPC one.
 type credentialTransport struct {
-	token string
+	token     string
+	reserving string
 }
 
 func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set(headerReserving, c.reserving)
 
 	return http.DefaultTransport.RoundTrip(req)
 }

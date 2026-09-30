@@ -426,6 +426,39 @@ func TestService_RecoveryCodesRemaining(T *testing.T) {
 	})
 }
 
+func TestIssueForPrincipal_recoveryCode(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a single-factor credential takes a recovery code, and spends it first", func(t *testing.T) {
+		t.Parallel()
+
+		r := newRecoveryEnv(t, newEnv)
+
+		signIn, err := r.svc.IssueForPrincipal(t.Context(), testScope, r.user.ID, "",
+			signin.WithCredentialKind("passkey"), signin.WithTOTPCode(r.codes[0]))
+		must.NoError(t, err)
+		test.EqOp(t, r.user.ID, signIn.Principal.User.ID)
+
+		test.Eq(t, []string{"recovery_code_used", "authenticate", "issue"}, r.hooks.calls)
+		test.Eq(t, []signin.CredentialKind{signin.CredentialKindRecoveryCode}, r.hooks.kinds)
+		test.EqOp(t, signin.DefaultRecoveryCodeCount-1, r.remaining(t))
+	})
+
+	T.Run("refuses a sign-in whose code another request spent first", func(t *testing.T) {
+		t.Parallel()
+
+		r := newRecoveryEnv(t, newRefreshEnv)
+		r.spendBehindTheDoor(t, r.codes[0])
+
+		_, err := r.svc.IssueForPrincipal(t.Context(), testScope, r.user.ID, "", signin.WithTOTPCode(r.codes[0]))
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		must.SliceLen(t, 1, r.hooks.failures)
+		test.SliceEmpty(t, r.hooks.calls)
+		test.EqOp(t, 0, rowsIn(t, r.env, refreshTable(t, r.env)))
+	})
+}
+
 func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Parallel()
 

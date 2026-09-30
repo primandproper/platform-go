@@ -2,7 +2,9 @@ package assembled_test
 
 import (
 	"context"
+	"net/http"
 	"slices"
+	"sync"
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
@@ -16,14 +18,17 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
+	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 	"github.com/primandproper/platform-go/v14/privacyadapters"
 	"github.com/primandproper/platform-go/v14/service"
 	"github.com/primandproper/platform-go/v14/settings"
@@ -55,7 +60,7 @@ import (
 // Each surface below mounts only because something here made its dependency
 // resolvable, which is service.RegisterTransports' absence rule doing its job —
 // a surface over half a service is not a surface.
-func registerApplication(i do.Injector, prefix string, commentable *things) {
+func registerApplication(i do.Injector, prefix string, commentable *things, people *directories) {
 	// The declarations. Which kinds of thing accept comments, and which events
 	// an application publishes, are the application's to say.
 	do.ProvideValue(i, comments.Targets{thingType: commentable.definition()})
@@ -83,7 +88,7 @@ func registerApplication(i do.Injector, prefix string, commentable *things) {
 			Reader: do.MustInvoke[database.Client](i).Reader(),
 			Identity: &privacyadapters.IdentityAdapter{
 				Store:   do.MustInvoke[identity.Store](i),
-				Resolve: ownDirectory,
+				Resolve: people.resolve,
 			},
 		}); err != nil {
 			return nil, err
@@ -134,12 +139,39 @@ func registerApplication(i do.Injector, prefix string, commentable *things) {
 	})
 }
 
-// ownDirectory is the harness's answer to which tenants a person's data lives
-// in: the one the request was made in. Every caller here is minted into a
-// directory of its own, so that is the whole of the truth rather than a
-// narrowing of it.
-func ownDirectory(_ context.Context, requestScope tenancy.Scope, _ dataprivacy.Subject) ([]tenancy.Scope, error) {
-	return []tenancy.Scope{requestScope}, nil
+// directories is the harness's answer to which tenants a person's data lives
+// in: the one it registered them into.
+//
+// A request's own confinement is not that answer here. service mounts the
+// privacy surface with dataprivacy/http's default, UnconfinedRequests, so every
+// request a caller submits names no scope — a person's request, not a
+// tenant's — and the resolver is what says where that person is. Every caller
+// NewSubject mints is registered into one directory of its own, so the
+// directory it was registered into is the whole of the truth rather than a
+// narrowing of it. A person the harness never registered has nothing in any
+// directory it knows of, which is the answer a resolver gives for them.
+type directories struct {
+	byUser sync.Map
+}
+
+// remember records the directory a caller was registered into.
+func (d *directories) remember(userID string, scope tenancy.Scope) {
+	d.byUser.Store(userID, scope)
+}
+
+// resolve is the dataprivacy.ScopeResolver: the request's own confinement
+// where it names one, and the subject's directory where it does not.
+func (d *directories) resolve(_ context.Context, requestScope tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
+	if requestScope.Validate() == nil {
+		return []tenancy.Scope{requestScope}, nil
+	}
+
+	scope, ok := d.byUser.Load(subject.ID)
+	if !ok {
+		return nil, nil
+	}
+
+	return []tenancy.Scope{scope.(tenancy.Scope)}, nil
 }
 
 // operationsConfig puts both of the operations block's tables under the run's
@@ -255,12 +287,16 @@ var administrative = []authorization.Permission{
 // hold.
 var memberRole, adminRole = roles()
 
-// roles builds the two sets from the seven surfaces' own Permissions maps, so
-// that a permission a surface adds later is a member's without an edit here.
+// roles builds the two sets from the seven surfaces' own Permissions maps, and
+// the three HTTP surfaces', so that a permission a surface adds later is a
+// member's without an edit here.
 func roles() (member, admin *authorization.PermissionSet) {
 	var every []authorization.Permission
 
 	for _, surface := range []map[string][]authorization.Permission{
+		dataprivacyhttp.Permissions(),
+		mediaregistryhttp.Permissions(),
+		operationshttp.Permissions(),
 		billinggrpc.Permissions(),
 		commentsgrpc.Permissions(),
 		issuereportsgrpc.Permissions(),
@@ -403,4 +439,104 @@ func reserving(ctx context.Context) bool {
 	values := md.Get(mdReserving)
 
 	return len(values) > 0 && values[0] == "true"
+}
+
+// staffOnlyRoutes is the HTTP half of staffOnly: one route on each HTTP
+// surface, kept to the back office in the run that reserves.
+//
+// The console view of every operation running in a tenant, the withdrawal of
+// somebody's privacy request — which that deployment routes through its support
+// desk — and the stored objects, which its product serves to staff alone. None
+// is one of the surfaces' OwnStandingRoutes, which no deployment can reserve:
+// a person following their own erasure and the confirmation link in their mail
+// stay reachable to a member in both runs.
+var staffOnlyRoutes = []string{
+	dataprivacyhttp.RouteCancel,
+	mediaregistryhttp.RouteServe,
+	operationshttp.RouteList,
+}
+
+// memberWithoutStaffRoutes is what a member holds in the run that reserves
+// staffOnlyRoutes: every permission memberRole does, but the ones those routes
+// require.
+//
+// Withholding a route's permission is how a deployment reserves it, and it
+// reserves exactly that route here because no permission a reserved route
+// requires is one an unreserved route requires too — which is the property a
+// consumer checks of its own policy before relying on the same move.
+var memberWithoutStaffRoutes = func() *authorization.PermissionSet {
+	var withheld []authorization.Permission
+
+	for _, surface := range []map[string][]authorization.Permission{
+		dataprivacyhttp.Permissions(),
+		mediaregistryhttp.Permissions(),
+		operationshttp.Permissions(),
+	} {
+		for route, required := range surface {
+			if slices.Contains(staffOnlyRoutes, route) {
+				withheld = append(withheld, required...)
+			}
+		}
+	}
+
+	var kept []authorization.Permission
+
+	for p := range memberRole.All() {
+		if !slices.Contains(withheld, p) {
+			kept = append(kept, p)
+		}
+	}
+
+	return authorization.NewPermissionSet(kept...)
+}()
+
+// httpGrants is the grants extractor this harness's HTTP enforcer reads: the
+// role policy the extractor applies, except that in the run reserving
+// staffOnlyRoutes a member holds memberWithoutStaffRoutes instead.
+//
+// It is the HTTP counterpart of reserveStaffCalls, and it reserves by the
+// means a consumer's policy would — a member simply does not hold the
+// permission — because on HTTP that is the only means there is: each surface
+// checks its own routes' permissions with the enforcer it was handed, and
+// nothing sits in front of them keyed by route.
+func httpGrants(extractor *signingrpc.PrincipalExtractor) authorization.GrantsExtractor {
+	return func(ctx context.Context) (authorization.Grants, bool) {
+		grants, ok := extractor.Grants(ctx)
+		if !ok || !reservingRequest(ctx) {
+			return grants, ok
+		}
+
+		if principal, found := extractor.Extract(ctx); found && isAdministrator(principal) {
+			return grants, ok
+		}
+
+		return authorization.NewGrants(memberWithoutStaffRoutes), true
+	}
+}
+
+// headerReserving is mdReserving's HTTP spelling: which of the harness's two
+// runs the caller making a request was minted in.
+const headerReserving = "Conformance-Reserving"
+
+// reservingKey is where markReserving leaves the run on a request's context.
+type reservingKey struct{}
+
+// markReserving reads headerReserving onto the request's context, where
+// httpGrants reads it back.
+func markReserving(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		if req.Header.Get(headerReserving) == "true" {
+			req = req.WithContext(context.WithValue(req.Context(), reservingKey{}, true))
+		}
+
+		next.ServeHTTP(res, req)
+	})
+}
+
+// reservingRequest reports whether an HTTP request was made in the run that
+// reserves staffOnlyRoutes.
+func reservingRequest(ctx context.Context) bool {
+	reserving, ok := ctx.Value(reservingKey{}).(bool)
+
+	return ok && reserving
 }

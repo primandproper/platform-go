@@ -41,6 +41,18 @@ const (
 	// adminKey records which door an attempt came through.
 	adminKey = "signin.administrative"
 
+	// multiFactorKey is whether a principal door's caller said the credential
+	// it proved was two factors on its own.
+	multiFactorKey = "signin.multi_factor"
+
+	// actorKey is the operator on an impersonation — who is really acting,
+	// beside userIDKey's subject.
+	actorKey = "signin.actor_id"
+
+	// actorScopeKey is the scope the operator on an impersonation is in, which
+	// need not be the subject's.
+	actorScopeKey = "signin.actor_scope"
+
 	// padKey records whether a timing floor was held to in full. It is false only
 	// where the caller's context ended first, which makes a short answer a fact
 	// about that request rather than a silent hole in the enumeration defense.
@@ -87,6 +99,11 @@ const (
 	opIssueForPrincipal      = "issue_for_principal"
 	opAdminIssueForPrincipal = "admin_issue_for_principal"
 
+	// The impersonation door, a series of its own: how often operators act as
+	// somebody else is a number a deployment watches on its own, and folding it
+	// into the principal doors would hide it among passkeys.
+	opIssueImpersonationToken = "issue_impersonation_token"
+
 	// The refresh doors. Exchanging is a series of its own rather than a
 	// second kind of login, because the two answer different questions of a
 	// dashboard: how often somebody proves a password, and how long their
@@ -101,14 +118,22 @@ const (
 	opSignOut              = "sign_out"
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
+	opSignOutEverywhere    = "sign_out_everywhere"
 	opUpdatePassword       = "update_password"
 
 	// Listing a person's logins and ending one of them are two series of their
 	// own. Ending one is not folded into revoke_refresh_token_family for the
 	// reason signing out is not: it is a person's decision, and that series is
 	// where a detected reuse's alarm lands.
-	opListSignIns = "list_sign_ins"
-	opEndSignIn   = "end_sign_in"
+	opListSignIns     = "list_sign_ins"
+	opEndSignIn       = "end_sign_in"
+	opEndOtherSignIns = "end_other_sign_ins"
+
+	// Checking a login is a series of its own, and the one a deployment that
+	// makes it on every request will see dwarf the rest: what a dashboard asks
+	// of it is what the per-request read costs, which folded into anything else
+	// would be a latency nobody could attribute.
+	opCheckSignIn = "check_sign_in"
 
 	// The registration door and the ones that finish it. Registering is a
 	// series of its own rather than a kind of login: what a dashboard asks of it
@@ -118,6 +143,13 @@ const (
 	opAttachPassword       = "attach_password"
 	opVerifyEmailAddress   = "verify_email_address"
 	opCompleteVerification = "complete_verification"
+	// Asking for another verification link is a series of its own rather than
+	// part of registering, because what a dashboard asks of it is how often a
+	// mailed link failed to arrive or to be answered.
+	opRequestVerificationEmail = "request_verification_email"
+	// The anonymous resend, a series apart from the signed-in one because a
+	// dashboard watching for a stranger filling somebody's inbox watches it.
+	opRequestVerificationEmailByAddress = "request_verification_email_by_address"
 	// The passwordless door, both halves. It is a series of its own for the
 	// reason registering is: what a dashboard asks of it is how many people
 	// arrive without a password, which is a different question from how often
@@ -251,6 +283,12 @@ type SignIn struct {
 	// unless a consumer's issuer overrides the expiry it was handed.
 	ExpiresAt time.Time `json:"expiresAt"`
 
+	// RefreshTokenExpiresAt is when the refresh token stops being exchangeable,
+	// and the zero time when there is none. It is the deadline that actually
+	// bounds this sign-in: an idle client that lets it pass has to prove a
+	// password again.
+	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt,omitzero"`
+
 	// Principal is who signed in — the user, redacted, their memberships, and
 	// the account this token is against.
 	//
@@ -259,12 +297,6 @@ type SignIn struct {
 	// in a response is the transport's decision; this is the whole answer, so
 	// that decision can be made.
 	Principal *identity.Principal `json:"principal"`
-
-	// RefreshTokenExpiresAt is when the refresh token stops being exchangeable,
-	// and the zero time when there is none. It is the deadline that actually
-	// bounds this sign-in: an idle client that lets it pass has to prove a
-	// password again.
-	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt,omitzero"`
 
 	// Token is the credential itself. It is not redacted anywhere, because a
 	// sign-in that hides it has accomplished nothing — which is the reason it
@@ -295,6 +327,16 @@ type SignIn struct {
 	// TokenID is the issuer's "jti" for this token: the handle a revocation list
 	// names and the value a hook records.
 	TokenID string `json:"tokenID"`
+
+	// ActorID is the operator on a sign-in [Service.IssueImpersonationToken]
+	// minted, and empty on every other. Principal is the subject — the person
+	// being impersonated — and the token names both, as its subject and as
+	// [ClaimActor].
+	ActorID string `json:"actorID,omitempty"`
+
+	// ActorScope is the scope ActorID is in, and the zero Scope whenever
+	// ActorID is empty. The token names it as [ClaimActorScope].
+	ActorScope tenancy.Scope `json:"actorScope,omitzero"`
 
 	// Administrative reports whether this token came through
 	// AdminLoginForToken.
@@ -335,8 +377,10 @@ type AuthStatus struct {
 
 	// RequiresPasswordChange reports whether an operator has forced a password
 	// change. This service still signs such a user in — the alternative is a
-	// user who cannot reach the form — so it is the client's job to send them
-	// to it, and this is how they are told.
+	// user who cannot reach the form — and this is how a client is told to
+	// send them to it. What holds them there is signin/grpc's
+	// PasswordChangeGate, which refuses their other calls with
+	// ErrPasswordChangeRequired until the change is made.
 	RequiresPasswordChange bool `json:"requiresPasswordChange"`
 
 	// EmailAddressVerified reports whether their address has been proven
@@ -440,6 +484,12 @@ type Service struct {
 	// ErrRecoveryCodesNotConfigured.
 	recoveryCodes RecoveryCodeStore
 
+	// verificationMailer is nil until WithVerificationMailer names one, and nil
+	// means RequestVerificationEmail refuses with
+	// ErrVerificationMailerNotConfigured. Registration needs none: it hands its
+	// link back on Registered.
+	verificationMailer VerificationMailer
+
 	// magicLinkMailer is nil until WithMagicLinkMailer names one. The request
 	// door needs both it and the store, because a link that is minted and not
 	// sent is a sign-in nobody can complete; the redemption door needs only the
@@ -450,6 +500,11 @@ type Service struct {
 	// nil is what "this service reminds nobody of their handle" means: the door
 	// refuses with ErrHandleRemindersNotConfigured.
 	handleReminderMailer HandleReminderMailer
+
+	// What the options wrote, kept only until the observer is built from it.
+	logger          logging.Logger
+	tracerProvider  tracing.Provider
+	metricsProvider metrics.Provider
 
 	// passwordPolicy is nil until WithPasswordPolicy names one, and nil admits
 	// any password that is not empty.
@@ -463,14 +518,13 @@ type Service struct {
 	// registers exactly what the request named.
 	registrationPolicy RegistrationPolicy
 
-	// What the options wrote, kept only until the observer is built from it.
-	logger          logging.Logger
-	tracerProvider  tracing.Provider
-	metricsProvider metrics.Provider
-
 	claims ClaimsBuilder
 
 	instruments *metrics.OperationSet
+
+	// impersonationPolicy is nil until WithImpersonationPolicy names one, and
+	// nil is ErrImpersonationDisabled on every IssueImpersonationToken.
+	impersonationPolicy ImpersonationPolicy
 
 	totpIssuer string
 
@@ -478,6 +532,10 @@ type Service struct {
 
 	tokenTTL      time.Duration
 	adminTokenTTL time.Duration
+
+	// impersonationTokenTTL is how long an impersonation lasts — see
+	// DefaultImpersonationTokenTTL.
+	impersonationTokenTTL time.Duration
 
 	refreshTokenTTL      time.Duration
 	adminRefreshTokenTTL time.Duration
@@ -497,6 +555,10 @@ type Service struct {
 	// handleReminderFloor is the handle reminder door's own floor, apart from
 	// magicLinkFloor so the two anonymous mail doors can be tuned apart.
 	handleReminderFloor time.Duration
+
+	// refuseSuperseded is WithSupersededTokenRefusal, and false is what "an
+	// access token stands until its login ends" means to CheckSignIn.
+	refuseSuperseded bool
 
 	secondFactor SecondFactorPolicy
 }
@@ -570,7 +632,9 @@ func NewService(
 		claims:        DefaultClaims,
 		tokenTTL:      DefaultTokenTTL,
 		adminTokenTTL: DefaultAdminTokenTTL,
-		secondFactor:  SecondFactorWhenEnrolled,
+
+		impersonationTokenTTL: DefaultImpersonationTokenTTL,
+		secondFactor:          SecondFactorWhenEnrolled,
 
 		refreshTokenTTL:      DefaultRefreshTokenTTL,
 		adminRefreshTokenTTL: DefaultAdminRefreshTokenTTL,
