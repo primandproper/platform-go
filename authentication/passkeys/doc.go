@@ -72,7 +72,11 @@ and a [UsernameResolver] from what somebody typed to a handle.
 A login's sign count commits before [Service.FinishLogin] returns, in a
 transaction the service opens, so the caller minting a token afterwards cannot
 roll it back. A count that advanced for a login the caller then failed to finish
-is harmless: the authenticator had already advanced it.
+is harmless: the authenticator had already advanced it. A registration writes
+its credential in a transaction of its own too, after the challenge is spent:
+the ceremony state may be a table in the same database, and a caller's
+transaction held open around its consumption is a writer it waits on — see
+[Service.FinishRegistration].
 
 # The index that is the point
 

@@ -85,9 +85,12 @@ type AlternativeSignIn func(ctx context.Context, q database.SQLQueryExecutor, sc
 // # Transactions
 //
 // A write takes the caller's database.Tx and a read takes an executor, which is
-// this module's store convention, with one exception that is the protocol's:
-// a finished login writes the sign count back in a transaction of its own,
-// which commits before the call returns. See [Service.FinishLogin].
+// this module's store convention, with two exceptions that are the protocol's.
+// A finished login writes the sign count back in a transaction of its own,
+// which commits before the call returns — see [Service.FinishLogin]. And a
+// finished registration spends its challenge before it writes anything, so
+// it writes the credential in a transaction of its own too — see
+// [Service.FinishRegistration].
 type Service struct {
 	client      database.Client
 	store       Store
@@ -192,12 +195,16 @@ func (s *Service) begin(
 }
 
 // BeginRegistration issues the options a browser needs to create a passkey
-// for the user behind handle.
+// for userID, whose WebAuthn user handle is handle.
 //
-// The handle is the WebAuthn user handle the consumer assigns that user — the
-// value its [UserResolver] maps back — and the transport serving a signed-in
-// user derives it from the session rather than from the request. The
-// [EnrollmentGate] runs here, so a refused enrollment is refused before the
+// The handle is the one the consumer assigns that user — the value its
+// [UserResolver] maps back — and the transport serving a signed-in user
+// derives both from the session rather than from the request. They are two
+// arguments rather than one because the second is checked against the first:
+// a handle the resolver answers with anybody but userID is ErrHandleMismatch,
+// before the options are built, since options built for the other user would
+// hand the caller that user's name and enrolled credential IDs. The
+// [EnrollmentGate] runs next, so a refused enrollment is refused before the
 // browser asks anybody to touch a key.
 //
 // Every passkey this service registers is discoverable: the options require a
@@ -209,12 +216,13 @@ func (s *Service) BeginRegistration(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
+	userID string,
 	handle []byte,
 ) (creation *protocol.CredentialCreation, err error) {
 	ctx, op, done := s.begin(ctx, "begin_registration", observability.WithValue(scopeKey, scope.String()))
 	defer func() { done(err) }()
 
-	u, err := s.enrollee(ctx, q, scope, handle)
+	u, err := s.enrollee(ctx, q, scope, userID, handle)
 	if err != nil {
 		return nil, op.Error(err, "beginning passkey registration")
 	}
@@ -229,20 +237,34 @@ func (s *Service) BeginRegistration(
 }
 
 // FinishRegistration verifies the attestation a browser returned and stores the
-// passkey it produced, on the caller's transaction, under friendlyName.
+// passkey it produced under friendlyName, in a transaction it opens.
 //
-// The [EnrollmentGate] runs again. A gate's answer can change in the minute a
+// The handle is checked against userID again, as [Service.BeginRegistration]
+// checks it, and the [EnrollmentGate] runs again. A gate's answer can change in the minute a
 // ceremony takes — a re-authentication window closing is the ordinary case —
 // and this is the write the gate exists to guard.
 //
-// [Hooks.AfterRegisterPasskey] runs on tx after the write. Its error is
-// returned, and returning it out of the transaction callback is what rolls the
-// registration back; a caller that swallows it commits the passkey without its
-// record.
+// # The challenge is spent before the transaction
+//
+// It takes no transaction from its caller, which is the second exception to
+// the store convention and has the first one's reason: verifying the
+// attestation consumes the ceremony's challenge, and that consumption is the
+// protocol's own write, made by the relying party on its own connection. The
+// ceremony state may well be a table in the same database — it is, under
+// authentication/webauthnsessions — so a caller's transaction held open around
+// it is a second writer the first must wait on, and on a database with one
+// writer connection that wait never ends. So the attestation is verified
+// first, and the credential is written after, in a transaction of this
+// method's own that has committed by the time it returns. A registration
+// whose write then fails has spent its challenge and is begun again.
+//
+// [Hooks.AfterRegisterPasskey] runs in that transaction after the write, so
+// the credential and its record are still one fact: a hook that refuses rolls
+// the registration back, and its error is returned.
 func (s *Service) FinishRegistration(
 	ctx context.Context,
-	tx database.Tx,
 	scope tenancy.Scope,
+	userID string,
 	handle []byte,
 	friendlyName string,
 	response []byte,
@@ -250,15 +272,11 @@ func (s *Service) FinishRegistration(
 	ctx, op, done := s.begin(ctx, "finish_registration", observability.WithValue(scopeKey, scope.String()))
 	defer func() { done(err) }()
 
-	if tx == nil {
-		return nil, op.Error(ErrNilExecutor, "finishing passkey registration")
-	}
-
 	if len(response) == 0 {
 		return nil, op.Error(ErrEmptyCeremonyResponse, "finishing passkey registration")
 	}
 
-	u, err := s.enrollee(ctx, tx, scope, handle)
+	u, err := s.enrollee(ctx, s.client.Reader(), scope, userID, handle)
 	if err != nil {
 		return nil, op.Error(err, "finishing passkey registration")
 	}
@@ -275,38 +293,52 @@ func (s *Service) FinishRegistration(
 		transports = append(transports, string(t))
 	}
 
-	registered, err = s.store.CreateCredential(ctx, tx, scope, &Credential{
-		ID:            identifiers.New(),
-		BelongsToUser: u.identity.UserID,
-		FriendlyName:  friendlyName,
-		Transports:    transports,
-		CredentialID:  proven.ID,
-		PublicKey:     proven.PublicKey,
-		SignCount:     proven.Authenticator.SignCount,
-	})
-	if err != nil {
-		return nil, op.Error(err, "storing registered passkey")
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		created, createErr := s.store.CreateCredential(ctx, tx, scope, &Credential{
+			ID:            identifiers.New(),
+			BelongsToUser: u.identity.UserID,
+			FriendlyName:  friendlyName,
+			Transports:    transports,
+			CredentialID:  proven.ID,
+			PublicKey:     proven.PublicKey,
+			SignCount:     proven.Authenticator.SignCount,
+		})
+		if createErr != nil {
+			return platformerrors.Wrap(createErr, "storing registered passkey")
+		}
+
+		if hookErr := s.hooks.AfterRegisterPasskey(ctx, tx, scope, created); hookErr != nil {
+			return platformerrors.Wrap(hookErr, "running passkey registration hook")
+		}
+
+		registered = created
+
+		return nil
+	}); err != nil {
+		return nil, op.Error(err, "finishing passkey registration")
 	}
 
 	op.Set(rowIDKey, registered.ID)
 
-	if err = s.hooks.AfterRegisterPasskey(ctx, tx, scope, registered); err != nil {
-		return nil, op.Error(err, "running passkey registration hook")
-	}
-
 	return registered, nil
 }
 
-// enrollee resolves the user a registration is for, holds them to the
-// enrollment gate, and assembles them with their live passkeys.
+// enrollee resolves the user a registration is for, refuses a handle that
+// names anybody else, holds them to the enrollment gate, and assembles them
+// with their live passkeys.
 func (s *Service) enrollee(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
+	userID string,
 	handle []byte,
 ) (*user, error) {
 	if q == nil {
 		return nil, ErrNilExecutor
+	}
+
+	if userID == "" {
+		return nil, ErrEmptyUserID
 	}
 
 	resolved, err := s.users.User(ctx, q, scope, handle, AuthenticatorFlags{})
@@ -317,6 +349,10 @@ func (s *Service) enrollee(
 	u, ok := resolved.(*user)
 	if !ok {
 		return nil, platformerrors.Newf("passkey user source answered a %T", resolved)
+	}
+
+	if u.identity.UserID != userID {
+		return nil, ErrHandleMismatch
 	}
 
 	if err = s.gate(ctx, scope, u.identity.UserID); err != nil {
@@ -667,9 +703,14 @@ func (s *Service) refuse(
 }
 
 // concealed is the refusal a login's caller is shown. See refuse.
+//
+// The clone refusal names ErrSignCountRegressed first. errors.Is matches
+// either order, but the client-safe message and reason a gRPC server sends
+// are the first registered node of the chain, and ErrLoginFailed first would
+// answer a cloned key with the words for a signature that did not verify.
 func concealed(cause error) error {
 	if platformerrors.Is(cause, ErrSignCountRegressed) {
-		return fmt.Errorf("%w: %w", ErrLoginFailed, ErrSignCountRegressed)
+		return fmt.Errorf("%w: %w", ErrSignCountRegressed, ErrLoginFailed)
 	}
 
 	return ErrLoginFailed

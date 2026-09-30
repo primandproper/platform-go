@@ -1,0 +1,206 @@
+// Package primandproper.platform.passkeys.v1 is the wire schema for passkeys:
+// enrolling one, signing in with one, and the list and archive a settings page
+// offers.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped, as signin.proto is. A consumer puts the module's
+// proto directories on protoc's path and imports it by its canonical name:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/authentication/passkeys/proto \
+//	    --proto_path $(PLATFORM_PROTO)/authentication/signin/proto \
+//	    --proto_path $(PLATFORM_PROTO)/identity/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/passkeys/v1/passkeys.proto=github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb \
+//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v14/authentication/signin/signinpb \
+//	    $(CONSUMER_PROTO_FILES)
+//
+// Go links against the bindings in
+// github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb.
+//
+// Field numbers are the compatibility promise. Numbers are never reused and
+// never repurposed: a field that goes away is reserved.
+//
+// # The token is sign-in's
+//
+// FinishLogin answers with signin.v1's IssuedToken, not a message of its own.
+// A passkey is another way to prove who somebody is, and what it proves them
+// into is the same sign-in a password proves them into: the same lifetimes,
+// the same claims, the same refresh token family, the same ExchangeRefreshToken
+// and SignOut. A second token message would be a second token stack, which is
+// the state this schema exists to end.
+//
+// # The ceremony travels as JSON
+//
+// Every begin answers with the options a browser hands to
+// navigator.credentials.create or navigator.credentials.get, and every finish
+// takes what the browser handed back, both as the JSON the WebAuthn
+// specification defines, carried in a bytes field. They are not re-described
+// here as messages: the specification owns their shape, it adds fields, and a
+// relying party that re-encoded them would be one more place for a field to be
+// dropped on the way to a browser that needed it. The options are exactly what
+// github.com/go-webauthn/webauthn renders — a publicKey member, base64url for
+// every binary value — which is what a browser's parseCreationOptionsFromJSON
+// and parseRequestOptionsFromJSON read.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// The login half is anonymous, so its scope comes off the connection exactly
+// as sign-in's does, and a field would be one an anonymous caller fills in.
+//
+// No user field on the self-service RPCs. Enrolling, listing and archiving are
+// about the caller and nobody else, so the subject comes off the principal,
+// and a request that could name somebody would be a request that could add a
+// way into their account.
+//
+// No public key and no sign count on a Passkey. Neither is a secret, and
+// neither is anything a settings page renders; the sign count in particular is
+// the relying party's clone detection, and a client that could read it would
+// be reading the one number an attacker with a cloned key would want.
+//
+// No separate discoverable RPCs. A login that names no username is the
+// discoverable one — the passkey the person chooses names them — and it is the
+// same two RPCs with the field empty. A username sent to a deployment that
+// offers only the discoverable login is refused as a request to correct.
+
+syntax = "proto3";
+
+package primandproper.platform.passkeys.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/signin/v1/signin.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb;passkeyspb";
+
+// Passkey is one enrolled authenticator, as a settings page lists it.
+message Passkey {
+  reserved "scope";
+
+  // id is the row's identifier, the one ArchivePasskey names.
+  string id = 1;
+
+  // friendly_name is what the person called it when they enrolled it.
+  string friendly_name = 2;
+
+  // transports are the ways the authenticator said it can be reached --
+  // "internal", "hybrid", "usb" -- as the registration reported them.
+  repeated string transports = 3;
+
+  // credential_id is the authenticator's own identifier for the credential. It
+  // is not a secret: every login sends it in the clear.
+  bytes credential_id = 4 [json_name = "credentialID"];
+
+  // created_at is when it was enrolled.
+  google.protobuf.Timestamp created_at = 5;
+
+  // last_used_at is when it last signed somebody in, unset if never.
+  google.protobuf.Timestamp last_used_at = 6;
+
+  // archived_at is when it was taken off the account. It is set only on the
+  // passkey ArchivePasskey answers with; ListPasskeys lists live ones.
+  google.protobuf.Timestamp archived_at = 7;
+}
+
+message BeginRegistrationRequest {
+  reserved "scope";
+}
+
+message BeginRegistrationResponse {
+  // options is the PublicKeyCredentialCreationOptions JSON a browser hands to
+  // navigator.credentials.create. Its user.id is the caller's WebAuthn user
+  // handle, which a discoverable login's authenticator returns.
+  bytes options = 1;
+}
+
+message FinishRegistrationRequest {
+  reserved "scope";
+
+  // friendly_name is what the person calls this authenticator.
+  string friendly_name = 1;
+
+  // response is the PublicKeyCredential JSON navigator.credentials.create
+  // resolved with.
+  bytes response = 2;
+}
+
+message FinishRegistrationResponse {
+  Passkey passkey = 1;
+}
+
+message BeginLoginRequest {
+  reserved "scope";
+
+  // username is who is signing in, for a named login; empty begins the
+  // discoverable one. A username that names nobody is answered exactly as one
+  // that names somebody.
+  string username = 1;
+}
+
+message BeginLoginResponse {
+  // options is the PublicKeyCredentialRequestOptions JSON a browser hands to
+  // navigator.credentials.get.
+  bytes options = 1;
+}
+
+message FinishLoginRequest {
+  reserved "scope";
+
+  // username is the one BeginLogin was sent, empty for a discoverable login.
+  string username = 1;
+
+  // response is the PublicKeyCredential JSON navigator.credentials.get
+  // resolved with.
+  bytes response = 2;
+
+  // active_account_id is the account the token should be issued for, read
+  // exactly as signin.v1's Credentials reads it.
+  string active_account_id = 3 [json_name = "activeAccountID"];
+
+  // totp_code is the second factor, read exactly as Credentials reads it. A
+  // passkey whose authenticator verified the person is two factors on its own
+  // and never needs one; one asserted on a key tap alone is a single factor,
+  // and a person holding a proven second factor is asked for it.
+  string totp_code = 4;
+}
+
+message FinishLoginResponse {
+  primandproper.platform.signin.v1.IssuedToken token = 1;
+}
+
+message ListPasskeysRequest {
+  reserved "scope";
+}
+
+message ListPasskeysResponse {
+  // passkeys are the caller's live passkeys, oldest first.
+  repeated Passkey passkeys = 1;
+}
+
+message ArchivePasskeyRequest {
+  reserved "scope";
+
+  // id is the passkey to take off the caller's account. One that is somebody
+  // else's is not found, exactly as one that does not exist is.
+  string id = 1;
+}
+
+message ArchivePasskeyResponse {
+  Passkey passkey = 1;
+}
+
+service PasskeysService {
+  // Enrolling a passkey on the caller's own account.
+  rpc BeginRegistration(BeginRegistrationRequest) returns (BeginRegistrationResponse);
+  rpc FinishRegistration(FinishRegistrationRequest) returns (FinishRegistrationResponse);
+
+  // Signing in with one. Both are anonymous.
+  rpc BeginLogin(BeginLoginRequest) returns (BeginLoginResponse);
+  rpc FinishLogin(FinishLoginRequest) returns (FinishLoginResponse);
+
+  // The settings page.
+  rpc ListPasskeys(ListPasskeysRequest) returns (ListPasskeysResponse);
+  rpc ArchivePasskey(ArchivePasskeyRequest) returns (ArchivePasskeyResponse);
+}

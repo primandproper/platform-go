@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/grants"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -89,6 +90,7 @@ const (
 	settingsPkg      = "settings"
 	waitlistsPkg     = "waitlists"
 	passwordResetPkg = "authentication/passwordreset"
+	passkeysPkg      = "authentication/passkeys"
 	meteringPkg      = "metering"
 	entitlementsPkg  = "entitlements"
 	shreddingPkg     = "shredding"
@@ -988,6 +990,58 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyNewPassword":  {Err: passwordreset.ErrEmptyNewPassword, Is: Platform},
 	},
 
+	passkeysPkg: {
+		// The two ends of a login a person meets. Every refused ceremony is
+		// ErrLoginFailed, whichever check refused it, so its words disclose
+		// nothing; a key that looks cloned is proven and refused anyway, and is
+		// always wrapped with it. Both are client-safe, with reasons.
+		"ErrLoginFailed":        {Err: passkeys.ErrLoginFailed, Is: Mapped},
+		"ErrSignCountRegressed": {Err: passkeys.ErrSignCountRegressed, Is: Mapped},
+
+		// The settings page's three: a passkey that is not the caller's, an
+		// authenticator already enrolled, and the last way in.
+		"ErrCredentialNotFound":   {Err: passkeys.ErrCredentialNotFound, Is: Mapped},
+		"ErrCredentialRegistered": {Err: passkeys.ErrCredentialRegistered, Is: Mapped},
+		"ErrLastCredential":       {Err: passkeys.ErrLastCredential, Is: Mapped},
+
+		// A named login on a service that offers only the discoverable one: a
+		// field the caller controls, so a request to correct. Not client-safe,
+		// since its words name the resolver the deployment lacks.
+		"ErrNoUsernameResolver": {Err: passkeys.ErrNoUsernameResolver, Is: Mapped},
+
+		// Nil arguments and empty ones, the enrollment gate NewService refuses
+		// to be built without, and a value too long for its column, all
+		// answered by the platform mappers.
+		"ErrNilDatabaseClient":      {Err: passkeys.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":            {Err: passkeys.ErrNilExecutor, Is: Platform},
+		"ErrNilCredential":          {Err: passkeys.ErrNilCredential, Is: Platform},
+		"ErrNilStore":               {Err: passkeys.ErrNilStore, Is: Platform},
+		"ErrNilResolver":            {Err: passkeys.ErrNilResolver, Is: Platform},
+		"ErrNilRelyingParty":        {Err: passkeys.ErrNilRelyingParty, Is: Platform},
+		"ErrNilUserSource":          {Err: passkeys.ErrNilUserSource, Is: Platform},
+		"ErrNoEnrollmentGate":       {Err: passkeys.ErrNoEnrollmentGate, Is: Platform},
+		"ErrEmptyCeremonyResponse":  {Err: passkeys.ErrEmptyCeremonyResponse, Is: Platform},
+		"ErrCredentialValueTooLong": {Err: passkeys.ErrCredentialValueTooLong, Is: Platform},
+
+		// A deployment's wiring or a row this package did not write: a
+		// resolver that answered for somebody else or for nobody, a user ID or
+		// handle a transport forgot to derive, a scope that disagrees with
+		// itself, a counter out of range. No request carries any of them, so a
+		// 500 is the honest reply. ErrUnknownUsername is folded into
+		// ErrLoginFailed before any caller sees it, and ErrEmptyUsername is
+		// unreachable through the transport, which reads an empty one as the
+		// discoverable login.
+		"ErrEmptyUserID":         {Err: passkeys.ErrEmptyUserID, Is: Unhandled},
+		"ErrEmptyCredentialID":   {Err: passkeys.ErrEmptyCredentialID, Is: Unhandled},
+		"ErrEmptyPublicKey":      {Err: passkeys.ErrEmptyPublicKey, Is: Unhandled},
+		"ErrEmptyHandle":         {Err: passkeys.ErrEmptyHandle, Is: Unhandled},
+		"ErrEmptyUsername":       {Err: passkeys.ErrEmptyUsername, Is: Unhandled},
+		"ErrHandleMismatch":      {Err: passkeys.ErrHandleMismatch, Is: Unhandled},
+		"ErrScopeMismatch":       {Err: passkeys.ErrScopeMismatch, Is: Unhandled},
+		"ErrSignCountOutOfRange": {Err: passkeys.ErrSignCountOutOfRange, Is: Unhandled},
+		"ErrUnknownUsername":     {Err: passkeys.ErrUnknownUsername, Is: Unhandled},
+	},
+
 	meteringPkg: {
 		// The ingest path, which is the only path here a client is on. All but
 		// one are what Usage.validate refuses a record for and the last is a
@@ -1227,7 +1281,7 @@ var Packages = []string{
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
 	webhooksPkg, billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
 	passwordResetPkg, meteringPkg, entitlementsPkg, shreddingPkg, mediaRegistryPkg,
-	grantsPkg, phoneCodesPkg, seriesPkg,
+	grantsPkg, phoneCodesPkg, seriesPkg, passkeysPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -1269,6 +1323,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return waitlists.HTTPMapper, waitlists.GRPCMapper
 	case passwordResetPkg:
 		return passwordreset.HTTPMapper, passwordreset.GRPCMapper
+	case passkeysPkg:
+		return passkeys.HTTPMapper, passkeys.GRPCMapper
 	case meteringPkg:
 		return metering.HTTPMapper, metering.GRPCMapper
 	case entitlementsPkg:
@@ -1305,6 +1361,7 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 var ClientSafePackages = []string{
 	linksPkg, identityPkg, signInPkg, oauth2ClientsPkg, commentsPkg,
 	billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg, passwordResetPkg,
+	passkeysPkg,
 }
 
 // ClientSafeSentinels is the list pkg declares safe for a gRPC status to quote
@@ -1332,6 +1389,8 @@ func ClientSafeSentinels(pkg string) []error {
 		return waitlists.ClientSafeSentinels
 	case passwordResetPkg:
 		return passwordreset.ClientSafeSentinels
+	case passkeysPkg:
+		return passkeys.ClientSafeSentinels
 	default:
 		panic("no client-safe sentinels for " + pkg)
 	}
@@ -1358,7 +1417,7 @@ func ClientSafeSentinels(pkg string) []error {
 // against those packages' source, so declaring a list is what fails this
 // roster rather than remembering to add a row to it.
 var ClientSafeReasonPackages = []string{
-	signInPkg, passwordResetPkg,
+	signInPkg, passwordResetPkg, passkeysPkg,
 }
 
 // ClientSafeReasons is the list pkg declares as the identifiers a client may
@@ -1370,6 +1429,8 @@ func ClientSafeReasons(pkg string) []grpcerrors.ClientReason {
 		return signin.ClientSafeReasons
 	case passwordResetPkg:
 		return passwordreset.ClientSafeReasons
+	case passkeysPkg:
+		return passkeys.ClientSafeReasons
 	default:
 		panic("no client-safe reasons for " + pkg)
 	}

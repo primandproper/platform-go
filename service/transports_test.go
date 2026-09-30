@@ -14,11 +14,14 @@ import (
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
@@ -56,8 +59,10 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
+	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
+	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
@@ -225,8 +230,8 @@ func TestRegisterTransports(T *testing.T) {
 		must.NoError(t, err)
 
 		// The gRPC lane then the HTTP one, alphabetical within each. identity,
-		// oauth2 clients, password reset and sign-in are absent because their
-		// services are: see the subtest below.
+		// oauth2 clients, passkeys, password reset and sign-in are absent
+		// because their services are: see the subtest below.
 		test.Eq(t, []string{
 			"audit gRPC",
 			"billing gRPC",
@@ -246,7 +251,7 @@ func TestRegisterTransports(T *testing.T) {
 		test.SliceLen(t, 8, mounted.registrations)
 	})
 
-	// The surfaces above are mounted off a store, which a mock satisfies. The four
+	// The surfaces above are mounted off a store, which a mock satisfies. The five
 	// mounted off a *Service are not, because a service is a concrete type — so
 	// none of them appears in that list. Password reset is the one whose service
 	// assembles out of doubles, so it is the one that can pin the property they
@@ -343,6 +348,66 @@ func TestRegisterTransports(T *testing.T) {
 
 		test.SliceContainsAll(t, []string{"password reset gRPC", "sign-in gRPC"}, mounted.names)
 		test.SliceLen(t, 2, mounted.registrations)
+	})
+
+	T.Run("the passkeys surface mounts from its config block beside sign-in's", func(t *testing.T) {
+		t.Parallel()
+
+		// The WebAuthn block supplies the relying party, SignIn the issuer a
+		// finished login mints through, and the application registers only the
+		// resolver and the gate no environment variable can name.
+		cfg := &Config{
+			Name:     "example",
+			Database: sqliteDatabase(t),
+			Identity: &identitycfg.Config{TablePrefix: storePrefix},
+			Tokens:   testTokens(),
+			SignIn: &signincfg.Config{
+				TOTPIssuer:    "Example",
+				RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+				Registration:  signincfg.RegistrationConfig{Disabled: true},
+			},
+			WebAuthn: &webauthnsessionscfg.Config{
+				Provider: webauthnsessionscfg.ProviderCache,
+				RelyingParty: webauthn.Config{
+					RPID:          "localhost",
+					RPDisplayName: "Example",
+					RPOrigins:     []string{"http://localhost:8080"},
+				},
+				Cache: cachecfg.Config{Provider: cachecfg.ProviderMemory},
+			},
+			Passkeys: &passkeyscfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+		do.ProvideValue[passkeys.UserResolver](i, func(context.Context, []byte) (passkeys.UserIdentity, error) {
+			return passkeys.UserIdentity{}, errors.New("nobody")
+		})
+		do.ProvideValue[passkeys.EnrollmentGate](i, passkeys.AdmitEveryEnrollment)
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant})
+
+		mounted, err := do.Invoke[*mountedTransports](i)
+		must.NoError(t, err)
+
+		test.SliceContainsAll(t, []string{"passkeys gRPC", "sign-in gRPC"}, mounted.names)
+		test.SliceLen(t, 2, mounted.registrations)
+	})
+
+	T.Run("a passkey service with no sign-in service beside it fails rather than staying absent", func(t *testing.T) {
+		t.Parallel()
+
+		i := newTransportInjector(t)
+
+		do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
+		do.ProvideValue(i, &passkeys.Service{})
+
+		RegisterTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
+
+		_, err := do.Invoke[*mountedTransports](i)
+		test.ErrorIs(t, err, ErrPasskeysNeedSignIn)
 	})
 
 	T.Run("a sign-in block with no authenticator fails naming it rather than defaulting", func(t *testing.T) {

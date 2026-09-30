@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing"
@@ -109,6 +110,16 @@ type Seams struct {
 	// answer here — it is the default resolver's — and must not read as
 	// "unknown".
 	VisitorScope *tenancy.Scope
+
+	// WebAuthn is the relying party the deployment's passkeys surface verifies
+	// ceremonies against, which is what a virtual authenticator has to answer
+	// as. Nil skips the passkeys suite, with the reason printed.
+	//
+	// A fact about the deployment rather than an action, and one no client can
+	// learn whole: the relying party's ID is in the options a registration
+	// hands out, but the origin a browser signs is not, and it has to match
+	// exactly — scheme and port included.
+	WebAuthn *WebAuthnDeployment
 
 	// Roles is the deployment's role vocabulary, for the assertions that grant
 	// a role. The zero value is this package's own literals, which a deployment
@@ -359,6 +370,17 @@ type Subject struct {
 	Scope tenancy.Scope
 }
 
+// WebAuthnDeployment is the relying party a deployment's passkey ceremonies
+// are verified against.
+type WebAuthnDeployment struct {
+	// RPID is the relying party's ID — a registrable domain, "example.com".
+	RPID string
+
+	// Origin is the origin a browser reports signing from, exactly as the
+	// relying party accepts it: "https://example.com", not the RP ID.
+	Origin string
+}
+
 // ScopeFor is the tenant this caller is in on the named surface: its entry in
 // Scopes where there is one, and Scope where there is not.
 func (s *Subject) ScopeFor(surface string) tenancy.Scope {
@@ -400,8 +422,8 @@ func (s *Subject) Context(ctx context.Context) context.Context {
 	return s.Decorate(ctx)
 }
 
-// Surfaces are the twelve gRPC surfaces this module mounts, as the generated
-// client interface each one is reached through.
+// Surfaces are the gRPC surfaces this module mounts, as the generated client
+// interface each one is reached through.
 //
 // The generated interface rather than this module's <pkg>/grpc/client wrapper,
 // because the wrapper embeds the interface and a subject that dialed its own
@@ -417,6 +439,7 @@ type Surfaces struct {
 	IssueReports  issuereportspb.IssueReportsServiceClient
 	Notifications notificationspb.NotificationsServiceClient
 	OAuth2Clients oauth2clientspb.OAuth2ClientsServiceClient
+	Passkeys      passkeyspb.PasskeysServiceClient
 	PasswordReset passwordresetpb.PasswordResetServiceClient
 	Settings      settingspb.SettingsServiceClient
 	SignIn        signinpb.SignInServiceClient

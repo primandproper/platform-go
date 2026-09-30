@@ -8,6 +8,7 @@ import (
 	grantscfg "github.com/primandproper/platform-go/v14/authentication/grants/config"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	phonecodescfg "github.com/primandproper/platform-go/v14/authentication/phonecodes/config"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
@@ -127,6 +128,7 @@ func zeroValueCases() []zeroValueCase {
 		// Decisive for the config and not for the service: the mailer and the
 		// authenticator are the application's, and RegisterService reports a
 		// missing one when it is invoked rather than here.
+		{name: "authentication/passkeys", cfg: &passkeyscfg.Config{}, why: "the table prefix is the only field, and the resolver and enrollment gate the service needs are the application's, resolved from the injector rather than named in environment"},
 		{name: "authentication/passwordreset", cfg: &passwordresetcfg.Config{}, why: "the prefix, the token lifetime, the request floor and the sweep interval all default"},
 		{name: "authentication/phonecodes", cfg: &phonecodescfg.Config{}, why: "the prefix, the code length, the lifetime, the attempt limit, the retention and the sweep interval all default"},
 		// The zero config is decisive for the same reason passwordreset's is:

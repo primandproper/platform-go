@@ -155,6 +155,6 @@ or every suite the subject mounted:
 
 conformance/all is a package of its own so that linking every suite is a choice.
 A consumer wiring only settings imports conformance/settings and links one
-surface's protobuf bindings, rather than twelve.
+surface's protobuf bindings, rather than every one.
 */
 package conformance

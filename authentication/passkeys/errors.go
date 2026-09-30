@@ -47,10 +47,8 @@ var (
 	// bounds beside it, and the wrapped message for which value it was.
 	//
 	// It wraps errors.ErrUnrecognizedInputValue, so the platform mapper answers
-	// it as a bad request. This package ships no mappers of its own, which is
-	// the same arrangement settings and billing reached for their own bounds by
-	// a different route: the platform mapper is asked first, so a case here
-	// would be unreachable even if there were one.
+	// it as a bad request, and this package's own mappers leave it alone: the
+	// platform mapper is asked first, so a case there would be unreachable.
 	//
 	// The refusal is here rather than left to the database because the three
 	// dialects disagree about the value. MySQL sizes these columns and refuses
