@@ -18,7 +18,10 @@ policy, and this package names the grants that policy hands out rather than
 deciding who holds them. An operator's end is reported to
 signin.Hooks.AfterRevokeSignIns as signin.RevocationOperator, with the caller
 as the actor, so an audit trail tells it apart from the person's own
-sign-out.
+sign-out. Its directory is the operator's own, off the principal rather than
+the [ScopeResolver] below: the user it acts on is named by the request, so a
+connection resolving to some other directory must not make that directory's
+users the operator's to act on.
 There is no orchestration here — anything that had to happen in a transaction
 happened one layer down, where the transaction is.
 

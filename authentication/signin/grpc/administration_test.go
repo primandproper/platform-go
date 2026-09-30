@@ -270,3 +270,61 @@ func TestServer_EndAllSignInsForUser(T *testing.T) {
 		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 	})
 }
+
+func TestServer_administration_actsInTheOperatorsDirectory(T *testing.T) {
+	T.Parallel()
+
+	// The connection resolves to testScope, where Jane is; the operator's own
+	// directory is another. Every administrative RPC names its subject in the
+	// request, so a server reading the resolver would hand this operator
+	// Jane's logins. Read in the operator's directory, she is nobody.
+	elsewhere := tenancy.Of("dir_2")
+
+	T.Run("list", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newAdministrationHarness(t)
+
+		h.signInAsJane(t)
+
+		listed, err := h.admin.ListSignInsForUser(asUserOf(h.rootCtx, operatorID, elsewhere),
+			&signinpb.ListSignInsForUserRequest{UserId: h.user.ID})
+		must.NoError(t, err)
+		test.SliceEmpty(t, listed.GetSignIns())
+
+		// The positive control: an operator in Jane's directory sees her.
+		listed, err = h.admin.ListSignInsForUser(asUserOf(h.rootCtx, operatorID, testScope),
+			&signinpb.ListSignInsForUserRequest{UserId: h.user.ID})
+		must.NoError(t, err)
+		test.SliceLen(t, 1, listed.GetSignIns())
+	})
+
+	ends := map[string]func(h *harness, ctx context.Context, familyID string) error{
+		"end one": func(h *harness, ctx context.Context, familyID string) error {
+			_, err := h.admin.EndSignInForUser(ctx, &signinpb.EndSignInForUserRequest{UserId: h.user.ID, FamilyId: familyID})
+			return err
+		},
+		"end all": func(h *harness, ctx context.Context, _ string) error {
+			_, err := h.admin.EndAllSignInsForUser(ctx, &signinpb.EndAllSignInsForUserRequest{UserId: h.user.ID})
+			return err
+		},
+	}
+
+	for name, end := range ends {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h, _ := newAdministrationHarness(t)
+
+			family := h.signInAsJane(t).GetFamilyId()
+
+			// Whatever it answers, it ends nothing of Jane's.
+			_ = end(h, asUserOf(h.rootCtx, operatorID, elsewhere), family)
+			test.Eq(t, []string{family}, h.liveFamilies(t))
+
+			// The positive control: an operator in Jane's directory ends it.
+			must.NoError(t, end(h, asUserOf(h.rootCtx, operatorID, testScope), family))
+			test.SliceEmpty(t, h.liveFamilies(t))
+		})
+	}
+}

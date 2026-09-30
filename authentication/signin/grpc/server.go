@@ -246,7 +246,8 @@ func (s *Server) anonymous(ctx context.Context, method string) (
 // caller is anonymous plus the principal the authenticated RPCs need.
 //
 // The scope comes off the resolver rather than off the principal, so one wiring
-// decision governs the whole service — see [ScopeResolver].
+// decision governs the whole service — see [ScopeResolver]. The administrative
+// RPCs are the exception, and administrator says why.
 func (s *Server) caller(ctx context.Context, method string) (
 	context.Context, *request, func(err error), error,
 ) {

@@ -76,7 +76,7 @@ func All() []Service {
 			Mounted: func(s conformance.Surfaces) bool { return s.Settings != nil }},
 		{Name: "signin", Service: "SignInService", Sample: &signinpb.LoginForTokenRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.SignIn != nil }},
-		{Name: "signinadministration", Service: "SignInAdministrationService", Sample: &signinpb.LoginForTokenRequest{},
+		{Name: "signinadministration", Service: "SignInAdministrationService", Sample: &signinpb.ListSignInsForUserRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.SignInAdministration != nil }},
 		{Name: "waitlists", Service: "WaitlistsService", Sample: &waitlistspb.GetListRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Waitlists != nil }},

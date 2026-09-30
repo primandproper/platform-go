@@ -127,6 +127,11 @@ const mdUserID = "test-user-id"
 // that need the server to know which login a request came through.
 const mdFamilyID = "test-family-id"
 
+// mdScope is the metadata that files the suite's caller in a directory other
+// than testScope, for the tests that need a principal and a resolver to
+// disagree.
+const mdScope = "test-scope"
+
 // asUser stamps a caller onto an outgoing request. A context built without it
 // carries nobody, which is what makes the anonymous tests exercise the real
 // path.
@@ -138,6 +143,12 @@ func asUser(ctx context.Context, userID string) context.Context {
 // access token carries a "sid" claim is.
 func asUserIn(ctx context.Context, userID, familyID string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, mdUserID, userID, mdFamilyID, familyID)
+}
+
+// asUserOf is asUser for a caller whose own directory is scope, whatever the
+// connection resolves to.
+func asUserOf(ctx context.Context, userID string, scope tenancy.Scope) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, mdUserID, userID, mdScope, scope.Owner())
 }
 
 // authenticate is the consumer's authentication interceptor.
@@ -158,6 +169,9 @@ func authenticate(
 	}
 
 	principal := &testPrincipal{userID: userIDs[0], scope: testScope}
+	if scopes := md.Get(mdScope); len(scopes) > 0 {
+		principal.scope = tenancy.Of(scopes[0])
+	}
 
 	if familyIDs := md.Get(mdFamilyID); len(familyIDs) > 0 {
 		return handler(context.WithValue(ctx, principalKey{}, &sidPrincipal{testPrincipal: principal, familyID: familyIDs[0]}), req)

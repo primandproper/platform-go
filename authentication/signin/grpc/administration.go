@@ -25,7 +25,7 @@ func (s *Server) ListSignInsForUser(
 	ctx context.Context,
 	request *signinpb.ListSignInsForUserRequest,
 ) (_ *signinpb.ListSignInsForUserResponse, err error) {
-	ctx, req, done, err := s.caller(ctx, signinpb.SignInAdministrationService_ListSignInsForUser_FullMethodName)
+	ctx, req, done, err := s.administrator(ctx, signinpb.SignInAdministrationService_ListSignInsForUser_FullMethodName)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (s *Server) EndSignInForUser(
 	ctx context.Context,
 	request *signinpb.EndSignInForUserRequest,
 ) (_ *signinpb.EndSignInForUserResponse, err error) {
-	ctx, req, done, err := s.caller(ctx, signinpb.SignInAdministrationService_EndSignInForUser_FullMethodName)
+	ctx, req, done, err := s.administrator(ctx, signinpb.SignInAdministrationService_EndSignInForUser_FullMethodName)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (s *Server) EndAllSignInsForUser(
 	ctx context.Context,
 	request *signinpb.EndAllSignInsForUserRequest,
 ) (_ *signinpb.EndAllSignInsForUserResponse, err error) {
-	ctx, req, done, err := s.caller(ctx, signinpb.SignInAdministrationService_EndAllSignInsForUser_FullMethodName)
+	ctx, req, done, err := s.administrator(ctx, signinpb.SignInAdministrationService_EndAllSignInsForUser_FullMethodName)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +99,31 @@ func (s *Server) EndAllSignInsForUser(
 	}
 
 	return &signinpb.EndAllSignInsForUserResponse{}, nil
+}
+
+// administrator is caller for the administrative RPCs, with the scope taken
+// off the operator rather than off the resolver.
+//
+// caller takes the scope off the resolver, which is safe where the subject is
+// the caller: a caller looked up in a directory they are not in is found
+// nowhere. Here the subject is named by the request, so the resolver's answer
+// would be the directory the operator acts on — and an operator holding the
+// permission in one directory, on a connection that resolves to another, would
+// be listing and ending the sign-ins of that other directory's users. The
+// operator's own directory is the one they administer, which is how
+// identity/grpc's operator writes read it too.
+func (s *Server) administrator(ctx context.Context, method string) (
+	context.Context, *request, func(err error), error,
+) {
+	ctx, req, done, err := s.caller(ctx, method)
+	if err != nil {
+		return ctx, nil, done, err
+	}
+
+	req.scope = req.principal.Scope()
+	req.op.Set(scopeKey, req.scope.String())
+
+	return ctx, req, done, nil
 }
 
 // operator records who an administrative RPC is about and who is asking, and
