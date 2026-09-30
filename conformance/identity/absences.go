@@ -177,12 +177,15 @@ func absences(t *testing.T, s *conformance.Session) {
 			ctx := caller.Context(t.Context())
 
 			// The positive control: the same caller naming a row that exists
-			// is not told it is absent. Not "answered": an owner's archival
-			// may be refused as a precondition, and that is a refusal of a
-			// real target.
+			// is told neither that it is absent nor that it is not theirs —
+			// the two refusals the assertion below accepts, so a caller
+			// refused either way here would pass it without the call ever
+			// looking. Not "answered": an owner's archival may be refused as
+			// a precondition, and that is a refusal of a real target.
 			err := target.do(ctx, caller, existing)
-			test.NotEqOp(t, codes.NotFound, status.Code(err),
-				test.Sprint("the same call on a real target was refused as absent; the refusal below proves nothing"))
+			code := status.Code(err)
+			test.True(t, code != codes.NotFound && code != codes.PermissionDenied,
+				test.Sprintf("the same call on a real target was refused as %s; the refusal below proves nothing", code))
 
 			target.absent(t, target.do(ctx, caller, identifiers.New()))
 		})
