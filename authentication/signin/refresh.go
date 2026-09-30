@@ -856,6 +856,12 @@ type RevocationOption func(*revocationRequest)
 // resolve to.
 type revocationRequest struct {
 	actorID string
+
+	// holderID is the person HeldBy confined the revocation to, and heldBy
+	// whether it was asked for at all — so that HeldBy("") is a mistake the
+	// door refuses rather than a confinement that confines nothing.
+	holderID string
+	heldBy   bool
 }
 
 // RevokedBy names who asked for an operator's revocation, and is what
@@ -868,6 +874,28 @@ type revocationRequest struct {
 // Without it the revocation is reported with no actor.
 func RevokedBy(actorID string) RevocationOption {
 	return func(r *revocationRequest) { r.actorID = actorID }
+}
+
+// HeldBy confines [Service.RevokeRefreshTokenFamily] to a login userID holds.
+//
+// A family identifier alone names a login and nobody in particular, so an
+// operator who ends one by identifier ends whoever's it is. An operator surface
+// that was asked to end one of a named person's logins passes the person too,
+// and then a family that is somebody else's — mistyped, pasted from the wrong
+// row — ends nothing and is zero, as a family that never existed is. That is
+// [Service.EndSignIn]'s confinement, kept on the operator's door so the
+// revocation is still reported as [RevocationOperator] with the operator as
+// its actor rather than as the person's own act.
+//
+// An empty userID is [ErrEmptyUserID]: a confinement to nobody is a caller who
+// meant to name somebody and did not, and reading it as no confinement would
+// fail open. [Service.RevokeRefreshTokensForSubject] names its person already
+// and reads nothing from it.
+func HeldBy(userID string) RevocationOption {
+	return func(r *revocationRequest) {
+		r.holderID = userID
+		r.heldBy = true
+	}
 }
 
 // RevokeRefreshTokenFamily ends one login: every refresh token that sign-in ever
@@ -886,7 +914,8 @@ func RevokedBy(actorID string) RevocationOption {
 // trade to make.
 //
 // A family nobody holds a live token for — never issued, already ended, or
-// lapsed — is zero and no error, and runs no hook.
+// lapsed — is zero and no error, and runs no hook. So is one [HeldBy] names
+// somebody else as holding.
 func (s *Service) RevokeRefreshTokenFamily(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -913,8 +942,12 @@ func (s *Service) RevokeRefreshTokenFamily(
 
 	request := resolveRevocation(opts)
 
-	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{FamilyID: familyID}, RevocationOperator,
-		request.actorID); err != nil {
+	if request.heldBy && request.holderID == "" {
+		return 0, op.Error(ErrEmptyUserID, "reading the subject a refresh token family is confined to")
+	}
+
+	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{SubjectID: request.holderID, FamilyID: familyID},
+		RevocationOperator, request.actorID); err != nil {
 		return 0, op.Error(err, "revoking a refresh token family")
 	}
 

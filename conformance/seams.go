@@ -469,7 +469,14 @@ type Surfaces struct {
 	Settings      settingspb.SettingsServiceClient
 	SignIn        signinpb.SignInServiceClient
 	Waitlists     waitlistspb.WaitlistsServiceClient
-	Webhooks      webhookspb.WebhooksServiceClient
+
+	// SignInAdministration is the operator half of sign-in, which
+	// authentication/signin/grpc's Server registers beside SignIn. A subject
+	// that mounts it sets it, and one that mounts sign-in without it leaves it
+	// nil and the assertions that need an operator's view of somebody's
+	// logins skip.
+	SignInAdministration signinpb.SignInAdministrationServiceClient
+	Webhooks             webhookspb.WebhooksServiceClient
 }
 
 // Actions are the states no client can bring about on its own.
