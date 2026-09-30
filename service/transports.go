@@ -294,7 +294,7 @@ type SurfaceOptions struct {
 //
 // HTTPEnforcer is the one field added since, and it is not one surface's seam:
 // it is the HTTP half of the authorization every surface answers to, shared by
-// the three HTTP surfaces the way Grants is shared by nine gRPC ones, so a
+// the three HTTP surfaces the way Grants is shared by eight gRPC ones, so a
 // consumer names it once rather than three times in Options.
 type Transports struct {
 	// Extractor is how every mounted surface tells who is calling.
@@ -350,18 +350,20 @@ type Transports struct {
 	// make this call may make it against.
 	Authorizers Authorizers
 
-	// Grants is what the caller may do, for the nine surfaces that ask it
-	// inside a handler rather than at the method: audit, billing, comments,
-	// identity, issuereports, notifications, settings, waitlists and webhooks.
+	// Grants is what the caller may do, for the eight surfaces that ask it
+	// inside a handler rather than at the method: billing, comments, identity,
+	// issuereports, notifications, settings, waitlists and webhooks.
 	//
 	// Each of them decides something off it that no method grant can reach,
 	// because it depends on the request rather than on the RPC — whether a
 	// read that sent include_archived receives the archived rows; on
 	// settings, whether a write names a setting the catalog reserved to
-	// administrators; and on identity and audit, whether a caller the row
-	// check refused holds the operator permission that lets them past it.
-	// That last is armed only where an audit.Recorder resolves as well, since
-	// every operator admission is recorded and one nobody can see is none. It is the same authorization.GrantsExtractor a consumer
+	// administrators; and on identity, whether a caller the row check
+	// refused holds the operator permission that lets them past it. That
+	// last is armed only where an audit.Recorder resolves as well, since
+	// every operator admission is recorded and one nobody can see is none.
+	// Audit's operator read is not among them: it is a service of its own,
+	// AuditAdministrationService, gated at the method like any other. It is the same authorization.GrantsExtractor a consumer
 	// hands primitives-go's authorization/grpc enforcer, so the interceptor
 	// that decides whether a method may be called and the handler that decides
 	// which rows the answer may hold read one authority and cannot disagree.
@@ -1001,20 +1003,18 @@ func (m *mount) audit() {
 		opts = append(opts, auditgrpc.WithScopeResolver(deriveScope(extract, tenantOf)))
 	}
 
-	// The operator's read past the connection's chains: the grants that say
-	// who holds the permission, and the recorder every such read is filed
-	// through, which is what arms it. Either absent, nobody's read widens.
-	if m.t.Grants != nil {
-		opts = append(opts, auditgrpc.WithGrantsExtractor(m.t.Grants))
+	// AuditAdministrationService, the operator's read of every tenant's log,
+	// is armed by the recorder each such read is filed through. Who may call
+	// it is the authorization interceptor's question, asked of the method
+	// against audit/grpc's Permissions; without a recorder the server answers
+	// those methods Unimplemented.
+	recorder, found := need[audit.Recorder](m)
+	if m.err != nil {
+		return
+	}
 
-		recorder, found := need[audit.Recorder](m)
-		if m.err != nil {
-			return
-		}
-
-		if found && extract != nil {
-			opts = append(opts, auditgrpc.WithOperatorRecorder(recorder, extract))
-		}
+	if found && extract != nil {
+		opts = append(opts, auditgrpc.WithOperatorRecorder(recorder, extract))
 	}
 
 	srv, err := auditgrpc.NewServer(reader, client, append(opts, m.t.Options.Audit...)...)

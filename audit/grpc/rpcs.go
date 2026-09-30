@@ -21,7 +21,7 @@ import (
 //
 // The scope goes into the read rather than into a comparison after it. The
 // reader's Get takes a tenancy.Scope, and the operator's read across every
-// tenant is GetAcrossScopes, which this surface never calls — so an entry
+// tenant is GetAcrossScopes, which AuditService never calls — so an entry
 // belonging to somebody else is not read at all and is answered exactly
 // as an id that does not exist is — audit.ErrEntryNotFound, mapped to
 // codes.NotFound. Telling the two apart would make this an oracle for which
@@ -86,7 +86,8 @@ func (s *Server) GetEntry(
 // The scope is the reader's argument, off the connection, because the message
 // the query was converted from has no scope field to carry one. There is no
 // value of it that reads every tenant's events: that is
-// audit.Reader.ListAcrossScopes, which this surface never calls.
+// audit.Reader.ListAcrossScopes, which AuditService never calls — it is
+// AuditAdministrationService's, behind a permission of its own.
 func (s *Server) ListEntries(
 	ctx context.Context,
 	request *auditpb.ListEntriesRequest,

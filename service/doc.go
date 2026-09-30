@@ -200,12 +200,12 @@ have a default their own package chose, and leaving the field nil leaves that ch
 alone.
 
 The grants extractor is the optional fourth, and it answers what the caller may
-do for the nine surfaces that ask inside a handler — audit, billing, comments,
+do for the eight surfaces that ask inside a handler — billing, comments,
 identity, issuereports, notifications, settings, waitlists and webhooks —
 whether a read that sent include_archived receives the archived rows, whether a
 settings write may name a setting the catalog reserved to administrators, and
-whether a caller identity's row check or audit's chains refused holds the
-operator permission that lets them past it. None is a question a method grant
+whether a caller identity's row check refused holds the operator permission
+that lets them past it. None is a question a method grant
 can answer, because each turns on the request. Left nil, each surface keeps its
 own fail-closed answer: include_archived is cleared, every reserved write is
 refused, for administrators too, and nobody is an operator. That is a server
@@ -217,7 +217,10 @@ The operator permissions are armed only where an audit.Recorder resolves too —
 Config.Audit registers one — because every operator admission is recorded and
 an admission nobody can see is not one this module makes. Nothing grants those
 permissions by default; see identity/grpc's PermissionOperatorRead and
-PermissionOperatorAct and audit/grpc's PermissionOperatorRead.
+PermissionOperatorAct. Audit's operator read asks nothing of the grants
+extractor: it is AuditAdministrationService, a service of its own gated at the
+method by audit/grpc's PermissionReadAnyEntries, and the same recorder is what
+arms it — without one its methods answer Unimplemented.
 
 The HTTP enforcer is the optional fifth, and the HTTP counterpart of that interceptor:
 an authorization/http Enforcer the consumer builds over the same grants, which

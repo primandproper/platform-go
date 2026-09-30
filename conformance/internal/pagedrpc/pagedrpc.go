@@ -281,6 +281,12 @@ func builders() map[string]builder {
 			return &auditpb.ListEntriesRequest{Query: &auditpb.EntryQuery{}}, ""
 		},
 
+		// The operator's page, with no owner: every tenant's log, which is the
+		// read's own default and answerable wherever the read is served.
+		auditpb.AuditAdministrationService_ListAnyEntries_FullMethodName: func(*conformance.Subject, *conformance.Seams) (proto.Message, string) {
+			return &auditpb.ListAnyEntriesRequest{Query: &auditpb.EntryQuery{}}, ""
+		},
+
 		billingpb.BillingService_ListSubscriptionsForAccount_FullMethodName: func(s *conformance.Subject, _ *conformance.Seams) (proto.Message, string) {
 			if s.AccountID == "" {
 				return nil, needsAccount

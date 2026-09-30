@@ -43,6 +43,20 @@
 // client something it supplied, and its absence is what makes a converter
 // unable to read one back out of a request.
 //
+// AuditAdministrationService is the one place a request names a tenant, and it
+// is a service of its own for exactly the reason above. There the capability
+// is the method: a caller reaches GetAnyEntry or ListAnyEntries only by holding
+// the permission audit/grpc's Permissions puts on them, which nothing grants
+// by default, and every call is recorded in the caller's own chain before it is
+// answered. A field on AuditService's messages would hand the same reach to
+// everybody who may read their own log; a method of its own hands it to the
+// operators a deployment named, and a policy that leaves them out is refused
+// by the enforcer's fail-closed rule rather than widened. Its messages still
+// reserve "scope" -- the tenant it names is owner_id, which is what a
+// tenancy.Scope stores -- and its entries carry the owner they belong to,
+// because an answer spanning tenants is the one answer that cannot leave it
+// implied.
+//
 // # There is no recording RPC
 //
 // audit.Recorder is absent from this service on purpose, and the reason is on
@@ -288,6 +302,179 @@ var AuditService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VerifyChain",
 			Handler:    _AuditService_VerifyChain_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "primandproper/platform/audit/v1/audit.proto",
+}
+
+const (
+	AuditAdministrationService_GetAnyEntry_FullMethodName    = "/primandproper.platform.audit.v1.AuditAdministrationService/GetAnyEntry"
+	AuditAdministrationService_ListAnyEntries_FullMethodName = "/primandproper.platform.audit.v1.AuditAdministrationService/ListAnyEntries"
+)
+
+// AuditAdministrationServiceClient is the client API for AuditAdministrationService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// AuditAdministrationService is an operator's read of the audit log: an entry
+// in any tenant's chain, and a page of every tenant's, or of one they name.
+//
+// It is a service of its own rather than a widening of AuditService, so that
+// reading one's own log never becomes reading everybody's. AuditService answers
+// every caller from the chain the connection resolved, whoever they are; this
+// answers only the callers a deployment's policy grants its methods to, and
+// records each call in the caller's own chain before it answers -- a server with
+// nowhere to record one answers every call here Unimplemented.
+type AuditAdministrationServiceClient interface {
+	// GetAnyEntry reads one entry by id from whichever tenant's chain holds it.
+	//
+	// An id no chain holds is NotFound and is not recorded: the read found
+	// nothing to disclose.
+	GetAnyEntry(ctx context.Context, in *GetAnyEntryRequest, opts ...grpc.CallOption) (*GetAnyEntryResponse, error)
+	// ListAnyEntries pages every tenant's entries, or one tenant's where
+	// owner_id names it, narrowed by the query.
+	ListAnyEntries(ctx context.Context, in *ListAnyEntriesRequest, opts ...grpc.CallOption) (*ListAnyEntriesResponse, error)
+}
+
+type auditAdministrationServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAuditAdministrationServiceClient(cc grpc.ClientConnInterface) AuditAdministrationServiceClient {
+	return &auditAdministrationServiceClient{cc}
+}
+
+func (c *auditAdministrationServiceClient) GetAnyEntry(ctx context.Context, in *GetAnyEntryRequest, opts ...grpc.CallOption) (*GetAnyEntryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAnyEntryResponse)
+	err := c.cc.Invoke(ctx, AuditAdministrationService_GetAnyEntry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *auditAdministrationServiceClient) ListAnyEntries(ctx context.Context, in *ListAnyEntriesRequest, opts ...grpc.CallOption) (*ListAnyEntriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAnyEntriesResponse)
+	err := c.cc.Invoke(ctx, AuditAdministrationService_ListAnyEntries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AuditAdministrationServiceServer is the server API for AuditAdministrationService service.
+// All implementations must embed UnimplementedAuditAdministrationServiceServer
+// for forward compatibility.
+//
+// AuditAdministrationService is an operator's read of the audit log: an entry
+// in any tenant's chain, and a page of every tenant's, or of one they name.
+//
+// It is a service of its own rather than a widening of AuditService, so that
+// reading one's own log never becomes reading everybody's. AuditService answers
+// every caller from the chain the connection resolved, whoever they are; this
+// answers only the callers a deployment's policy grants its methods to, and
+// records each call in the caller's own chain before it answers -- a server with
+// nowhere to record one answers every call here Unimplemented.
+type AuditAdministrationServiceServer interface {
+	// GetAnyEntry reads one entry by id from whichever tenant's chain holds it.
+	//
+	// An id no chain holds is NotFound and is not recorded: the read found
+	// nothing to disclose.
+	GetAnyEntry(context.Context, *GetAnyEntryRequest) (*GetAnyEntryResponse, error)
+	// ListAnyEntries pages every tenant's entries, or one tenant's where
+	// owner_id names it, narrowed by the query.
+	ListAnyEntries(context.Context, *ListAnyEntriesRequest) (*ListAnyEntriesResponse, error)
+	mustEmbedUnimplementedAuditAdministrationServiceServer()
+}
+
+// UnimplementedAuditAdministrationServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAuditAdministrationServiceServer struct{}
+
+func (UnimplementedAuditAdministrationServiceServer) GetAnyEntry(context.Context, *GetAnyEntryRequest) (*GetAnyEntryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAnyEntry not implemented")
+}
+func (UnimplementedAuditAdministrationServiceServer) ListAnyEntries(context.Context, *ListAnyEntriesRequest) (*ListAnyEntriesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAnyEntries not implemented")
+}
+func (UnimplementedAuditAdministrationServiceServer) mustEmbedUnimplementedAuditAdministrationServiceServer() {
+}
+func (UnimplementedAuditAdministrationServiceServer) testEmbeddedByValue() {}
+
+// UnsafeAuditAdministrationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AuditAdministrationServiceServer will
+// result in compilation errors.
+type UnsafeAuditAdministrationServiceServer interface {
+	mustEmbedUnimplementedAuditAdministrationServiceServer()
+}
+
+func RegisterAuditAdministrationServiceServer(s grpc.ServiceRegistrar, srv AuditAdministrationServiceServer) {
+	// If the following call pancis, it indicates UnimplementedAuditAdministrationServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AuditAdministrationService_ServiceDesc, srv)
+}
+
+func _AuditAdministrationService_GetAnyEntry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAnyEntryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuditAdministrationServiceServer).GetAnyEntry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuditAdministrationService_GetAnyEntry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuditAdministrationServiceServer).GetAnyEntry(ctx, req.(*GetAnyEntryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuditAdministrationService_ListAnyEntries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAnyEntriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuditAdministrationServiceServer).ListAnyEntries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuditAdministrationService_ListAnyEntries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuditAdministrationServiceServer).ListAnyEntries(ctx, req.(*ListAnyEntriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AuditAdministrationService_ServiceDesc is the grpc.ServiceDesc for AuditAdministrationService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AuditAdministrationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "primandproper.platform.audit.v1.AuditAdministrationService",
+	HandlerType: (*AuditAdministrationServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetAnyEntry",
+			Handler:    _AuditAdministrationService_GetAnyEntry_Handler,
+		},
+		{
+			MethodName: "ListAnyEntries",
+			Handler:    _AuditAdministrationService_ListAnyEntries_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

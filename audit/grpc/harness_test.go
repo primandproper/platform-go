@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
 	auditclient "github.com/primandproper/platform-go/v14/audit/grpc/client"
 	"github.com/primandproper/platform-go/v14/audit/migrations"
@@ -125,6 +126,7 @@ type harness struct {
 	db     database.Client
 	reader *audit.SQLReader
 	client *auditclient.Client
+	admin  auditpb.AuditAdministrationServiceClient
 
 	// rootCtx carries no scope. Every request context is built from it rather
 	// than from the last one, because metadata appends: a context derived from
@@ -201,6 +203,7 @@ func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
 		db:      db,
 		reader:  reader,
 		client:  auditclient.Wrap(conn),
+		admin:   auditpb.NewAuditAdministrationServiceClient(conn),
 		rootCtx: t.Context(),
 		mine:    entryFor(ours, "recipe_1"),
 		yours:   entryFor(theirs, "recipe_2"),

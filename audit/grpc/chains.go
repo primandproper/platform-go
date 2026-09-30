@@ -58,9 +58,9 @@ import (
 // the whole deployment, which is a policy decision no resolver signature should
 // be able to make by accident.
 //
-// A deployment with an operator role builds that read over audit.Reader in
-// their own process, where the scope is an argument and leaving it nil is a
-// sentence somebody wrote on purpose.
+// A deployment with an operator role grants that read as a method rather than
+// a resolver's answer: AuditAdministrationService, behind
+// [PermissionReadAnyEntries]. See administration.go.
 type ChainsResolver func(ctx context.Context) ([]tenancy.Scope, error)
 
 // chainsFor answers the scopes a read should span, which is the resolver's

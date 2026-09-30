@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/audit"
@@ -65,10 +66,11 @@ func holdsEverything(context.Context) (authorization.Grants, bool) {
 	return authorization.AllowAll(), true
 }
 
-// TestRegisterTransports_grantsReachTheOperatorBypass is the assertion that
-// Transports.Grants reaches identity's and audit's operator bypass, and that the
-// audit.Recorder the service resolved is what arms it.
-func TestRegisterTransports_grantsReachTheOperatorBypass(T *testing.T) {
+// TestRegisterTransports_operatorReads is the assertion that Transports.Grants
+// reaches identity's operator bypass, that audit's administration service is
+// mounted beside its log, and that the audit.Recorder the service resolved is
+// what arms both.
+func TestRegisterTransports_operatorReads(T *testing.T) {
 	T.Parallel()
 
 	caller := testPrincipal{userID: "operator_1", scope: tenancy.Global()}
@@ -149,19 +151,14 @@ func TestRegisterTransports_grantsReachTheOperatorBypass(T *testing.T) {
 		test.SliceEmpty(t, log.recorded())
 	})
 
-	// auditOver mounts audit over a reader that reports the scope each page
-	// was asked for.
-	auditOver := func(t *testing.T, log audit.Recorder, asked *[]*tenancy.Scope) auditpb.AuditServiceClient {
+	// auditOver mounts audit over a reader that counts the reads across every
+	// tenant, and returns the administration client.
+	auditOver := func(t *testing.T, log audit.Recorder, across *atomic.Int32) auditpb.AuditAdministrationServiceClient {
 		t.Helper()
 
-		var mu sync.Mutex
-
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				mu.Lock()
-				defer mu.Unlock()
-
-				*asked = append(*asked, query.Scope)
+			ListAcrossScopesFunc: func(context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				across.Add(1)
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},
@@ -175,47 +172,44 @@ func TestRegisterTransports_grantsReachTheOperatorBypass(T *testing.T) {
 			do.ProvideValue(i, log)
 		}
 
+		// No Grants: the administration service is gated at the method, and
+		// asks the grants extractor nothing.
 		RegisterTransports(i, &Transports{
 			Extractor:   withPrincipal,
 			TenantOf:    DirectoryTenant,
 			Authorizers: allAuthorizers(),
-			Grants:      holdsEverything,
 		})
 
-		return auditpb.NewAuditServiceClient(serveMounted(t, i, "audit gRPC", caller))
+		return auditpb.NewAuditAdministrationServiceClient(serveMounted(t, i, "audit gRPC", caller))
 	}
 
-	T.Run("audit widens a holder's page to every chain, and records it", func(t *testing.T) {
+	T.Run("audit's administration service is armed by the recorder, and records each read", func(t *testing.T) {
 		t.Parallel()
 
-		var asked []*tenancy.Scope
+		var across atomic.Int32
 
 		log := &operatorLog{}
-		client := auditOver(t, log, &asked)
+		client := auditOver(t, log, &across)
 
-		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
+		_, err := client.ListAnyEntries(t.Context(), &auditpb.ListAnyEntriesRequest{})
 		must.NoError(t, err)
-
-		must.SliceLen(t, 1, asked)
-		test.Nil(t, asked[0], test.Sprint("an operator's page was confined to one chain"))
+		test.EqOp(t, int32(1), across.Load())
 
 		entries := log.recorded()
 		must.SliceLen(t, 1, entries)
 		test.EqOp(t, audit.EventOperatorBypass, entries[0].EventType)
 	})
 
-	T.Run("audit with no recorder resolved widens nobody's page", func(t *testing.T) {
+	T.Run("audit with no recorder resolved serves no operator's read", func(t *testing.T) {
 		t.Parallel()
 
-		var asked []*tenancy.Scope
+		var across atomic.Int32
 
-		client := auditOver(t, nil, &asked)
+		client := auditOver(t, nil, &across)
 
-		_, err := client.ListEntries(t.Context(), &auditpb.ListEntriesRequest{})
-		must.NoError(t, err)
-
-		must.SliceLen(t, 1, asked)
-		must.NotNil(t, asked[0])
-		test.EqOp(t, tenancy.Global(), *asked[0])
+		_, err := client.ListAnyEntries(t.Context(), &auditpb.ListAnyEntriesRequest{})
+		must.Error(t, err)
+		test.EqOp(t, codes.Unimplemented, status.Code(err))
+		test.EqOp(t, int32(0), across.Load(), test.Sprint("an unrecorded server read every tenant's log"))
 	})
 }

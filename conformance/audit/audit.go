@@ -45,6 +45,10 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 		verification(t, s)
 	})
+	t.Run("administration", func(t *testing.T) {
+		t.Parallel()
+		administration(t, s)
+	})
 
 	t.Run("an audited action lands in the acting session's chain", func(t *testing.T) {
 		t.Parallel()

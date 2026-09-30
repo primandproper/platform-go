@@ -43,6 +43,20 @@
 // client something it supplied, and its absence is what makes a converter
 // unable to read one back out of a request.
 //
+// AuditAdministrationService is the one place a request names a tenant, and it
+// is a service of its own for exactly the reason above. There the capability
+// is the method: a caller reaches GetAnyEntry or ListAnyEntries only by holding
+// the permission audit/grpc's Permissions puts on them, which nothing grants
+// by default, and every call is recorded in the caller's own chain before it is
+// answered. A field on AuditService's messages would hand the same reach to
+// everybody who may read their own log; a method of its own hands it to the
+// operators a deployment named, and a policy that leaves them out is refused
+// by the enforcer's fail-closed rule rather than widened. Its messages still
+// reserve "scope" -- the tenant it names is owner_id, which is what a
+// tenancy.Scope stores -- and its entries carry the owner they belong to,
+// because an answer spanning tenants is the one answer that cannot leave it
+// implied.
+//
 // # There is no recording RPC
 //
 // audit.Recorder is absent from this service on purpose, and the reason is on
@@ -372,4 +386,70 @@ service AuditService {
   // The error statuses here are the ones that mean the question could not be
   // answered at all.
   rpc VerifyChain(VerifyChainRequest) returns (VerifyChainResponse);
+}
+
+// OwnedEntry is an entry together with the tenant whose chain it is in, as
+// AuditAdministrationService answers it.
+//
+// Entry carries no scope because every entry AuditService returns belongs to
+// the connection's. An operator's read spans tenants, so the owner is
+// carried beside the entry rather than added to it: Entry stays the one shape
+// both services describe an entry with.
+message OwnedEntry {
+  Entry entry = 1;
+
+  // owner_id is the tenant whose chain holds the entry: the identifier a
+  // tenancy.Scope stores. Empty is the global scope, the chain of events that
+  // belong to no tenant.
+  string owner_id = 2 [json_name = "ownerID"];
+}
+
+message GetAnyEntryRequest {
+  string entry_id = 1 [json_name = "entryID"];
+
+  reserved "scope";
+}
+
+message GetAnyEntryResponse {
+  OwnedEntry entry = 1;
+}
+
+message ListAnyEntriesRequest {
+  EntryQuery query = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+
+  // owner_id narrows the page to one tenant's chain, where it is set. Unset
+  // pages every tenant's. Set and empty is the global chain, which is a
+  // tenant's worth of events as well: the ones that belong to no tenant.
+  optional string owner_id = 3 [json_name = "ownerID"];
+
+  reserved "scope";
+}
+
+message ListAnyEntriesResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated OwnedEntry results = 2;
+}
+
+// AuditAdministrationService is an operator's read of the audit log: an entry
+// in any tenant's chain, and a page of every tenant's, or of one they name.
+//
+// It is a service of its own rather than a widening of AuditService, so that
+// reading one's own log never becomes reading everybody's. AuditService answers
+// every caller from the chain the connection resolved, whoever they are; this
+// answers only the callers a deployment's policy grants its methods to, and
+// records each call in the caller's own chain before it answers -- a server with
+// nowhere to record one answers every call here Unimplemented.
+service AuditAdministrationService {
+  // GetAnyEntry reads one entry by id from whichever tenant's chain holds it.
+  //
+  // An id no chain holds is NotFound and is not recorded: the read found
+  // nothing to disclose.
+  rpc GetAnyEntry(GetAnyEntryRequest) returns (GetAnyEntryResponse);
+
+  // ListAnyEntries pages every tenant's entries, or one tenant's where
+  // owner_id names it, narrowed by the query.
+  rpc ListAnyEntries(ListAnyEntriesRequest) returns (ListAnyEntriesResponse);
 }

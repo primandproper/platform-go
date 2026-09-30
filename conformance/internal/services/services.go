@@ -57,6 +57,8 @@ func All() []Service {
 	return []Service{
 		{Name: "audit", Service: "AuditService", Sample: &auditpb.GetEntryRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Audit != nil }},
+		{Name: "auditadministration", Service: "AuditAdministrationService", Sample: &auditpb.GetAnyEntryRequest{},
+			Mounted: func(s conformance.Surfaces) bool { return s.AuditAdministration != nil }},
 		{Name: "billing", Service: "BillingService", Sample: &billingpb.GetSubscriptionRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Billing != nil }},
 		{Name: "comments", Service: "CommentsService", Sample: &commentspb.GetCommentRequest{},

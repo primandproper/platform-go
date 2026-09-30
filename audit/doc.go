@@ -247,9 +247,11 @@ Reader.ListAcrossScopes, a stated exception to the rule that no read path omits
 the scope. In a multi-tenant read path telling the scoped read from the
 unscoped one is a disclosure rather than a wrong answer, which is why the
 distinction is a method name rather than a nil a caller can arrive at by losing
-a value. No transport in this module calls either; audit/privacy's collector
-calls ListAcrossScopes for what an operator did while impersonating people,
-confined by the operator's own id.
+a value. The one transport that calls them is audit/grpc's
+AuditAdministrationService, a service of its own behind a permission nothing
+grants by default, which records every call before answering it;
+audit/privacy's collector calls ListAcrossScopes for what an operator did while
+impersonating people, confined by the operator's own id.
 
 An entry that exists but sits outside a named scope reads as ErrEntryNotFound,
 the same answer an id that was never written gets. Telling them apart would make
