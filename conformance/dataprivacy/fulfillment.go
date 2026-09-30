@@ -56,17 +56,38 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 			return
 		}
 
-		code, body := call(t, me, http.MethodGet, operationshttp.BasePath+"/"+fulfilled.OperationID, nil)
-		must.EqOp(t, http.StatusOK, code, must.Sprintf("reading the operation that fulfilled an export answered %d: %s", code, body))
-
-		op := &envelope[struct {
+		// Awaited rather than read once. The request row and the operation are
+		// two commits by design: the fulfiller completes the row in its own
+		// transaction, and the operations worker records the operation's
+		// result once the fulfiller has returned it. A read between the two
+		// sees a finished request and a running operation, which is the order
+		// the two are promised in rather than a disagreement. What is asserted
+		// is that the operation arrives at the same answer within the budget.
+		var op struct {
 			State string `json:"state"`
 			Done  bool   `json:"done"`
-		}]{}
-		must.NoError(t, json.Unmarshal(body, op))
+		}
 
-		test.True(t, op.Data.Done, test.Sprint("the export completed and its operation says it may still change"))
-		test.EqOp(t, "succeeded", op.Data.State)
+		s.Await(t, "the operation that fulfilled export "+fulfilled.ID+" to finish", func() (bool, error) {
+			code, body := call(t, me, http.MethodGet, operationshttp.BasePath+"/"+fulfilled.OperationID, nil)
+			if code != http.StatusOK {
+				return false, platformerrors.Newf("reading the operation that fulfilled an export answered %d: %s", code, body)
+			}
+
+			read := &envelope[struct {
+				State string `json:"state"`
+				Done  bool   `json:"done"`
+			}]{}
+			if err := json.Unmarshal(body, read); err != nil {
+				return false, err
+			}
+
+			op = read.Data
+
+			return op.Done, nil
+		})
+
+		test.EqOp(t, "succeeded", op.State, test.Sprint("the export completed and its operation finished some other way"))
 	})
 
 	t.Run("an erasure completes, and takes only its subject", func(t *testing.T) {
