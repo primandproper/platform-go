@@ -347,6 +347,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		SignIn:        signinclient.Wrap(conn),
 		Waitlists:     waitlistsclient.Wrap(conn),
 		Webhooks:      webhooksclient.Wrap(conn),
+
+		SignInAdministration: signinpb.NewSignInAdministrationServiceClient(conn),
 	}
 
 	// Every run against this server is one of these, differing only in what

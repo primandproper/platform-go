@@ -17,6 +17,7 @@ import (
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
 	refreshmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -186,6 +187,7 @@ type harness struct {
 	svc       *signin.Service
 	directory *identity.Service
 	client    *signinclient.Client
+	admin     signinpb.SignInAdministrationServiceClient
 
 	user *identity.User
 
@@ -365,6 +367,7 @@ func buildHarness(
 		svc:       svc,
 		directory: identitySvc,
 		client:    signinclient.Wrap(conn),
+		admin:     signinpb.NewSignInAdministrationServiceClient(conn),
 		rootCtx:   t.Context(),
 		password:  "correct horse battery staple",
 	}

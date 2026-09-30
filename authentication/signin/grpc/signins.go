@@ -34,9 +34,8 @@ type FamilyIdentifier interface {
 //
 // It takes its subject from the caller and has no field that could name
 // anybody else — the SignOutEverywhere arrangement, for the same reason. An
-// operator's view of somebody else's logins is signin.Service.ListSignIns,
-// reached through the consumer's own administrative surface with its own
-// authorization in front of it.
+// operator's view of somebody else's logins is [Server.ListSignInsForUser], on
+// SignInAdministrationService behind a permission.
 //
 // Which entry is current comes off the principal, through [FamilyIdentifier].
 // A principal that does not implement it marks nothing, which is the honest
