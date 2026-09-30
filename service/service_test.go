@@ -8,8 +8,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	"github.com/primandproper/platform-go/v14/comments"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
+	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	"github.com/primandproper/platform-go/v14/outbox"
@@ -28,6 +31,7 @@ import (
 	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
 	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -278,6 +282,72 @@ func TestNew(T *testing.T) {
 
 		test.StrContains(t, err.Error(), do.NameOf[*passwordreset.Service]())
 		test.StrContains(t, err.Error(), do.NameOf[passwordreset.Mailer]())
+	})
+
+	T.Run("one registered password policy governs sign-in and reset alike", func(t *testing.T) {
+		t.Parallel()
+
+		// The application registers its rule once, under signin's name, and
+		// both blocks resolve it. A reset door that read a key of its own would
+		// be the one door a weak password still walks through.
+		errTooShort := platformerrors.New("use at least twelve characters")
+		policy := signin.PasswordPolicy(func(_ context.Context, password string) error {
+			if len(password) < 12 {
+				return errTooShort
+			}
+
+			return nil
+		})
+
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteConfig(t),
+			Identity:      &identitycfg.Config{TablePrefix: storePrefix},
+			Tokens:        testTokens(),
+			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
+			SignIn: &signincfg.Config{
+				RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+			},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		identitycfg.RegisterService(i)
+		do.ProvideValue[passwordreset.Mailer](i, stubResetMailer{})
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+		do.ProvideValue(i, policy)
+
+		svc, err := New(i)
+		must.NoError(t, err)
+		must.NotNil(t, svc)
+
+		signIn, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		registered, err := signIn.Register(t.Context(), tenancy.Global(), &signin.Registration{
+			User:       &identity.User{Username: "person", EmailAddress: "person@example.com"},
+			Credential: signin.Password("weak"),
+		})
+		test.Nil(t, registered)
+		test.ErrorIs(t, err, signin.ErrPasswordRefused)
+		test.ErrorIs(t, err, errTooShort)
+
+		reset, err := do.Invoke[*passwordreset.Service](i)
+		must.NoError(t, err)
+
+		// The policy runs before the token is looked at, so a secret nobody
+		// issued reaches it — and a password it admits gets past it to the
+		// token, which is the proof it was the policy that refused.
+		token, err := reset.Complete(t.Context(), tenancy.Global(), "never-issued", "weak")
+		test.Nil(t, token)
+		test.ErrorIs(t, err, passwordreset.ErrPasswordRefused)
+		test.ErrorIs(t, err, errTooShort)
+
+		token, err = reset.Complete(t.Context(), tenancy.Global(), "never-issued", "long enough to pass")
+		test.Nil(t, token)
+		must.Error(t, err)
+		test.False(t, platformerrors.Is(err, passwordreset.ErrPasswordRefused))
 	})
 
 	T.Run("reports observability that was registered and cannot be built", func(t *testing.T) {

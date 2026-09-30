@@ -26,7 +26,10 @@ import (
 //
 // It is required and has no default. passwordresetcfg resolves the same key,
 // so a container holding both blocks hashes a reset's password with the engine
-// sign-in verifies it with. The context bounds the sweepers' lives.
+// sign-in verifies it with. It resolves signin.PasswordPolicy too —
+// passwordreset.PasswordPolicy is an alias of it — so one registered policy
+// governs the reset door as well as this service's. The context bounds the
+// sweepers' lives.
 //
 // Two more are required when their door is on. Registration, unless
 // Registration.Disabled is set, needs the *identity.Service

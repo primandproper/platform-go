@@ -396,6 +396,8 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	// the authentication.Authenticator sign-in hashes with, which
 	// RegisterService resolves as required rather than defaulting — see
 	// passwordresetcfg for why a default authenticator is the wrong kindness.
+	// A signin.PasswordPolicy the application registers is resolved here as
+	// well as by the SignIn block, so one registration governs both doors.
 	// Its directory is the identity.Store the block above registers, so the
 	// block needs Identity beside it; a container missing any of the three fails
 	// at boot naming it.
