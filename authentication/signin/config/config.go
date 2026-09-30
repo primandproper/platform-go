@@ -77,9 +77,11 @@ import (
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
 
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/errors"
+	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -172,6 +174,15 @@ type RefreshTokensConfig struct {
 	// It must match the prefix the migrations were rendered with.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 
+	// SweepJob is the scheduled sweep NewJobs renders: the refresh token
+	// store's Sweep, run once across a fleet under the scheduler's lock rather
+	// than once per replica. It runs unless Disabled, every
+	// DefaultSweepInterval unless it names its own schedule. It is independent
+	// of SweepInterval's in-process loop, which is the sweep a deployment with
+	// no scheduler still gets; a fleet that schedules this job can set
+	// SWEEP_INTERVAL=0 and leave the one.
+	SweepJob jobscfg.JobConfig `env:",init" envPrefix:"SWEEP_JOB_" json:"sweepJob,omitzero" yaml:"sweepJob,omitempty"`
+
 	// TTL is how long an ordinary sign-in lasts. Unset takes
 	// signin.DefaultRefreshTokenTTL.
 	TTL time.Duration `env:"TTL" json:"ttl,omitempty" yaml:"ttl,omitempty"`
@@ -254,6 +265,8 @@ var nonNegative = validation.Min(0)
 // pointer is unset only when nil, so a zero is the deployment's answer.
 func (cfg *RefreshTokensConfig) EnsureDefaults() {
 	cfg.SweepInterval = cfgnorm.EnsureSweepInterval(cfg.SweepInterval, DefaultSweepInterval)
+
+	scheduledjob.EnsureDefaults(&cfg.SweepJob, DefaultSweepInterval, DefaultSweepJobLeaseTTL)
 }
 
 // ValidateWithContext validates a RefreshTokensConfig.
@@ -265,6 +278,9 @@ func (cfg *RefreshTokensConfig) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.TTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.AdminTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.SweepInterval, cfgnorm.SweepIntervalRule),
+		validation.Field(&cfg.SweepJob, validation.By(func(any) error {
+			return scheduledjob.Validate(ctx, &cfg.SweepJob)
+		})),
 	)
 }
 

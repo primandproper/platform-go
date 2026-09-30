@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 	sessionsdatabase "github.com/primandproper/platform-go/v14/sessions/database"
@@ -27,6 +28,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/cookies"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/errors"
+	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -66,6 +68,15 @@ type Config struct {
 	// In the environment that is an absent SWEEP_INTERVAL against
 	// SWEEP_INTERVAL=0.
 	SweepInterval *time.Duration `env:"SWEEP_INTERVAL" json:"sweepInterval,omitempty" yaml:"sweepInterval,omitempty"`
+
+	// SweepJob is the scheduled sweep NewJobs renders under the database
+	// provider: the backend's Sweep, run once across a fleet under the
+	// scheduler's lock rather than once per replica. It runs unless Disabled,
+	// every DefaultSweepInterval unless it names its own schedule. It is
+	// independent of SweepInterval's in-process loop, which is the sweep a
+	// deployment with no scheduler still gets; a fleet that schedules this job
+	// can set SWEEP_INTERVAL=0 and leave the one.
+	SweepJob jobscfg.JobConfig `env:",init" envPrefix:"SWEEP_JOB_" json:"sweepJob,omitzero" yaml:"sweepJob,omitempty"`
 
 	// IdleTimeout bounds how long a session may go unread. Unset takes
 	// sessions.DefaultIdleTimeout; zero disables it, leaving AbsoluteTimeout as
@@ -165,6 +176,8 @@ func (cfg *Config) EnsureDefaults() {
 	if cfg.provider() == ProviderDatabase {
 		cfg.SweepInterval = cfgnorm.EnsureSweepInterval(cfg.SweepInterval, DefaultSweepInterval)
 	}
+
+	scheduledjob.EnsureDefaults(&cfg.SweepJob, DefaultSweepInterval, DefaultSweepJobLeaseTTL)
 }
 
 // ValidateWithContext validates a Config struct.
@@ -187,6 +200,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.IdleTimeout, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.TouchInterval, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.SweepInterval, cfgnorm.SweepIntervalRule),
+		validation.Field(&cfg.SweepJob, validation.By(func(any) error {
+			return scheduledjob.Validate(ctx, &cfg.SweepJob)
+		})),
 	)
 }
 

@@ -60,6 +60,18 @@ type ClaimableSagaInstanceIDsRow struct {
 	ID string
 }
 
+// CountPrunableSagaInstancesParams are the arguments to CountPrunableSagaInstances.
+type CountPrunableSagaInstancesParams struct {
+	RetiredStatus string
+	RetiredBefore *time.Time
+	ResultLimit   int64
+}
+
+// CountPrunableSagaInstancesRow is one row of CountPrunableSagaInstances's result.
+type CountPrunableSagaInstancesRow struct {
+	Count int64
+}
+
 // GetSagaInstanceParams are the arguments to GetSagaInstance.
 type GetSagaInstanceParams struct {
 	ID string
@@ -267,6 +279,13 @@ type ListSagaInstancesDescendingRow struct {
 	ClaimedUntil  *time.Time
 	FilteredCount int64
 	TotalCount    int64
+}
+
+// PruneSagaInstancesParams are the arguments to PruneSagaInstances.
+type PruneSagaInstancesParams struct {
+	RetiredStatus string
+	RetiredBefore *time.Time
+	ResultLimit   int64
 }
 
 // ReleaseSagaInstanceParams are the arguments to ReleaseSagaInstance.
