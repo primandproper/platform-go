@@ -286,6 +286,8 @@ func closedVocabulary(
 	switch r := req.(type) {
 	case *identitypb.RegisterRequest:
 		named = r.GetOwnerRoles()
+	case *identitypb.CreateAccountRequest:
+		named = r.GetOwnerRoles()
 	case *identitypb.InviteRequest:
 		named = r.GetRoles()
 	case *identitypb.SetMembershipRolesRequest:
