@@ -3,10 +3,14 @@ package dataprivacycfg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/audit"
+	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/operations"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -109,6 +113,86 @@ func TestRegisterService(T *testing.T) {
 	})
 }
 
+// signingUploads is an upload manager that signs, so Service.Download has a
+// link to mint through whichever manager the container handed it.
+type signingUploads struct {
+	uploads.UploadManager
+}
+
+func (signingUploads) SignedURL(_ context.Context, path string, _ *uploads.SignedURLOptions) (string, error) {
+	return "https://storage.example/" + path, nil
+}
+
+func TestRegisterService_ReadsWhatTheFulfillerWrote(T *testing.T) {
+	T.Parallel()
+
+	// container is fulfillerInjector over a store holding one completed export
+	// and an upload manager that signs, with the Service registered.
+	container := func(t *testing.T) do.Injector {
+		t.Helper()
+
+		i := fulfillerInjector(t, testConfig())
+		do.OverrideValue[uploads.UploadManager](i, signingUploads{UploadManager: uploadsnoop.NewUploadManager()})
+		do.ProvideValue[operations.Service](i, stubOperations())
+		do.ProvideValue[dataprivacy.Store](i, &dataprivacymock.StoreMock{
+			GetFunc: func(_ context.Context, _ database.SQLQueryExecutor, _ *tenancy.Scope, id string) (*dataprivacy.Request, error) {
+				return &dataprivacy.Request{
+					ID:          id,
+					Type:        dataprivacy.RequestExport,
+					Status:      dataprivacy.StatusCompleted,
+					ArtifactRef: "exports/" + id,
+				}, nil
+			},
+		})
+
+		RegisterFulfiller(i)
+		RegisterService(i)
+
+		return i
+	}
+
+	T.Run("downloads through the upload manager the Fulfiller writes to", func(t *testing.T) {
+		t.Parallel()
+
+		svc, err := do.Invoke[dataprivacy.Service](container(t))
+		must.NoError(t, err)
+
+		// Without it the Service answers ErrArtifactUnavailable for an
+		// artifact that is sitting in the bucket.
+		url, err := svc.Download(t.Context(), nil, "req")
+		must.NoError(t, err)
+		test.EqOp(t, "https://storage.example/exports/req", url)
+	})
+
+	T.Run("records to the registered audit log, naming the registered actor", func(t *testing.T) {
+		t.Parallel()
+
+		var recorded []*audit.Entry
+
+		i := container(t)
+		do.ProvideValue[audit.Recorder](i, &auditmock.RecorderMock{
+			RecordFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, entries ...*audit.Entry) error {
+				recorded = append(recorded, entries...)
+
+				return nil
+			},
+		})
+		do.ProvideValue(i, dataprivacy.ActorResolver(func(context.Context) audit.Actor {
+			return audit.Actor{ID: "support-agent", Type: audit.ActorUser}
+		}))
+
+		svc, err := do.Invoke[dataprivacy.Service](i)
+		must.NoError(t, err)
+
+		_, err = svc.Download(t.Context(), nil, "req")
+		must.NoError(t, err)
+
+		must.SliceLen(t, 1, recorded)
+		test.EqOp(t, "req", recorded[0].ResourceID)
+		test.EqOp(t, "support-agent", recorded[0].Actor.ID)
+	})
+}
+
 func TestRegisterFulfiller(T *testing.T) {
 	T.Parallel()
 
@@ -185,6 +269,56 @@ func TestRegisterFulfiller(T *testing.T) {
 		svc, err := do.Invoke[dataprivacy.Service](i)
 		must.NoError(t, err)
 		test.NotNil(t, svc)
+	})
+}
+
+func TestRegisterFulfiller_OptionalRegistrations(T *testing.T) {
+	T.Parallel()
+
+	// Only absence is absorbed. A registration the application meant to have
+	// and could not build fails the Fulfiller rather than leaving it running
+	// without — an export nobody is told about, or one with no record of who
+	// asked for it.
+	for name, register := range map[string]func(do.Injector, error){
+		"notifier": func(i do.Injector, err error) {
+			do.Provide(i, func(do.Injector) (dataprivacy.Notifier, error) { return nil, err })
+		},
+		"audit recorder": func(i do.Injector, err error) {
+			do.Provide(i, func(do.Injector) (audit.Recorder, error) { return nil, err })
+		},
+		"actor resolver": func(i do.Injector, err error) {
+			do.Provide(i, func(do.Injector) (dataprivacy.ActorResolver, error) { return nil, err })
+		},
+	} {
+		T.Run("a registered "+name+" that fails to build fails it", func(t *testing.T) {
+			t.Parallel()
+
+			boom := errors.New("could not build the " + name)
+
+			i := fulfillerInjector(t, testConfig())
+			register(i, boom)
+			RegisterStore(i)
+			RegisterFulfiller(i)
+
+			fulfiller, err := do.Invoke[*dataprivacy.Fulfiller](i)
+			test.Nil(t, fulfiller)
+			test.ErrorIs(t, err, boom)
+		})
+	}
+
+	T.Run("each one registered is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		i := fulfillerInjector(t, testConfig())
+		do.ProvideValue[dataprivacy.Notifier](i, dataprivacy.NotifierFunc(func(context.Context, *dataprivacy.Notification) error { return nil }))
+		do.ProvideValue[audit.Recorder](i, &auditmock.RecorderMock{})
+		do.ProvideValue(i, dataprivacy.ActorResolver(func(context.Context) audit.Actor { return audit.Actor{ID: "system"} }))
+		RegisterStore(i)
+		RegisterFulfiller(i)
+
+		fulfiller, err := do.Invoke[*dataprivacy.Fulfiller](i)
+		must.NoError(t, err)
+		test.NotNil(t, fulfiller)
 	})
 }
 

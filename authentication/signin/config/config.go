@@ -147,6 +147,11 @@ type Config struct {
 	// takes signin.DefaultAdminTokenTTL.
 	AdminTokenTTL time.Duration `env:"ADMIN_TOKEN_TTL" json:"adminTokenTTL,omitempty" yaml:"adminTokenTTL,omitempty"`
 
+	// ImpersonationTokenTTL is how long an impersonation token lives. Unset
+	// takes signin.DefaultImpersonationTokenTTL. It does nothing without a
+	// registered signin.ImpersonationPolicy, which is what opens the door.
+	ImpersonationTokenTTL time.Duration `env:"IMPERSONATION_TOKEN_TTL" json:"impersonationTokenTTL,omitempty" yaml:"impersonationTokenTTL,omitempty"`
+
 	// HandleReminderFloor is the minimum time Service.RequestHandleReminder
 	// takes. Unset takes signin.DefaultHandleReminderFloor. Set it above the
 	// slowest mail send the deployment makes, as signin.WithHandleReminderFloor
@@ -330,6 +335,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		})),
 		validation.Field(&cfg.TokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.AdminTokenTTL, validation.Min(time.Duration(0))),
+		validation.Field(&cfg.ImpersonationTokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.HandleReminderFloor, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.RefreshTokens, byValue(&cfg.RefreshTokens)),
 		validation.Field(&cfg.MagicLinks),

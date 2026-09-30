@@ -312,6 +312,43 @@ func TestRegisterService(T *testing.T) {
 		test.ErrorIs(t, err, refused)
 	})
 
+	T.Run("no impersonation policy leaves the door shut", func(t *testing.T) {
+		t.Parallel()
+
+		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		_, err = svc.IssueImpersonationToken(t.Context(), tenancy.Global(), "operator", tenancy.Global(), "subject", "")
+		test.ErrorIs(t, err, signin.ErrImpersonationDisabled)
+	})
+
+	T.Run("a registered impersonation policy is attached", func(t *testing.T) {
+		t.Parallel()
+
+		// The policy is consulted once both people are read, so a refusal
+		// carrying its own error is the proof it was the one registered.
+		refused := errors.New("operators may not act as this customer")
+
+		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		do.OverrideValue[identity.Store](i, &identitymock.StoreMock{
+			GetUserFunc: func(_ context.Context, _ database.SQLQueryExecutor, _ tenancy.Scope, id string) (*identity.User, error) {
+				return &identity.User{ID: id, AccountStatus: identity.StatusGood}, nil
+			},
+		})
+		do.ProvideValue(i, signin.ImpersonationPolicy(func(context.Context, *identity.User, *identity.User) error { return refused }))
+		RegisterService(i)
+
+		svc, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		_, err = svc.IssueImpersonationToken(t.Context(), tenancy.Global(), "operator", tenancy.Global(), "subject", "")
+		test.ErrorIs(t, err, refused)
+		test.False(t, errors.Is(err, signin.ErrImpersonationDisabled))
+	})
+
 	T.Run("a registered hook that fails to build is returned, not skipped", func(t *testing.T) {
 		t.Parallel()
 
