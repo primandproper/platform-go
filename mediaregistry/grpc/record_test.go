@@ -22,10 +22,10 @@ func TestRecordObject(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.bucket.put(alice+"/signed/receipt.png", []byte("twelve bytes"))
+		h.bucket.put(aliceHome+"/signed/receipt.png", []byte("twelve bytes"))
 
 		res, err := h.client.RecordObject(as(t, alice, testScope), &mediaregistrypb.RecordObjectRequest{
-			Key:         alice + "/signed/receipt.png",
+			Key:         aliceHome + "/signed/receipt.png",
 			ContentType: pngType,
 			BelongsTo:   &mediaregistrypb.Subject{Type: mediaregistrygrpc.UserSubjectType, Id: alice},
 		})
@@ -44,7 +44,7 @@ func TestRecordObject(T *testing.T) {
 		h.bucket.put(bob+"/x/photo.png", pngBytes())
 
 		foreign := recordErr(t, h, alice, bob+"/x/photo.png")
-		missing := recordErr(t, h, alice, alice+"/nothing/here.png")
+		missing := recordErr(t, h, alice, aliceHome+"/nothing/here.png")
 
 		test.EqOp(t, codes.NotFound, status.Code(foreign))
 		test.ErrorIs(t, foreign, mediaregistry.ErrObjectNotFound)
@@ -60,10 +60,26 @@ func TestRecordObject(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.bucket.put(alice+"/../"+bob+"/photo.png", pngBytes())
+		h.bucket.put(aliceHome+"/../"+bob+"/photo.png", pngBytes())
 
-		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, alice+"/../"+bob+"/photo.png")))
-		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, alice)))
+		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, aliceHome+"/../"+bob+"/photo.png")))
+		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, aliceHome)))
+	})
+
+	T.Run("a person in two tenants cannot claim one tenant's bytes in the other", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.bucket.put(aliceHome+"/1/a.png", pngBytes())
+
+		_, err := h.client.RecordObject(as(t, alice, otherScope),
+			&mediaregistrypb.RecordObjectRequest{Key: aliceHome + "/1/a.png", ContentType: pngType})
+		test.EqOp(t, codes.NotFound, status.Code(err))
+
+		// The positive control: the same key, in the tenant it is under.
+		_, err = h.client.RecordObject(as(t, alice, testScope),
+			&mediaregistrypb.RecordObjectRequest{Key: aliceHome + "/1/a.png", ContentType: pngType})
+		test.NoError(t, err)
 	})
 
 	T.Run("the default policy follows a moved layout", func(t *testing.T) {
@@ -73,13 +89,13 @@ func TestRecordObject(T *testing.T) {
 			return "uploads/" + caller.PrincipalID + "/" + objectID + "/" + name
 		}))
 		h.bucket.put("uploads/"+alice+"/1/a.png", pngBytes())
-		h.bucket.put(alice+"/1/a.png", pngBytes())
+		h.bucket.put(aliceHome+"/1/a.png", pngBytes())
 
 		_, err := h.client.RecordObject(as(t, alice, testScope),
 			&mediaregistrypb.RecordObjectRequest{Key: "uploads/" + alice + "/1/a.png", ContentType: pngType})
 		test.NoError(t, err)
 
-		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, alice+"/1/a.png")))
+		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, aliceHome+"/1/a.png")))
 	})
 
 	T.Run("a record key policy replaces the default", func(t *testing.T) {
@@ -90,23 +106,23 @@ func TestRecordObject(T *testing.T) {
 				return key == "shared/intake.png", nil
 			}))
 		h.bucket.put("shared/intake.png", pngBytes())
-		h.bucket.put(alice+"/1/a.png", pngBytes())
+		h.bucket.put(aliceHome+"/1/a.png", pngBytes())
 
 		_, err := h.client.RecordObject(as(t, alice, testScope),
 			&mediaregistrypb.RecordObjectRequest{Key: "shared/intake.png", ContentType: pngType})
 		test.NoError(t, err)
 
-		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, alice+"/1/a.png")))
+		test.EqOp(t, codes.NotFound, status.Code(recordErr(t, h, alice, aliceHome+"/1/a.png")))
 	})
 
 	T.Run("a registration attached to somebody else is refused as an absence", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.bucket.put(alice+"/1/a.png", pngBytes())
+		h.bucket.put(aliceHome+"/1/a.png", pngBytes())
 
 		_, err := h.client.RecordObject(as(t, alice, testScope), &mediaregistrypb.RecordObjectRequest{
-			Key: alice + "/1/a.png", ContentType: pngType,
+			Key: aliceHome + "/1/a.png", ContentType: pngType,
 			BelongsTo: &mediaregistrypb.Subject{Type: mediaregistrygrpc.UserSubjectType, Id: bob},
 		})
 		test.EqOp(t, codes.NotFound, status.Code(err))
@@ -116,14 +132,14 @@ func TestRecordObject(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.bucket.put(alice+"/1/a.html", pngBytes())
+		h.bucket.put(aliceHome+"/1/a.html", pngBytes())
 
 		_, err := h.client.RecordObject(as(t, alice, testScope), &mediaregistrypb.RecordObjectRequest{ContentType: pngType})
 		test.ErrorIs(t, err, mediaregistrygrpc.ErrNoObjectKey)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
 		_, err = h.client.RecordObject(as(t, alice, testScope),
-			&mediaregistrypb.RecordObjectRequest{Key: alice + "/1/a.html", ContentType: "text/html"})
+			&mediaregistrypb.RecordObjectRequest{Key: aliceHome + "/1/a.html", ContentType: "text/html"})
 		test.ErrorIs(t, err, mediaregistrygrpc.ErrContentTypeRefused)
 	})
 
@@ -131,14 +147,14 @@ func TestRecordObject(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.bucket.put(alice+"/1/a.png", pngBytes())
+		h.bucket.put(aliceHome+"/1/a.png", pngBytes())
 
 		_, err := h.client.RecordObject(as(t, alice, testScope),
-			&mediaregistrypb.RecordObjectRequest{Key: alice + "/1/a.png", ContentType: pngType})
+			&mediaregistrypb.RecordObjectRequest{Key: aliceHome + "/1/a.png", ContentType: pngType})
 		must.NoError(t, err)
 
 		_, err = h.client.RecordObject(as(t, alice, testScope),
-			&mediaregistrypb.RecordObjectRequest{Key: alice + "/1/a.png", ContentType: pngType})
+			&mediaregistrypb.RecordObjectRequest{Key: aliceHome + "/1/a.png", ContentType: pngType})
 		test.ErrorIs(t, err, mediaregistry.ErrObjectKeyTaken)
 	})
 }

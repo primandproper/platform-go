@@ -34,7 +34,7 @@ func TestUploadObject(T *testing.T) {
 		test.EqOp(t, alice, object.GetOwnerId())
 		test.EqOp(t, pngType, object.GetContentType())
 		test.EqOp(t, int64(len(content)), object.GetSize())
-		test.EqOp(t, alice+"/"+object.GetId()+"/photo.png", object.GetKey())
+		test.EqOp(t, aliceHome+"/"+object.GetId()+"/photo.png", object.GetKey())
 		test.NotNil(t, object.GetCreatedAt())
 		test.Nil(t, object.GetBelongsTo())
 

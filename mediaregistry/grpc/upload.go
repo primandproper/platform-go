@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // UploadObject streams an object into the bucket as the caller's, and
@@ -54,7 +55,7 @@ func (s *Server) UploadObject(
 
 	first, err := stream.Recv()
 	if err != nil && !errors.Is(err, io.EOF) {
-		return s.fail(req, err, codes.Canceled, "reading an upload's header")
+		return s.fail(req, err, streamBroken(err), "reading an upload's header")
 	}
 
 	header := first.GetHeader()
@@ -99,8 +100,13 @@ func (s *Server) UploadObject(
 	if err = s.manager.Save(ctx, key, body, uploads.WithContentType(contentType)); err != nil {
 		// The reader's own failure is the one the client caused and is told
 		// about; the manager's wrapping of it is the same fact with less in it.
-		if body.err != nil {
+		// A stream that broke is neither the client's mistake nor the
+		// server's fault, and is answered the way a broken header is.
+		switch {
+		case body.err != nil:
 			return s.fail(req, body.err, codes.InvalidArgument, "receiving an upload's bytes")
+		case body.broken != nil:
+			return s.fail(req, body.broken, streamBroken(body.broken), "receiving an upload's bytes")
 		}
 
 		return s.fail(req, err, codes.Internal, "storing an upload")
@@ -153,9 +159,12 @@ func (s *Server) UploadObject(
 //
 // err is the reader's own failure, kept apart from io.EOF so the handler can
 // tell the client what they did rather than what the manager made of it.
+// broken is the stream's: the client went away or its deadline passed partway
+// through, which the manager would otherwise report as a failure to store.
 type streamReader struct {
 	stream grpc.ClientStreamingServer[mediaregistrypb.UploadObjectRequest, mediaregistrypb.UploadObjectResponse]
 	err    error
+	broken error
 	buf    []byte
 	n      int64
 	limit  int64
@@ -175,6 +184,8 @@ func (r *streamReader) Read(p []byte) (int, error) {
 		}
 
 		if err != nil {
+			r.broken = err
+
 			return 0, err
 		}
 
@@ -199,4 +210,16 @@ func (r *streamReader) Read(p []byte) (int, error) {
 	r.n += int64(copied)
 
 	return copied, nil
+}
+
+// streamBroken is the code for a stream that failed to deliver its next
+// message: the transport's own, where it names one — Canceled for a client
+// that went away, DeadlineExceeded for one whose deadline passed — and
+// Canceled otherwise. Never Internal: nothing on this side failed.
+func streamBroken(err error) codes.Code {
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown && st.Code() != codes.OK {
+		return st.Code()
+	}
+
+	return codes.Canceled
 }

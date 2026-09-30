@@ -3,12 +3,15 @@ package grpc
 import (
 	"context"
 	"mime"
+	"net/url"
 	"path"
 	"slices"
 	"strings"
 
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
+
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The rules a deployment has about its uploads, each a value this surface takes
@@ -49,7 +52,9 @@ type (
 	// the default RecordKeyPolicy reads KeyFunc(caller, "", "") as the caller's
 	// prefix and admits only keys beneath it. A layout that joins its segments
 	// with path.Join, as DefaultKeyFunc does, therefore gets a record policy
-	// that agrees with it for free.
+	// that agrees with it for free — and a layout that leaves the caller's
+	// scope out of that prefix gets one that lets a person in two tenants
+	// claim one tenant's bytes in the other.
 	KeyFunc func(caller mediaregistryhttp.Caller, objectID, name string) string
 
 	// ContentTypePolicy decides whether an object of this declared type may be
@@ -81,14 +86,33 @@ type (
 )
 
 // DefaultKeyFunc is the layout a deployment gets without WithKeyFunc:
-// <principal>/<object id>/<name>.
+// tenants/<tenant>/<principal>/<object id>/<name>, or
+// global/<principal>/<object id>/<name> for tenancy.Global.
 //
-// The principal first, so that the part of the bucket that is one caller's is
-// a prefix, which is what the default RecordKeyPolicy checks and what a
-// retention sweep over one person's uploads lists. The minted id next, so two
-// uploads of avatar.png are two objects rather than one overwriting the other.
+// The tenant first, because a principal is only somebody within one: the store
+// keeps a key unique per scope, so a layout that put the principal first would
+// let a person who belongs to two tenants register one tenant's bytes as the
+// other's, and each tenant's erasure would then break the other's row. The two
+// roots differ so that no tenant's identifier can make its part of the bucket
+// the global one's. The principal next, so that the part of the bucket that is
+// one caller's is a prefix, which is what the default RecordKeyPolicy checks and
+// what a retention sweep over one person's uploads lists. The minted id last, so
+// two uploads of avatar.png are two objects rather than one overwriting the
+// other.
+//
+// The tenant and the principal are each escaped into one segment, so an
+// identifier containing a slash cannot reach into somebody else's prefix.
 func DefaultKeyFunc(caller mediaregistryhttp.Caller, objectID, name string) string {
-	return path.Join(caller.PrincipalID, objectID, name)
+	return path.Join(scopeRoot(caller.Scope), url.PathEscape(caller.PrincipalID), objectID, name)
+}
+
+// scopeRoot is the part of the bucket DefaultKeyFunc gives a scope.
+func scopeRoot(scope tenancy.Scope) string {
+	if scope.IsGlobal() {
+		return "global"
+	}
+
+	return path.Join("tenants", url.PathEscape(scope.Owner()))
 }
 
 // activeOrUnstated is the default ContentTypePolicy: it refuses a type a

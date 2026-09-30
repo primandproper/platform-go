@@ -12,6 +12,7 @@ import (
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -70,10 +71,19 @@ func TestPolicies(T *testing.T) {
 
 	alicesCaller := mediaregistryhttp.Caller{PrincipalID: alice, Scope: testScope}
 
-	T.Run("the default layout is principal, id, name", func(t *testing.T) {
+	T.Run("the default layout is tenant, principal, id, name", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, "user_alice/obj/a.png", mediaregistrygrpc.DefaultKeyFunc(alicesCaller, "obj", "a.png"))
+		test.EqOp(t, "tenants/tenant_1/user_alice/obj/a.png", mediaregistrygrpc.DefaultKeyFunc(alicesCaller, "obj", "a.png"))
+		test.EqOp(t, "global/user_alice/obj/a.png",
+			mediaregistrygrpc.DefaultKeyFunc(mediaregistryhttp.Caller{PrincipalID: alice, Scope: tenancy.Global()}, "obj", "a.png"))
+	})
+
+	T.Run("the default layout keeps each identifier to one segment", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "tenants/a%2Fb/c%2F..%2Fd/obj/a.png",
+			mediaregistrygrpc.DefaultKeyFunc(mediaregistryhttp.Caller{PrincipalID: "c/../d", Scope: tenancy.Of("a/b")}, "obj", "a.png"))
 	})
 
 	T.Run("keys under the layout's prefix, and only those", func(t *testing.T) {
@@ -82,15 +92,18 @@ func TestPolicies(T *testing.T) {
 		policy := mediaregistrygrpc.KeysUnderPrefix(mediaregistrygrpc.DefaultKeyFunc)
 
 		for key, want := range map[string]bool{
-			"user_alice/1/a.png":             true,
-			"user_alice/a.png":               true,
-			"user_alice":                     false,
-			"user_alice/":                    false,
-			"user_alicex/1/a.png":            false,
-			"user_bob/1/a.png":               false,
-			"user_alice/../user_bob/1/a.png": false,
-			"user_alice//1/a.png":            false,
-			"/user_alice/1/a.png":            false,
+			"tenants/tenant_1/user_alice/1/a.png":             true,
+			"tenants/tenant_1/user_alice/a.png":               true,
+			"tenants/tenant_1/user_alice":                     false,
+			"tenants/tenant_1/user_alice/":                    false,
+			"tenants/tenant_1/user_alicex/1/a.png":            false,
+			"tenants/tenant_1/user_bob/1/a.png":               false,
+			"tenants/tenant_2/user_alice/1/a.png":             false,
+			"global/user_alice/1/a.png":                       false,
+			"user_alice/1/a.png":                              false,
+			"tenants/tenant_1/user_alice/../user_bob/1/a.png": false,
+			"tenants/tenant_1/user_alice//1/a.png":            false,
+			"/tenants/tenant_1/user_alice/1/a.png":            false,
 		} {
 			got, err := policy(t.Context(), alicesCaller, key)
 			must.NoError(t, err)

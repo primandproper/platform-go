@@ -38,7 +38,8 @@ Every policy is an option and every option but one has a default:
   - WithEntitlement — which objects a caller may read. OwnerOnly, and
     mediaregistry/http's Entitlement, for the same reason.
   - WithKeyFunc — where an upload's bytes go. DefaultKeyFunc,
-    <principal>/<object id>/<name>.
+    tenants/<tenant>/<principal>/<object id>/<name>, with global/ in place of
+    tenants/<tenant>/ for tenancy.Global.
   - WithContentTypePolicy — which declared types are accepted. The default
     refuses what a browser executes and a type nobody stated, using the list
     mediaregistry/http decides dispositions from. AllowContentTypes is the

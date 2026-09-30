@@ -64,6 +64,10 @@ const (
 	alice = "user_alice"
 	bob   = "user_bob"
 
+	// aliceHome is the part of the bucket DefaultKeyFunc gives alice in
+	// testScope.
+	aliceHome = "tenants/tenant_1/" + alice
+
 	pngType = "image/png"
 )
 
