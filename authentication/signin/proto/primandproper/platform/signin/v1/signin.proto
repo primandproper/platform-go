@@ -378,11 +378,13 @@ message SignOutEverywhereResponse {}
 // ActiveSignIn is one live login, as a "where you're signed in" screen shows
 // it.
 //
-// It carries no device, no browser and no address, and that is a decision
-// rather than a gap. Whether any of those is recorded at all is the consumer's,
-// and a consumer that does record them keys them on family_id -- signin's
-// AfterIssueToken hook runs inside every mint with the family on it -- and joins
-// them to this.
+// The platform lists the logins and records how each one happened; the device
+// is the consumer's. The server stores no device, no browser and no address,
+// and that is a decision rather than a gap. Whether any of those is recorded at
+// all is the consumer's, and a consumer that does record them keys them on
+// family_id -- signin's AfterIssueToken hook runs inside every mint with the
+// family on it -- and hands them back through the server's sign-in annotator,
+// which fills attributes.
 message ActiveSignIn {
   reserved "scope";
 
@@ -418,6 +420,20 @@ message ActiveSignIn {
   // person's own. A client shows it, because "somebody else is signed in as
   // you" is a thing a person is owed the chance to see and end.
   string actor_id = 8 [json_name = "actorID"];
+
+  // credential_kind is how the login happened: what proved the sign-in that
+  // began it -- "password", "recovery_code", "magic_link", "principal",
+  // "impersonation", or a kind the consumer named when it proved the principal
+  // itself. A refresh does not change it. It is empty only for a login whose
+  // store recorded none.
+  string credential_kind = 9;
+
+  // attributes is what the consumer recorded about the login's device -- a
+  // device name, a user agent, an address -- as the server's sign-in annotator
+  // answered for this family. The platform stores none of it and names none of
+  // its keys. It is empty on a server built without an annotator, and for a
+  // login the annotator had nothing for.
+  map<string, string> attributes = 10;
 }
 
 // ListSignInsRequest asks for the calling user's live logins, most recently

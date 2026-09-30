@@ -25,5 +25,17 @@ ALTER TABLE {{PREFIX}}signin_refresh_tokens
 ALTER TABLE {{PREFIX}}signin_refresh_tokens
     ADD COLUMN IF NOT EXISTS actor_id TEXT;
 
+-- credential_kind is what proved the sign-in that began the login --
+-- signin.CredentialKind: a password, a recovery code, a sign-in link, a
+-- principal the consumer proved, an impersonation, or a kind the consumer named
+-- -- carried onto every successor an exchange mints, as signed_in_at is. It is
+-- a fact the service knows at the moment of sign-in rather than device
+-- metadata, which is why it is a column here and a device name is not: a
+-- person's list of where they are signed in can say how each login happened
+-- without the consumer recording it. NULL is a row minted before this version,
+-- or by a store caller that named none.
+ALTER TABLE {{PREFIX}}signin_refresh_tokens
+    ADD COLUMN IF NOT EXISTS credential_kind TEXT;
+
 -- No index changes. The check reads a family's live row by (scope, family_id),
 -- which version 1's family index already serves.

@@ -238,7 +238,7 @@ func (s *Service) login(
 			return txErr
 		}
 
-		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID, time.Time{}); txErr != nil {
+		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID, time.Time{}, auth.CredentialKind); txErr != nil {
 			return txErr
 		}
 

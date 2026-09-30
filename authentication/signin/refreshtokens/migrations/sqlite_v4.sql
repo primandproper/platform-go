@@ -11,3 +11,7 @@ ALTER TABLE {{PREFIX}}signin_refresh_tokens
 -- time, so it is a statement of its own here as everywhere.
 ALTER TABLE {{PREFIX}}signin_refresh_tokens
     ADD COLUMN actor_id TEXT;
+
+-- credential_kind: see postgres_v4.sql.
+ALTER TABLE {{PREFIX}}signin_refresh_tokens
+    ADD COLUMN credential_kind TEXT;

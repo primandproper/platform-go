@@ -89,6 +89,11 @@ type RefreshToken struct {
 	// [Service.IssueImpersonationToken] began, and empty on every other row.
 	ActorID string `json:"actorID,omitempty"`
 
+	// CredentialKind is what proved the sign-in that began this row's login,
+	// carried onto every successor an exchange mints, and empty for a row whose
+	// store recorded none.
+	CredentialKind CredentialKind `json:"credentialKind,omitempty"`
+
 	// Scope is the directory the sign-in was made in.
 	Scope tenancy.Scope `json:"scope"`
 
@@ -158,6 +163,14 @@ type RefreshTokenRequest struct {
 	// person's logins is somebody else acting as them. Empty on every other
 	// mint.
 	ActorID string `json:"actorID,omitempty"`
+
+	// CredentialKind is what proved the sign-in this login began with, which
+	// the store records so that [RefreshTokenStore.ListActiveSignIns] can say
+	// how each of a person's logins happened. A mint that begins a login passes
+	// the kind its door stamped on [Authentication.CredentialKind]; an exchange
+	// passes the spent token's, as it does SignedInAt, because a refresh proves
+	// nothing new about how the login began.
+	CredentialKind CredentialKind `json:"credentialKind,omitempty"`
 
 	// TTL is how long the minted token may be exchanged for. It is the service's
 	// WithRefreshTokenTTL, resolved before the call, rather than something a
@@ -698,7 +711,7 @@ func (s *Service) ExchangeRefreshToken(
 			return txErr
 		}
 
-		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID, spent.SignedInAt); txErr != nil {
+		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID, spent.SignedInAt, spent.CredentialKind); txErr != nil {
 			return txErr
 		}
 
@@ -1223,7 +1236,8 @@ func (s *Service) spend(
 // exchange hands back, onto the SignIn the caller is about to receive.
 //
 // signedInAt is when the login began, and zero for the mint that begins one —
-// see RefreshTokenRequest.SignedInAt.
+// see RefreshTokenRequest.SignedInAt — and kind is what proved it, which an
+// exchange carries forward the same way.
 //
 // It is a no-op for a service built without a store, which is what makes
 // rotation optional without a branch at every call site. What it is not is a
@@ -1237,6 +1251,7 @@ func (s *Service) mintRefreshToken(
 	signIn *SignIn,
 	familyID string,
 	signedInAt time.Time,
+	kind CredentialKind,
 ) error {
 	if s.refreshTokens == nil {
 		return nil
@@ -1255,6 +1270,7 @@ func (s *Service) mintRefreshToken(
 		ActiveAccountID: signIn.Principal.ActiveAccountID,
 		Administrative:  signIn.Administrative,
 		AccessTokenID:   signIn.TokenID,
+		CredentialKind:  kind,
 	})
 	if err != nil {
 		return platformerrors.Wrap(err, "minting a refresh token")

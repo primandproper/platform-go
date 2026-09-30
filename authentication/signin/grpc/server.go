@@ -112,6 +112,7 @@ type Server struct {
 	svc        *signin.Service
 	principals callers.PrincipalExtractor
 	scopes     ScopeResolver
+	annotate   SignInAnnotator
 
 	o11y observability.Observer
 

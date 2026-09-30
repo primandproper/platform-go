@@ -25,11 +25,13 @@ const (
 // it: when it began, when it last refreshed, when it lapses if it stops, which
 // account it is for, and which door it came through.
 //
-// It carries the family and nothing that could be presented. What a screen
-// needs beyond it — a device name, a browser, where the request came from — is
-// the consumer's to record or not, and [Hooks.AfterIssueToken] is where: it runs
-// inside every mint with the family on the SignIn it is handed, so a consumer
-// keying its own device table on FamilyID joins it to this.
+// It carries the family, how the login happened, and nothing about the device.
+// What a screen needs beyond it — a device name, a browser, where the request
+// came from — is the consumer's to record or not, and [Hooks.AfterIssueToken] is
+// where: it runs inside every mint with the family on the SignIn it is handed,
+// so a consumer keying its own device table on FamilyID joins it to this.
+// authentication/signin/grpc's WithSignInAnnotator is how what it recorded
+// reaches the listing RPCs' answer without a list RPC of the consumer's own.
 type ActiveSignIn struct {
 	_ struct{} `json:"-"`
 
@@ -59,6 +61,14 @@ type ActiveSignIn struct {
 	// own. A "where you're signed in" screen shows it, so a person can see
 	// that somebody else is signed in as them, and end it.
 	ActorID string `json:"actorID,omitempty"`
+
+	// CredentialKind is how the login happened: what proved the sign-in that
+	// began it, as its door stamped [Authentication.CredentialKind]. A refresh
+	// does not change it. It is recorded by this package rather than left to a
+	// consumer's hook, because it is a fact the service knows at the moment of
+	// sign-in rather than something about the device — and empty only for a
+	// login whose store recorded none.
+	CredentialKind CredentialKind `json:"credentialKind,omitempty"`
 
 	// Administrative reports whether the login came through
 	// [Service.AdminLoginForToken].

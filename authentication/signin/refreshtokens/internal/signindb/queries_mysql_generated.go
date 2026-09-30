@@ -32,7 +32,8 @@ const getLiveRefreshTokenForFamilyMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at,
 	{{prefix}}signin_refresh_tokens.access_token_id,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = ?
 	AND {{prefix}}signin_refresh_tokens.family_id = ?
@@ -53,7 +54,8 @@ const getRefreshTokenMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at,
 	{{prefix}}signin_refresh_tokens.access_token_id,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = ?
 	AND {{prefix}}signin_refresh_tokens.scope = ?`
@@ -78,8 +80,10 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	expires_at,
 	purge_after,
 	access_token_id,
-	actor_id
+	actor_id,
+	credential_kind
 ) VALUES (
+	?,
 	?,
 	?,
 	?,
@@ -101,7 +105,8 @@ const listLiveRefreshTokenFamiliesMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.issued_at,
 	{{prefix}}signin_refresh_tokens.signed_in_at,
 	{{prefix}}signin_refresh_tokens.expires_at,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = ?
 	AND {{prefix}}signin_refresh_tokens.subject_id = ?
@@ -284,6 +289,7 @@ func (q *mysqlQueries) GetLiveRefreshTokenForFamily(ctx context.Context, db DBTX
 		&i.RevokedAt,
 		&i.AccessTokenID,
 		&i.ActorID,
+		&i.CredentialKind,
 	)
 
 	return i, err
@@ -312,6 +318,7 @@ func (q *mysqlQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRefr
 		&i.RevokedAt,
 		&i.AccessTokenID,
 		&i.ActorID,
+		&i.CredentialKind,
 	)
 
 	return i, err
@@ -349,6 +356,7 @@ func (q *mysqlQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Inse
 		arg.PurgeAfter,
 		arg.AccessTokenID,
 		arg.ActorID,
+		arg.CredentialKind,
 	)
 
 	return err
@@ -381,6 +389,7 @@ func (q *mysqlQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX
 			&i.SignedInAt,
 			&i.ExpiresAt,
 			&i.ActorID,
+			&i.CredentialKind,
 		); err != nil {
 			return nil, err
 		}
@@ -658,6 +667,7 @@ var (
 		RevokedAt       *time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(GetLiveRefreshTokenForFamilyRow{})
 	_ = struct {
 		Hash  string
@@ -677,6 +687,7 @@ var (
 		RevokedAt       *time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(GetRefreshTokenRow{})
 	_ = struct {
 		Hash  string
@@ -699,6 +710,7 @@ var (
 		PurgeAfter      time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(InsertRefreshTokenParams{})
 	_ = struct {
 		Scope       tenancy.Scope
@@ -714,6 +726,7 @@ var (
 		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		ActorID         *string
+		CredentialKind  *string
 	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
 		Scope       tenancy.Scope

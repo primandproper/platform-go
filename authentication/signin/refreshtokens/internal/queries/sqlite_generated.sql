@@ -13,7 +13,8 @@ INSERT INTO signin_refresh_tokens (
 	expires_at,
 	purge_after,
 	access_token_id,
-	actor_id
+	actor_id,
+	credential_kind
 ) VALUES (
 	sqlc.arg(hash),
 	sqlc.arg(scope),
@@ -26,7 +27,8 @@ INSERT INTO signin_refresh_tokens (
 	sqlc.arg(expires_at),
 	sqlc.arg(purge_after),
 	sqlc.arg(access_token_id),
-	sqlc.arg(actor_id)
+	sqlc.arg(actor_id),
+	sqlc.arg(credential_kind)
 );
 
 -- name: GetRefreshToken :one
@@ -43,7 +45,8 @@ SELECT
 	signin_refresh_tokens.redeemed_at,
 	signin_refresh_tokens.revoked_at,
 	signin_refresh_tokens.access_token_id,
-	signin_refresh_tokens.actor_id
+	signin_refresh_tokens.actor_id,
+	signin_refresh_tokens.credential_kind
 FROM signin_refresh_tokens
 WHERE signin_refresh_tokens.hash = sqlc.arg(hash)
 	AND signin_refresh_tokens.scope = sqlc.arg(scope);
@@ -164,7 +167,8 @@ SELECT
 	signin_refresh_tokens.issued_at,
 	signin_refresh_tokens.signed_in_at,
 	signin_refresh_tokens.expires_at,
-	signin_refresh_tokens.actor_id
+	signin_refresh_tokens.actor_id,
+	signin_refresh_tokens.credential_kind
 FROM signin_refresh_tokens
 WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
 	AND signin_refresh_tokens.subject_id = sqlc.arg(subject_id)
@@ -188,7 +192,8 @@ SELECT
 	signin_refresh_tokens.redeemed_at,
 	signin_refresh_tokens.revoked_at,
 	signin_refresh_tokens.access_token_id,
-	signin_refresh_tokens.actor_id
+	signin_refresh_tokens.actor_id,
+	signin_refresh_tokens.credential_kind
 FROM signin_refresh_tokens
 WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
 	AND signin_refresh_tokens.family_id = sqlc.arg(family_id)
