@@ -172,28 +172,27 @@ func (t *Timers[K]) lockDue(ctx context.Context, tx timerssplitdb.DBTX, limit in
 	return reclaimed, nil
 }
 
-// scheduleSplit writes one batch as a statement per timer, in one transaction.
+// scheduleSplit writes one batch as a statement per timer, on the caller's
+// transaction.
 //
 // The rows arrive in key order — see sortAndDedupeTimers — and are written in
 // it, which is the lock-ordering discipline the Postgres statement's ORDER BY
-// applies within itself. One transaction rather than one per timer so that the
-// batch lands or fails as the Postgres statement does: either every timer in
-// it is scheduled or none is.
-func (t *Timers[K]) scheduleSplit(ctx context.Context, rows []encodedTimer) error {
-	return t.client.WithTransaction(ctx, func(tx database.Tx) error {
-		for i := range rows {
-			if err := t.split.ScheduleTimer(ctx, tx, timerssplitdb.ScheduleTimerParams{
-				TimerSet:          t.cfg.Name,
-				TimerKey:          rows[i].key,
-				RunAtMicroseconds: rows[i].runAt.UnixMicro(),
-				Payload:           rows[i].payload,
-			}); err != nil {
-				return platformerrors.Wrap(err, "writing timer")
-			}
+// applies within itself. The caller's transaction is what makes the batch land
+// or fail as the Postgres statement does: either every timer in it is scheduled
+// or none is.
+func (t *Timers[K]) scheduleSplit(ctx context.Context, tx database.Tx, rows []encodedTimer) error {
+	for i := range rows {
+		if err := t.split.ScheduleTimer(ctx, tx, timerssplitdb.ScheduleTimerParams{
+			TimerSet:          t.cfg.Name,
+			TimerKey:          rows[i].key,
+			RunAtMicroseconds: rows[i].runAt.UnixMicro(),
+			Payload:           rows[i].payload,
+		}); err != nil {
+			return platformerrors.Wrap(err, "writing timer")
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // reapSplit is one reaping pass as a read and a delete, in one transaction.

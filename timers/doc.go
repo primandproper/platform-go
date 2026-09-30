@@ -17,41 +17,39 @@ gone, with nothing to reconcile against and no error anywhere to say so. That is
 not an edge case — a deploy is a restart, and a service deploys more often than
 a fourteen-day trial expires.
 
-So the schedule is a row before Schedule returns. A notification is only ever
-the news that a row exists; losing one costs latency and nothing else, which is
-what makes it safe to build on at all.
+So the schedule is a row, durable the moment the transaction it was written in
+commits. A notification is only ever the news that a row exists; losing one
+costs latency and nothing else, which is what makes it safe to build on at all.
 
 # Whose transaction that row is in
 
-Not the caller's. Schedule writes on this set's own handle, and there is no
-variant taking a database.Tx — so the trial and the timer that expires it are
-two commits, and either can happen without the other.
+The caller's. Schedule, ScheduleAt, ScheduleIn and Cancel each take a
+database.Tx, so the trial and the timer that expires it are one commit: a
+schedule written inside client.WithTransaction rolls back with the subject it
+fires about, and a subject that commits cannot be left with no timer to expire
+it. That second direction is the one worth paying for, because a firing that
+never comes raises nothing, holds nobody, and looks exactly like a quiet week —
+Stats.OldestDueLateness cannot see it either, since a timer that was never
+scheduled is not late. Cancel is the same fact from the other end: cancel in the
+transaction that deletes the subject, and a firing for a subject that is gone
+cannot happen.
 
-Both directions are real. A schedule written inside client.WithTransaction
-outlives that transaction's rollback, leaving a timer that fires for a subject
-never created. A schedule that fails after the subject's transaction committed
-leaves a trial nothing will ever expire, and that is the expensive one: a firing
-that never comes raises nothing, holds nobody, and looks exactly like a quiet
-week. Stats.OldestDueLateness cannot see it either — a timer that was never
-scheduled is not late.
+What the caller takes on is the retry. A deadlock or a serialization failure
+aborts the transaction it happens in, and only that transaction's owner can open
+another, so the schedule hands it back as an error rather than re-running a
+statement inside a transaction that is already dead. That failure is rare —
+every writer here locks in key order — and it is loud, which is the right way
+round for a trade: run the transaction under database.WithTransaction with
+database.RetryOnConflict and the whole of it is re-run, the subject's write
+along with the schedule.
 
-The reason is not workqueue's. There a shared batch makes a transactional
-enqueue impossible; here the statement would bind a caller's executor perfectly
-well, and what stops it is that Schedule retries. It runs under pgretry, which
-re-runs the write on the two class 40 conditions Postgres resolves by asking for
-the statement to be run again — and inside somebody else's transaction there is
-nothing to re-run, because the failure has already aborted it and only its owner
-can open another. A transactional Schedule would therefore hand a deadlock back
-as an error, on a table whose ordered locking exists precisely because
-concurrent writers meet there. That is a choice, and the paragraph above is what
-it costs.
+A timer is not tenant data, and there is no tenancy.Scope on these writes. The
+set is this component's own partition of its table and the key is opaque to it;
+a caller whose timers belong to tenants names the tenant in the key.
 
-Where a schedule must not be lost, put the fact in the transaction that created
-the subject and schedule from whatever consumes it — an outbox message, the way
-searchsync carries an index event, so the message lives or dies with the row and
-the consumer retries until the schedule lands. Otherwise schedule after the
-commit, and keep the handler tolerant of a key whose subject is gone; it has to
-be regardless, because Cancel and the subject's own deletion are two writes too.
+Everything after the schedule — the claim, and the complete, release and reap
+that follow a firing — is the set servicing itself, runs on the handle the set
+was built with, and retries under Config.WriteAttempts on its own.
 
 # The clock, and the one place a caller's clock counts
 
@@ -174,10 +172,11 @@ seconds from now, landing just after a poller went to sleep for an hour:
 	set, err := timers.New[TrialID](ctx, cfg, client, timers.WithWakeup(listener.Signal()))
 
 with Config.NotifyChannel set to the same channel on whatever schedules, so
-Schedule emits a payload-free pg_notify once the rows have landed. None of the
-set's guarantees rest on it: NOTIFY is at-most-once and connection-scoped, so a
-reconnecting listener misses everything sent while it was away, and the poll is
-what makes that survivable.
+Schedule emits a payload-free pg_notify on the caller's transaction, which
+Postgres delivers once that transaction commits and drops if it rolls back.
+None of the set's guarantees rest on it: NOTIFY is at-most-once and
+connection-scoped, so a reconnecting listener misses everything sent while it
+was away, and the poll is what makes that survivable.
 
 # Driving it
 
@@ -309,8 +308,8 @@ primary key, a claim locks the timers it asked for and nothing beside them.
 
 The rest of the costs follow from there being no arrays to bind:
 
-  - Schedule is a statement per timer in the batch, in one transaction, rather
-    than one statement for the batch.
+  - Schedule is a statement per timer in the batch, on the caller's
+    transaction, rather than one statement for the batch.
   - Complete and Release are a statement per distinct claim the call names —
     one statement when the call hands back what one Claim handed out, which it
     almost always does. They match on the claim's name and the key and not on
@@ -325,7 +324,8 @@ The rest of the costs follow from there being no arrays to bind:
 Config.NotifyChannel is Postgres's alone, because NOTIFY is; New refuses it
 elsewhere with ErrNotifyUnsupported rather than ignoring it, and a poller there
 sleeps until the next instant it knows about or the poll, whichever is sooner.
-WriteAttempts retries only Postgres's serialization failures and deadlocks.
+WriteAttempts retries only Postgres's serialization failures and deadlocks, and
+only on the set's own writes; Schedule and Cancel leave theirs to the caller.
 
 SQLite's single writer also means its claimants take turns rather than running
 side by side. That is SQLite's answer to concurrency rather than this package's,

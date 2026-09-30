@@ -392,6 +392,74 @@ func users(t *testing.T, s *conformance.Session) {
 			test.Sprintf("GetPrincipal's active account %v differs from GetAccount's %v", active, found.GetAccount()))
 	})
 
+	t.Run("the principal read serves permissions only where the deployment says it does", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(getPrincipal))
+
+		response, err := caller.Surfaces.Identity.GetPrincipal(caller.Context(t.Context()), &identitypb.GetPrincipalRequest{})
+		must.NoError(t, err)
+
+		if s.Seams().PrincipalPermissions {
+			test.NotNil(t, response.GetPermissions(),
+				test.Sprint("a deployment that serves permissions answered with no permissions field"))
+		} else {
+			test.Nil(t, response.GetPermissions(),
+				test.Sprint("a deployment that declared no permission resolver served a permissions field"))
+		}
+	})
+
+	// Nothing here knows what a role permits, so the answer is compared with
+	// itself: a function of the roles held in the account asked about gives two
+	// callers holding the same role there the same set, and gives a member who
+	// names that account the set its membership permits rather than the one
+	// their own account does.
+	t.Run("the principal's permissions follow the account the read resolved", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().PrincipalPermissions {
+			t.Skip("conformance: this deployment serves no permissions on the principal read")
+		}
+
+		// The second role, because a vocabulary may spell the first as the
+		// owner's, and a member holding the owner's role would be answered as
+		// the owner is whichever account the read resolved.
+		_, role := membershipRoles(s)
+
+		owner := s.Subject(t, conformance.Making(invite, getPrincipal))
+		needsAccount(t, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation))
+		needsAccount(t, member)
+		peer := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation))
+
+		join(t, s, owner, member, role)
+		join(t, s, owner, peer, role)
+
+		permissionsIn := func(caller *conformance.Subject, accountID string) []string {
+			t.Helper()
+
+			request := &identitypb.GetPrincipalRequest{}
+			if accountID != "" {
+				request.ActiveAccountId = &accountID
+			}
+
+			response, err := caller.Surfaces.Identity.GetPrincipal(caller.Context(t.Context()), request)
+			must.NoError(t, err)
+			must.NotNil(t, response.GetPermissions(),
+				must.Sprint("a deployment that serves permissions answered with no permissions field"))
+
+			return response.GetPermissions().GetPermissions()
+		}
+
+		// Both are owners of the account they registered with.
+		test.Eq(t, permissionsIn(owner, ""), permissionsIn(member, member.AccountID),
+			test.Sprint("two owners were told different things about their own accounts"))
+
+		// Both hold role in owner's account, and name it.
+		test.Eq(t, permissionsIn(peer, owner.AccountID), permissionsIn(member, owner.AccountID),
+			test.Sprint("two members holding one role in an account were told different things about it"))
+	})
+
 	t.Run("the principal read refuses a caller who has been banned", func(t *testing.T) {
 		t.Parallel()
 

@@ -893,9 +893,22 @@ func (t *Timers[K]) Release(ctx context.Context, delay time.Duration, cause erro
 // It deletes rather than marking. A cancelled timer has no history worth
 // keeping, and keeping it would mean Schedule had to distinguish "reschedule a
 // cancelled timer" from "reschedule a fired one".
-func (t *Timers[K]) Cancel(ctx context.Context, keys ...K) (int64, error) {
+//
+// It writes on the caller's transaction, for the reason Schedule does: a
+// subject's deletion and the cancel of the timer that fires about it are one
+// fact, so cancelling in the transaction that deletes the subject leaves no
+// timer firing for a subject that is gone, and no subject left standing with its
+// timer cancelled. As with Schedule, a deadlock comes back as an error for the
+// transaction's owner to re-run — database.RetryOnConflict is the way — and the
+// count is what the statement deleted inside that transaction, which is what
+// the commit makes true.
+func (t *Timers[K]) Cancel(ctx context.Context, tx database.Tx, keys ...K) (int64, error) {
 	ctx, op := t.o11y.Begin(ctx, observability.WithValue(timerCountKey, len(keys)))
 	defer op.End()
+
+	if tx == nil {
+		return 0, op.Error(ErrNilTransaction, "cancelling timers")
+	}
 
 	if len(keys) == 0 {
 		return 0, nil
@@ -914,27 +927,23 @@ func (t *Timers[K]) Cancel(ctx context.Context, keys ...K) (int64, error) {
 
 	encoded = sortAndDedupe(encoded)
 
-	var affected int64
+	var (
+		affected int64
+		err      error
+	)
 
-	err := t.retrier.Do(ctx, "cancel", func() error {
-		var execErr error
-
-		if t.split != nil {
-			affected, execErr = t.split.CancelTimers(ctx, t.client.Writer(), timerssplitdb.CancelTimersParams{
-				TimerSet:  t.cfg.Name,
-				TimerKeys: encoded,
-			})
-
-			return execErr
-		}
-
-		affected, execErr = t.q.CancelTimers(ctx, t.client.Writer(), timersdb.CancelTimersParams{
+	if t.split != nil {
+		affected, err = t.split.CancelTimers(ctx, tx, timerssplitdb.CancelTimersParams{
 			TimerSet:  t.cfg.Name,
 			TimerKeys: encoded,
 		})
+	} else {
+		affected, err = t.q.CancelTimers(ctx, tx, timersdb.CancelTimersParams{
+			TimerSet:  t.cfg.Name,
+			TimerKeys: encoded,
+		})
+	}
 
-		return execErr
-	})
 	if err != nil {
 		return 0, op.Error(err, "cancelling timers")
 	}

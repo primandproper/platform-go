@@ -19,7 +19,8 @@ var _ SignInReader = (*SQLStore)(nil)
 //
 // The handle is folded before it is bound, so the sign-in form's spelling does
 // not have to be the registration's — on any of the three dialects. See
-// FoldHandle.
+// FoldHandle. A handle that begins or ends with whitespace is ErrUserNotFound
+// without a query, because no write stores one; see lookupHandle.
 func (s *SQLStore) GetUserByUsername(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -27,8 +28,13 @@ func (s *SQLStore) GetUserByUsername(
 	username string,
 ) (*User, error) {
 	return s.liveUser(ctx, q, scope, "reading identity user by username", func(ctx context.Context) (*User, error) {
+		folded, ok := lookupHandle(username)
+		if !ok {
+			return nil, ErrUserNotFound
+		}
+
 		row, err := s.q.GetUserByUsername(ctx, q, identitydb.GetUserByUsernameParams{
-			Username: FoldHandle(username),
+			Username: folded,
 			Scope:    scope,
 		})
 		if err != nil {
@@ -40,7 +46,7 @@ func (s *SQLStore) GetUserByUsername(
 }
 
 // GetUserByEmailAddress reads a live user by their email address, folded before
-// it is bound as GetUserByUsername's handle is.
+// it is bound, and refused when padded, as GetUserByUsername's handle is.
 func (s *SQLStore) GetUserByEmailAddress(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -48,8 +54,13 @@ func (s *SQLStore) GetUserByEmailAddress(
 	emailAddress string,
 ) (*User, error) {
 	return s.liveUser(ctx, q, scope, "reading identity user by email address", func(ctx context.Context) (*User, error) {
+		folded, ok := lookupHandle(emailAddress)
+		if !ok {
+			return nil, ErrUserNotFound
+		}
+
 		row, err := s.q.GetUserByEmailAddress(ctx, q, identitydb.GetUserByEmailAddressParams{
-			EmailAddress: FoldHandle(emailAddress),
+			EmailAddress: folded,
 			Scope:        scope,
 		})
 		if err != nil {
