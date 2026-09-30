@@ -109,7 +109,10 @@ is not that door and a client building a switcher out of it will be surprised: i
 caller's *landing* account, which is where the next sign-in goes when no account is named, and
 leaves the token in hand pointing exactly where it did. An account the user is not a live
 member of is refused rather than honoured, which is *"the check that stops a client choosing
-whose data its token reaches."*
+whose data its token reaches."* The refusal is `NOT_FOUND`, and carries no sign-in reason: the
+membership is identity's, so this is [R13](#errors)'s code and nothing finer, and the
+credentials were right — the same sign-in naming no account, or one the user belongs to, gets
+in.
 
 `IssuedToken` is the whole session:
 

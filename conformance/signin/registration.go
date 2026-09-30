@@ -1,6 +1,7 @@
 package signin
 
 import (
+	"slices"
 	"testing"
 
 	domain "github.com/primandproper/platform-go/v14/authentication/signin"
@@ -263,6 +264,157 @@ func registration(t *testing.T, s *conformance.Session) {
 			test.Sprint("the registration's answer carried the verification link"))
 	})
 
+	// Sign-in's registration reaches the same registrar identity's does, through
+	// its own handler and mapper, and a username or address somebody holds is
+	// the same answer through either: AlreadyExists, in words the person at the
+	// form is meant to read. The holder signing in afterwards is the control
+	// that the collision overwrote nothing.
+	t.Run("a registration colliding with a username or an address is AlreadyExists", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		holder, _ := register(t, s, withPassword(registrationRequest(s)))
+		by := registrar(t, s)
+
+		sameUsername := withPassword(registrationRequest(s))
+		sameUsername.User.Username = holder.username
+
+		_, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), sameUsername)
+		must.Error(t, err, must.Sprint("a second registrant was given a username somebody holds"))
+		test.EqOp(t, codes.AlreadyExists, status.Code(err))
+		test.StrContains(t, status.Convert(err).Message(), "username")
+
+		sameAddress := withPassword(registrationRequest(s))
+		sameAddress.User.EmailAddress = holder.email
+
+		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), sameAddress)
+		must.Error(t, err, must.Sprint("a second registrant was given an address somebody holds"))
+		test.EqOp(t, codes.AlreadyExists, status.Code(err))
+		test.StrContains(t, status.Convert(err).Message(), "email")
+
+		verify(t, s, anon, holder)
+		loggedIn(t, anon, holder.username, password)
+	})
+
+	// The invitation arm of registration, by the token the deployment mailed:
+	// the registrant joins the inviting account with the roles they were
+	// offered, and it is theirs to land in. A wrong token is refused before
+	// anything is written — the same username and address register with the
+	// right one afterwards, which they could not if the refusal had left
+	// somebody behind.
+	t.Run("a registration answering an invitation joins the inviter's account, and a wrong token registers nobody", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		inviter := directoryCaller(t, s, invite)
+		if inviter.AccountID == "" {
+			conformance.Skip(t, "conformance: this subject does not surface the inviter's account, so there is no account to be invited into; skipping")
+		}
+
+		delivered := s.Seams().Actions.InvitationToken
+		s.NeedsAction(t, delivered != nil, "invitation token")
+
+		membership := s.Roles().Membership
+		roles := membership[:]
+		addressed := freshEmail()
+
+		invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
+			AccountId: inviter.AccountID,
+			ToEmail:   addressed,
+			ToName:    inviteeName,
+			Roles:     roles,
+		})
+		must.NoError(t, err, must.Sprint("inviting somebody who has not registered"))
+
+		token, err := delivered(t.Context(), inviter.ScopeFor(identitySurface), invited.GetInvitation().GetId())
+		must.NoError(t, err, must.Sprint("reading the token the deployment delivered"))
+
+		request := withPassword(registrationRequest(s))
+		request.User.EmailAddress = addressed
+		request.Account, request.OwnerRoles = nil, nil
+		request.Invitation = &signinpb.RegistrationInvitation{
+			InvitationId: invited.GetInvitation().GetId(),
+			Token:        "not the token",
+		}
+
+		by := registrar(t, s)
+
+		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), request)
+		must.Error(t, err, must.Sprint("a registration naming the wrong token was honored"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
+
+		request.Invitation.Token = token
+		who, registered := register(t, s, request)
+
+		test.Nil(t, registered.GetAccount(), test.Sprint("a registration by invitation minted an account of its own"))
+		test.EqOp(t, identitypb.InvitationStatus_INVITATION_STATUS_ACCEPTED, registered.GetInvitation().GetStatus())
+		test.EqOp(t, inviter.AccountID, registered.GetMembership().GetBelongsToAccount(),
+			test.Sprint("an invited registrant joined somewhere other than the inviting account"))
+
+		held := slices.Clone(registered.GetMembership().GetRoles())
+		slices.Sort(held)
+		offered := slices.Clone(roles)
+		slices.Sort(offered)
+		test.Eq(t, offered, held, test.Sprint("an invited registrant holds other roles than they were offered"))
+
+		verify(t, s, anon, who)
+
+		issued := loggedIn(t, anon, who.username, password)
+		test.EqOp(t, inviter.AccountID, issued.GetActiveAccountId(),
+			test.Sprint("an invited registrant's only account is not where they land"))
+	})
+
+	// Moving an address un-proves it, and the link mailed to the old address
+	// dies with the move: a link that survived would let whoever reads the old
+	// mailbox prove the new one. The dead link is refused as one never mailed
+	// is, and the control is the door itself, answering the link mailed to
+	// the address the person moved to.
+	t.Run("moving an address kills the link mailed to the old one", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, _ := signedIn(t, s, anon, updateProfile, requestVerificationEmail)
+		if sub.Surfaces.Identity == nil {
+			conformance.Skip(t, "conformance: this subject mounts no identity surface, so nobody can move their address; skipping")
+		}
+
+		move := func(to string) {
+			t.Helper()
+
+			_, err := sub.Surfaces.Identity.UpdateProfile(sub.Context(t.Context()), &identitypb.UpdateProfileRequest{
+				Input: &identitypb.ProfileUpdateInput{EmailAddress: &to},
+			})
+			must.NoError(t, err, must.Sprint("moving the signed-in person's address"))
+		}
+
+		resend := func(to string) string {
+			t.Helper()
+
+			_, err := sub.Surfaces.SignIn.RequestVerificationEmail(sub.Context(t.Context()),
+				&signinpb.RequestVerificationEmailRequest{})
+			must.NoError(t, err, must.Sprint("asking for a verification link for a moved address"))
+
+			return mailedVerification(t, s, to)
+		}
+
+		// Read before the move: a deployment may find a mailed link by the
+		// address it went to.
+		old := freshEmail()
+		move(old)
+		stale := resend(old)
+
+		moved := freshEmail()
+		move(moved)
+
+		_, never := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: identifiers.New()})
+		_, err := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: stale})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+		indistinguishable(t, s, never, err, "a link mailed before an address moved against one never mailed")
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: resend(moved)})
+		must.NoError(t, err, must.Sprint("the link mailed to the address moved to did not verify"))
+	})
+
 	// A sender who copied an invitation's link holds the link the mail
 	// carries, and it does what the mailed one does: registers the person it
 	// was addressed to into the inviting account. Somebody else registering
@@ -285,7 +437,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
 			AccountId: inviter.AccountID,
 			ToEmail:   addressed,
-			ToName:    "Some Body",
+			ToName:    inviteeName,
 			Roles:     []string{s.Roles().Membership[0]},
 		})
 		must.NoError(t, err, must.Sprint("inviting somebody who has not registered"))
