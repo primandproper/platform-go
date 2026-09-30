@@ -154,6 +154,7 @@ type Server struct {
 	principals      callers.PrincipalExtractor
 	mintToken       TokenMinter
 	targets         TargetAuthorizer
+	permissions     PermissionResolver
 
 	instruments *metrics.OperationSet
 

@@ -275,6 +275,22 @@ type Seams struct {
 	// that never opted in has nothing to say here, and one that did says so
 	// rather than having the suite accept either answer.
 	InvitationTokenReturned bool
+
+	// PrincipalPermissions says the deployment's identity server was built with
+	// identitygrpc.WithPermissionResolver, so GetPrincipal answers what the
+	// caller may do beside who they are. True asserts the field is present and
+	// follows the account GetPrincipal resolved; false asserts it is absent.
+	//
+	// What a role permits is the deployment's, so no assertion names a
+	// permission. What the suite holds a deployment to is that the answer is a
+	// function of the roles held where the read was asked about: two callers
+	// holding the same role in one account are told the same thing there, and
+	// a caller who names an account they are a member of is told what that
+	// membership permits rather than what their own account does.
+	//
+	// False is the server's default, and so it is the zero value: a server with
+	// no role policy to consult serves no field rather than an empty one.
+	PrincipalPermissions bool
 }
 
 // Subject is one caller, and the clients it calls through.

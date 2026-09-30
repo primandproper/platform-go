@@ -2,7 +2,9 @@ package grpc
 
 import (
 	"context"
+	"slices"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
@@ -245,6 +247,10 @@ func (s *Server) SetUserRequiresPasswordChange(
 
 // GetPrincipal answers "who am I and what may I do" for the calling user.
 //
+// The second half is answered only by a server built WithPermissionResolver;
+// see that option for what is resolved, and GetPrincipalResponse.permissions
+// for what a client may and may not conclude from it.
+//
 // It is the read a client makes on load, and the one whose shape is the reason
 // identity.Principal exists: a user, their memberships and the account this
 // request is against, resolved together rather than by three queries a caller
@@ -306,7 +312,55 @@ func (s *Server) GetPrincipal(
 		response.ActiveAccount = AccountToProto(account)
 	}
 
+	if s.permissions != nil {
+		response.Permissions, err = s.effectivePermissions(ctx, principal, resolved)
+		if err != nil {
+			return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "resolving the calling principal's permissions")
+		}
+	}
+
 	return response, nil
+}
+
+// effectivePermissions is what caller may do in the account resolved names:
+// the service roles the session carries, and the roles the directory holds for
+// the caller in that account, resolved together.
+//
+// The service roles are read off the request's principal and never off
+// resolved, whose are the directory's. The two differ exactly when it matters —
+// an ordinary-door session of somebody who holds a service role — and the
+// directory's answer would tell that session it may do what every call it
+// makes is refused.
+func (s *Server) effectivePermissions(
+	ctx context.Context,
+	caller callers.Principal,
+	resolved *identity.Principal,
+) (*identitypb.EffectivePermissions, error) {
+	roles := append(sessionServiceRoles(caller), resolved.AccountRoles()...)
+
+	granted, err := s.permissions.PermissionsForRoles(ctx, roles...)
+	if err != nil {
+		return nil, err
+	}
+
+	permissions := make([]string, 0, granted.Len())
+	for _, permission := range granted.Slice() {
+		permissions = append(permissions, string(permission))
+	}
+
+	return &identitypb.EffectivePermissions{Permissions: permissions}, nil
+}
+
+// sessionServiceRoles are the service roles a request's principal carries: the
+// ones on the directory's answer it holds, if it holds one. The slice is a copy,
+// so appending to it cannot write into the principal.
+func sessionServiceRoles(caller callers.Principal) []string {
+	carrier, ok := caller.(interface{ Identity() *identity.Principal })
+	if !ok {
+		return nil
+	}
+
+	return slices.Clone(carrier.Identity().ServiceRoles())
 }
 
 // GetUser reads one user.

@@ -18,6 +18,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -93,7 +94,8 @@ func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy
 	svc, err := identity.NewService(db, store, identity.WithHooks(invites))
 	must.NoError(t, err)
 
-	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal)
+	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal,
+		identitygrpc.WithPermissionResolver(vocabularyPolicy))
 	must.NoError(t, err)
 
 	conn := serve(t, srv)
@@ -193,6 +195,8 @@ func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy
 		// ones it declares — which is the case the literals broke.
 		Roles: vocabulary,
 
+		PrincipalPermissions: true,
+
 		Dialect: d,
 	})
 }
@@ -241,6 +245,28 @@ var vocabulary = conformance.Roles{
 	Owner:      "proprietor",
 	Service:    "steward",
 	Membership: [2]string{"proprietor", "patron"},
+}
+
+// vocabularyPolicy is this harness's role policy: what each role in
+// vocabulary grants, and nothing for a role outside it. The two membership
+// roles grant different sets, so an answer for the wrong account is a
+// different answer.
+var vocabularyPolicy = rolePolicy{
+	vocabulary.Owner:         {"conformance.accounts.manage", "conformance.accounts.read"},
+	vocabulary.Membership[1]: {"conformance.accounts.read"},
+	vocabulary.Service:       {"conformance.directory.read"},
+}
+
+// rolePolicy is an identitygrpc.PermissionResolver over a fixed table.
+type rolePolicy map[string][]authorization.Permission
+
+func (p rolePolicy) PermissionsForRoles(_ context.Context, roles ...string) (*authorization.PermissionSet, error) {
+	var granted []authorization.Permission
+	for _, role := range roles {
+		granted = append(granted, p[role]...)
+	}
+
+	return authorization.NewPermissionSet(granted...), nil
 }
 
 // closedVocabulary refuses a request naming a role outside vocabulary, which
