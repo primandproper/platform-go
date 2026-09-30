@@ -44,11 +44,13 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/errors"
+	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -85,6 +87,14 @@ type Config struct {
 	// schema's own name; see passwordreset.DefaultTablePrefix.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 
+	// SweepJob is the scheduled sweep NewJobs renders: the same Sweep, run once
+	// across a fleet under the scheduler's lock rather than once per replica.
+	// It runs unless Disabled, every DefaultSweepInterval unless it names its
+	// own schedule. It is independent of SweepInterval's in-process loop, which
+	// is the sweep a deployment with no scheduler still gets; a fleet that
+	// schedules this job can set SWEEP_INTERVAL=0 and leave the one.
+	SweepJob jobscfg.JobConfig `env:",init" envPrefix:"SWEEP_JOB_" json:"sweepJob,omitzero" yaml:"sweepJob,omitempty"`
+
 	// TokenLifetime is how long a link Service.Request mints stays spendable.
 	// Unset takes passwordreset.DefaultTokenLifetime.
 	TokenLifetime time.Duration `env:"TOKEN_LIFETIME" json:"tokenLifetime,omitempty" yaml:"tokenLifetime,omitempty"`
@@ -109,6 +119,8 @@ func (cfg *Config) EnsureDefaults() {
 	}
 
 	cfg.SweepInterval = cfgnorm.EnsureSweepInterval(cfg.SweepInterval, DefaultSweepInterval)
+
+	scheduledjob.EnsureDefaults(&cfg.SweepJob, DefaultSweepInterval, DefaultSweepJobLeaseTTL)
 }
 
 // requestFloorRule permits a nil or non-negative floor. A negative one would
@@ -140,6 +152,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.TokenLifetime, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.RequestFloor, requestFloorRule),
 		validation.Field(&cfg.SweepInterval, cfgnorm.SweepIntervalRule),
+		validation.Field(&cfg.SweepJob, validation.By(func(any) error {
+			return scheduledjob.Validate(ctx, &cfg.SweepJob)
+		})),
 	)
 }
 

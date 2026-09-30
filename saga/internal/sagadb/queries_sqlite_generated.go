@@ -51,6 +51,16 @@ WHERE {{prefix}}saga_instances.status IN (?1, ?2)
 ORDER BY {{prefix}}saga_instances.next_attempt, {{prefix}}saga_instances.created_at, {{prefix}}saga_instances.id
 LIMIT COALESCE(?5, 50)`
 
+const countPrunableSagaInstancesSQLite = `SELECT COUNT(*)
+FROM (
+	SELECT 1
+	FROM {{prefix}}saga_instances
+	WHERE {{prefix}}saga_instances.status = ?1
+		AND {{prefix}}saga_instances.last_updated_at IS NOT NULL
+		AND {{prefix}}saga_instances.last_updated_at <= ?2
+	LIMIT COALESCE(?3, 50)
+) AS saga_prune_backlog`
+
 const getSagaInstanceSQLite = `
 SELECT
 	{{prefix}}saga_instances.id,
@@ -339,6 +349,17 @@ WHERE {{prefix}}saga_instances.created_at > COALESCE(?1, (SELECT datetime(CURREN
 ORDER BY {{prefix}}saga_instances.id DESC
 LIMIT COALESCE(?12, 50)`
 
+const pruneSagaInstancesSQLite = `DELETE FROM {{prefix}}saga_instances
+WHERE id IN (
+	SELECT doomed.id
+	FROM {{prefix}}saga_instances AS doomed
+	WHERE doomed.status = ?1
+		AND doomed.last_updated_at IS NOT NULL
+		AND doomed.last_updated_at <= ?2
+	ORDER BY doomed.last_updated_at ASC, doomed.id ASC
+	LIMIT ?3
+)`
+
 const releaseSagaInstanceSQLite = `UPDATE {{prefix}}saga_instances SET
 	claimed_until = NULL,
 	last_updated_at = ?1
@@ -369,6 +390,7 @@ type sqliteQueries struct {
 	advanceSagaInstanceAndClearLease        string
 	claimSagaInstances                      string
 	claimableSagaInstanceIDs                string
+	countPrunableSagaInstances              string
 	getSagaInstance                         string
 	insertSagaInstance                      string
 	listSagaInstances                       string
@@ -376,6 +398,7 @@ type sqliteQueries struct {
 	listSagaInstancesByDefinitionDescending string
 	listSagaInstancesByIDs                  string
 	listSagaInstancesDescending             string
+	pruneSagaInstances                      string
 	releaseSagaInstance                     string
 	requeueSagaInstance                     string
 	rescheduleSagaInstance                  string
@@ -389,6 +412,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		advanceSagaInstanceAndClearLease:        strings.ReplaceAll(advanceSagaInstanceAndClearLeaseSQLite, prefixMarker, prefix),
 		claimSagaInstances:                      strings.ReplaceAll(claimSagaInstancesSQLite, prefixMarker, prefix),
 		claimableSagaInstanceIDs:                strings.ReplaceAll(claimableSagaInstanceIDsSQLite, prefixMarker, prefix),
+		countPrunableSagaInstances:              strings.ReplaceAll(countPrunableSagaInstancesSQLite, prefixMarker, prefix),
 		getSagaInstance:                         strings.ReplaceAll(getSagaInstanceSQLite, prefixMarker, prefix),
 		insertSagaInstance:                      strings.ReplaceAll(insertSagaInstanceSQLite, prefixMarker, prefix),
 		listSagaInstances:                       strings.ReplaceAll(listSagaInstancesSQLite, prefixMarker, prefix),
@@ -396,6 +420,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		listSagaInstancesByDefinitionDescending: strings.ReplaceAll(listSagaInstancesByDefinitionDescendingSQLite, prefixMarker, prefix),
 		listSagaInstancesByIDs:                  strings.ReplaceAll(listSagaInstancesByIDsSQLite, prefixMarker, prefix),
 		listSagaInstancesDescending:             strings.ReplaceAll(listSagaInstancesDescendingSQLite, prefixMarker, prefix),
+		pruneSagaInstances:                      strings.ReplaceAll(pruneSagaInstancesSQLite, prefixMarker, prefix),
 		releaseSagaInstance:                     strings.ReplaceAll(releaseSagaInstanceSQLite, prefixMarker, prefix),
 		requeueSagaInstance:                     strings.ReplaceAll(requeueSagaInstanceSQLite, prefixMarker, prefix),
 		rescheduleSagaInstance:                  strings.ReplaceAll(rescheduleSagaInstanceSQLite, prefixMarker, prefix),
@@ -536,6 +561,23 @@ func (q *sqliteQueries) ClaimableSagaInstanceIDs(ctx context.Context, db DBTX, a
 	}
 
 	return items, nil
+}
+
+// CountPrunableSagaInstances runs the :one query against sqlite.
+func (q *sqliteQueries) CountPrunableSagaInstances(ctx context.Context, db DBTX, arg CountPrunableSagaInstancesParams) (CountPrunableSagaInstancesRow, error) {
+	row := db.QueryRowContext(ctx, q.countPrunableSagaInstances,
+		arg.RetiredStatus,
+		timeTextPtr(arg.RetiredBefore),
+		arg.ResultLimit,
+	)
+
+	var i CountPrunableSagaInstancesRow
+
+	err := row.Scan(
+		&i.Count,
+	)
+
+	return i, err
 }
 
 // GetSagaInstance runs the :one query against sqlite.
@@ -876,6 +918,20 @@ func (q *sqliteQueries) ListSagaInstancesDescending(ctx context.Context, db DBTX
 	return items, nil
 }
 
+// PruneSagaInstances runs the :execrows query against sqlite.
+func (q *sqliteQueries) PruneSagaInstances(ctx context.Context, db DBTX, arg PruneSagaInstancesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.pruneSagaInstances,
+		arg.RetiredStatus,
+		timeTextPtr(arg.RetiredBefore),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // ReleaseSagaInstance runs the :execrows query against sqlite.
 func (q *sqliteQueries) ReleaseSagaInstance(ctx context.Context, db DBTX, arg ReleaseSagaInstanceParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.releaseSagaInstance,
@@ -983,6 +1039,14 @@ var (
 	_ = struct {
 		ID string
 	}(ClaimableSagaInstanceIDsRow{})
+	_ = struct {
+		RetiredStatus string
+		RetiredBefore *time.Time
+		ResultLimit   int64
+	}(CountPrunableSagaInstancesParams{})
+	_ = struct {
+		Count int64
+	}(CountPrunableSagaInstancesRow{})
 	_ = struct {
 		ID string
 	}(GetSagaInstanceParams{})
@@ -1166,6 +1230,11 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListSagaInstancesDescendingRow{})
+	_ = struct {
+		RetiredStatus string
+		RetiredBefore *time.Time
+		ResultLimit   int64
+	}(PruneSagaInstancesParams{})
 	_ = struct {
 		LastUpdatedAt *time.Time
 		ID            string

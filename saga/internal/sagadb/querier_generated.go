@@ -59,6 +59,8 @@ type Querier interface {
 	ClaimSagaInstances(ctx context.Context, db DBTX, arg ClaimSagaInstancesParams) (int64, error)
 	// ClaimableSagaInstanceIDs runs the :many query.
 	ClaimableSagaInstanceIDs(ctx context.Context, db DBTX, arg ClaimableSagaInstanceIDsParams) ([]ClaimableSagaInstanceIDsRow, error)
+	// CountPrunableSagaInstances runs the :one query.
+	CountPrunableSagaInstances(ctx context.Context, db DBTX, arg CountPrunableSagaInstancesParams) (CountPrunableSagaInstancesRow, error)
 	// GetSagaInstance runs the :one query.
 	GetSagaInstance(ctx context.Context, db DBTX, arg GetSagaInstanceParams) (GetSagaInstanceRow, error)
 	// InsertSagaInstance runs the :exec query.
@@ -73,6 +75,11 @@ type Querier interface {
 	ListSagaInstancesByIDs(ctx context.Context, db DBTX, arg ListSagaInstancesByIDsParams) ([]ListSagaInstancesByIDsRow, error)
 	// ListSagaInstancesDescending runs the :many query.
 	ListSagaInstancesDescending(ctx context.Context, db DBTX, arg ListSagaInstancesDescendingParams) ([]ListSagaInstancesDescendingRow, error)
+	// PruneSagaInstances runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	PruneSagaInstances(ctx context.Context, db DBTX, arg PruneSagaInstancesParams) (int64, error)
 	// ReleaseSagaInstance runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

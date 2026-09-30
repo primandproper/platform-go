@@ -365,3 +365,27 @@ UPDATE saga_instances SET
 	claimed_until = NULL
 WHERE saga_instances.id = sqlc.arg(id)
 	AND saga_instances.status = ANY(sqlc.arg(from_statuses)::text[]);
+
+-- name: PruneSagaInstances :execrows
+DELETE FROM saga_instances
+WHERE id IN (
+	SELECT doomed.id
+	FROM saga_instances AS doomed
+	WHERE doomed.status = sqlc.arg(retired_status)
+		AND doomed.last_updated_at IS NOT NULL
+		AND doomed.last_updated_at <= sqlc.arg(retired_before)
+	ORDER BY doomed.last_updated_at ASC, doomed.id ASC
+	LIMIT sqlc.arg(result_limit)
+	FOR UPDATE SKIP LOCKED
+);
+
+-- name: CountPrunableSagaInstances :one
+SELECT COUNT(*)
+FROM (
+	SELECT 1
+	FROM saga_instances
+	WHERE saga_instances.status = sqlc.arg(retired_status)
+		AND saga_instances.last_updated_at IS NOT NULL
+		AND saga_instances.last_updated_at <= sqlc.arg(retired_before)
+	LIMIT COALESCE(sqlc.narg(result_limit), 50)
+) AS saga_prune_backlog;

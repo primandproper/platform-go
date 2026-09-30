@@ -140,6 +140,35 @@ func TestWorker_RealServers(T *testing.T) {
 	})
 }
 
+// TestRetentionTarget_RealServers runs the retention suite against real
+// servers: the three dialects spell the bounded delete three ways, and the
+// assertion that matters — a running or stuck instance survives a pass however
+// old it is — has to hold on every one of them.
+func TestRetentionTarget_RealServers(T *testing.T) {
+	T.Parallel()
+
+	T.Run("postgres", func(t *testing.T) {
+		t.Parallel()
+
+		pgtest.Run(t, func(_ context.Context, pg *pgtest.Instance) {
+			client, err := postgres.NewDatabaseClient(t.Context(),
+				&testClientConfig{connectionString: pg.ConnectionString})
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = client.Close() })
+
+			runRetentionSuite(t, &storeEnv{client: client, dialect: dialect.Postgres})
+		})
+	})
+
+	T.Run("mysql", func(t *testing.T) {
+		t.Parallel()
+
+		runWithMySQL(t, func(_ context.Context, client database.Client) {
+			runRetentionSuite(t, &storeEnv{client: client, dialect: dialect.MySQL})
+		})
+	})
+}
+
 // runWithMySQL starts a MySQL-flavored container and hands the closure a
 // database.Client against it.
 func runWithMySQL(t *testing.T, fn func(ctx context.Context, client database.Client)) {

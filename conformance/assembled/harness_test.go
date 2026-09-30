@@ -93,9 +93,11 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	distributedlockcfg "github.com/primandproper/primitives-go/v2/distributedlock/config"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
 	routingcfg "github.com/primandproper/primitives-go/v2/routing/config"
@@ -217,6 +219,13 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		MediaRegistry: &mediaregistrycfg.Config{TablePrefix: prefix},
 		Operations:    operationsConfig(prefix),
 		DataPrivacy:   &dataprivacycfg.Config{Dialect: d, TablePrefix: prefix},
+
+		// The scheduler the operations tier's recovery and reap run on. A
+		// service with operations and no scheduler is refused at New, because
+		// nothing else would ever run them.
+		JobsScheduler: &jobscfg.SchedulerConfig{
+			Lock: distributedlockcfg.Config{Provider: distributedlockcfg.MemoryProvider},
+		},
 	}
 	if waitlists == confirmsWaitlists {
 		cfg.Links = waitlistLinksConfig(prefix)
