@@ -345,8 +345,8 @@ type scopeEntries struct {
 // else, in every scope.
 //
 // It is the one read here that names no scope, and it is not a consumer read
-// that forgot to. It is subject-access machinery confined by the subject's own
-// ID: an impersonated entry is filed in the scope of the person impersonated,
+// that forgot to: it is audit.Reader.ListAcrossScopes, spelled apart. It is
+// subject-access machinery confined by the subject's own ID: an impersonated entry is filed in the scope of the person impersonated,
 // which is by construction a scope the operator's resolver has no reason to
 // name — an operator who is staff in a directory of their own belongs to none
 // of their customers' — and a read confined to the resolved scopes would hand
@@ -355,7 +355,9 @@ type scopeEntries struct {
 // matching the subject's ID, which is the predicate audit.Erasure.CountMentions
 // already counts across every scope.
 func (c *Collector) actedAs(ctx context.Context, subjectID string) ([]audit.Entry, error) {
-	entries, err := c.drain(ctx, &audit.Query{ImpersonatorID: subjectID})
+	entries, err := c.drain(ctx, func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+		return c.log.ListAcrossScopes(ctx, c.reader, &audit.Query{ImpersonatorID: subjectID}, filter)
+	})
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "reading the entries the subject acted in as somebody else")
 	}
@@ -366,12 +368,12 @@ func (c *Collector) actedAs(ctx context.Context, subjectID string) ([]audit.Entr
 // collectScope reads one scope's entries naming the subject, as actor and as
 // resource.
 func (c *Collector) collectScope(ctx context.Context, scope tenancy.Scope, subjectID string) ([]audit.Entry, error) {
-	acted, err := c.drain(ctx, &audit.Query{Scope: &scope, ActorID: subjectID})
+	acted, err := c.drain(ctx, c.inScope(scope, &audit.Query{ActorID: subjectID}))
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "reading the entries the subject acted in")
 	}
 
-	actedOn, err := c.drain(ctx, &audit.Query{Scope: &scope, ResourceID: subjectID})
+	actedOn, err := c.drain(ctx, c.inScope(scope, &audit.Query{ResourceID: subjectID}))
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "reading the entries the subject was acted on in")
 	}
@@ -435,10 +437,17 @@ func fieldNamesOnly(changes map[string]audit.Change) map[string]audit.Change {
 	return names
 }
 
-// drain pages one query to its end.
-func (c *Collector) drain(ctx context.Context, query *audit.Query) ([]audit.Entry, error) {
-	return dataprivacy.CollectAll(ctx,
-		func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-			return c.log.List(ctx, c.reader, query, filter)
-		})
+// page is one paged read of the log, reduced to the filter it is asked with.
+type page func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
+
+// inScope is the paged read of one scope's entries matching query.
+func (c *Collector) inScope(scope tenancy.Scope, query *audit.Query) page {
+	return func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+		return c.log.List(ctx, c.reader, scope, query, filter)
+	}
+}
+
+// drain pages one read to its end.
+func (c *Collector) drain(ctx context.Context, read page) ([]audit.Entry, error) {
+	return dataprivacy.CollectAll(ctx, read)
 }

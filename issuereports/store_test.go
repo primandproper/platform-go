@@ -642,6 +642,105 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 		test.SliceLen(t, 1, second.Data)
 	})
 
+	t.Run("the operator's queue reaches every tenant and says whose each report is", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		ours := filed(t, env, store, newReport(testReporter, "bug", "ours"))
+
+		elsewhere := newReport(otherReporter, "bug", "theirs")
+		elsewhere.Scope = otherScope
+		theirs := filed(t, env, store, elsewhere)
+
+		global := newReport(otherReporter, "bug", "nobody's")
+		global.Scope = tenancy.Global()
+		platform := filed(t, env, store, global)
+
+		page, err := store.ListReportsAcrossScopes(t.Context(), env.reader(), nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 3, page.Data)
+		test.EqOp(t, uint64(3), page.FilteredCount)
+
+		scopes := map[string]tenancy.Scope{}
+		for i := range page.Data {
+			scopes[page.Data[i].ID] = page.Data[i].Scope
+		}
+
+		test.EqOp(t, testScope, scopes[ours.ID])
+		test.EqOp(t, otherScope, scopes[theirs.ID])
+		test.EqOp(t, tenancy.Global(), scopes[platform.ID])
+	})
+
+	t.Run("the operator's queue by status holds that status in every tenant", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		open := filed(t, env, store, newReport(testReporter, "bug", "open here"))
+
+		elsewhere := newReport(otherReporter, "bug", "open there")
+		elsewhere.Scope = otherScope
+		openElsewhere := filed(t, env, store, elsewhere)
+
+		closed := newReport(otherReporter, "bug", "resolved there")
+		closed.Scope = otherScope
+		resolved := filed(t, env, store, closed)
+		_, err := env.transition(t, store, otherScope, resolved.ID, StatusOpen, StatusResolved, "fixed")
+		must.NoError(t, err)
+
+		page, err := store.ListReportsByStatusAcrossScopes(t.Context(), env.reader(), StatusOpen, nil)
+		must.NoError(t, err)
+
+		ids := make([]string, 0, len(page.Data))
+		for i := range page.Data {
+			ids = append(ids, page.Data[i].ID)
+		}
+
+		test.SliceLen(t, 2, ids)
+		test.SliceContains(t, ids, open.ID)
+		test.SliceContains(t, ids, openElsewhere.ID)
+		test.SliceNotContains(t, ids, resolved.ID)
+
+		_, err = store.ListReportsByStatusAcrossScopes(t.Context(), env.reader(), Status("triaged"), nil)
+		must.ErrorIs(t, err, ErrUnknownStatus)
+	})
+
+	t.Run("the operator's queue leaves the archive out unless asked", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		live := filed(t, env, store, newReport(testReporter, "bug", "live"))
+		removed := filed(t, env, store, newReport(testReporter, "bug", "removed"))
+		_, err := env.archive(t, store, testScope, removed.ID)
+		must.NoError(t, err)
+
+		page, err := store.ListReportsAcrossScopes(t.Context(), env.reader(), nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, page.Data)
+		test.EqOp(t, live.ID, page.Data[0].ID)
+
+		filter := filtering.DefaultQueryFilter()
+		filter.IncludeArchived = pointer.To(true)
+
+		page, err = store.ListReportsAcrossScopes(t.Context(), env.reader(), filter)
+		must.NoError(t, err)
+		test.SliceLen(t, 2, page.Data)
+	})
+
+	t.Run("the operator's queue refuses a nil executor", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		_, err := store.ListReportsAcrossScopes(t.Context(), nil, nil)
+		test.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ListReportsByStatusAcrossScopes(t.Context(), nil, StatusOpen, nil)
+		test.ErrorIs(t, err, ErrNilExecutor)
+	})
+
 	t.Run("a scopeless read is a refusal rather than a wider one", func(t *testing.T) {
 		t.Parallel()
 

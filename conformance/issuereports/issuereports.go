@@ -20,6 +20,7 @@ const (
 	archiveReport            = issuereportspb.IssueReportsService_ArchiveReport_FullMethodName
 	createReport             = issuereportspb.IssueReportsService_CreateReport_FullMethodName
 	getReport                = issuereportspb.IssueReportsService_GetReport_FullMethodName
+	listReportsAcrossScopes  = issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName
 	listReportsByReporter    = issuereportspb.IssueReportsService_ListReportsByReporter_FullMethodName
 	listReportsByStatus      = issuereportspb.IssueReportsService_ListReportsByStatus_FullMethodName
 	listReportsBySubjectType = issuereportspb.IssueReportsService_ListReportsBySubjectType_FullMethodName

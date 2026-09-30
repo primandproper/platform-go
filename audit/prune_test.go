@@ -210,7 +210,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
 
-		_, err = reader.Get(t.Context(), client.Reader(), nil, first.ID)
+		_, err = reader.GetAcrossScopes(t.Context(), client.Reader(), first.ID)
 		test.ErrorIs(t, err, ErrEntryNotFound)
 	})
 

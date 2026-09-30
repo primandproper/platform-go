@@ -246,7 +246,7 @@ func utcPtr(t *time.Time) *time.Time {
 // "do not narrow", and every other value is the one the column must hold.
 //
 // The scope is the exception and does not come through here. Its absence is not
-// an empty string but an absent [Query.Scope], because the identifier the empty
+// an empty string but a read across scopes, because the identifier the empty
 // string names — tenancy.Global() — is a value a row can hold and a narrowing a
 // caller may ask for.
 func optional(value string) *string {

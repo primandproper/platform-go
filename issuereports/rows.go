@@ -335,3 +335,40 @@ func listForSubjectParams(
 		ResultLimit:     w.resultLimit,
 	}
 }
+
+// listAcrossScopesParams is the operator's whole queue: the window and the page,
+// and no scope, because this is the one list that names none. See
+// [Store.ListReportsAcrossScopes].
+func listAcrossScopesParams(filter *filtering.QueryFilter) issuereportsdb.ListReportsAcrossScopesParams {
+	w := windowFrom(filter)
+
+	return issuereportsdb.ListReportsAcrossScopesParams{
+		CreatedAfter:    w.createdAfter,
+		CreatedBefore:   w.createdBefore,
+		UpdatedAfter:    w.updatedAfter,
+		UpdatedBefore:   w.updatedBefore,
+		IncludeArchived: w.includeArchived,
+		PageCursor:      w.pageCursor,
+		ResultLimit:     w.resultLimit,
+	}
+}
+
+// listByStatusAcrossScopesParams is listAcrossScopesParams narrowed to one
+// status.
+func listByStatusAcrossScopesParams(
+	status Status,
+	filter *filtering.QueryFilter,
+) issuereportsdb.ListReportsByStatusAcrossScopesParams {
+	w := windowFrom(filter)
+
+	return issuereportsdb.ListReportsByStatusAcrossScopesParams{
+		CreatedAfter:    w.createdAfter,
+		CreatedBefore:   w.createdBefore,
+		UpdatedAfter:    w.updatedAfter,
+		UpdatedBefore:   w.updatedBefore,
+		IncludeArchived: w.includeArchived,
+		Status:          status.String(),
+		PageCursor:      w.pageCursor,
+		ResultLimit:     w.resultLimit,
+	}
+}

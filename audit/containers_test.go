@@ -188,7 +188,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// The truncation at the write site is what makes this hold: Postgres and
 		// MySQL keep microseconds, and a timestamp that changed on the way back
 		// would make every entry read as tampered.
-		read, err := reader.Get(t.Context(), env.client.Reader(), nil, entry.ID)
+		read, err := reader.GetAcrossScopes(t.Context(), env.client.Reader(), entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, read.RecordedAt)
 
@@ -223,17 +223,17 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		scope := tenancy.Of("acct_1")
 
-		read, err := reader.Get(t.Context(), env.client.Reader(), &scope, mine.ID)
+		read, err := reader.Get(t.Context(), env.client.Reader(), scope, mine.ID)
 		must.NoError(t, err)
 		test.EqOp(t, mine.ID, read.ID)
 
-		_, err = reader.Get(t.Context(), env.client.Reader(), &scope, theirs.ID)
+		_, err = reader.Get(t.Context(), env.client.Reader(), scope, theirs.ID)
 		test.ErrorIs(t, err, ErrEntryNotFound)
 
 		// And the unnarrowed read still reaches both, which is the half a
 		// predicate that quietly matched nothing would also pass.
 		for _, entry := range []*Entry{mine, theirs} {
-			found, getErr := reader.Get(t.Context(), env.client.Reader(), nil, entry.ID)
+			found, getErr := reader.GetAcrossScopes(t.Context(), env.client.Reader(), entry.ID)
 			must.NoError(t, getErr)
 			test.EqOp(t, entry.ID, found.ID)
 		}
@@ -598,7 +598,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			return recorder.Record(t.Context(), q, tenancy.Of("acct_2"), entryFor(tenancy.Of("acct_2"), "r3"))
 		}))
 
-		listed, err := reader.List(t.Context(), env.client.Reader(), &Query{Scope: &scope}, nil)
+		listed, err := reader.List(t.Context(), env.client.Reader(), scope, &Query{}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 		test.EqOp(t, uint64(2), listed.TotalCount)
@@ -828,7 +828,7 @@ func TestAudit_Migrations_RealServers(T *testing.T) {
 				return recorder.Record(t.Context(), q, scope, entryFor(scope, "r0"), impersonated)
 			}))
 
-			byOperator, err := reader.List(t.Context(), client.Reader(), &Query{Scope: &scope, ImpersonatorID: "operator"}, nil)
+			byOperator, err := reader.List(t.Context(), client.Reader(), scope, &Query{ImpersonatorID: "operator"}, nil)
 			must.NoError(t, err)
 			must.SliceLen(t, 1, byOperator.Data)
 			test.EqOp(t, impersonated.ID, byOperator.Data[0].ID)

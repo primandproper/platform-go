@@ -98,7 +98,7 @@ by side: the get compares against the optional argument, and the chain reads
 beside it compare against the column's own bound value, because those address a
 chain and this one confines a read. A get keyed on the id alone was the read
 that answered across every tenant with nothing on it saying so, which is what
-audit.Reader.Get's *tenancy.Scope now makes a caller decide.
+audit.Reader.Get and GetAcrossScopes now make a caller decide by name.
 
 # The timestamps this schema binds
 

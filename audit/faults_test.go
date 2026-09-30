@@ -194,7 +194,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 
 		reader, q := newFailingReader(t)
 
-		_, err := reader.Get(t.Context(), q, nil, "entry_1")
+		_, err := reader.GetAcrossScopes(t.Context(), q, "entry_1")
 		test.Error(t, err)
 	})
 
@@ -203,7 +203,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 
 		reader, q := newFailingReader(t)
 
-		_, err := reader.List(t.Context(), q, nil, filtering.DefaultQueryFilter())
+		_, err := reader.ListAcrossScopes(t.Context(), q, nil, filtering.DefaultQueryFilter())
 		test.ErrorIs(t, err, errDatabase)
 	})
 
@@ -305,14 +305,14 @@ func TestRows_ReportUndecodableBlobs(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET change_set = ? WHERE id = ?", []byte("not json"), entry.ID)
 
-		_, err := newTestReader(t, client).Get(t.Context(), client.Reader(), nil, entry.ID)
+		_, err := newTestReader(t, client).GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
 		test.Error(t, err)
 
 		exec(t, client,
 			"UPDATE audit_log_entries SET change_set = NULL, metadata = ? WHERE id = ?",
 			[]byte("not json"), entry.ID)
 
-		_, err = newTestReader(t, client).List(t.Context(), client.Reader(), nil, nil)
+		_, err = newTestReader(t, client).ListAcrossScopes(t.Context(), client.Reader(), nil, nil)
 		test.Error(t, err)
 	})
 }

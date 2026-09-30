@@ -11,9 +11,10 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The five RPCs that page reports: the queue whole, the queue by status, one
-// person's list, everything about a kind of thing, and everything about one
-// particular thing.
+// The five RPCs that page one tenant's reports: the queue whole, the queue by
+// status, one person's list, everything about a kind of thing, and everything
+// about one particular thing. Then the operator's two, which page every
+// tenant's.
 //
 // All but one are the triager's, and their target is the queue rather than a
 // person: the grant on the method is the whole of the answer to "whose", which
@@ -21,11 +22,11 @@ import (
 // therefore the one that asks [ReportAuthorizer], before it reads anything —
 // there is nothing to read yet, and the name is the thing being gated.
 //
-// Every one of them pages within the caller's tenant and none of them can be
-// asked to cross one. There is no cross-scope listing in issuereports.Store at
-// all, and its documentation is clear about what that costs an operator: they
-// list the scopes they administer and page each. A read that omitted the scope
-// is the one read that cannot tell an operator's caller from a tenant's.
+// Every one of the five pages within the caller's tenant and none of them can be
+// asked to cross one. The operator's two cross every tenant and are separate
+// RPCs for that reason, behind [PermissionReadAnyReports]: a scoped read that
+// widened on some request field would be the one read that cannot tell an
+// operator's caller from a tenant's.
 //
 // A filter no converter can read is answered as malformed, before anything is
 // gated or read: saying so discloses nothing about any row.
@@ -268,5 +269,93 @@ func (s *Server) ListReportsForSubject(
 	return &issuereportspb.ListReportsForSubjectResponse{
 		Pagination: filteringgrpc.PaginationToProto(page.Pagination),
 		Results:    ReportsToProto(page.Data),
+	}, nil
+}
+
+// ListReportsAcrossScopes pages every tenant's reports: the operator's queue.
+//
+// It is the stated exception to "the tenant comes off the connection", and it is
+// one by being its own RPC rather than by a field on ListReports. The caller's
+// scope is still resolved and recorded on the span, because who read everybody's
+// reports is exactly what an operator's trace should say, but nothing is
+// confined to it. What gates it is [PermissionReadAnyReports] on the method,
+// which this module grants to nobody; see issuereports.Store's
+// ListReportsAcrossScopes for the ruling.
+//
+// Each row is a ScopedIssueReport, carrying the tenant it belongs to, because a
+// console showing every tenant's reports and not whose each one is could act on
+// none of them.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports]; for anybody else it is cleared. See archived.go.
+func (s *Server) ListReportsAcrossScopes(
+	ctx context.Context,
+	request *issuereportspb.ListReportsAcrossScopesRequest,
+) (*issuereportspb.ListReportsAcrossScopesResponse, error) {
+	ctx, req, done, err := s.caller(ctx, issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of the issue report queue across scopes")
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := s.store.ListReportsAcrossScopes(ctx, s.client.Reader(), filter)
+	if err != nil {
+		err = grpcerrors.PrepareAndLogGRPCStatus(err,
+			req.op.Logger(), req.op.Span(), codes.Internal, "listing issue reports across scopes")
+
+		return nil, err
+	}
+
+	return &issuereportspb.ListReportsAcrossScopesResponse{
+		Pagination: filteringgrpc.PaginationToProto(page.Pagination),
+		Results:    ScopedReportsToProto(page.Data),
+	}, nil
+}
+
+// ListReportsByStatusAcrossScopes pages one status's queue in every tenant.
+//
+// It is ListReportsAcrossScopes narrowed by status, behind the same grant, and a
+// status this queue does not have is refused for ListReportsByStatus's reason —
+// STATUS_UNSPECIFIED included, since a caller wanting every status has
+// ListReportsAcrossScopes.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports]; for anybody else it is cleared. See archived.go.
+func (s *Server) ListReportsByStatusAcrossScopes(
+	ctx context.Context,
+	request *issuereportspb.ListReportsByStatusAcrossScopesRequest,
+) (*issuereportspb.ListReportsByStatusAcrossScopesResponse, error) {
+	ctx, req, done, err := s.caller(ctx, issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	status := StatusFromProto(request.GetStatus())
+	req.op.Set(statusKey, status.String())
+
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of an issue report queue across scopes")
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := s.store.ListReportsByStatusAcrossScopes(ctx, s.client.Reader(), status, filter)
+	if err != nil {
+		err = grpcerrors.PrepareAndLogGRPCStatus(err,
+			req.op.Logger(), req.op.Span(), codes.Internal, "listing %q issue reports across scopes", status)
+
+		return nil, err
+	}
+
+	return &issuereportspb.ListReportsByStatusAcrossScopesResponse{
+		Pagination: filteringgrpc.PaginationToProto(page.Pagination),
+		Results:    ScopedReportsToProto(page.Data),
 	}, nil
 }

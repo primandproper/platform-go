@@ -24,6 +24,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/operations"
@@ -348,7 +349,7 @@ func isAdministrator(principal callers.Principal) bool {
 // that keeps its console to its staff, the way a product with a back office
 // does. The directory's administration, the catalog's writes, the scope-wide
 // ledgers and their corrections, the chain's verification, the moderation read,
-// the settings catalog, the client registry and the waitlist console are an
+// the report queue across tenants, the settings catalog, the client registry and the waitlist console are an
 // operator's; everything a person does to their own rows, and every door
 // reached with nobody on the call, is left to members.
 //
@@ -370,6 +371,9 @@ var staffOnly = []string{
 	billingpb.BillingService_ArchiveTransaction_FullMethodName,
 
 	commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
+
+	issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName,
+	issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
 
 	identitypb.IdentityService_GetUser_FullMethodName,
 	identitypb.IdentityService_ListUsers_FullMethodName,
