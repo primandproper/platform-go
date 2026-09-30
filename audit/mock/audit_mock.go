@@ -109,11 +109,17 @@ var _ audit.Reader = &ReaderMock{}
 //
 //		// make and configure a mocked audit.Reader
 //		mockedReader := &ReaderMock{
-//			GetFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*audit.Entry, error) {
+//			GetFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*audit.Entry, error) {
 //				panic("mock out the Get method")
 //			},
-//			ListFunc: func(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+//			GetAcrossScopesFunc: func(ctx context.Context, q database.SQLQueryExecutor, id string) (*audit.Entry, error) {
+//				panic("mock out the GetAcrossScopes method")
+//			},
+//			ListFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 //				panic("mock out the List method")
+//			},
+//			ListAcrossScopesFunc: func(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+//				panic("mock out the ListAcrossScopes method")
 //			},
 //			VerifyFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
 //				panic("mock out the Verify method")
@@ -126,10 +132,16 @@ var _ audit.Reader = &ReaderMock{}
 //	}
 type ReaderMock struct {
 	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*audit.Entry, error)
+	GetFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*audit.Entry, error)
+
+	// GetAcrossScopesFunc mocks the GetAcrossScopes method.
+	GetAcrossScopesFunc func(ctx context.Context, q database.SQLQueryExecutor, id string) (*audit.Entry, error)
 
 	// ListFunc mocks the List method.
-	ListFunc func(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
+	ListFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
+
+	// ListAcrossScopesFunc mocks the ListAcrossScopes method.
+	ListAcrossScopesFunc func(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
 
 	// VerifyFunc mocks the Verify method.
 	VerifyFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error)
@@ -143,12 +155,34 @@ type ReaderMock struct {
 			// Q is the q argument value.
 			Q database.SQLQueryExecutor
 			// Scope is the scope argument value.
-			Scope *tenancy.Scope
+			Scope tenancy.Scope
+			// ID is the id argument value.
+			ID string
+		}
+		// GetAcrossScopes holds details about calls to the GetAcrossScopes method.
+		GetAcrossScopes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
 			// ID is the id argument value.
 			ID string
 		}
 		// List holds details about calls to the List method.
 		List []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Query is the query argument value.
+			Query *audit.Query
+			// Filter is the filter argument value.
+			Filter *filtering.QueryFilter
+		}
+		// ListAcrossScopes holds details about calls to the ListAcrossScopes method.
+		ListAcrossScopes []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Q is the q argument value.
@@ -174,20 +208,22 @@ type ReaderMock struct {
 			AfterSeq int64
 		}
 	}
-	lockGet    sync.RWMutex
-	lockList   sync.RWMutex
-	lockVerify sync.RWMutex
+	lockGet              sync.RWMutex
+	lockGetAcrossScopes  sync.RWMutex
+	lockList             sync.RWMutex
+	lockListAcrossScopes sync.RWMutex
+	lockVerify           sync.RWMutex
 }
 
 // Get calls GetFunc.
-func (mock *ReaderMock) Get(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*audit.Entry, error) {
+func (mock *ReaderMock) Get(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*audit.Entry, error) {
 	if mock.GetFunc == nil {
 		panic("ReaderMock.GetFunc: method is nil but Reader.Get was just called")
 	}
 	callInfo := struct {
 		Ctx   context.Context
 		Q     database.SQLQueryExecutor
-		Scope *tenancy.Scope
+		Scope tenancy.Scope
 		ID    string
 	}{
 		Ctx:   ctx,
@@ -208,13 +244,13 @@ func (mock *ReaderMock) Get(ctx context.Context, q database.SQLQueryExecutor, sc
 func (mock *ReaderMock) GetCalls() []struct {
 	Ctx   context.Context
 	Q     database.SQLQueryExecutor
-	Scope *tenancy.Scope
+	Scope tenancy.Scope
 	ID    string
 } {
 	var calls []struct {
 		Ctx   context.Context
 		Q     database.SQLQueryExecutor
-		Scope *tenancy.Scope
+		Scope tenancy.Scope
 		ID    string
 	}
 	mock.lockGet.RLock()
@@ -223,10 +259,98 @@ func (mock *ReaderMock) GetCalls() []struct {
 	return calls
 }
 
+// GetAcrossScopes calls GetAcrossScopesFunc.
+func (mock *ReaderMock) GetAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, id string) (*audit.Entry, error) {
+	if mock.GetAcrossScopesFunc == nil {
+		panic("ReaderMock.GetAcrossScopesFunc: method is nil but Reader.GetAcrossScopes was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Q   database.SQLQueryExecutor
+		ID  string
+	}{
+		Ctx: ctx,
+		Q:   q,
+		ID:  id,
+	}
+	mock.lockGetAcrossScopes.Lock()
+	mock.calls.GetAcrossScopes = append(mock.calls.GetAcrossScopes, callInfo)
+	mock.lockGetAcrossScopes.Unlock()
+	return mock.GetAcrossScopesFunc(ctx, q, id)
+}
+
+// GetAcrossScopesCalls gets all the calls that were made to GetAcrossScopes.
+// Check the length with:
+//
+//	len(mockedReader.GetAcrossScopesCalls())
+func (mock *ReaderMock) GetAcrossScopesCalls() []struct {
+	Ctx context.Context
+	Q   database.SQLQueryExecutor
+	ID  string
+} {
+	var calls []struct {
+		Ctx context.Context
+		Q   database.SQLQueryExecutor
+		ID  string
+	}
+	mock.lockGetAcrossScopes.RLock()
+	calls = mock.calls.GetAcrossScopes
+	mock.lockGetAcrossScopes.RUnlock()
+	return calls
+}
+
 // List calls ListFunc.
-func (mock *ReaderMock) List(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+func (mock *ReaderMock) List(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 	if mock.ListFunc == nil {
 		panic("ReaderMock.ListFunc: method is nil but Reader.List was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		Query  *audit.Query
+		Filter *filtering.QueryFilter
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Scope:  scope,
+		Query:  query,
+		Filter: filter,
+	}
+	mock.lockList.Lock()
+	mock.calls.List = append(mock.calls.List, callInfo)
+	mock.lockList.Unlock()
+	return mock.ListFunc(ctx, q, scope, query, filter)
+}
+
+// ListCalls gets all the calls that were made to List.
+// Check the length with:
+//
+//	len(mockedReader.ListCalls())
+func (mock *ReaderMock) ListCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Scope  tenancy.Scope
+	Query  *audit.Query
+	Filter *filtering.QueryFilter
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		Query  *audit.Query
+		Filter *filtering.QueryFilter
+	}
+	mock.lockList.RLock()
+	calls = mock.calls.List
+	mock.lockList.RUnlock()
+	return calls
+}
+
+// ListAcrossScopes calls ListAcrossScopesFunc.
+func (mock *ReaderMock) ListAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+	if mock.ListAcrossScopesFunc == nil {
+		panic("ReaderMock.ListAcrossScopesFunc: method is nil but Reader.ListAcrossScopes was just called")
 	}
 	callInfo := struct {
 		Ctx    context.Context
@@ -239,17 +363,17 @@ func (mock *ReaderMock) List(ctx context.Context, q database.SQLQueryExecutor, q
 		Query:  query,
 		Filter: filter,
 	}
-	mock.lockList.Lock()
-	mock.calls.List = append(mock.calls.List, callInfo)
-	mock.lockList.Unlock()
-	return mock.ListFunc(ctx, q, query, filter)
+	mock.lockListAcrossScopes.Lock()
+	mock.calls.ListAcrossScopes = append(mock.calls.ListAcrossScopes, callInfo)
+	mock.lockListAcrossScopes.Unlock()
+	return mock.ListAcrossScopesFunc(ctx, q, query, filter)
 }
 
-// ListCalls gets all the calls that were made to List.
+// ListAcrossScopesCalls gets all the calls that were made to ListAcrossScopes.
 // Check the length with:
 //
-//	len(mockedReader.ListCalls())
-func (mock *ReaderMock) ListCalls() []struct {
+//	len(mockedReader.ListAcrossScopesCalls())
+func (mock *ReaderMock) ListAcrossScopesCalls() []struct {
 	Ctx    context.Context
 	Q      database.SQLQueryExecutor
 	Query  *audit.Query
@@ -261,9 +385,9 @@ func (mock *ReaderMock) ListCalls() []struct {
 		Query  *audit.Query
 		Filter *filtering.QueryFilter
 	}
-	mock.lockList.RLock()
-	calls = mock.calls.List
-	mock.lockList.RUnlock()
+	mock.lockListAcrossScopes.RLock()
+	calls = mock.calls.ListAcrossScopes
+	mock.lockListAcrossScopes.RUnlock()
 	return calls
 }
 

@@ -26,8 +26,9 @@ var TableNames = []string{ReportsTable}
 // The columns the statements below name outside the column list.
 //
 // ScopeColumn is the tenancy dimension every statement is keyed on. It is a
-// column, not a convention: an unscoped read of this schema is not expressible,
-// because there is no statement that omits it.
+// column, not a convention: an unscoped read of this schema is not expressible
+// by accident, because the only statements that omit it are the operator's two,
+// named apart in acrossScopes.
 //
 // ReporterColumn is who filed the report. It is not the scope and does not stand
 // in for it, and it is the column the privacy path keys on: the details a
@@ -245,12 +246,45 @@ func reads(g *querygen.Generator) []*querygen.Query {
 		g.ListQueries("ListReportsBySubjectType", ReportsTable, Reports.Columns,
 			scope, querygen.Match{Column: SubjectTypeColumn})...)
 
-	return append(rendered,
+	rendered = append(rendered,
 		g.ListQueries("ListReportsForSubject", ReportsTable, Reports.Columns,
 			scope,
 			querygen.Match{Column: SubjectTypeColumn},
 			querygen.Match{Column: SubjectIDColumn})...)
+
+	return append(rendered, acrossScopes(g)...)
 }
+
+// acrossScopes is the operator's queue: the two paged reads in this corpus that
+// name no scope, and the only two.
+//
+// They are an exception to "every statement is keyed on the scope", taken on
+// purpose and kept separate so that it reads as one. Triage across tenants is
+// the reason an operator console exists, and the store method each of these
+// backs says on itself that it is reached only behind a permission a deployment
+// grants deliberately. They are fixed statements rather than a read over a
+// caller-supplied set of scopes because a bound set cannot sit in a paged read
+// on two of the three dialects — but that is why the shape is this one, not why
+// the read is wide. The reason is the operator.
+//
+// Each still projects the scope column, so a row read across tenants says whose
+// it is.
+func acrossScopes(g *querygen.Generator) []*querygen.Query {
+	rendered := g.ListQueries(AcrossScopesListName, ReportsTable, Reports.Columns)
+
+	return append(rendered,
+		g.ListQueries(AcrossScopesByStatusListName, ReportsTable, Reports.Columns,
+			querygen.Match{Column: StatusColumn})...)
+}
+
+// The names of the two statements that read across tenants, spelled here
+// because this package's tests exempt exactly these from the rule every other
+// statement is held to, and a list of exemptions spelled twice is one that can
+// grow in the test without growing here.
+const (
+	AcrossScopesListName         = "ListReportsAcrossScopes"
+	AcrossScopesByStatusListName = "ListReportsByStatusAcrossScopes"
+)
 
 // FileName is the file one dialect's rendered queries are committed to.
 //

@@ -222,10 +222,9 @@ func EntriesFromProto(in []*auditpb.Entry) []*audit.Entry {
 
 // queryFromProto reads the narrowings a client asked for.
 //
-// It is unexported, and it is the one converter in this package that is: it
-// deliberately does not set Query.Scope, and an exported version would be a
-// function a consumer could call and then fill that field in on the result. The
-// RPC sets it, off the connection, on the value this returns.
+// It is unexported, and it is the one converter in this package that is: what
+// it returns is only the narrowings, and the scope the read is confined to is
+// the RPC's own argument to the reader, off the connection.
 func queryFromProto(in *auditpb.EntryQuery) *audit.Query {
 	if in == nil {
 		return &audit.Query{}

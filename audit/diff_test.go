@@ -303,7 +303,7 @@ func TestDiff_RoundTripsThroughAnEntry(T *testing.T) {
 	}
 	record(T, client, recorder, entry)
 
-	read, err := reader.Get(T.Context(), client.Reader(), nil, entry.ID)
+	read, err := reader.GetAcrossScopes(T.Context(), client.Reader(), entry.ID)
 	must.NoError(T, err)
 	must.MapLen(T, 2, read.Changes)
 
