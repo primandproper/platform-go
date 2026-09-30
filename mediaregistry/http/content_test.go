@@ -38,6 +38,10 @@ func TestDispositionFor(T *testing.T) {
 			t.Parallel()
 
 			test.EqOp(t, testCase.expected, dispositionFor(testCase.contentType))
+
+			// ActiveContent is the same answer, exported for the gRPC surface
+			// to refuse uploads by; the two may not disagree.
+			test.EqOp(t, testCase.expected == dispositionAttachment, ActiveContent(testCase.contentType))
 		})
 	}
 }

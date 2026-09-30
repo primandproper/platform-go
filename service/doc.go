@@ -132,8 +132,8 @@ what a client talks to:
 	svc, err := service.New(i)
 
 The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
-billing, comments, identity, issuereports, notifications, settings, waitlists
-and webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built
+billing, comments, identity, issuereports, mediaregistry, notifications,
+settings, waitlists and webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built
 from. The HTTP ones — dataprivacy, mediaregistry and operations — put their
 routes on the router the HTTP server serves.
 
@@ -176,8 +176,8 @@ every RPC on it is for somebody who cannot sign in — which is the argument the
 callers package already makes: a deployment has one authentication interceptor
 and one notion of a caller. Four surfaces
 declare something narrower than a principal — audit and operations want a scope,
-dataprivacy wants a subject, mediaregistry wants a caller identifier and a scope
-— and each of those is derived from the one extractor rather than asked for
+dataprivacy wants a subject, mediaregistry's two surfaces want a caller
+identifier and a scope — and each of those is derived from the one extractor rather than asked for
 again.
 
 The tenant scope is the one derivation an extractor cannot always make. A
@@ -187,8 +187,8 @@ files its audit entries, its operations and its media under the account instead.
 Those two readings cannot both be Principal.Scope() — identity reads it as the
 directory — so a deployment where they differ supplies Transports.TenantOf,
 which reads the tenant off a principal this package has already found, and the
-three surfaces that mean the tenant are mounted with it. It has no default: a
-deployment mounting any of the three without one fails at startup with
+surfaces that mean the tenant are mounted with it. It has no default: a
+deployment mounting any of them without one fails at startup with
 ErrNilTenantOf, and a deployment whose directory is its tenant names
 DirectoryTenant.
 

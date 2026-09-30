@@ -45,8 +45,8 @@ gives it and hands the reader to net/http.
 
 # Whose shape this is standing in for
 
-This is a binding rather than a resource surface, and it is the second one in
-the module. sessions/http is the first: it binds a store to a signed cookie
+This route is a binding rather than a resource surface — the registry's resource
+surface is mediaregistry/grpc — and it is the second binding in the module. sessions/http is the first: it binds a store to a signed cookie
 whose signing, encryption, HttpOnly, Secure and SameSite are decisions this
 module already made, and there is no resource of the consumer's in it. The claim
 here is the same one. What is on the wire is an object's bytes under the content
@@ -175,13 +175,22 @@ No write, no delete, no archive. mediaregistry.Store.ArchiveObject is metadata-o
 by an existing ruling — the row is hidden and the object stays in the bucket,
 because whether a receipt is still needed for tax purposes is the consumer's
 retention policy — and a DELETE on this route that removed bytes would overturn
-that ruling from the transport. Uploading is the consumer's endpoint, over the
-consumer's own form, because the key, the owner and the subject an object hangs
-off are all theirs; mediaregistry.StoreAndRecord is the line at the end of it.
+that ruling from the transport.
 
-The store's methods stay off the wire. There is no metadata surface here —
-no list-my-objects, no read-the-record — because listing is a resource surface
-over a consumer's noun and this is the guarded serve.
+Uploading, registering, reading the rows and archiving are mediaregistry/grpc's,
+the registry's resource surface, where each rule a product has about its
+uploads — the key layout, the accepted types, the size cap, what is metered — is
+an option with a default. An upload attached to one of the consumer's own nouns
+is still the consumer's endpoint, because only the consumer can say whether the
+caller may attach to that thing; mediaregistry.StoreAndRecord is the line at the
+end of it.
+
+The store's methods stay off this route. They were first ruled off the wire
+altogether, on the premise that listing is a resource surface over a consumer's
+noun. It is not — nothing in the registry is the consumer's noun — and
+mediaregistry/grpc serves them. This route stays the guarded serve, and the two
+share their caller, their entitlement and their read permission, so a
+deployment has one answer to who may have an object whichever surface asks.
 */
 package http
 

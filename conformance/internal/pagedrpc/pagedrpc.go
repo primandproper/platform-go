@@ -34,6 +34,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance/internal/services"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
@@ -361,6 +362,18 @@ func builders() map[string]builder {
 			return &identitypb.ListAccountMembersRequest{AccountId: s.AccountID}, ""
 		},
 
+		// The caller's own user subject is the one attachment the surface lets
+		// a caller make for themselves, so it is the subject certain to be
+		// answerable whatever else the deployment attaches objects to.
+		mediaregistrypb.MediaRegistryService_ListObjectsBySubject_FullMethodName: func(s *conformance.Subject, _ *conformance.Seams) (proto.Message, string) {
+			if s.UserID == "" {
+				return nil, needsUser
+			}
+
+			return &mediaregistrypb.ListObjectsBySubjectRequest{
+				Subject: &mediaregistrypb.Subject{Type: subjectUser, Id: s.UserID},
+			}, ""
+		},
 		issuereportspb.IssueReportsService_ListReportsByStatus_FullMethodName: func(*conformance.Subject, *conformance.Seams) (proto.Message, string) {
 			return &issuereportspb.ListReportsByStatusRequest{Status: issuereportspb.ReportStatus_REPORT_STATUS_OPEN}, ""
 		},

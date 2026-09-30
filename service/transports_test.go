@@ -238,6 +238,7 @@ func TestRegisterTransports(T *testing.T) {
 			"billing gRPC",
 			"comments gRPC",
 			"issue reports gRPC",
+			"media uploads gRPC",
 			"notifications gRPC",
 			"settings gRPC",
 			"waitlists gRPC",
@@ -249,7 +250,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		// One registration per mounted gRPC surface, and none for the HTTP
 		// ones, which are already on the router.
-		test.SliceLen(t, 8, mounted.registrations)
+		test.SliceLen(t, 9, mounted.registrations)
 	})
 
 	// The surfaces above are mounted off a store, which a mock satisfies. The five
@@ -655,16 +656,25 @@ func TestRegisterTransports(T *testing.T) {
 	T.Run("a surface that reads the tenant with no TenantOf is a startup error", func(t *testing.T) {
 		t.Parallel()
 
-		for surface, provide := range map[string]func(do.Injector){
-			"audit": func(i do.Injector) {
+		provideMedia := func(i do.Injector) {
+			do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
+		}
+
+		// The media registry's two surfaces are built from the same store, so
+		// each is asserted with the other skipped: otherwise the gRPC lane's
+		// refusal is the only one either case could ever observe.
+		for surface, c := range map[string]struct {
+			provide func(do.Injector)
+			skip    []Surface
+		}{
+			"audit": {provide: func(i do.Injector) {
 				do.ProvideValue[audit.Reader](i, &auditmock.ReaderMock{})
-			},
-			"media registry": func(i do.Injector) {
-				do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
-			},
-			"operations": func(i do.Injector) {
+			}},
+			"media registry": {provide: provideMedia, skip: []Surface{SurfaceMediaUploads}},
+			"media uploads":  {provide: provideMedia, skip: []Surface{SurfaceMediaRegistry}},
+			"operations": {provide: func(i do.Injector) {
 				do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
-			},
+			}},
 		} {
 			t.Run(surface, func(t *testing.T) {
 				t.Parallel()
@@ -674,9 +684,9 @@ func TestRegisterTransports(T *testing.T) {
 				do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 				do.ProvideValue(i, newRouter())
 				do.ProvideValue[uploads.UploadManager](i, &uploadsmock.UploadManagerMock{})
-				provide(i)
+				c.provide(i)
 
-				RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+				RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers(), Skip: c.skip})
 
 				_, err := do.Invoke[*mountedTransports](i)
 				must.ErrorIs(t, err, ErrNilTenantOf)

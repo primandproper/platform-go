@@ -26,6 +26,7 @@ import (
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/operations"
@@ -289,9 +290,9 @@ var administrative = []authorization.Permission{
 // hold.
 var memberRole, adminRole = roles()
 
-// roles builds the two sets from the seven surfaces' own Permissions maps, and
-// the three HTTP surfaces', so that a permission a surface adds later is a
-// member's without an edit here.
+// roles builds the two sets from the gRPC surfaces' own Permissions maps, and
+// the HTTP surfaces', so that a permission a surface adds later is a member's
+// without an edit here.
 func roles() (member, admin *authorization.PermissionSet) {
 	var every []authorization.Permission
 
@@ -302,6 +303,7 @@ func roles() (member, admin *authorization.PermissionSet) {
 		billinggrpc.Permissions(),
 		commentsgrpc.Permissions(),
 		issuereportsgrpc.Permissions(),
+		mediaregistrygrpc.Permissions(),
 		notificationsgrpc.Permissions(),
 		settingsgrpc.Permissions(),
 		waitlistsgrpc.Permissions(),
