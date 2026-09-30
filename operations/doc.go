@@ -106,16 +106,24 @@ transaction.
 So the row lands first and the enqueue follows. A process that dies in between
 leaves an operation that is recorded, readable, pending, and queued nowhere.
 
-This is stated rather than hidden because the fix is a thing you have to run.
+This is stated rather than hidden because the fix is a thing that has to run.
 Service.Recover finds operations that have been pending longer than
 Config.RecoverAfter — and running ones whose lease lapsed — and re-offers them.
-It belongs on the jobs scheduler beside Reap:
+It belongs on the jobs scheduler beside Reap, and operationscfg.NewJobs renders
+both, on by default:
 
-	scheduler.Register(jobs.NewJob("operations-recover", jobs.MustCron("* * * * *"), func(ctx context.Context) error {
-		_, err := svc.Recover(ctx)
-
+	recurring, err := operationscfg.NewJobs(ctx, cfg, svc)
+	if err != nil {
 		return err
-	}))
+	}
+
+	if err = scheduler.Register(recurring...); err != nil {
+		return err
+	}
+
+A service built from a service.Config schedules them without being asked, and
+refuses to start without a scheduler to run them on; each is switched off only
+by name, with its config's Disabled.
 
 Re-enqueueing something already queued is harmless — the upsert merges on the
 key, and a worker that claims an operation somebody else is running is refused by

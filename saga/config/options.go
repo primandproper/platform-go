@@ -1,6 +1,7 @@
 package sagacfg
 
 import (
+	"github.com/primandproper/platform-go/v14/retention"
 	"github.com/primandproper/platform-go/v14/saga"
 
 	"github.com/primandproper/primitives-go/v2/idempotency"
@@ -35,6 +36,8 @@ type options struct {
 
 	manager   *idempotency.Manager[saga.StepResult]
 	publisher saga.EventPublisher
+
+	retention []retention.SweeperOption
 }
 
 // newOptions applies opts, ignoring nil entries.
@@ -91,4 +94,12 @@ func WithWorkerIdempotency(manager *idempotency.Manager[saga.StepResult]) Option
 // outside the saga tables hears about it. NewStore ignores it.
 func WithWorkerEventPublisher(publisher saga.EventPublisher) Option {
 	return func(o *options) { o.publisher = publisher }
+}
+
+// WithRetentionSweeperOptions passes options through to the retention.Sweeper
+// NewJobs builds — the audit recorder that accounts for each pass, or a clock.
+// They apply after the observability options, so they can override those.
+// NewStore and NewWorker ignore them.
+func WithRetentionSweeperOptions(opts ...retention.SweeperOption) Option {
+	return func(o *options) { o.retention = append(o.retention, opts...) }
 }

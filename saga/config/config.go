@@ -43,6 +43,10 @@ type Config struct {
 	// Defaults to saga.DefaultEventTopic.
 	EventTopic string `env:"EVENT_TOPIC" json:"eventTopic,omitempty" yaml:"eventTopic,omitempty"`
 
+	// Retention carries how long finished instances are kept and the job that
+	// removes them. It runs unless Retention.Job.Disabled — see NewJobs.
+	Retention RetentionConfig `env:",init" envPrefix:"RETENTION_" json:"retention,omitzero" yaml:"retention,omitempty"`
+
 	// Worker carries the advance loop's knobs.
 	Worker saga.WorkerConfig `env:",init" envPrefix:"WORKER_" json:"worker,omitzero" yaml:"worker,omitempty"`
 }
@@ -60,6 +64,7 @@ func (cfg *Config) EnsureDefaults() {
 	}
 
 	cfg.Worker.EnsureDefaults()
+	cfg.Retention.EnsureDefaults()
 }
 
 // ValidateWithContext validates a Config.
@@ -72,6 +77,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.EventTopic, validation.Required),
 		validation.Field(&cfg.Worker, validation.By(func(any) error {
 			return cfg.Worker.ValidateWithContext(ctx)
+		})),
+		validation.Field(&cfg.Retention, validation.By(func(any) error {
+			return cfg.Retention.ValidateWithContext(ctx)
 		})),
 	)
 }

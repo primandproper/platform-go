@@ -95,6 +95,23 @@ All three are optional. A process that provides none of them is the service it
 was before; one that provides the jobs without configuring a scheduler is the
 one combination refused, because those jobs would never run.
 
+# Reapers the platform schedules for itself
+
+A store that owns a reaper registers it beside the store, and New schedules it
+with the application's jobs: operations' recovery and reap, saga's retention,
+and the password reset, OAuth2 server, refresh token and session sweeps. Each is
+on unless its config's job says Disabled — OPERATIONS_REAP_DISABLED,
+SAGA_RETENTION_JOB_DISABLED and so on — because a reaper that has to be
+remembered is a reaper that is forgotten.
+
+They differ in one way, and it is what happens without a scheduler. The token
+sweeps each have an in-process loop of their own, SWEEP_INTERVAL, so a service
+with no scheduler skips their jobs and the tables are still swept, once per
+replica rather than once per fleet. Operations and saga have no such loop, so a
+service that configures either one and no scheduler is refused by New with
+ErrScheduledJobsWithoutScheduler until it either configures JOBS_SCHEDULER_* or
+switches the job off by name.
+
 # Transport surfaces
 
 Register wires the stores, the services and the loops. RegisterTransports wires
