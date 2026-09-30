@@ -21,6 +21,10 @@ MountList, MountGet, MountConfirm and MountCancel itself and leaves the rest out
 Confirm is the one most likely to be left off, and the section on it below says
 why somebody would.
 
+MountArtifact is the sixth, and Mount does not call it: the route an export is
+downloaded from is opt-in, because adding a route to Mount adds it to every
+deployment already calling Mount. The section on it below says what it answers.
+
 There is no route list to hand back for somebody else to register: routing.Route
 is what a registration returns rather than a value that can be registered, and
 routing.Get is generic over its handler's input and output types, so the typed
@@ -52,10 +56,9 @@ OperationID, and nothing runs until Confirm. The Notifier is email, so Confirm i
 reached by somebody clicking a link: a browser making a request, with whatever a
 browser sends.
 
-The artifact arrives the same way. Notification.DownloadURL is a freshly minted,
-expiring URL for the object in storage, minted at notification time so that its
-short expiry starts when the subject is told rather than when the runner
-finished.
+The artifact arrives the same way. Notification.DownloadURL is a link in the
+mail — a freshly minted, expiring URL for the object in storage where one can be
+signed, and the artifact route below where one cannot.
 
 A gRPC surface would put submit, confirm and cancel on one protocol while the
 confirm click, the progress stream and the download all lived on another — one
@@ -119,10 +122,12 @@ given no enforcer refuses those routes rather than serving them. Permissions key
 each guarded route the way Seams.OperatorRoutes in conformance does, by the
 Route constants.
 
-The confirmation link is the one route in OwnStandingRoutes, and requires no
-grant: the person the erasure is about clicking the link in their own mail is
-the authorization, the way waitlists' confirmation link is, and the route still
-confirms only that person's own request. A deployment cannot reserve it to an
+The confirmation link and the artifact download are the two routes in
+OwnStandingRoutes, and require no grant. The person the erasure is about
+clicking the link in their own mail is the authorization, the way waitlists'
+confirmation link is, and the route still confirms only that person's own
+request; the export a subject asked for is theirs to fetch on the same
+standing, and the route still hands over only their own. A deployment cannot reserve it to an
 operator; one that wants a human click leaves it unmounted, as below. Following
 the work a request started is operations/http's, whose polling and stream are
 reached on the same standing.
@@ -158,6 +163,45 @@ request finds the row no longer awaiting one and reports
 dataprivacy.ErrNotAwaitingConfirmation, which the mapper answers 409, and so does
 a click that arrives after the window has lapsed.
 
+# The artifact route
+
+MountArtifact registers GET {base}/{id}/artifact, confined exactly as the read
+of one request is: somebody else's request is absent, as 404, before anything is
+asked about its artifact.
+
+It exists because of the configuration this module recommends. A Service that
+encrypts its artifacts at rest refuses Download with
+dataprivacy.ErrArtifactEncrypted — a signed URL to ciphertext is a file the
+subject cannot open — and dataprivacy.NewArtifactURLSigner declines for the same
+reason, so the notification carries no link and dataprivacy.Service.Open is the
+only way left to the bytes. Every deployment that encrypted was writing this
+route itself, and a hand-written one predictably serves the bytes as
+application/octet-stream with no disposition, lets the browser sniff, and
+refuses outside the error envelope.
+
+So the route answers in whichever of two ways the Service allows. Where Download
+succeeds it redirects, 303 with Cache-Control: no-store, and the bytes never pass
+through the application. Where Download answers ErrArtifactEncrypted or
+dataprivacy.ErrNoURLSigner, it streams Open as application/json, as an
+attachment named after the request, with nosniff and Cache-Control: private,
+no-store — the export is everything the application holds about a person, and
+not a thing for any cache to keep. A request with no artifact —
+dataprivacy.ErrArtifactUnavailable, for an erasure, an export still running or
+one already swept — is 409, and every refusal goes through errors/http as the
+typed routes' do.
+
+A Receipt names the route as its Artifact path once there is something there to
+fetch. ArtifactLinkSigner is the same path as an absolute link, for
+dataprivacy.WithFulfillerURLSigner, so an encrypting deployment's notification
+points the subject at the route rather than telling them to go and find it.
+
+The route lives here rather than under mediaregistry, which is where the
+module's Transports section — and #544 — filed serving bytes. A mediaregistry
+object is served from storage as it lies, and cannot carry the encryption this
+route exists to take off; the export is also this surface's own resource,
+confined the way the rest of it is. What it takes from mediaregistry/http is
+the headers.
+
 # What is absent
 
 No status route. Request.OperationID and operations/http are the answer, and
@@ -167,13 +211,6 @@ from it on its own schedule. What this package does instead is point at it: ever
 response about a single request carries the paths to poll and to subscribe to,
 built from operations/http's own exported constants so that the two cannot
 disagree. See Receipt.
-
-No download route. The artifact reaches the subject as the expiring URL in the
-notification, and dataprivacy.Service.Download and Open remain in-process calls
-for a consumer's own route to make. Serving the bytes is a different kind of
-endpoint from the ones here — a content type, a range request, a stream — and
-the module's Transports section files that kind under mediaregistry rather than
-under a domain's resource surface.
 
 No cancellation that pretends to have stopped anything. Cancel on a request that
 is already in progress asks its operation to stop and returns the request still
@@ -202,4 +239,4 @@ that could make the statement at all.
 */
 package http
 
-//platform:transport resource surface: submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`
+//platform:transport resource surface: submit, confirm, cancel and read a privacy request, and download an export — over `dataprivacy.Service`

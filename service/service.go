@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
@@ -216,6 +217,7 @@ func (s *Service) resolveInfrastructure(r *resolver) {
 	resolve(r, func(c messagequeue.ConsumerProvider) { s.addCloser("message queue consumers", closeVoid(c)) })
 	resolve(r, func(src secrets.SecretSource) { s.addCloser("secret source", closeErr(src)) })
 	resolve(r, func(m uploads.UploadManager) { s.addCloser("upload manager", closeErr(m)) })
+	resolve(r, func(a *dataprivacycfg.ArtifactStorage) { s.addCloser("data privacy artifact storage", closeErr(a)) })
 	resolve(r, func(l distributedlock.Locker) { s.addCloser("distributed locker", closeErr(l)) })
 	resolve(r, func(l ratelimiting.RateLimiter) { s.addCloser("rate limiter", closeErr(l)) })
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -1638,6 +1639,18 @@ func (m *mount) dataPrivacy() {
 	}
 
 	handlers.Mount(router)
+
+	// The artifact route is opt-in in dataprivacy/http, and opted into here
+	// wherever there is somewhere artifacts are kept: without it, a deployment
+	// that encrypts its exports has no way to hand one over but a route of its
+	// own.
+	if storage, kept := need[*dataprivacycfg.ArtifactStorage](m); kept && storage.Manager != nil {
+		handlers.MountArtifact(router)
+	}
+
+	if m.err != nil {
+		return
+	}
 
 	if !m.routesLanded(SurfaceDataPrivacy, router) {
 		return

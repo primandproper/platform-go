@@ -32,9 +32,16 @@ WithCompressor and WithEncryptor: NewFulfiller writes artifacts with them and
 NewService reads artifacts back with them, out of one option slice, so a wiring
 site cannot hand the writer and the reader different codecs.
 
-Whether artifacts are encrypted is therefore not configured at all. It is
+Whether artifacts are encrypted is therefore not configured as a flag. It is
 whether there is an encryptor — something this package can look at, rather than
 a claim a deployment states separately and then has to keep true.
+
+The encryptor, and the bucket artifacts are written to, can be configured, in
+the Artifacts block. NewArtifactStorage builds what it names and
+RegisterArtifactStorage hands the result to every constructor here, so a
+deployment that keeps its exports in a bucket of their own, sealed under a
+keyring of their own, says so in configuration rather than assembling an upload
+manager and an encryptor by hand and threading both through.
 */
 package dataprivacycfg
 
@@ -46,6 +53,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy/auditerasure"
 	"github.com/primandproper/platform-go/v14/operations"
 
+	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/errors"
@@ -57,6 +65,11 @@ import (
 // Config assembles a dataprivacy Store, Service, Fulfiller, and Sweeper.
 type Config struct {
 	_ struct{} `json:"-" yaml:"-"`
+
+	// Artifacts says where export artifacts are kept and what they are sealed
+	// with, where that is not the application's own uploads and keyring. See
+	// ArtifactsConfig.
+	Artifacts *ArtifactsConfig `env:",init" envPrefix:"ARTIFACTS_" json:"artifacts,omitempty" yaml:"artifacts,omitempty"`
 
 	// Dialect selects the SQL emitted; it must match the database.Client.
 	Dialect dialect.Dialect `env:"DIALECT" json:"dialect,omitempty" yaml:"dialect,omitempty"`
@@ -138,7 +151,14 @@ func (cfg *Config) EnsureDefaults() {
 // The nested configs are validated through validation.By closures because ozzo
 // dereferences a struct-value field before checking ValidatableWithContext, so
 // they would otherwise be skipped.
+//
+// Artifacts is released first when env parsing allocated it and nothing was
+// put in it, so that a present block means somebody configured one.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
+	if err := cfgnorm.UnconfiguredToNil(cfg); err != nil {
+		return err
+	}
+
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.Dialect, validation.Required, validation.By(func(any) error {
 			if !cfg.Dialect.Valid() {
@@ -156,6 +176,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.Sweeper, validation.By(func(any) error {
 			return cfg.Sweeper.ValidateWithContext(ctx)
 		})),
+		validation.Field(&cfg.Artifacts),
 	)
 }
 

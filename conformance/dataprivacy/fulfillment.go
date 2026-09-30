@@ -2,7 +2,9 @@ package dataprivacy
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/conformance"
@@ -130,6 +132,55 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, "", read.Data.Request.ArtifactRef, test.Sprint("an erasure left an artifact behind"))
 	})
 
+	t.Run("a completed export's artifact downloads for its subject, and is absent to another", func(t *testing.T) {
+		t.Parallel()
+
+		mine, theirs := twoPeople(t, s,
+			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet, dataprivacyhttp.RouteArtifact},
+			[]string{dataprivacyhttp.RouteArtifact})
+		if !mine.HTTP.DataPrivacyArtifact {
+			conformance.Skip(t, "conformance: this subject serves privacy requests but not the route their artifacts download from")
+		}
+
+		fulfilled := exported(t, s, mine)
+		path := dataprivacyhttp.BasePath + "/" + fulfilled.ID + dataprivacyhttp.ArtifactSuffix
+
+		// The receipt points at the route, so a client finds it rather than
+		// building it.
+		code, body := call(t, mine, http.MethodGet, dataprivacyhttp.BasePath+"/"+fulfilled.ID, nil)
+		must.EqOp(t, http.StatusOK, code, must.Sprintf("reading a completed export answered %d: %s", code, body))
+
+		read := &envelope[receipt]{}
+		must.NoError(t, json.Unmarshal(body, read))
+		test.EqOp(t, path, read.Data.Artifact, test.Sprint("a completed export's receipt did not name the route its artifact downloads from"))
+
+		// Either answer the route may give is the export: a redirect to a
+		// signed URL where storage can mint one, or the artifact itself where
+		// it cannot or the artifact is encrypted. The redirect is not followed,
+		// because what it points at is storage rather than this deployment.
+		code, header, content := fetch(t, mine, path)
+
+		switch code {
+		case http.StatusSeeOther:
+			test.NotEqOp(t, "", header.Get("Location"), test.Sprint("the artifact's redirect named nowhere"))
+			test.StrContains(t, header.Get("Cache-Control"), "no-store")
+		case http.StatusOK:
+			test.StrContains(t, header.Get("Content-Type"), "application/json")
+			test.StrContains(t, header.Get("Content-Disposition"), "attachment")
+			test.EqOp(t, "nosniff", header.Get("X-Content-Type-Options"))
+			test.StrContains(t, header.Get("Cache-Control"), "no-store")
+			test.True(t, json.Valid(content), test.Sprintf("the artifact is not the JSON it was served as: %.200s", content))
+		default:
+			t.Fatalf("the subject's own artifact answered %d: %s", code, content)
+		}
+
+		// Absent rather than forbidden, like every other read of somebody
+		// else's request: a refusal would confirm the identifier is real.
+		code, _, content = fetch(t, theirs, path)
+		test.EqOp(t, http.StatusNotFound, code,
+			test.Sprintf("somebody else's export answered a neighbor with %d: %.200s", code, content))
+	})
+
 	t.Run("a swept export reads expired", func(t *testing.T) {
 		t.Parallel()
 
@@ -152,6 +203,28 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, "", read.Data.Request.ArtifactRef,
 			test.Sprint("an expired export still names an artifact, which nobody will now delete"))
 	})
+}
+
+// fetch makes one GET as caller without following a redirect, and returns what
+// came back.
+func fetch(t *testing.T, caller *conformance.Subject, path string) (code int, header http.Header, content []byte) {
+	t.Helper()
+
+	client := *caller.HTTP.Client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, strings.TrimSuffix(caller.HTTP.BaseURL, "/")+path, http.NoBody)
+	must.NoError(t, err)
+
+	res, err := client.Do(req)
+	must.NoError(t, err)
+
+	defer func() { test.NoError(t, res.Body.Close()) }()
+
+	content, err = io.ReadAll(res.Body)
+	must.NoError(t, err)
+
+	return res.StatusCode, res.Header, content
 }
 
 // exported submits an export as caller, waits for it to finish, and asserts

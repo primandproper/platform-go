@@ -4,11 +4,13 @@ import (
 	"context"
 	nethttp "net/http"
 	"path"
+	"sync/atomic"
 
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/internal/routeguard"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
+	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -104,9 +106,15 @@ func UnconfinedRequests(context.Context) (*tenancy.Scope, error) {
 
 // Handlers is the mountable data-privacy request surface.
 type Handlers struct {
-	svc    dataprivacy.Service
+	svc  dataprivacy.Service
+	o11y observability.Observer
+
+	// codec renders the artifact route's refusals, which that route writes
+	// itself because it is not a typed one. It is pinned to JSON, the envelope
+	// every other refusal in a service already arrives in.
+	codec encoding.Codec
+
 	scopes ScopeResolver
-	o11y   observability.Observer
 
 	// guard checks the grant each route in Permissions requires, and resolves
 	// the subject once for the check and the handler behind it. It refuses
@@ -117,6 +125,11 @@ type Handlers struct {
 	basePath       string
 	operationsPath string
 	tags           []string
+
+	// artifactMounted is whether MountArtifact has been called, which is what
+	// a Receipt reads before it names an artifact path: a path to a route
+	// nobody mounted is a 404 the client was told to fetch.
+	artifactMounted atomic.Bool
 }
 
 // New builds the handlers over a Service.
@@ -153,6 +166,9 @@ func New(svc dataprivacy.Service, opts ...Option) (*Handlers, error) {
 		operationsPath: o.operationsPath,
 		tags:           o.tags,
 		o11y:           observability.NewObserver(o11yName, o.logger, o.tracerProvider),
+		codec: encoding.NewClientEncoder(encoding.ContentTypeJSON,
+			encoding.WithLogger(o.logger),
+			encoding.WithTracerProvider(o.tracerProvider)),
 	}, nil
 }
 
@@ -206,6 +222,15 @@ type Receipt struct {
 	// worker.
 	Progress string `json:"progress,omitempty"`
 	Events   string `json:"events,omitempty"`
+
+	// Artifact is the path the export's artifact is downloaded from, relative
+	// and rooted at this surface's base path like the two above.
+	//
+	// It is present exactly while there is an artifact to fetch — a completed
+	// export whose artifact has not expired — and only where MountArtifact
+	// was called, so a client that finds it may follow it and one that does
+	// not has not been pointed at a route nobody serves.
+	Artifact string `json:"artifact,omitempty"`
 }
 
 // receipt renders the response for one request.
@@ -220,6 +245,10 @@ func (h *Handlers) receipt(req *dataprivacy.Request) *Receipt {
 		base := path.Join(h.operationsPath, req.OperationID)
 		out.Progress = base
 		out.Events = base + operationshttp.EventsSuffix
+	}
+
+	if h.artifactMounted.Load() && req.Status == dataprivacy.StatusCompleted && req.ArtifactRef != "" {
+		out.Artifact = h.artifactPath(req.ID)
 	}
 
 	return out

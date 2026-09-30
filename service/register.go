@@ -659,6 +659,7 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 	if cfg.DataPrivacy != nil {
 		do.ProvideValue(i, cfg.DataPrivacy)
 		dataprivacycfg.RegisterStore(i)
+		dataprivacycfg.RegisterArtifactStorage(i)
 		dataprivacycfg.RegisterFulfiller(i)
 		dataprivacycfg.RegisterService(i)
 		dataprivacycfg.RegisterSweeper(i)
