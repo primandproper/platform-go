@@ -225,12 +225,12 @@ func TestNestedEntriesAreReasoned(t *testing.T) {
 // the most breaking thing in Go, so the next one to appear is cheapest to catch
 // before it is tagged, which is what this test is for.
 //
-// `authentication/` passes because it groups: five related domain packages under
-// a name that says something. So does any directory holding Go files of its own,
-// whatever its children — `searchsync` has one subpackage and is a package
-// itself. proto/ trees are outside this entirely, because they hold no Go at any
-// depth: their shape is the protobuf import path's and not this module's to
-// choose.
+// `authentication/` passes because it groups: the related domain packages the
+// roster's straddle rows name, under a name that says something. So does any
+// directory holding Go files of its own, whatever its children — `searchsync`
+// has one subpackage and is a package itself. proto/ trees are outside this
+// entirely, because they hold no Go at any depth: their shape is the protobuf
+// import path's and not this module's to choose.
 func TestNoParentDirectoryOnlyIndirects(t *testing.T) {
 	t.Parallel()
 
