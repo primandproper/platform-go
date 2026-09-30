@@ -3502,6 +3502,32 @@ type GetPrincipalResponse struct {
 	// Absent for a caller who holds no memberships, whose active_account_id is
 	// empty.
 	ActiveAccount *Account `protobuf:"bytes,2,opt,name=active_account,json=activeAccount,proto3" json:"active_account,omitempty"`
+	// permissions is what this session may do in principal.active_account_id:
+	// the union of what its service roles grant and what the caller's roles in
+	// that account grant. A caller who holds no memberships gets the service
+	// half alone.
+	//
+	// The service half is the session's and not the directory's. It is resolved
+	// from the service roles the request's credential carries, so it depends on
+	// which door the session came through: a user who holds a service role and
+	// signed in the ordinary way is told they hold none of its permissions,
+	// because every call they make would be refused them. The account half is
+	// the directory's, for whichever account was resolved -- including one
+	// active_account_id named other than the session's own.
+	//
+	// Absent when the deployment serves no permissions at all, which a client
+	// must not read as "holds nothing": a present value with an empty list is a
+	// caller who may do nothing here, and an absent one is a server that did not
+	// say.
+	//
+	// A permission name is not a method. A client that enables a control
+	// because a permission is listed assumes the deployment requires that
+	// permission for the call behind it, which is this module's default
+	// requirement table. A deployment that has overridden a method's
+	// requirement -- reserved it to operators, or asked for a different
+	// permission -- makes that control wrong until the client learns the
+	// override. The server still refuses the call; the control is only a hint.
+	Permissions   *EffectivePermissions `protobuf:"bytes,3,opt,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3550,6 +3576,60 @@ func (x *GetPrincipalResponse) GetActiveAccount() *Account {
 	return nil
 }
 
+func (x *GetPrincipalResponse) GetPermissions() *EffectivePermissions {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
+// EffectivePermissions wraps a permission list so that its absence is
+// distinguishable from an empty one. See GetPrincipalResponse.permissions.
+type EffectivePermissions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// permissions are sorted, and each is named once.
+	Permissions   []string `protobuf:"bytes,1,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EffectivePermissions) Reset() {
+	*x = EffectivePermissions{}
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EffectivePermissions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EffectivePermissions) ProtoMessage() {}
+
+func (x *EffectivePermissions) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EffectivePermissions.ProtoReflect.Descriptor instead.
+func (*EffectivePermissions) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *EffectivePermissions) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
 type GetUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
@@ -3559,7 +3639,7 @@ type GetUserRequest struct {
 
 func (x *GetUserRequest) Reset() {
 	*x = GetUserRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[51]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3571,7 +3651,7 @@ func (x *GetUserRequest) String() string {
 func (*GetUserRequest) ProtoMessage() {}
 
 func (x *GetUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[51]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3584,7 +3664,7 @@ func (x *GetUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserRequest.ProtoReflect.Descriptor instead.
 func (*GetUserRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{51}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *GetUserRequest) GetUserId() string {
@@ -3603,7 +3683,7 @@ type GetUserResponse struct {
 
 func (x *GetUserResponse) Reset() {
 	*x = GetUserResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[52]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3615,7 +3695,7 @@ func (x *GetUserResponse) String() string {
 func (*GetUserResponse) ProtoMessage() {}
 
 func (x *GetUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[52]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3628,7 +3708,7 @@ func (x *GetUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserResponse.ProtoReflect.Descriptor instead.
 func (*GetUserResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{52}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *GetUserResponse) GetUser() *User {
@@ -3647,7 +3727,7 @@ type ListUsersRequest struct {
 
 func (x *ListUsersRequest) Reset() {
 	*x = ListUsersRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[53]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3659,7 +3739,7 @@ func (x *ListUsersRequest) String() string {
 func (*ListUsersRequest) ProtoMessage() {}
 
 func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[53]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3672,7 +3752,7 @@ func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
 func (*ListUsersRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{53}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ListUsersRequest) GetFilter() *filteringpb.QueryFilter {
@@ -3692,7 +3772,7 @@ type ListUsersResponse struct {
 
 func (x *ListUsersResponse) Reset() {
 	*x = ListUsersResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[54]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3704,7 +3784,7 @@ func (x *ListUsersResponse) String() string {
 func (*ListUsersResponse) ProtoMessage() {}
 
 func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[54]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3717,7 +3797,7 @@ func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
 func (*ListUsersResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{54}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ListUsersResponse) GetPagination() *filteringpb.Pagination {
@@ -3746,7 +3826,7 @@ type SearchUsersByUsernameRequest struct {
 
 func (x *SearchUsersByUsernameRequest) Reset() {
 	*x = SearchUsersByUsernameRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[55]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3758,7 +3838,7 @@ func (x *SearchUsersByUsernameRequest) String() string {
 func (*SearchUsersByUsernameRequest) ProtoMessage() {}
 
 func (x *SearchUsersByUsernameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[55]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3771,7 +3851,7 @@ func (x *SearchUsersByUsernameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchUsersByUsernameRequest.ProtoReflect.Descriptor instead.
 func (*SearchUsersByUsernameRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{55}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *SearchUsersByUsernameRequest) GetPrefix() string {
@@ -3798,7 +3878,7 @@ type SearchUsersByUsernameResponse struct {
 
 func (x *SearchUsersByUsernameResponse) Reset() {
 	*x = SearchUsersByUsernameResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[56]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3810,7 +3890,7 @@ func (x *SearchUsersByUsernameResponse) String() string {
 func (*SearchUsersByUsernameResponse) ProtoMessage() {}
 
 func (x *SearchUsersByUsernameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[56]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3823,7 +3903,7 @@ func (x *SearchUsersByUsernameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchUsersByUsernameResponse.ProtoReflect.Descriptor instead.
 func (*SearchUsersByUsernameResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{56}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *SearchUsersByUsernameResponse) GetPagination() *filteringpb.Pagination {
@@ -3849,7 +3929,7 @@ type GetAccountRequest struct {
 
 func (x *GetAccountRequest) Reset() {
 	*x = GetAccountRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[57]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3861,7 +3941,7 @@ func (x *GetAccountRequest) String() string {
 func (*GetAccountRequest) ProtoMessage() {}
 
 func (x *GetAccountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[57]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3874,7 +3954,7 @@ func (x *GetAccountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccountRequest.ProtoReflect.Descriptor instead.
 func (*GetAccountRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{57}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *GetAccountRequest) GetAccountId() string {
@@ -3893,7 +3973,7 @@ type GetAccountResponse struct {
 
 func (x *GetAccountResponse) Reset() {
 	*x = GetAccountResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[58]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3905,7 +3985,7 @@ func (x *GetAccountResponse) String() string {
 func (*GetAccountResponse) ProtoMessage() {}
 
 func (x *GetAccountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[58]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3918,7 +3998,7 @@ func (x *GetAccountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccountResponse.ProtoReflect.Descriptor instead.
 func (*GetAccountResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{58}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *GetAccountResponse) GetAccount() *Account {
@@ -3937,7 +4017,7 @@ type ListAccountsRequest struct {
 
 func (x *ListAccountsRequest) Reset() {
 	*x = ListAccountsRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[59]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3949,7 +4029,7 @@ func (x *ListAccountsRequest) String() string {
 func (*ListAccountsRequest) ProtoMessage() {}
 
 func (x *ListAccountsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[59]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3962,7 +4042,7 @@ func (x *ListAccountsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountsRequest.ProtoReflect.Descriptor instead.
 func (*ListAccountsRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{59}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ListAccountsRequest) GetFilter() *filteringpb.QueryFilter {
@@ -3982,7 +4062,7 @@ type ListAccountsResponse struct {
 
 func (x *ListAccountsResponse) Reset() {
 	*x = ListAccountsResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[60]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3994,7 +4074,7 @@ func (x *ListAccountsResponse) String() string {
 func (*ListAccountsResponse) ProtoMessage() {}
 
 func (x *ListAccountsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[60]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4007,7 +4087,7 @@ func (x *ListAccountsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountsResponse.ProtoReflect.Descriptor instead.
 func (*ListAccountsResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{60}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ListAccountsResponse) GetPagination() *filteringpb.Pagination {
@@ -4034,7 +4114,7 @@ type ListAccountsForUserRequest struct {
 
 func (x *ListAccountsForUserRequest) Reset() {
 	*x = ListAccountsForUserRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[61]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4046,7 +4126,7 @@ func (x *ListAccountsForUserRequest) String() string {
 func (*ListAccountsForUserRequest) ProtoMessage() {}
 
 func (x *ListAccountsForUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[61]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4059,7 +4139,7 @@ func (x *ListAccountsForUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountsForUserRequest.ProtoReflect.Descriptor instead.
 func (*ListAccountsForUserRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{61}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ListAccountsForUserRequest) GetUserId() string {
@@ -4086,7 +4166,7 @@ type ListAccountsForUserResponse struct {
 
 func (x *ListAccountsForUserResponse) Reset() {
 	*x = ListAccountsForUserResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[62]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4098,7 +4178,7 @@ func (x *ListAccountsForUserResponse) String() string {
 func (*ListAccountsForUserResponse) ProtoMessage() {}
 
 func (x *ListAccountsForUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[62]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4111,7 +4191,7 @@ func (x *ListAccountsForUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountsForUserResponse.ProtoReflect.Descriptor instead.
 func (*ListAccountsForUserResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{62}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ListAccountsForUserResponse) GetPagination() *filteringpb.Pagination {
@@ -4138,7 +4218,7 @@ type GetMembershipRequest struct {
 
 func (x *GetMembershipRequest) Reset() {
 	*x = GetMembershipRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[63]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4150,7 +4230,7 @@ func (x *GetMembershipRequest) String() string {
 func (*GetMembershipRequest) ProtoMessage() {}
 
 func (x *GetMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[63]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4163,7 +4243,7 @@ func (x *GetMembershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMembershipRequest.ProtoReflect.Descriptor instead.
 func (*GetMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{63}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetMembershipRequest) GetUserId() string {
@@ -4189,7 +4269,7 @@ type GetMembershipResponse struct {
 
 func (x *GetMembershipResponse) Reset() {
 	*x = GetMembershipResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[64]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4201,7 +4281,7 @@ func (x *GetMembershipResponse) String() string {
 func (*GetMembershipResponse) ProtoMessage() {}
 
 func (x *GetMembershipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[64]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4214,7 +4294,7 @@ func (x *GetMembershipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMembershipResponse.ProtoReflect.Descriptor instead.
 func (*GetMembershipResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{64}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GetMembershipResponse) GetMembership() *Membership {
@@ -4233,7 +4313,7 @@ type ListMembershipsForUserRequest struct {
 
 func (x *ListMembershipsForUserRequest) Reset() {
 	*x = ListMembershipsForUserRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[65]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4245,7 +4325,7 @@ func (x *ListMembershipsForUserRequest) String() string {
 func (*ListMembershipsForUserRequest) ProtoMessage() {}
 
 func (x *ListMembershipsForUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[65]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4258,7 +4338,7 @@ func (x *ListMembershipsForUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembershipsForUserRequest.ProtoReflect.Descriptor instead.
 func (*ListMembershipsForUserRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{65}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ListMembershipsForUserRequest) GetUserId() string {
@@ -4280,7 +4360,7 @@ type ListMembershipsForUserResponse struct {
 
 func (x *ListMembershipsForUserResponse) Reset() {
 	*x = ListMembershipsForUserResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[66]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4292,7 +4372,7 @@ func (x *ListMembershipsForUserResponse) String() string {
 func (*ListMembershipsForUserResponse) ProtoMessage() {}
 
 func (x *ListMembershipsForUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[66]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4305,7 +4385,7 @@ func (x *ListMembershipsForUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembershipsForUserResponse.ProtoReflect.Descriptor instead.
 func (*ListMembershipsForUserResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{66}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ListMembershipsForUserResponse) GetResults() []*Membership {
@@ -4325,7 +4405,7 @@ type ListAccountMembersRequest struct {
 
 func (x *ListAccountMembersRequest) Reset() {
 	*x = ListAccountMembersRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[67]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4337,7 +4417,7 @@ func (x *ListAccountMembersRequest) String() string {
 func (*ListAccountMembersRequest) ProtoMessage() {}
 
 func (x *ListAccountMembersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[67]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4350,7 +4430,7 @@ func (x *ListAccountMembersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountMembersRequest.ProtoReflect.Descriptor instead.
 func (*ListAccountMembersRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{67}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ListAccountMembersRequest) GetAccountId() string {
@@ -4377,7 +4457,7 @@ type ListAccountMembersResponse struct {
 
 func (x *ListAccountMembersResponse) Reset() {
 	*x = ListAccountMembersResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[68]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4389,7 +4469,7 @@ func (x *ListAccountMembersResponse) String() string {
 func (*ListAccountMembersResponse) ProtoMessage() {}
 
 func (x *ListAccountMembersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[68]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4402,7 +4482,7 @@ func (x *ListAccountMembersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccountMembersResponse.ProtoReflect.Descriptor instead.
 func (*ListAccountMembersResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{68}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ListAccountMembersResponse) GetPagination() *filteringpb.Pagination {
@@ -4428,7 +4508,7 @@ type GetInvitationRequest struct {
 
 func (x *GetInvitationRequest) Reset() {
 	*x = GetInvitationRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[69]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4440,7 +4520,7 @@ func (x *GetInvitationRequest) String() string {
 func (*GetInvitationRequest) ProtoMessage() {}
 
 func (x *GetInvitationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[69]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4453,7 +4533,7 @@ func (x *GetInvitationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInvitationRequest.ProtoReflect.Descriptor instead.
 func (*GetInvitationRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{69}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GetInvitationRequest) GetInvitationId() string {
@@ -4472,7 +4552,7 @@ type GetInvitationResponse struct {
 
 func (x *GetInvitationResponse) Reset() {
 	*x = GetInvitationResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[70]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4484,7 +4564,7 @@ func (x *GetInvitationResponse) String() string {
 func (*GetInvitationResponse) ProtoMessage() {}
 
 func (x *GetInvitationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[70]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4497,7 +4577,7 @@ func (x *GetInvitationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInvitationResponse.ProtoReflect.Descriptor instead.
 func (*GetInvitationResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{70}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *GetInvitationResponse) GetInvitation() *Invitation {
@@ -4517,7 +4597,7 @@ type ListInvitationsFromUserRequest struct {
 
 func (x *ListInvitationsFromUserRequest) Reset() {
 	*x = ListInvitationsFromUserRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[71]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4529,7 +4609,7 @@ func (x *ListInvitationsFromUserRequest) String() string {
 func (*ListInvitationsFromUserRequest) ProtoMessage() {}
 
 func (x *ListInvitationsFromUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[71]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4542,7 +4622,7 @@ func (x *ListInvitationsFromUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInvitationsFromUserRequest.ProtoReflect.Descriptor instead.
 func (*ListInvitationsFromUserRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{71}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ListInvitationsFromUserRequest) GetFilter() *filteringpb.QueryFilter {
@@ -4562,7 +4642,7 @@ type ListInvitationsFromUserResponse struct {
 
 func (x *ListInvitationsFromUserResponse) Reset() {
 	*x = ListInvitationsFromUserResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[72]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4574,7 +4654,7 @@ func (x *ListInvitationsFromUserResponse) String() string {
 func (*ListInvitationsFromUserResponse) ProtoMessage() {}
 
 func (x *ListInvitationsFromUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[72]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4587,7 +4667,7 @@ func (x *ListInvitationsFromUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInvitationsFromUserResponse.ProtoReflect.Descriptor instead.
 func (*ListInvitationsFromUserResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{72}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ListInvitationsFromUserResponse) GetPagination() *filteringpb.Pagination {
@@ -4616,7 +4696,7 @@ type ListInvitationsForEmailAddressRequest struct {
 
 func (x *ListInvitationsForEmailAddressRequest) Reset() {
 	*x = ListInvitationsForEmailAddressRequest{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[73]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4628,7 +4708,7 @@ func (x *ListInvitationsForEmailAddressRequest) String() string {
 func (*ListInvitationsForEmailAddressRequest) ProtoMessage() {}
 
 func (x *ListInvitationsForEmailAddressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[73]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4641,7 +4721,7 @@ func (x *ListInvitationsForEmailAddressRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use ListInvitationsForEmailAddressRequest.ProtoReflect.Descriptor instead.
 func (*ListInvitationsForEmailAddressRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{73}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *ListInvitationsForEmailAddressRequest) GetFilter() *filteringpb.QueryFilter {
@@ -4661,7 +4741,7 @@ type ListInvitationsForEmailAddressResponse struct {
 
 func (x *ListInvitationsForEmailAddressResponse) Reset() {
 	*x = ListInvitationsForEmailAddressResponse{}
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[74]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4673,7 +4753,7 @@ func (x *ListInvitationsForEmailAddressResponse) String() string {
 func (*ListInvitationsForEmailAddressResponse) ProtoMessage() {}
 
 func (x *ListInvitationsForEmailAddressResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[74]
+	mi := &file_primandproper_platform_identity_v1_identity_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4686,7 +4766,7 @@ func (x *ListInvitationsForEmailAddressResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use ListInvitationsForEmailAddressResponse.ProtoReflect.Descriptor instead.
 func (*ListInvitationsForEmailAddressResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{74}
+	return file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ListInvitationsForEmailAddressResponse) GetPagination() *filteringpb.Pagination {
@@ -4973,10 +5053,13 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"c\n" +
 	"\x13GetPrincipalRequest\x12/\n" +
 	"\x11active_account_id\x18\x01 \x01(\tH\x00R\x0factiveAccountID\x88\x01\x01B\x14\n" +
-	"\x12_active_account_idR\x05scope\"\xb7\x01\n" +
+	"\x12_active_account_idR\x05scope\"\x93\x02\n" +
 	"\x14GetPrincipalResponse\x12K\n" +
 	"\tprincipal\x18\x01 \x01(\v2-.primandproper.platform.identity.v1.PrincipalR\tprincipal\x12R\n" +
-	"\x0eactive_account\x18\x02 \x01(\v2+.primandproper.platform.identity.v1.AccountR\ractiveAccount\"0\n" +
+	"\x0eactive_account\x18\x02 \x01(\v2+.primandproper.platform.identity.v1.AccountR\ractiveAccount\x12Z\n" +
+	"\vpermissions\x18\x03 \x01(\v28.primandproper.platform.identity.v1.EffectivePermissionsR\vpermissions\"?\n" +
+	"\x14EffectivePermissions\x12 \n" +
+	"\vpermissions\x18\x01 \x03(\tR\vpermissionsR\x05scope\"0\n" +
 	"\x0eGetUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userIDR\x05scope\"O\n" +
 	"\x0fGetUserResponse\x12<\n" +
@@ -5126,7 +5209,7 @@ func file_primandproper_platform_identity_v1_identity_proto_rawDescGZIP() []byte
 }
 
 var file_primandproper_platform_identity_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_primandproper_platform_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 75)
+var file_primandproper_platform_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
 var file_primandproper_platform_identity_v1_identity_proto_goTypes = []any{
 	(AccountStatus)(0),                             // 0: primandproper.platform.identity.v1.AccountStatus
 	(BillingStatus)(0),                             // 1: primandproper.platform.identity.v1.BillingStatus
@@ -5183,61 +5266,62 @@ var file_primandproper_platform_identity_v1_identity_proto_goTypes = []any{
 	(*SetUserRequiresPasswordChangeResponse)(nil),  // 52: primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse
 	(*GetPrincipalRequest)(nil),                    // 53: primandproper.platform.identity.v1.GetPrincipalRequest
 	(*GetPrincipalResponse)(nil),                   // 54: primandproper.platform.identity.v1.GetPrincipalResponse
-	(*GetUserRequest)(nil),                         // 55: primandproper.platform.identity.v1.GetUserRequest
-	(*GetUserResponse)(nil),                        // 56: primandproper.platform.identity.v1.GetUserResponse
-	(*ListUsersRequest)(nil),                       // 57: primandproper.platform.identity.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),                      // 58: primandproper.platform.identity.v1.ListUsersResponse
-	(*SearchUsersByUsernameRequest)(nil),           // 59: primandproper.platform.identity.v1.SearchUsersByUsernameRequest
-	(*SearchUsersByUsernameResponse)(nil),          // 60: primandproper.platform.identity.v1.SearchUsersByUsernameResponse
-	(*GetAccountRequest)(nil),                      // 61: primandproper.platform.identity.v1.GetAccountRequest
-	(*GetAccountResponse)(nil),                     // 62: primandproper.platform.identity.v1.GetAccountResponse
-	(*ListAccountsRequest)(nil),                    // 63: primandproper.platform.identity.v1.ListAccountsRequest
-	(*ListAccountsResponse)(nil),                   // 64: primandproper.platform.identity.v1.ListAccountsResponse
-	(*ListAccountsForUserRequest)(nil),             // 65: primandproper.platform.identity.v1.ListAccountsForUserRequest
-	(*ListAccountsForUserResponse)(nil),            // 66: primandproper.platform.identity.v1.ListAccountsForUserResponse
-	(*GetMembershipRequest)(nil),                   // 67: primandproper.platform.identity.v1.GetMembershipRequest
-	(*GetMembershipResponse)(nil),                  // 68: primandproper.platform.identity.v1.GetMembershipResponse
-	(*ListMembershipsForUserRequest)(nil),          // 69: primandproper.platform.identity.v1.ListMembershipsForUserRequest
-	(*ListMembershipsForUserResponse)(nil),         // 70: primandproper.platform.identity.v1.ListMembershipsForUserResponse
-	(*ListAccountMembersRequest)(nil),              // 71: primandproper.platform.identity.v1.ListAccountMembersRequest
-	(*ListAccountMembersResponse)(nil),             // 72: primandproper.platform.identity.v1.ListAccountMembersResponse
-	(*GetInvitationRequest)(nil),                   // 73: primandproper.platform.identity.v1.GetInvitationRequest
-	(*GetInvitationResponse)(nil),                  // 74: primandproper.platform.identity.v1.GetInvitationResponse
-	(*ListInvitationsFromUserRequest)(nil),         // 75: primandproper.platform.identity.v1.ListInvitationsFromUserRequest
-	(*ListInvitationsFromUserResponse)(nil),        // 76: primandproper.platform.identity.v1.ListInvitationsFromUserResponse
-	(*ListInvitationsForEmailAddressRequest)(nil),  // 77: primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest
-	(*ListInvitationsForEmailAddressResponse)(nil), // 78: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse
-	(*timestamppb.Timestamp)(nil),                  // 79: google.protobuf.Timestamp
-	(*filteringpb.QueryFilter)(nil),                // 80: primandproper.platform.filtering.v1.QueryFilter
-	(*filteringpb.Pagination)(nil),                 // 81: primandproper.platform.filtering.v1.Pagination
+	(*EffectivePermissions)(nil),                   // 55: primandproper.platform.identity.v1.EffectivePermissions
+	(*GetUserRequest)(nil),                         // 56: primandproper.platform.identity.v1.GetUserRequest
+	(*GetUserResponse)(nil),                        // 57: primandproper.platform.identity.v1.GetUserResponse
+	(*ListUsersRequest)(nil),                       // 58: primandproper.platform.identity.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),                      // 59: primandproper.platform.identity.v1.ListUsersResponse
+	(*SearchUsersByUsernameRequest)(nil),           // 60: primandproper.platform.identity.v1.SearchUsersByUsernameRequest
+	(*SearchUsersByUsernameResponse)(nil),          // 61: primandproper.platform.identity.v1.SearchUsersByUsernameResponse
+	(*GetAccountRequest)(nil),                      // 62: primandproper.platform.identity.v1.GetAccountRequest
+	(*GetAccountResponse)(nil),                     // 63: primandproper.platform.identity.v1.GetAccountResponse
+	(*ListAccountsRequest)(nil),                    // 64: primandproper.platform.identity.v1.ListAccountsRequest
+	(*ListAccountsResponse)(nil),                   // 65: primandproper.platform.identity.v1.ListAccountsResponse
+	(*ListAccountsForUserRequest)(nil),             // 66: primandproper.platform.identity.v1.ListAccountsForUserRequest
+	(*ListAccountsForUserResponse)(nil),            // 67: primandproper.platform.identity.v1.ListAccountsForUserResponse
+	(*GetMembershipRequest)(nil),                   // 68: primandproper.platform.identity.v1.GetMembershipRequest
+	(*GetMembershipResponse)(nil),                  // 69: primandproper.platform.identity.v1.GetMembershipResponse
+	(*ListMembershipsForUserRequest)(nil),          // 70: primandproper.platform.identity.v1.ListMembershipsForUserRequest
+	(*ListMembershipsForUserResponse)(nil),         // 71: primandproper.platform.identity.v1.ListMembershipsForUserResponse
+	(*ListAccountMembersRequest)(nil),              // 72: primandproper.platform.identity.v1.ListAccountMembersRequest
+	(*ListAccountMembersResponse)(nil),             // 73: primandproper.platform.identity.v1.ListAccountMembersResponse
+	(*GetInvitationRequest)(nil),                   // 74: primandproper.platform.identity.v1.GetInvitationRequest
+	(*GetInvitationResponse)(nil),                  // 75: primandproper.platform.identity.v1.GetInvitationResponse
+	(*ListInvitationsFromUserRequest)(nil),         // 76: primandproper.platform.identity.v1.ListInvitationsFromUserRequest
+	(*ListInvitationsFromUserResponse)(nil),        // 77: primandproper.platform.identity.v1.ListInvitationsFromUserResponse
+	(*ListInvitationsForEmailAddressRequest)(nil),  // 78: primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest
+	(*ListInvitationsForEmailAddressResponse)(nil), // 79: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse
+	(*timestamppb.Timestamp)(nil),                  // 80: google.protobuf.Timestamp
+	(*filteringpb.QueryFilter)(nil),                // 81: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),                 // 82: primandproper.platform.filtering.v1.Pagination
 }
 var file_primandproper_platform_identity_v1_identity_proto_depIdxs = []int32{
 	0,   // 0: primandproper.platform.identity.v1.User.account_status:type_name -> primandproper.platform.identity.v1.AccountStatus
-	79,  // 1: primandproper.platform.identity.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	79,  // 2: primandproper.platform.identity.v1.User.last_updated_at:type_name -> google.protobuf.Timestamp
-	79,  // 3: primandproper.platform.identity.v1.User.archived_at:type_name -> google.protobuf.Timestamp
-	79,  // 4: primandproper.platform.identity.v1.User.email_address_verified_at:type_name -> google.protobuf.Timestamp
-	79,  // 5: primandproper.platform.identity.v1.User.password_last_changed_at:type_name -> google.protobuf.Timestamp
-	79,  // 6: primandproper.platform.identity.v1.User.two_factor_secret_verified_at:type_name -> google.protobuf.Timestamp
-	79,  // 7: primandproper.platform.identity.v1.User.last_accepted_terms_of_service:type_name -> google.protobuf.Timestamp
-	79,  // 8: primandproper.platform.identity.v1.User.last_accepted_privacy_policy:type_name -> google.protobuf.Timestamp
-	79,  // 9: primandproper.platform.identity.v1.User.email_address_verification_token_expires_at:type_name -> google.protobuf.Timestamp
+	80,  // 1: primandproper.platform.identity.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	80,  // 2: primandproper.platform.identity.v1.User.last_updated_at:type_name -> google.protobuf.Timestamp
+	80,  // 3: primandproper.platform.identity.v1.User.archived_at:type_name -> google.protobuf.Timestamp
+	80,  // 4: primandproper.platform.identity.v1.User.email_address_verified_at:type_name -> google.protobuf.Timestamp
+	80,  // 5: primandproper.platform.identity.v1.User.password_last_changed_at:type_name -> google.protobuf.Timestamp
+	80,  // 6: primandproper.platform.identity.v1.User.two_factor_secret_verified_at:type_name -> google.protobuf.Timestamp
+	80,  // 7: primandproper.platform.identity.v1.User.last_accepted_terms_of_service:type_name -> google.protobuf.Timestamp
+	80,  // 8: primandproper.platform.identity.v1.User.last_accepted_privacy_policy:type_name -> google.protobuf.Timestamp
+	80,  // 9: primandproper.platform.identity.v1.User.email_address_verification_token_expires_at:type_name -> google.protobuf.Timestamp
 	1,   // 10: primandproper.platform.identity.v1.Account.billing_status:type_name -> primandproper.platform.identity.v1.BillingStatus
 	5,   // 11: primandproper.platform.identity.v1.Account.billing_address:type_name -> primandproper.platform.identity.v1.BillingAddress
-	79,  // 12: primandproper.platform.identity.v1.Account.created_at:type_name -> google.protobuf.Timestamp
-	79,  // 13: primandproper.platform.identity.v1.Account.last_updated_at:type_name -> google.protobuf.Timestamp
-	79,  // 14: primandproper.platform.identity.v1.Account.archived_at:type_name -> google.protobuf.Timestamp
-	79,  // 15: primandproper.platform.identity.v1.Account.last_payment_provider_synced_at:type_name -> google.protobuf.Timestamp
-	79,  // 16: primandproper.platform.identity.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
-	79,  // 17: primandproper.platform.identity.v1.Membership.last_updated_at:type_name -> google.protobuf.Timestamp
-	79,  // 18: primandproper.platform.identity.v1.Membership.archived_at:type_name -> google.protobuf.Timestamp
+	80,  // 12: primandproper.platform.identity.v1.Account.created_at:type_name -> google.protobuf.Timestamp
+	80,  // 13: primandproper.platform.identity.v1.Account.last_updated_at:type_name -> google.protobuf.Timestamp
+	80,  // 14: primandproper.platform.identity.v1.Account.archived_at:type_name -> google.protobuf.Timestamp
+	80,  // 15: primandproper.platform.identity.v1.Account.last_payment_provider_synced_at:type_name -> google.protobuf.Timestamp
+	80,  // 16: primandproper.platform.identity.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
+	80,  // 17: primandproper.platform.identity.v1.Membership.last_updated_at:type_name -> google.protobuf.Timestamp
+	80,  // 18: primandproper.platform.identity.v1.Membership.archived_at:type_name -> google.protobuf.Timestamp
 	4,   // 19: primandproper.platform.identity.v1.MembershipWithUser.user:type_name -> primandproper.platform.identity.v1.User
 	7,   // 20: primandproper.platform.identity.v1.MembershipWithUser.membership:type_name -> primandproper.platform.identity.v1.Membership
 	2,   // 21: primandproper.platform.identity.v1.Invitation.status:type_name -> primandproper.platform.identity.v1.InvitationStatus
-	79,  // 22: primandproper.platform.identity.v1.Invitation.expires_at:type_name -> google.protobuf.Timestamp
-	79,  // 23: primandproper.platform.identity.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
-	79,  // 24: primandproper.platform.identity.v1.Invitation.last_updated_at:type_name -> google.protobuf.Timestamp
-	79,  // 25: primandproper.platform.identity.v1.Invitation.archived_at:type_name -> google.protobuf.Timestamp
+	80,  // 22: primandproper.platform.identity.v1.Invitation.expires_at:type_name -> google.protobuf.Timestamp
+	80,  // 23: primandproper.platform.identity.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
+	80,  // 24: primandproper.platform.identity.v1.Invitation.last_updated_at:type_name -> google.protobuf.Timestamp
+	80,  // 25: primandproper.platform.identity.v1.Invitation.archived_at:type_name -> google.protobuf.Timestamp
 	4,   // 26: primandproper.platform.identity.v1.Principal.user:type_name -> primandproper.platform.identity.v1.User
 	7,   // 27: primandproper.platform.identity.v1.Principal.memberships:type_name -> primandproper.platform.identity.v1.Membership
 	4,   // 28: primandproper.platform.identity.v1.Registration.user:type_name -> primandproper.platform.identity.v1.User
@@ -5256,7 +5340,7 @@ var file_primandproper_platform_identity_v1_identity_proto_depIdxs = []int32{
 	6,   // 41: primandproper.platform.identity.v1.UpdateAccountResponse.account:type_name -> primandproper.platform.identity.v1.Account
 	3,   // 42: primandproper.platform.identity.v1.RecordAgreementRequest.agreements:type_name -> primandproper.platform.identity.v1.Agreement
 	4,   // 43: primandproper.platform.identity.v1.RecordAgreementResponse.user:type_name -> primandproper.platform.identity.v1.User
-	79,  // 44: primandproper.platform.identity.v1.InviteRequest.expires_at:type_name -> google.protobuf.Timestamp
+	80,  // 44: primandproper.platform.identity.v1.InviteRequest.expires_at:type_name -> google.protobuf.Timestamp
 	9,   // 45: primandproper.platform.identity.v1.InviteResponse.invitation:type_name -> primandproper.platform.identity.v1.Invitation
 	12,  // 46: primandproper.platform.identity.v1.AcceptInvitationResponse.acceptance:type_name -> primandproper.platform.identity.v1.Acceptance
 	9,   // 47: primandproper.platform.identity.v1.RejectInvitationResponse.invitation:type_name -> primandproper.platform.identity.v1.Invitation
@@ -5274,99 +5358,100 @@ var file_primandproper_platform_identity_v1_identity_proto_depIdxs = []int32{
 	4,   // 59: primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse.user:type_name -> primandproper.platform.identity.v1.User
 	10,  // 60: primandproper.platform.identity.v1.GetPrincipalResponse.principal:type_name -> primandproper.platform.identity.v1.Principal
 	6,   // 61: primandproper.platform.identity.v1.GetPrincipalResponse.active_account:type_name -> primandproper.platform.identity.v1.Account
-	4,   // 62: primandproper.platform.identity.v1.GetUserResponse.user:type_name -> primandproper.platform.identity.v1.User
-	80,  // 63: primandproper.platform.identity.v1.ListUsersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 64: primandproper.platform.identity.v1.ListUsersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	4,   // 65: primandproper.platform.identity.v1.ListUsersResponse.results:type_name -> primandproper.platform.identity.v1.User
-	80,  // 66: primandproper.platform.identity.v1.SearchUsersByUsernameRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 67: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	4,   // 68: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.results:type_name -> primandproper.platform.identity.v1.User
-	6,   // 69: primandproper.platform.identity.v1.GetAccountResponse.account:type_name -> primandproper.platform.identity.v1.Account
-	80,  // 70: primandproper.platform.identity.v1.ListAccountsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 71: primandproper.platform.identity.v1.ListAccountsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	6,   // 72: primandproper.platform.identity.v1.ListAccountsResponse.results:type_name -> primandproper.platform.identity.v1.Account
-	80,  // 73: primandproper.platform.identity.v1.ListAccountsForUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 74: primandproper.platform.identity.v1.ListAccountsForUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	6,   // 75: primandproper.platform.identity.v1.ListAccountsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Account
-	7,   // 76: primandproper.platform.identity.v1.GetMembershipResponse.membership:type_name -> primandproper.platform.identity.v1.Membership
-	7,   // 77: primandproper.platform.identity.v1.ListMembershipsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Membership
-	80,  // 78: primandproper.platform.identity.v1.ListAccountMembersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 79: primandproper.platform.identity.v1.ListAccountMembersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	8,   // 80: primandproper.platform.identity.v1.ListAccountMembersResponse.results:type_name -> primandproper.platform.identity.v1.MembershipWithUser
-	9,   // 81: primandproper.platform.identity.v1.GetInvitationResponse.invitation:type_name -> primandproper.platform.identity.v1.Invitation
-	80,  // 82: primandproper.platform.identity.v1.ListInvitationsFromUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 83: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	9,   // 84: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
-	80,  // 85: primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	81,  // 86: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	9,   // 87: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
-	17,  // 88: primandproper.platform.identity.v1.IdentityService.Register:input_type -> primandproper.platform.identity.v1.RegisterRequest
-	19,  // 89: primandproper.platform.identity.v1.IdentityService.UpdateProfile:input_type -> primandproper.platform.identity.v1.UpdateProfileRequest
-	21,  // 90: primandproper.platform.identity.v1.IdentityService.UpdateAccount:input_type -> primandproper.platform.identity.v1.UpdateAccountRequest
-	23,  // 91: primandproper.platform.identity.v1.IdentityService.RecordAgreement:input_type -> primandproper.platform.identity.v1.RecordAgreementRequest
-	25,  // 92: primandproper.platform.identity.v1.IdentityService.Invite:input_type -> primandproper.platform.identity.v1.InviteRequest
-	27,  // 93: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:input_type -> primandproper.platform.identity.v1.AcceptInvitationRequest
-	29,  // 94: primandproper.platform.identity.v1.IdentityService.RejectInvitation:input_type -> primandproper.platform.identity.v1.RejectInvitationRequest
-	31,  // 95: primandproper.platform.identity.v1.IdentityService.CancelInvitation:input_type -> primandproper.platform.identity.v1.CancelInvitationRequest
-	33,  // 96: primandproper.platform.identity.v1.IdentityService.CreateAccount:input_type -> primandproper.platform.identity.v1.CreateAccountRequest
-	35,  // 97: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:input_type -> primandproper.platform.identity.v1.TransferAccountOwnershipRequest
-	37,  // 98: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:input_type -> primandproper.platform.identity.v1.SetDefaultAccountRequest
-	39,  // 99: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:input_type -> primandproper.platform.identity.v1.SetMembershipRolesRequest
-	41,  // 100: primandproper.platform.identity.v1.IdentityService.RemoveMembership:input_type -> primandproper.platform.identity.v1.RemoveMembershipRequest
-	43,  // 101: primandproper.platform.identity.v1.IdentityService.ArchiveUser:input_type -> primandproper.platform.identity.v1.ArchiveUserRequest
-	45,  // 102: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:input_type -> primandproper.platform.identity.v1.ArchiveAccountRequest
-	47,  // 103: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:input_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusRequest
-	49,  // 104: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:input_type -> primandproper.platform.identity.v1.SetUserServiceRolesRequest
-	51,  // 105: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:input_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeRequest
-	53,  // 106: primandproper.platform.identity.v1.IdentityService.GetPrincipal:input_type -> primandproper.platform.identity.v1.GetPrincipalRequest
-	55,  // 107: primandproper.platform.identity.v1.IdentityService.GetUser:input_type -> primandproper.platform.identity.v1.GetUserRequest
-	57,  // 108: primandproper.platform.identity.v1.IdentityService.ListUsers:input_type -> primandproper.platform.identity.v1.ListUsersRequest
-	59,  // 109: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:input_type -> primandproper.platform.identity.v1.SearchUsersByUsernameRequest
-	61,  // 110: primandproper.platform.identity.v1.IdentityService.GetAccount:input_type -> primandproper.platform.identity.v1.GetAccountRequest
-	63,  // 111: primandproper.platform.identity.v1.IdentityService.ListAccounts:input_type -> primandproper.platform.identity.v1.ListAccountsRequest
-	65,  // 112: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:input_type -> primandproper.platform.identity.v1.ListAccountsForUserRequest
-	67,  // 113: primandproper.platform.identity.v1.IdentityService.GetMembership:input_type -> primandproper.platform.identity.v1.GetMembershipRequest
-	69,  // 114: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:input_type -> primandproper.platform.identity.v1.ListMembershipsForUserRequest
-	71,  // 115: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:input_type -> primandproper.platform.identity.v1.ListAccountMembersRequest
-	73,  // 116: primandproper.platform.identity.v1.IdentityService.GetInvitation:input_type -> primandproper.platform.identity.v1.GetInvitationRequest
-	75,  // 117: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:input_type -> primandproper.platform.identity.v1.ListInvitationsFromUserRequest
-	77,  // 118: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:input_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest
-	18,  // 119: primandproper.platform.identity.v1.IdentityService.Register:output_type -> primandproper.platform.identity.v1.RegisterResponse
-	20,  // 120: primandproper.platform.identity.v1.IdentityService.UpdateProfile:output_type -> primandproper.platform.identity.v1.UpdateProfileResponse
-	22,  // 121: primandproper.platform.identity.v1.IdentityService.UpdateAccount:output_type -> primandproper.platform.identity.v1.UpdateAccountResponse
-	24,  // 122: primandproper.platform.identity.v1.IdentityService.RecordAgreement:output_type -> primandproper.platform.identity.v1.RecordAgreementResponse
-	26,  // 123: primandproper.platform.identity.v1.IdentityService.Invite:output_type -> primandproper.platform.identity.v1.InviteResponse
-	28,  // 124: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:output_type -> primandproper.platform.identity.v1.AcceptInvitationResponse
-	30,  // 125: primandproper.platform.identity.v1.IdentityService.RejectInvitation:output_type -> primandproper.platform.identity.v1.RejectInvitationResponse
-	32,  // 126: primandproper.platform.identity.v1.IdentityService.CancelInvitation:output_type -> primandproper.platform.identity.v1.CancelInvitationResponse
-	34,  // 127: primandproper.platform.identity.v1.IdentityService.CreateAccount:output_type -> primandproper.platform.identity.v1.CreateAccountResponse
-	36,  // 128: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:output_type -> primandproper.platform.identity.v1.TransferAccountOwnershipResponse
-	38,  // 129: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:output_type -> primandproper.platform.identity.v1.SetDefaultAccountResponse
-	40,  // 130: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:output_type -> primandproper.platform.identity.v1.SetMembershipRolesResponse
-	42,  // 131: primandproper.platform.identity.v1.IdentityService.RemoveMembership:output_type -> primandproper.platform.identity.v1.RemoveMembershipResponse
-	44,  // 132: primandproper.platform.identity.v1.IdentityService.ArchiveUser:output_type -> primandproper.platform.identity.v1.ArchiveUserResponse
-	46,  // 133: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:output_type -> primandproper.platform.identity.v1.ArchiveAccountResponse
-	48,  // 134: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:output_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusResponse
-	50,  // 135: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:output_type -> primandproper.platform.identity.v1.SetUserServiceRolesResponse
-	52,  // 136: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:output_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse
-	54,  // 137: primandproper.platform.identity.v1.IdentityService.GetPrincipal:output_type -> primandproper.platform.identity.v1.GetPrincipalResponse
-	56,  // 138: primandproper.platform.identity.v1.IdentityService.GetUser:output_type -> primandproper.platform.identity.v1.GetUserResponse
-	58,  // 139: primandproper.platform.identity.v1.IdentityService.ListUsers:output_type -> primandproper.platform.identity.v1.ListUsersResponse
-	60,  // 140: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:output_type -> primandproper.platform.identity.v1.SearchUsersByUsernameResponse
-	62,  // 141: primandproper.platform.identity.v1.IdentityService.GetAccount:output_type -> primandproper.platform.identity.v1.GetAccountResponse
-	64,  // 142: primandproper.platform.identity.v1.IdentityService.ListAccounts:output_type -> primandproper.platform.identity.v1.ListAccountsResponse
-	66,  // 143: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:output_type -> primandproper.platform.identity.v1.ListAccountsForUserResponse
-	68,  // 144: primandproper.platform.identity.v1.IdentityService.GetMembership:output_type -> primandproper.platform.identity.v1.GetMembershipResponse
-	70,  // 145: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:output_type -> primandproper.platform.identity.v1.ListMembershipsForUserResponse
-	72,  // 146: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:output_type -> primandproper.platform.identity.v1.ListAccountMembersResponse
-	74,  // 147: primandproper.platform.identity.v1.IdentityService.GetInvitation:output_type -> primandproper.platform.identity.v1.GetInvitationResponse
-	76,  // 148: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:output_type -> primandproper.platform.identity.v1.ListInvitationsFromUserResponse
-	78,  // 149: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:output_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse
-	119, // [119:150] is the sub-list for method output_type
-	88,  // [88:119] is the sub-list for method input_type
-	88,  // [88:88] is the sub-list for extension type_name
-	88,  // [88:88] is the sub-list for extension extendee
-	0,   // [0:88] is the sub-list for field type_name
+	55,  // 62: primandproper.platform.identity.v1.GetPrincipalResponse.permissions:type_name -> primandproper.platform.identity.v1.EffectivePermissions
+	4,   // 63: primandproper.platform.identity.v1.GetUserResponse.user:type_name -> primandproper.platform.identity.v1.User
+	81,  // 64: primandproper.platform.identity.v1.ListUsersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 65: primandproper.platform.identity.v1.ListUsersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	4,   // 66: primandproper.platform.identity.v1.ListUsersResponse.results:type_name -> primandproper.platform.identity.v1.User
+	81,  // 67: primandproper.platform.identity.v1.SearchUsersByUsernameRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 68: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	4,   // 69: primandproper.platform.identity.v1.SearchUsersByUsernameResponse.results:type_name -> primandproper.platform.identity.v1.User
+	6,   // 70: primandproper.platform.identity.v1.GetAccountResponse.account:type_name -> primandproper.platform.identity.v1.Account
+	81,  // 71: primandproper.platform.identity.v1.ListAccountsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 72: primandproper.platform.identity.v1.ListAccountsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	6,   // 73: primandproper.platform.identity.v1.ListAccountsResponse.results:type_name -> primandproper.platform.identity.v1.Account
+	81,  // 74: primandproper.platform.identity.v1.ListAccountsForUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 75: primandproper.platform.identity.v1.ListAccountsForUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	6,   // 76: primandproper.platform.identity.v1.ListAccountsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Account
+	7,   // 77: primandproper.platform.identity.v1.GetMembershipResponse.membership:type_name -> primandproper.platform.identity.v1.Membership
+	7,   // 78: primandproper.platform.identity.v1.ListMembershipsForUserResponse.results:type_name -> primandproper.platform.identity.v1.Membership
+	81,  // 79: primandproper.platform.identity.v1.ListAccountMembersRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 80: primandproper.platform.identity.v1.ListAccountMembersResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	8,   // 81: primandproper.platform.identity.v1.ListAccountMembersResponse.results:type_name -> primandproper.platform.identity.v1.MembershipWithUser
+	9,   // 82: primandproper.platform.identity.v1.GetInvitationResponse.invitation:type_name -> primandproper.platform.identity.v1.Invitation
+	81,  // 83: primandproper.platform.identity.v1.ListInvitationsFromUserRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 84: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	9,   // 85: primandproper.platform.identity.v1.ListInvitationsFromUserResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
+	81,  // 86: primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	82,  // 87: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	9,   // 88: primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse.results:type_name -> primandproper.platform.identity.v1.Invitation
+	17,  // 89: primandproper.platform.identity.v1.IdentityService.Register:input_type -> primandproper.platform.identity.v1.RegisterRequest
+	19,  // 90: primandproper.platform.identity.v1.IdentityService.UpdateProfile:input_type -> primandproper.platform.identity.v1.UpdateProfileRequest
+	21,  // 91: primandproper.platform.identity.v1.IdentityService.UpdateAccount:input_type -> primandproper.platform.identity.v1.UpdateAccountRequest
+	23,  // 92: primandproper.platform.identity.v1.IdentityService.RecordAgreement:input_type -> primandproper.platform.identity.v1.RecordAgreementRequest
+	25,  // 93: primandproper.platform.identity.v1.IdentityService.Invite:input_type -> primandproper.platform.identity.v1.InviteRequest
+	27,  // 94: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:input_type -> primandproper.platform.identity.v1.AcceptInvitationRequest
+	29,  // 95: primandproper.platform.identity.v1.IdentityService.RejectInvitation:input_type -> primandproper.platform.identity.v1.RejectInvitationRequest
+	31,  // 96: primandproper.platform.identity.v1.IdentityService.CancelInvitation:input_type -> primandproper.platform.identity.v1.CancelInvitationRequest
+	33,  // 97: primandproper.platform.identity.v1.IdentityService.CreateAccount:input_type -> primandproper.platform.identity.v1.CreateAccountRequest
+	35,  // 98: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:input_type -> primandproper.platform.identity.v1.TransferAccountOwnershipRequest
+	37,  // 99: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:input_type -> primandproper.platform.identity.v1.SetDefaultAccountRequest
+	39,  // 100: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:input_type -> primandproper.platform.identity.v1.SetMembershipRolesRequest
+	41,  // 101: primandproper.platform.identity.v1.IdentityService.RemoveMembership:input_type -> primandproper.platform.identity.v1.RemoveMembershipRequest
+	43,  // 102: primandproper.platform.identity.v1.IdentityService.ArchiveUser:input_type -> primandproper.platform.identity.v1.ArchiveUserRequest
+	45,  // 103: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:input_type -> primandproper.platform.identity.v1.ArchiveAccountRequest
+	47,  // 104: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:input_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusRequest
+	49,  // 105: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:input_type -> primandproper.platform.identity.v1.SetUserServiceRolesRequest
+	51,  // 106: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:input_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeRequest
+	53,  // 107: primandproper.platform.identity.v1.IdentityService.GetPrincipal:input_type -> primandproper.platform.identity.v1.GetPrincipalRequest
+	56,  // 108: primandproper.platform.identity.v1.IdentityService.GetUser:input_type -> primandproper.platform.identity.v1.GetUserRequest
+	58,  // 109: primandproper.platform.identity.v1.IdentityService.ListUsers:input_type -> primandproper.platform.identity.v1.ListUsersRequest
+	60,  // 110: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:input_type -> primandproper.platform.identity.v1.SearchUsersByUsernameRequest
+	62,  // 111: primandproper.platform.identity.v1.IdentityService.GetAccount:input_type -> primandproper.platform.identity.v1.GetAccountRequest
+	64,  // 112: primandproper.platform.identity.v1.IdentityService.ListAccounts:input_type -> primandproper.platform.identity.v1.ListAccountsRequest
+	66,  // 113: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:input_type -> primandproper.platform.identity.v1.ListAccountsForUserRequest
+	68,  // 114: primandproper.platform.identity.v1.IdentityService.GetMembership:input_type -> primandproper.platform.identity.v1.GetMembershipRequest
+	70,  // 115: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:input_type -> primandproper.platform.identity.v1.ListMembershipsForUserRequest
+	72,  // 116: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:input_type -> primandproper.platform.identity.v1.ListAccountMembersRequest
+	74,  // 117: primandproper.platform.identity.v1.IdentityService.GetInvitation:input_type -> primandproper.platform.identity.v1.GetInvitationRequest
+	76,  // 118: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:input_type -> primandproper.platform.identity.v1.ListInvitationsFromUserRequest
+	78,  // 119: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:input_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest
+	18,  // 120: primandproper.platform.identity.v1.IdentityService.Register:output_type -> primandproper.platform.identity.v1.RegisterResponse
+	20,  // 121: primandproper.platform.identity.v1.IdentityService.UpdateProfile:output_type -> primandproper.platform.identity.v1.UpdateProfileResponse
+	22,  // 122: primandproper.platform.identity.v1.IdentityService.UpdateAccount:output_type -> primandproper.platform.identity.v1.UpdateAccountResponse
+	24,  // 123: primandproper.platform.identity.v1.IdentityService.RecordAgreement:output_type -> primandproper.platform.identity.v1.RecordAgreementResponse
+	26,  // 124: primandproper.platform.identity.v1.IdentityService.Invite:output_type -> primandproper.platform.identity.v1.InviteResponse
+	28,  // 125: primandproper.platform.identity.v1.IdentityService.AcceptInvitation:output_type -> primandproper.platform.identity.v1.AcceptInvitationResponse
+	30,  // 126: primandproper.platform.identity.v1.IdentityService.RejectInvitation:output_type -> primandproper.platform.identity.v1.RejectInvitationResponse
+	32,  // 127: primandproper.platform.identity.v1.IdentityService.CancelInvitation:output_type -> primandproper.platform.identity.v1.CancelInvitationResponse
+	34,  // 128: primandproper.platform.identity.v1.IdentityService.CreateAccount:output_type -> primandproper.platform.identity.v1.CreateAccountResponse
+	36,  // 129: primandproper.platform.identity.v1.IdentityService.TransferAccountOwnership:output_type -> primandproper.platform.identity.v1.TransferAccountOwnershipResponse
+	38,  // 130: primandproper.platform.identity.v1.IdentityService.SetDefaultAccount:output_type -> primandproper.platform.identity.v1.SetDefaultAccountResponse
+	40,  // 131: primandproper.platform.identity.v1.IdentityService.SetMembershipRoles:output_type -> primandproper.platform.identity.v1.SetMembershipRolesResponse
+	42,  // 132: primandproper.platform.identity.v1.IdentityService.RemoveMembership:output_type -> primandproper.platform.identity.v1.RemoveMembershipResponse
+	44,  // 133: primandproper.platform.identity.v1.IdentityService.ArchiveUser:output_type -> primandproper.platform.identity.v1.ArchiveUserResponse
+	46,  // 134: primandproper.platform.identity.v1.IdentityService.ArchiveAccount:output_type -> primandproper.platform.identity.v1.ArchiveAccountResponse
+	48,  // 135: primandproper.platform.identity.v1.IdentityService.UpdateUserAccountStatus:output_type -> primandproper.platform.identity.v1.UpdateUserAccountStatusResponse
+	50,  // 136: primandproper.platform.identity.v1.IdentityService.SetUserServiceRoles:output_type -> primandproper.platform.identity.v1.SetUserServiceRolesResponse
+	52,  // 137: primandproper.platform.identity.v1.IdentityService.SetUserRequiresPasswordChange:output_type -> primandproper.platform.identity.v1.SetUserRequiresPasswordChangeResponse
+	54,  // 138: primandproper.platform.identity.v1.IdentityService.GetPrincipal:output_type -> primandproper.platform.identity.v1.GetPrincipalResponse
+	57,  // 139: primandproper.platform.identity.v1.IdentityService.GetUser:output_type -> primandproper.platform.identity.v1.GetUserResponse
+	59,  // 140: primandproper.platform.identity.v1.IdentityService.ListUsers:output_type -> primandproper.platform.identity.v1.ListUsersResponse
+	61,  // 141: primandproper.platform.identity.v1.IdentityService.SearchUsersByUsername:output_type -> primandproper.platform.identity.v1.SearchUsersByUsernameResponse
+	63,  // 142: primandproper.platform.identity.v1.IdentityService.GetAccount:output_type -> primandproper.platform.identity.v1.GetAccountResponse
+	65,  // 143: primandproper.platform.identity.v1.IdentityService.ListAccounts:output_type -> primandproper.platform.identity.v1.ListAccountsResponse
+	67,  // 144: primandproper.platform.identity.v1.IdentityService.ListAccountsForUser:output_type -> primandproper.platform.identity.v1.ListAccountsForUserResponse
+	69,  // 145: primandproper.platform.identity.v1.IdentityService.GetMembership:output_type -> primandproper.platform.identity.v1.GetMembershipResponse
+	71,  // 146: primandproper.platform.identity.v1.IdentityService.ListMembershipsForUser:output_type -> primandproper.platform.identity.v1.ListMembershipsForUserResponse
+	73,  // 147: primandproper.platform.identity.v1.IdentityService.ListAccountMembers:output_type -> primandproper.platform.identity.v1.ListAccountMembersResponse
+	75,  // 148: primandproper.platform.identity.v1.IdentityService.GetInvitation:output_type -> primandproper.platform.identity.v1.GetInvitationResponse
+	77,  // 149: primandproper.platform.identity.v1.IdentityService.ListInvitationsFromUser:output_type -> primandproper.platform.identity.v1.ListInvitationsFromUserResponse
+	79,  // 150: primandproper.platform.identity.v1.IdentityService.ListInvitationsForEmailAddress:output_type -> primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponse
+	120, // [120:151] is the sub-list for method output_type
+	89,  // [89:120] is the sub-list for method input_type
+	89,  // [89:89] is the sub-list for extension type_name
+	89,  // [89:89] is the sub-list for extension extendee
+	0,   // [0:89] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_identity_v1_identity_proto_init() }
@@ -5386,7 +5471,7 @@ func file_primandproper_platform_identity_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_identity_v1_identity_proto_rawDesc), len(file_primandproper_platform_identity_v1_identity_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   75,
+			NumMessages:   76,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

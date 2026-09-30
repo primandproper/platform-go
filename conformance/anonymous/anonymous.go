@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	passkeysgrpc "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc"
 	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/conformance"
@@ -23,7 +24,7 @@ import (
 type surface struct {
 	def services.Service
 
-	// why says what the exception is for, on the three entries that have one.
+	// why says what the exception is for, on the entries that have one.
 	why string
 
 	// anonymous are the full method names that require no caller, taken from
@@ -34,10 +35,14 @@ type surface struct {
 	anonymous []string
 }
 
-// exceptions are the three surfaces with methods reachable without a caller,
-// each read from the surface's own declaration.
+// exceptions are the surfaces with methods reachable without a caller, each
+// read from the surface's own declaration.
 func exceptions() map[string]surface {
 	return map[string]surface{
+		"passkeys": {
+			anonymous: passkeysgrpc.AnonymousMethods(),
+			why:       "signing in with a passkey, which is how a caller becomes somebody",
+		},
 		"passwordreset": {
 			anonymous: passwordresetgrpc.AnonymousMethods(),
 			why:       "every RPC on it is for somebody who cannot sign in, so it reads no caller at all",

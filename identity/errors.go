@@ -67,7 +67,7 @@ var (
 	// It is the last spelling of a handle the three dialects disagreed about.
 	// FoldHandle settles case in Go and the columns are collated utf8mb4_bin on
 	// MySQL, so case and accents answer alike everywhere; padding did not,
-	// because utf8mb4_bin is still PAD SPACE on MariaDB — "ada  " collides with
+	// because utf8mb4_bin is PAD SPACE on MySQL 8 — "ada  " collides with
 	// "ada" there and is a second user on Postgres and SQLite. A handle that is
 	// taken on one server and free on another is the one thing the fold exists
 	// to prevent.

@@ -273,7 +273,7 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		//
 		// So the convergence goes the other way: the column is collated
 		// utf8mb4_bin on MySQL, which is the byte-exact comparison Postgres and
-		// SQLite already do. Without it, MariaDB's default is accent-insensitive
+		// SQLite already do. Without it, MySQL 8's default is accent-insensitive
 		// and these two registrations are one taken handle there and two users
 		// everywhere else — the same divergence the fold exists to remove,
 		// arrived at through the one door the fold does not close.
@@ -303,7 +303,7 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		// The third thing a collation decides, and the one the fold cannot
-		// reach. MariaDB's utf8mb4_bin is still PAD SPACE, so the second
+		// reach. MySQL 8's utf8mb4_bin is PAD SPACE, so the second
 		// registration below is a collision there — ErrUsernameTaken — and a
 		// second user on Postgres and SQLite, which is exactly the "one
 		// directory, three answers" this suite exists to rule out. Remove
@@ -363,6 +363,57 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		_, err = service.UpdateProfile(t.Context(), testScope, registration.User.ID,
 			&ProfileUpdate{Username: pointer.To("ada ")})
 		must.ErrorIs(t, err, ErrUsernameWhitespace)
+	})
+
+	t.Run("a padded handle is not found by any lookup", func(t *testing.T) {
+		t.Parallel()
+
+		// The write side's rule, held from the read side. No row carries
+		// surrounding whitespace, so not found is the true answer — and it has
+		// to be the answer on every dialect, where MySQL 8's PAD SPACE
+		// collation would otherwise find ada for "ada " and the other two
+		// would not. Remove lookupHandle and the trailing-space cases below
+		// pass on Postgres and SQLite and fail on MySQL.
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme", "admin")
+
+		_, err := env.createInvitation(t, store, testScope,
+			newInvitation(owner, account.ID, "brian@example.com", "tok-padded", baseTime.Add(time.Hour)))
+		must.NoError(t, err)
+
+		for _, pad := range []func(string) string{
+			func(h string) string { return h + " " },
+			func(h string) string { return h + "  " },
+			func(h string) string { return " " + h },
+			func(h string) string { return h + "\t" },
+			func(h string) string { return h + "\u00a0" },
+		} {
+			username := pad("ada")
+			_, err = store.GetUserByUsername(t.Context(), env.reader(), testScope, username)
+			must.ErrorIs(t, err, ErrUserNotFound, must.Sprintf("username %q", username))
+
+			address := pad("ada@example.com")
+			_, err = store.GetUserByEmailAddress(t.Context(), env.reader(), testScope, address)
+			must.ErrorIs(t, err, ErrUserNotFound, must.Sprintf("email address %q", address))
+
+			invited := pad("brian@example.com")
+			received, listErr := store.ListInvitationsForEmailAddress(
+				t.Context(), env.reader(), testScope, invited, InvitationPending, nil)
+			must.NoError(t, listErr, must.Sprintf("listing for %q", invited))
+			test.SliceEmpty(t, received.Data, test.Sprintf("listing for %q", invited))
+		}
+
+		// And the unpadded spellings still reach their rows, so the refusal is
+		// the padding's rather than the lookup's.
+		found, err := store.GetUserByUsername(t.Context(), env.reader(), testScope, "ada")
+		must.NoError(t, err)
+		test.EqOp(t, owner.ID, found.ID)
+
+		received, err := store.ListInvitationsForEmailAddress(
+			t.Context(), env.reader(), testScope, "brian@example.com", InvitationPending, nil)
+		must.NoError(t, err)
+		test.SliceLen(t, 1, received.Data)
 	})
 
 	t.Run("the sign-in reads find a user by any casing", func(t *testing.T) {
@@ -523,6 +574,37 @@ func TestFoldHandle(T *testing.T) {
 			t.Parallel()
 
 			test.EqOp(t, tc.folded, FoldHandle(tc.handle))
+		})
+	}
+}
+
+// TestLookupHandle pins the lookup-side twin of checkUsernameWhitespace: the
+// fold a read binds, and the refusal of a handle no write would have stored.
+func TestLookupHandle(T *testing.T) {
+	T.Parallel()
+
+	cases := map[string]struct {
+		handle string
+		folded string
+		ok     bool
+	}{
+		"already folded":       {handle: "ada", folded: "ada", ok: true},
+		"a shouted handle":     {handle: "ADA", folded: "ada", ok: true},
+		"interior space":       {handle: "Ada Lovelace", folded: "ada lovelace", ok: true},
+		"empty":                {handle: "", folded: "", ok: true},
+		"a trailing space":     {handle: "ada ", folded: "ada ", ok: false},
+		"a leading space":      {handle: " ada", folded: " ada", ok: false},
+		"a trailing tab":       {handle: "ada\t", folded: "ada\t", ok: false},
+		"a non-breaking space": {handle: "ada\u00a0", folded: "ada\u00a0", ok: false},
+	}
+
+	for name, tc := range cases {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			folded, ok := lookupHandle(tc.handle)
+			test.EqOp(t, tc.folded, folded)
+			test.EqOp(t, tc.ok, ok)
 		})
 	}
 }

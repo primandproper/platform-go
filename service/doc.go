@@ -114,10 +114,10 @@ what a client talks to:
 
 	svc, err := service.New(i)
 
-Fifteen surfaces mount. Twelve gRPC — audit, oauth2clients, passwordreset,
-signin, billing, comments, identity, issuereports, notifications, settings,
-waitlists and webhooks — join the []grpcserver.RegistrationFunc the gRPC server
-is built from. Three HTTP — dataprivacy, mediaregistry and operations — put their
+The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
+billing, comments, identity, issuereports, notifications, settings, waitlists
+and webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built
+from. The HTTP ones — dataprivacy, mediaregistry and operations — put their
 routes on the router the HTTP server serves.
 
 That router is checked, which routing.Router leaves to whoever holds it: it
@@ -137,12 +137,16 @@ the same distinction the rest of this package draws, and drawing it here is what
 lets identity behave without a special case — its server is built over a
 service Register does not register, so it mounts for an application that
 registered one and stays absent for one that did not. oauth2clients,
-passwordreset and signin are services Register does register: oauth2clients
+passkeys, passwordreset and signin are services Register does register: oauth2clients
 from Config.OAuth2Clients, so its surface mounts from the config alone,
 passwordreset from Config.PasswordReset, so its surface mounts from the config
-plus the mailer and authenticator only the application can supply, and signin
+plus the mailer and authenticator only the application can supply, signin
 from Config.SignIn, so its surface mounts from the config plus that same
-authenticator.
+authenticator, and passkeys from Config.Passkeys, whose surface mounts from the
+config, the WebAuthn and SignIn blocks beside it, and the user resolver and
+enrollment gate only the application can supply. A passkeys block with no
+sign-in service to mint its tokens is ErrPasskeysNeedSignIn rather than an
+absence, because the block is the deployment asking for the surface.
 
 # The seams
 

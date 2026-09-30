@@ -4,6 +4,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/grants"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -198,6 +199,16 @@ func Register() {
 	// policy refused — has the opposite remedy from the link outcomes, and a
 	// client has to act on which one it met. See passwordreset.ClientSafeReasons.
 	grpcerrors.RegisterClientSafeReasons(passwordreset.ClientSafeReasons...)
+
+	httperrors.RegisterHTTPErrorMapper(passkeys.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(passkeys.GRPCMapper)
+
+	// A third reader who is not signed in yet: somebody in front of a passkey
+	// prompt. A refused ceremony and a key that looks cloned end a sign-in
+	// with different remedies, and a client has to act on which. See
+	// passkeys.ClientSafeReasons, which registers the sentinels' words too.
+	grpcerrors.RegisterClientSafeSentinels(passkeys.ClientSafeSentinels...)
+	grpcerrors.RegisterClientSafeReasons(passkeys.ClientSafeReasons...)
 
 	httperrors.RegisterHTTPErrorMapper(metering.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(metering.GRPCMapper)

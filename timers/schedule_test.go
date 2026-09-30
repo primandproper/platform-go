@@ -121,7 +121,26 @@ func TestTimers_ScheduleValidation(T *testing.T) {
 		set, err := New[string](t.Context(), validConfig(), postgresClient())
 		must.NoError(t, err)
 
-		test.True(t, stderrors.Is(set.Schedule(t.Context(), Timer[string]{Key: "a"}), ErrZeroRunAt))
+		test.True(t, stderrors.Is(set.Schedule(t.Context(), noTx(), Timer[string]{Key: "a"}), ErrZeroRunAt))
+	})
+
+	// The transaction is the caller's proof that the timer lands or rolls back
+	// with its subject, so a write handed none is refused rather than run on a
+	// handle of the set's own choosing.
+	T.Run("rejects a write with no transaction", func(t *testing.T) {
+		t.Parallel()
+
+		set, err := New[string](t.Context(), validConfig(), postgresClient())
+		must.NoError(t, err)
+
+		at := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+		test.ErrorIs(t, set.Schedule(t.Context(), nil, Timer[string]{Key: "a", RunAt: at}), ErrNilTransaction)
+		test.ErrorIs(t, set.ScheduleAt(t.Context(), nil, "a", at, nil), ErrNilTransaction)
+		test.ErrorIs(t, set.ScheduleIn(t.Context(), nil, "a", time.Hour, nil), ErrNilTransaction)
+
+		_, err = set.Cancel(t.Context(), nil, "a")
+		test.ErrorIs(t, err, ErrNilTransaction)
 	})
 
 	T.Run("rejects an oversized payload", func(t *testing.T) {
@@ -130,7 +149,7 @@ func TestTimers_ScheduleValidation(T *testing.T) {
 		set, err := New[string](t.Context(), validConfig(), postgresClient())
 		must.NoError(t, err)
 
-		err = set.Schedule(t.Context(), Timer[string]{
+		err = set.Schedule(t.Context(), noTx(), Timer[string]{
 			Key:     "a",
 			RunAt:   time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC),
 			Payload: make([]byte, MaxPayloadSize+1),
@@ -147,7 +166,7 @@ func TestTimers_ScheduleValidation(T *testing.T) {
 		set, err := New[string](t.Context(), validConfig(), postgresClient())
 		must.NoError(t, err)
 
-		err = set.Schedule(t.Context(), Timer[string]{
+		err = set.Schedule(t.Context(), noTx(), Timer[string]{
 			Key:   strings.Repeat("k", MaxKeyLength+1),
 			RunAt: time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC),
 		})

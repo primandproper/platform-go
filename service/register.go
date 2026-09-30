@@ -6,6 +6,7 @@ import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
@@ -583,6 +584,18 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		do.ProvideValue(i, &cfg.WebAuthn.Config)
 		webauthnsessionscfg.RegisterSessionStore(i)
 		webauthncfg.RegisterRelyingParty(i)
+	}
+
+	// The credential store and the ceremony service over the relying party
+	// above, so it needs the WebAuthn block beside it. What the service needs
+	// beyond that is the application's: the passkeys.UserResolver that says
+	// whom a handle names and the passkeys.EnrollmentGate a registration must
+	// pass, both required and neither with a default — see passkeyscfg. A
+	// container missing any of the three fails at boot naming it.
+	if cfg.Passkeys != nil {
+		do.ProvideValue(i, cfg.Passkeys)
+		passkeyscfg.RegisterStore(i)
+		passkeyscfg.RegisterService(i)
 	}
 }
 

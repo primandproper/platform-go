@@ -76,6 +76,21 @@ func (p *testPrincipal) UserID() string          { return p.userID }
 func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
 func (p *testPrincipal) ActiveAccountID() string { return p.activeAccountID }
 
+// sessionPrincipal is a principal carrying the directory's answer, the way
+// signin/grpc's Caller does, with the service roles its door left it.
+type sessionPrincipal struct {
+	testPrincipal
+
+	serviceRoles []string
+}
+
+func (p *sessionPrincipal) Identity() *identity.Principal {
+	return &identity.Principal{
+		User:            &identity.User{ID: p.userID, ServiceRoles: p.serviceRoles},
+		ActiveAccountID: p.activeAccountID,
+	}
+}
+
 // principalKey is where the suite's stand-in for an authentication interceptor
 // puts the principal, on the server side.
 type principalKey struct{}
@@ -91,6 +106,12 @@ const (
 	mdUserID    = "test-user-id"
 	mdScope     = "test-scope"
 	mdAccountID = "test-account-id"
+
+	// mdSession marks a caller as a sessionPrincipal, and mdServiceRoles are
+	// the service roles it carries. Two keys, because a session carrying no
+	// service roles is not the same caller as one carrying no identity.
+	mdSession      = "test-session"
+	mdServiceRoles = "test-service-roles"
 )
 
 // withPrincipal stamps the caller onto an outgoing request, standing in for
@@ -100,11 +121,20 @@ func withPrincipal(ctx context.Context, p callers.Principal) context.Context {
 		return ctx
 	}
 
-	return metadata.AppendToOutgoingContext(ctx,
+	ctx = metadata.AppendToOutgoingContext(ctx,
 		mdUserID, p.UserID(),
 		mdScope, p.Scope().Owner(),
 		mdAccountID, p.ActiveAccountID(),
 	)
+
+	if session, ok := p.(*sessionPrincipal); ok {
+		ctx = metadata.AppendToOutgoingContext(ctx, mdSession, "true")
+		for _, role := range session.serviceRoles {
+			ctx = metadata.AppendToOutgoingContext(ctx, mdServiceRoles, role)
+		}
+	}
+
+	return ctx
 }
 
 // authenticate is the consumer's authentication interceptor: it reads the
@@ -136,6 +166,11 @@ func authenticate(
 
 	if accounts := md.Get(mdAccountID); len(accounts) > 0 {
 		principal.activeAccountID = accounts[0]
+	}
+
+	if len(md.Get(mdSession)) > 0 {
+		return handler(context.WithValue(ctx, principalKey{},
+			&sessionPrincipal{testPrincipal: *principal, serviceRoles: md.Get(mdServiceRoles)}), req)
 	}
 
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)

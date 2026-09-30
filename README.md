@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/passwordreset`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `sessions`, `settings`, `shredding`, `waitlists` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all of them in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those packages has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `sessions`, `settings`, `shredding`, `waitlists` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all of them in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those packages has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -66,7 +66,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `authentication/phonecodes`        | Short codes texted to a person who is not a user: digest at rest, single use, dead after too many wrong guesses, one live code per number, and `authentication/phonecodes/privacy` | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
-| `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, the `Service` that runs registration and named and discoverable login over them (seams: `UserResolver`, `UsernameResolver`, `EnrollmentGate`, `AlternativeSignIn`, `Hooks`), and `authentication/passkeys/privacy` | postgres, mysql, sqlite          |
+| `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, the `Service` that runs registration and named and discoverable login over them (seams: `UserResolver`, `UsernameResolver`, `EnrollmentGate`, `AlternativeSignIn`, `Hooks`), and `authentication/passkeys/privacy` | postgres, mysql, sqlite (+ grpc) |
 | `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
 | `authentication/grants`            | The tokens a third party granted this deployment, per subject per provider: sealed at rest, refreshed by compare-and-set, revocable from either side, and `authentication/grants/privacy` | postgres, mysql, sqlite          |
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
@@ -570,9 +570,13 @@ The flows over those nouns are the other half of the same list, and sign-in was
 the first of them. Password reset is the second: `authentication/passwordreset`
 ships a `Service` beside its `Store`, which mails the link after the commit
 rather than inside it and spends it with the password change and the revocation
-in one transaction. Passkeys, session management and email verification are each
-their own addition over an engine this module already ships, rather than a
-branch inside the password flow.
+in one transaction. Passkeys are the third: `authentication/passkeys/grpc` runs
+the ceremonies over `authentication/passkeys`' `Service` and answers a finished
+login with sign-in's own token, minted through `IssueForPrincipal`, so a
+passkey is another way into the same sign-in rather than a second token stack.
+Session management and email verification are each their own addition over an
+engine this module already ships, rather than a branch inside the password
+flow.
 
 The line the primitives are held to went with them. It read: *a module ships a
 transport for a primitive only where the shape of the request is decided by
@@ -590,6 +594,7 @@ the whole list.
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                       |
 | `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                       |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`           |
+| `authentication/passkeys/grpc`      | resource surface | enrolling a passkey and signing in with one, into sign-in's token — over `passkeys.Service`               |
 | `authentication/passwordreset/grpc` | resource surface | ask for a reset link, check one, spend one — over `passwordreset.Service`                                 |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                     |
 | `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                 |
@@ -637,7 +642,8 @@ two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
-`authentication/passwordreset/grpc`, `authentication/oauth2clients/grpc`,
+`authentication/passwordreset/grpc`, `authentication/passkeys/grpc`,
+`authentication/oauth2clients/grpc`,
 `dataprivacy/http`, `audit/grpc`, `notifications/grpc`, `comments/grpc`,
 `webhooks/grpc`, `billing/grpc`, `issuereports/grpc`, `settings/grpc` and
 `waitlists/grpc` are the other kind — a domain's own transport, shipped under the

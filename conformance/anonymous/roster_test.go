@@ -17,9 +17,9 @@ const servicePrefix = "primandproper.platform."
 // slowly stops describing the module.
 //
 // It does not read a second list. Every protobuf package linked into this
-// binary registers its descriptors globally, and the roster imports all twelve,
+// binary registers its descriptors globally, and the roster imports every one,
 // so the registry's own account of what exists is available here for free — and
-// a thirteenth surface added later arrives in it the moment its sample message
+// a surface added later arrives in it the moment its sample message
 // joins the roster's imports, or fails here if nobody added one.
 //
 // That is the direction that matters. An entry here for a service that no

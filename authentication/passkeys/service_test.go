@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions"
+	webauthnsessionsmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
+
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -215,21 +218,14 @@ func (f *serviceFixture) register(t *testing.T, userID string) (*virtualAuthenti
 	handle := []byte(userID)
 	device := newAuthenticator(t, handle)
 
-	creation, err := f.service.BeginRegistration(t.Context(), f.env.reader(), testScope, handle)
+	creation, err := f.service.BeginRegistration(t.Context(), f.env.reader(), testScope, userID, handle)
 	if err != nil {
 		return device, nil, err
 	}
 
 	response := device.register(t, creation.Response.Challenge.String())
 
-	var registered *Credential
-
-	err = f.env.inTx(t, func(tx database.Tx) error {
-		var txErr error
-		registered, txErr = f.service.FinishRegistration(t.Context(), tx, testScope, handle, "Phone", response)
-
-		return txErr
-	})
+	registered, err := f.service.FinishRegistration(t.Context(), testScope, userID, handle, "Phone", response)
 
 	return device, registered, err
 }
@@ -321,7 +317,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		f := env.newService(t)
 		device, _ := f.mustRegister(t, aliceID)
 
-		creation, err := f.service.BeginRegistration(t.Context(), env.reader(), testScope, []byte(aliceID))
+		creation, err := f.service.BeginRegistration(t.Context(), env.reader(), testScope, aliceID, []byte(aliceID))
 		must.NoError(t, err)
 
 		test.EqOp(t, protocol.ResidentKeyRequirementRequired, creation.Response.AuthenticatorSelection.ResidentKey)
@@ -340,6 +336,38 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.SliceEmpty(t, f.live(t, aliceID))
 	})
 
+	t.Run("a handle that resolves to somebody else is refused before the gate", func(t *testing.T) {
+		t.Parallel()
+
+		gated := false
+		f := env.newService(t, WithEnrollmentGate(func(context.Context, tenancy.Scope, string) error {
+			gated = true
+
+			return nil
+		}))
+
+		_, err := f.service.BeginRegistration(t.Context(), env.reader(), testScope, aliceID, []byte(bobID))
+		test.ErrorIs(t, err, ErrHandleMismatch)
+		test.False(t, gated)
+
+		device, registered := f.mustRegister(t, bobID)
+		test.EqOp(t, bobID, registered.BelongsToUser)
+
+		_, err = f.service.FinishRegistration(t.Context(), testScope, aliceID, []byte(bobID), "Phone", device.register(t, "unused"))
+		test.ErrorIs(t, err, ErrHandleMismatch)
+		test.SliceLen(t, 1, f.live(t, bobID))
+		test.SliceEmpty(t, f.live(t, aliceID))
+	})
+
+	t.Run("an empty user id is refused", func(t *testing.T) {
+		t.Parallel()
+
+		f := env.newService(t)
+
+		_, err := f.service.BeginRegistration(t.Context(), env.reader(), testScope, "", []byte(aliceID))
+		test.ErrorIs(t, err, ErrEmptyUserID)
+	})
+
 	t.Run("the enrollment gate refuses at the beginning", func(t *testing.T) {
 		t.Parallel()
 
@@ -348,7 +376,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return errReauthenticate
 		}))
 
-		_, err := f.service.BeginRegistration(t.Context(), env.reader(), testScope, []byte(aliceID))
+		_, err := f.service.BeginRegistration(t.Context(), env.reader(), testScope, aliceID, []byte(aliceID))
 		test.ErrorIs(t, err, errReauthenticate)
 	})
 
@@ -745,4 +773,67 @@ func TestNewService(T *testing.T) {
 		_, err = service.FinishDiscoverableLogin(t.Context(), testScope, nil)
 		test.ErrorIs(t, err, ErrEmptyCeremonyResponse)
 	})
+}
+
+// TestService_ceremonyStoreOnTheSameDatabase runs both ceremonies with their
+// state in authentication/webauthnsessions' table, on the database the
+// credentials are in. It is the arrangement the service's two transactions
+// exist for: SQLite has one writer connection, so a challenge consumed while a
+// transaction held it would wait for that transaction forever.
+func TestService_ceremonyStoreOnTheSameDatabase(T *testing.T) {
+	T.Parallel()
+
+	env := newSQLiteEnv(T)
+	prefix := env.migrate(T)
+
+	stmts, err := webauthnsessionsmigrations.Statements(env.dialect, prefix)
+	must.NoError(T, err)
+
+	for _, stmt := range stmts {
+		_, execErr := env.client.Writer().ExecContext(T.Context(), stmt)
+		must.NoError(T, execErr)
+	}
+
+	sessions, err := webauthnsessions.NewSessionStore(&webauthnsessions.Config{TablePrefix: prefix}, env.client)
+	must.NoError(T, err)
+
+	rp, err := webauthn.NewRelyingParty(T.Context(), &webauthn.Config{
+		RPID:          testRPID,
+		RPDisplayName: "Example",
+		RPOrigins:     []string{testOrigin},
+	}, sessions)
+	must.NoError(T, err)
+
+	store, err := NewSQLStore(env.client, WithTablePrefix(prefix))
+	must.NoError(T, err)
+
+	users, err := NewUserSource(store, resolveHandle)
+	must.NoError(T, err)
+
+	service, err := NewService(env.client, store, rp, users,
+		WithEnrollmentGate(AdmitEveryEnrollment), WithUsernameResolver(resolveUsername))
+	must.NoError(T, err)
+
+	// Every call carries a deadline, so a transaction held open around a
+	// challenge's consumption fails here as a timeout rather than hanging the
+	// suite: the pool's wait for the one writer connection honors the context.
+	ctx, cancel := context.WithTimeout(T.Context(), 30*time.Second)
+	defer cancel()
+
+	handle := []byte(aliceID)
+	device := newAuthenticator(T, handle)
+
+	creation, err := service.BeginRegistration(ctx, env.reader(), testScope, aliceID, handle)
+	must.NoError(T, err)
+
+	_, err = service.FinishRegistration(ctx, testScope, aliceID, handle, "Phone",
+		device.register(T, creation.Response.Challenge.String()))
+	must.NoError(T, err)
+
+	assertion, err := service.BeginLogin(ctx, env.reader(), testScope, "alice")
+	must.NoError(T, err)
+
+	proven, err := service.FinishLogin(ctx, testScope, "alice", device.assert(T, assertion.Response.Challenge.String()))
+	must.NoError(T, err)
+	test.EqOp(T, aliceID, proven.Credential.BelongsToUser)
 }

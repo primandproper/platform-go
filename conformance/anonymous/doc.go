@@ -2,11 +2,11 @@
 Package anonymous asserts what every RPC in this module does with a request
 carrying no caller.
 
-It is one suite over all twelve surfaces rather than a test in each, because the
+It is one suite over every surface rather than a test in each, because the
 promise is the same sentence everywhere and the interesting half of it is the
-exceptions. Nine surfaces require a caller on every method. Three do not, and
-each of those declares which of its methods are the exception in its own
-package — waitlists as PublicMethods, signin and passwordreset as
+exceptions. Most surfaces require a caller on every method. The rest do not,
+and each of those declares which of its methods are the exception in its own
+package — waitlists as PublicMethods, signin, passwordreset and passkeys as
 AnonymousMethods — so this suite reads those declarations rather than carrying a
 list that could disagree with them.
 

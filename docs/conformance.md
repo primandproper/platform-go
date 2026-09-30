@@ -8,9 +8,9 @@ consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
 **Status:** in progress. All three subjects exist, and there is a suite for
-each of the twelve gRPC surfaces, one each for the dataprivacy and mediaregistry
+each of the gRPC surfaces, one each for the dataprivacy and mediaregistry
 HTTP surfaces, and the ones that cut across every surface. The assembled subject
-mounts all twelve gRPC surfaces and all three HTTP surfaces over all three
+mounts every gRPC surface and all three HTTP surfaces over all three
 dialects. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
 
@@ -186,7 +186,7 @@ all three files say so and point at each other.
 
 | suite | covers |
 | --- | --- |
-| `conformance/anonymous` | every RPC on all twelve gRPC surfaces and every route on the three HTTP ones |
+| `conformance/anonymous` | every RPC on every gRPC surface and every route on the three HTTP ones |
 | `conformance/filters` | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | every paged read reports the filter it applied |
 | `conformance/reservations` | every reserved call on this module's gRPC surfaces refuses a member, behind a positive control |
@@ -202,6 +202,7 @@ all three files say so and point at each other.
 | `conformance/audit` | reads, confinement, paging, verification |
 | `conformance/passwordreset` | the reset flow end to end |
 | `conformance/oauth2clients` | the administered registry |
+| `conformance/passkeys` | enrolling a passkey and signing in with one to sign-in's token; replays, clones and a never-issued challenge refused; confinement; the last passkey |
 | `conformance/dataprivacy` | privacy requests over HTTP, and the operations that fulfill them |
 | `conformance/mediaregistry` | the guarded object read: its owner, another tenant, a colleague |
 
@@ -212,7 +213,7 @@ every skip prints its reason.
 | subject | where | mounts |
 | --- | --- | --- |
 | direct | `conformance/audit`, `conformance/identity` | one surface each |
-| assembled | `conformance/assembled` | all twelve gRPC surfaces and all three HTTP surfaces, on all three dialects |
+| assembled | `conformance/assembled` | every gRPC surface and all three HTTP surfaces, on all three dialects |
 
 **142 was what was enumerated, not what had run.** The anonymous suite reads all
 twelve descriptors, but an RPC is only called on a surface the subject mounted,
@@ -260,7 +261,7 @@ unknown definition with NotFound, and identity's
 `ListInvitationsForEmailAddress` answers `FailedPrecondition`.
 
 A surface the composition root stops mounting fails here rather than skipping:
-the harness hands every suite a client for all twelve, and an unmounted one
+the harness hands every suite a client for every surface, and an unmounted one
 answers `Unimplemented`. Dropping billing's config block reds every one of
 its RPCs.
 
@@ -302,7 +303,7 @@ enumerates each service's RPCs from its protobuf descriptor rather than naming
 them, so an RPC added later is covered with nobody remembering to come back, and
 it reads each surface's own declaration of which methods are deliberately open
 — `waitlists.PublicMethods`, `signin.AnonymousMethods`,
-`passwordreset.AnonymousMethods` — rather than carrying a list that could
+`passwordreset.AnonymousMethods`, `passkeys.AnonymousMethods` — rather than carrying a list that could
 disagree with them. Its roster is checked against `protoregistry.GlobalFiles`,
 because a missing entry compiles perfectly and quietly asserts nothing about an
 entire service.

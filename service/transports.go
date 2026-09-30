@@ -7,6 +7,8 @@ import (
 	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	passkeysgrpc "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -148,6 +150,18 @@ var (
 		"a waitlist confirmation mailer is registered and no links minter is configured to mint its links",
 	)
 
+	// ErrPasskeysNeedSignIn is a service with a *passkeys.Service and no
+	// *signin.Service, so there is nothing to mint the token a finished
+	// passkey login answers with.
+	//
+	// It is refused rather than read as an absence for the reason
+	// ErrWaitlistConfirmationNeedsLinks is: the passkeys block is the
+	// deployment saying it wants passkeys, and leaving the surface unmounted
+	// would be a configured feature that quietly is not there.
+	ErrPasskeysNeedSignIn = platformerrors.New(
+		"a passkey service is configured and no sign-in service is configured to issue its tokens",
+	)
+
 	// ErrUnknownSurface is a Transports.Skip naming a surface this package does
 	// not mount.
 	//
@@ -173,6 +187,7 @@ const (
 	SurfaceIssueReports  Surface = "issue reports"
 	SurfaceNotifications Surface = "notifications"
 	SurfaceOAuth2Clients Surface = "oauth2 clients"
+	SurfacePasskeys      Surface = "passkeys"
 	SurfacePasswordReset Surface = "password reset"
 	SurfaceSettings      Surface = "settings"
 	SurfaceSignIn        Surface = "sign-in"
@@ -193,6 +208,7 @@ var surfaces = map[Surface]bool{
 	SurfaceIssueReports:  true,
 	SurfaceNotifications: true,
 	SurfaceOAuth2Clients: true,
+	SurfacePasskeys:      true,
 	SurfacePasswordReset: true,
 	SurfaceSettings:      true,
 	SurfaceSignIn:        true,
@@ -233,6 +249,7 @@ type SurfaceOptions struct {
 	IssueReports  []issuereportsgrpc.Option
 	Notifications []notificationsgrpc.Option
 	OAuth2Clients []oauth2clientsgrpc.Option
+	Passkeys      []passkeysgrpc.Option
 	PasswordReset []passwordresetgrpc.Option
 	Settings      []settingsgrpc.Option
 	SignIn        []signingrpc.Option
@@ -452,9 +469,9 @@ type Authorizers struct {
 //
 // # What mounts
 //
-// The gRPC surfaces — audit, oauth2clients, passwordreset, signin, billing,
-// comments, identity, issuereports, notifications, settings, waitlists and
-// webhooks — and three HTTP ones — dataprivacy, mediaregistry and operations.
+// The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
+// billing, comments, identity, issuereports, notifications, settings,
+// waitlists and webhooks — and three HTTP ones — dataprivacy, mediaregistry and operations.
 // sessions/http is not among them; see the package documentation for why.
 //
 // A surface mounts when everything it is built from resolves, and the reading
@@ -465,9 +482,9 @@ type Authorizers struct {
 // it is also what makes identity behave sensibly without a special case — its
 // server is built over a service Register does not register, so it mounts for
 // an application that registered one and stays absent for an application that
-// did not. oauth2clients, passwordreset and signin mount over services Register
-// does register, from Config.OAuth2Clients, Config.PasswordReset and
-// Config.SignIn.
+// did not. oauth2clients, passkeys, passwordreset and signin mount over
+// services Register does register, from Config.OAuth2Clients,
+// Config.Passkeys, Config.PasswordReset and Config.SignIn.
 //
 // # What it owns
 //
@@ -584,6 +601,7 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 	m.issueReports()
 	m.notifications()
 	m.oauth2Clients()
+	m.passkeys()
 	m.passwordReset()
 	m.settings()
 	m.signIn()
@@ -1309,6 +1327,60 @@ func (m *mount) passwordReset() {
 	}
 
 	m.mountedGRPC(SurfacePasswordReset, srv.RegisterOn)
+}
+
+// passkeys mounts the passkey surface.
+//
+// Its scope resolver is left at passkeys/grpc's own default for the reason
+// sign-in's is: the login half is reached before there is anybody to extract.
+// A deployment running both names one resolver for the two through
+// SurfaceOptions.
+//
+// Config.Passkeys registers the *passkeys.Service this mounts over, and it is
+// built over the *signin.Service Config.SignIn registers, which is what mints
+// a finished login's token. A passkey service with no sign-in service beside
+// it fails the startup with ErrPasskeysNeedSignIn rather than staying absent.
+func (m *mount) passkeys() {
+	if !m.mounting(SurfacePasskeys) {
+		return
+	}
+
+	svc, ok := need[*passkeys.Service](m)
+	if !ok {
+		return
+	}
+
+	issuer, ok := need[*signin.Service](m)
+	if m.err != nil {
+		return
+	}
+
+	if !ok {
+		m.fail(SurfacePasskeys, ErrPasskeysNeedSignIn)
+
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller(SurfacePasskeys)
+	if !ok {
+		return
+	}
+
+	opts := append([]passkeysgrpc.Option{passkeysgrpc.WithPillars(m.pillars)}, m.t.Options.Passkeys...)
+
+	srv, err := passkeysgrpc.NewServer(svc, client, issuer, extract, opts...)
+	if err != nil {
+		m.fail(SurfacePasskeys, err)
+
+		return
+	}
+
+	m.mountedGRPC(SurfacePasskeys, srv.RegisterOn)
 }
 
 // signIn mounts the sign-in surface.

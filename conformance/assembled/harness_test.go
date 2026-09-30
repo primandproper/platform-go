@@ -20,6 +20,10 @@ import (
 	oauth2clientsclient "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc/client"
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
+	passkeysclient "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc/client"
+	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -30,6 +34,9 @@ import (
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
+	webauthnsessionsmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
@@ -193,6 +200,17 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 			MagicLinks:        &signincfg.MagicLinksConfig{TablePrefix: prefix},
 		},
 
+		// Passkeys, over a relying party whose ceremony state is the SQL table,
+		// so a login's challenge is spent on every dialect rather than in a
+		// process's memory. The origin is the one the virtual authenticator
+		// answers from; see passkeyRelyingParty.
+		WebAuthn: &webauthnsessionscfg.Config{
+			Provider:     webauthnsessionscfg.ProviderDatabase,
+			Database:     webauthnsessions.Config{TablePrefix: prefix},
+			RelyingParty: passkeyRelyingParty(),
+		},
+		Passkeys: &passkeyscfg.Config{TablePrefix: prefix},
+
 		// And the HTTP surfaces, on every dialect. dataprivacy fulfills its
 		// requests as operations, and service.Config refuses the first without
 		// the second.
@@ -217,6 +235,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	commentable := &things{}
 	people := &directories{}
 	registerApplication(i, prefix, commentable, people)
+	registerPasskeyApplication(i)
 
 	// The consumer's identity hooks, which is where an invitation's token goes
 	// to be mailed. identity/config resolves them when it builds the service.
@@ -322,6 +341,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		IssueReports:  issuereportsclient.Wrap(conn),
 		Notifications: notificationsclient.Wrap(conn),
 		OAuth2Clients: oauth2clientsclient.Wrap(conn),
+		Passkeys:      passkeysclient.Wrap(conn),
 		PasswordReset: passwordresetpb.NewPasswordResetServiceClient(conn),
 		Settings:      settingsclient.Wrap(conn),
 		SignIn:        signinclient.Wrap(conn),
@@ -519,6 +539,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 			// service mounts waitlists with its default scope resolver, which is
 			// the single-tenant answer: a visitor is in the global directory.
 			VisitorScope: new(tenancy.Global()),
+
+			// The relying party the WebAuthn block above verifies against.
+			WebAuthn: &conformance.WebAuthnDeployment{
+				RPID:   passkeyRelyingParty().RPID,
+				Origin: passkeyRelyingParty().RPOrigins[0],
+			},
 		}
 	}
 
@@ -669,7 +695,9 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string,
 		"issue reports":  issuereportsmigrations.Statements,
 		"notifications":  notificationsmigrations.Statements,
 		"oauth2 clients": oauth2clientsmigrations.Statements,
+		"passkeys":       passkeysmigrations.Statements,
 		"password reset": passwordresetmigrations.Statements,
+		"webauthn":       webauthnsessionsmigrations.Statements,
 		"settings":       settingsmigrations.Statements,
 		"waitlists":      waitlistsmigrations.Statements,
 		"webhooks":       webhooksmigrations.Statements,
@@ -718,6 +746,7 @@ func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirem
 			issuereportspb.IssueReportsService_ServiceDesc.ServiceName,
 			notificationspb.NotificationsService_ServiceDesc.ServiceName,
 			oauth2clientspb.OAuth2ClientsService_ServiceDesc.ServiceName,
+			passkeyspb.PasskeysService_ServiceDesc.ServiceName,
 			passwordresetpb.PasswordResetService_ServiceDesc.ServiceName,
 			settingspb.SettingsService_ServiceDesc.ServiceName,
 			waitlistspb.WaitlistsService_ServiceDesc.ServiceName,

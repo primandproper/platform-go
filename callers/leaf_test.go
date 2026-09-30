@@ -48,6 +48,12 @@ var identityKeepers = map[string]string{
 	// has already linked the directory by constructing the service, so the
 	// surface adds no edge a consumer could otherwise have avoided.
 	"authentication/passwordreset/grpc": "inherits passwordreset.Service's Directory seam, which is typed on *identity.User",
+
+	// The first kind again, one step removed: a finished login answers with
+	// signin.v1's IssuedToken, minted through signin.Service, so the surface
+	// links sign-in and sign-in links the directory. Its typed client reaches
+	// identitypb the same way, through the token message's schema.
+	"authentication/passkeys/grpc": "answers a passkey sign-in with sign-in's token, minted through signin.Service",
 }
 
 // TestCallersIsALeaf pins the half a reader of this package can check without

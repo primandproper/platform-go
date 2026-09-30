@@ -142,6 +142,40 @@ func dueKeys(fired []Due[string]) []string {
 func past() time.Time   { return time.Now().Add(-time.Hour) }
 func future() time.Time { return time.Now().Add(24 * time.Hour) }
 
+// commitSchedule and the three beside it are the writes on the caller's
+// transaction, for the tests that have nothing else to put in one: each opens
+// a transaction on the set's own client and commits it.
+func commitSchedule[K comparable](ctx context.Context, set *Timers[K], scheduled ...Timer[K]) error {
+	return set.client.WithTransaction(ctx, func(tx database.Tx) error {
+		return set.Schedule(ctx, tx, scheduled...)
+	})
+}
+
+func commitScheduleAt[K comparable](ctx context.Context, set *Timers[K], key K, runAt time.Time, payload []byte) error {
+	return set.client.WithTransaction(ctx, func(tx database.Tx) error {
+		return set.ScheduleAt(ctx, tx, key, runAt, payload)
+	})
+}
+
+func commitScheduleIn[K comparable](ctx context.Context, set *Timers[K], key K, delay time.Duration, payload []byte) error {
+	return set.client.WithTransaction(ctx, func(tx database.Tx) error {
+		return set.ScheduleIn(ctx, tx, key, delay, payload)
+	})
+}
+
+func commitCancel[K comparable](ctx context.Context, set *Timers[K], keys ...K) (int64, error) {
+	var cancelled int64
+
+	err := set.client.WithTransaction(ctx, func(tx database.Tx) error {
+		var err error
+		cancelled, err = set.Cancel(ctx, tx, keys...)
+
+		return err
+	})
+
+	return cancelled, err
+}
+
 // TestTimers_Containers runs every suite in this file against every dialect,
 // one server apiece. The suites are the same suites on all three: nothing a
 // caller can observe is allowed to differ, and a dialect whose statements are
@@ -197,8 +231,8 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "a", past(), nil))
-		must.NoError(t, set.ScheduleAt(t.Context(), "b", past(), []byte("note")))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "a", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "b", past(), []byte("note")))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -219,6 +253,67 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		test.EqOp(t, int64(2), stats.Fired)
 	})
 
+	// The schedule is one commit with the subject it fires about. A transaction
+	// that rolls back takes its timer with it, so nothing fires for a subject
+	// never created; one that commits leaves a timer that fires.
+	t.Run("a schedule lives or dies with the caller's transaction", func(t *testing.T) {
+		t.Parallel()
+
+		set := newSet(t, client, nil)
+		rollback := platformerrors.New("the subject was never created")
+
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			must.NoError(t, set.ScheduleAt(t.Context(), tx, "rolled-back", past(), nil))
+			must.NoError(t, set.Schedule(t.Context(), tx, Timer[string]{Key: "rolled-back-too", RunAt: past()}))
+
+			return rollback
+		})
+		must.ErrorIs(t, err, rollback)
+
+		stats, err := set.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), stats.Outstanding)
+
+		fired, err := set.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		test.SliceEmpty(t, fired)
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return set.ScheduleIn(t.Context(), tx, "committed", -time.Minute, nil)
+		}))
+
+		fired, err = set.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, fired)
+		test.EqOp(t, "committed", fired[0].Key)
+		must.NoError(t, set.Complete(t.Context(), fired...))
+	})
+
+	// Cancel is the same fact from the other end: a cancel in a transaction
+	// that rolls back leaves the timer standing.
+	t.Run("a cancel lives or dies with the caller's transaction", func(t *testing.T) {
+		t.Parallel()
+
+		set := newSet(t, client, nil)
+		must.NoError(t, commitScheduleAt(t.Context(), set, "kept", past(), nil))
+
+		rollback := platformerrors.New("the subject was not deleted after all")
+
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			cancelled, cancelErr := set.Cancel(t.Context(), tx, "kept")
+			must.NoError(t, cancelErr)
+			test.EqOp(t, int64(1), cancelled)
+
+			return rollback
+		})
+		must.ErrorIs(t, err, rollback)
+
+		fired, err := set.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, fired)
+		test.EqOp(t, "kept", fired[0].Key)
+	})
+
 	// The whole durability claim: the schedule is a row, so a payload written by
 	// one process comes back byte-for-byte to another.
 	t.Run("a payload round-trips, and nil stays nil", func(t *testing.T) {
@@ -226,7 +321,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			Timer[string]{Key: "with", RunAt: past(), Payload: []byte("hello \x00 bytes")},
 			Timer[string]{Key: "without", RunAt: past()},
 			Timer[string]{Key: "empty", RunAt: past(), Payload: []byte{}},
@@ -254,8 +349,8 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "later", future(), nil))
-		must.NoError(t, set.ScheduleAt(t.Context(), "now", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "later", future(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "now", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -269,7 +364,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "only", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "only", past(), nil))
 
 		first, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -286,7 +381,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "abandoned", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "abandoned", past(), nil))
 
 		first, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
 		must.NoError(t, err)
@@ -317,7 +412,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 			t.Helper()
 
 			set = newSet(t, client, nil)
-			must.NoError(t, set.ScheduleAt(t.Context(), key, past(), nil))
+			must.NoError(t, commitScheduleAt(t.Context(), set, key, past(), nil))
 
 			first, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
 			must.NoError(t, err)
@@ -395,7 +490,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "slow-but-alone", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "slow-but-alone", past(), nil))
 
 		claimed, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
 		must.NoError(t, err)
@@ -419,7 +514,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 		at := past()
-		must.NoError(t, set.ScheduleAt(t.Context(), "redelivered", at, nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "redelivered", at, nil))
 
 		straggler, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
 		must.NoError(t, err)
@@ -430,7 +525,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		// An at-least-once upstream redelivers "start trial". The instant did
 		// not move, so the lease and its name are deliberately left alone — but
 		// the lease has lapsed, so a second worker takes the firing.
-		must.NoError(t, set.ScheduleAt(t.Context(), "redelivered", at, nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "redelivered", at, nil))
 
 		holder, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
@@ -450,7 +545,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			Timer[string]{Key: "recent", RunAt: time.Now().Add(-time.Minute)},
 			Timer[string]{Key: "ancient", RunAt: time.Now().Add(-24 * time.Hour)},
 		))
@@ -468,14 +563,14 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "trial", past(), nil))
-		must.NoError(t, set.ScheduleAt(t.Context(), "trial", future(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "trial", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "trial", future(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
 		must.SliceEmpty(t, fired)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "trial", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "trial", past(), nil))
 
 		fired, err = set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -487,14 +582,14 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "k", past(), []byte("first")))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "k", past(), []byte("first")))
 
 		first, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, first)
 		test.EqOp(t, 1, first[0].Attempts)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "k", past(), []byte("second")))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "k", past(), []byte("second")))
 
 		second, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -510,14 +605,14 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "moved", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "moved", past(), nil))
 
 		inFlight, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, inFlight)
 
 		// The trial gets extended while the expiry job is mid-flight.
-		must.NoError(t, set.ScheduleAt(t.Context(), "moved", past().Add(time.Minute), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "moved", past().Add(time.Minute), nil))
 
 		// The worker finishes and reports the instant it was handed.
 		must.NoError(t, set.Complete(t.Context(), inFlight...))
@@ -542,13 +637,13 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		set := newSet(t, client, nil)
 
 		instant := past()
-		must.NoError(t, set.ScheduleAt(t.Context(), "redelivered", instant, nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "redelivered", instant, nil))
 
 		inFlight, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, inFlight)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "redelivered", instant, nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "redelivered", instant, nil))
 
 		// Still held, so nobody else picks it up.
 		again, err := set.Claim(t.Context(), 10, time.Minute)
@@ -568,7 +663,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "done", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "done", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -586,12 +681,12 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "recycled", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "recycled", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
 		must.NoError(t, set.Complete(t.Context(), fired...))
-		must.NoError(t, set.ScheduleAt(t.Context(), "recycled", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "recycled", past(), nil))
 
 		again, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -603,7 +698,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "backed-off", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "backed-off", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
@@ -620,7 +715,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "handed-back", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "handed-back", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
@@ -641,7 +736,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "finished", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "finished", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
@@ -659,17 +754,17 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "called-off", future(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "called-off", future(), nil))
 
-		cancelled, err := set.Cancel(t.Context(), "called-off")
+		cancelled, err := commitCancel(t.Context(), set, "called-off")
 		must.NoError(t, err)
 		test.EqOp(t, int64(1), cancelled)
 
-		cancelled, err = set.Cancel(t.Context(), "called-off")
+		cancelled, err = commitCancel(t.Context(), set, "called-off")
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), cancelled)
 
-		cancelled, err = set.Cancel(t.Context(), "never-scheduled")
+		cancelled, err = commitCancel(t.Context(), set, "never-scheduled")
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), cancelled)
 	})
@@ -679,7 +774,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			Timer[string]{Key: "waiting", RunAt: future()},
 			Timer[string]{Key: "leased", RunAt: past()},
 		))
@@ -688,7 +783,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		must.SliceLen(t, 1, fired)
 
-		cancelled, err := set.Cancel(t.Context(), "waiting", "leased")
+		cancelled, err := commitCancel(t.Context(), set, "waiting", "leased")
 		must.NoError(t, err)
 		test.EqOp(t, int64(2), cancelled)
 
@@ -703,7 +798,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MaxAttempts = 2 })
-		must.NoError(t, set.ScheduleAt(t.Context(), "poison", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "poison", past(), nil))
 
 		for range 2 {
 			fired, claimErr := set.Claim(t.Context(), 10, time.Minute)
@@ -726,7 +821,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MaxAttempts = -1 })
-		must.NoError(t, set.ScheduleAt(t.Context(), "forever", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "forever", past(), nil))
 
 		for range 3 {
 			fired, claimErr := set.Claim(t.Context(), 10, time.Minute)
@@ -745,7 +840,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.Retention = time.Second })
-		must.NoError(t, set.ScheduleAt(t.Context(), "old", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "old", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -767,7 +862,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			Timer[string]{Key: "soon", RunAt: past()},
 			Timer[string]{Key: "later", RunAt: future()},
 			Timer[string]{Key: "leased", RunAt: past()},
@@ -794,8 +889,8 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		test.False(t, found)
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "far", time.Now().Add(24*time.Hour), nil))
-		must.NoError(t, set.ScheduleAt(t.Context(), "near", time.Now().Add(time.Hour), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "far", time.Now().Add(24*time.Hour), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "near", time.Now().Add(time.Hour), nil))
 
 		next, found, err := set.NextDue(t.Context())
 		must.NoError(t, err)
@@ -810,7 +905,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, nil)
-		must.NoError(t, set.ScheduleAt(t.Context(), "held", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "held", past(), nil))
 
 		next, found, err := set.NextDue(t.Context())
 		must.NoError(t, err)
@@ -833,7 +928,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MaxAttempts = 1 })
-		must.NoError(t, set.ScheduleAt(t.Context(), "poison", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "poison", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -850,7 +945,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MinWakeInterval = 10 * time.Millisecond })
-		must.NoError(t, set.ScheduleAt(t.Context(), "soon", time.Now().Add(300*time.Millisecond), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "soon", time.Now().Add(300*time.Millisecond), nil))
 
 		start := time.Now()
 		must.NoError(t, set.Wait(t.Context(), time.Hour))
@@ -869,7 +964,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MinWakeInterval = 200 * time.Millisecond })
-		must.NoError(t, set.ScheduleAt(t.Context(), "due", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "due", past(), nil))
 
 		start := time.Now()
 		must.NoError(t, set.Wait(t.Context(), time.Hour))
@@ -908,7 +1003,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 			scheduled = append(scheduled, Timer[string]{Key: fmt.Sprintf("k%03d", i), RunAt: past()})
 		}
 
-		must.NoError(t, set.Schedule(t.Context(), scheduled...))
+		must.NoError(t, commitSchedule(t.Context(), set, scheduled...))
 
 		var (
 			mu   sync.Mutex
@@ -956,7 +1051,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 			scheduled = append(scheduled, Timer[string]{Key: fmt.Sprintf("b%02d", i), RunAt: past()})
 		}
 
-		must.NoError(t, set.Schedule(t.Context(), scheduled...))
+		must.NoError(t, commitSchedule(t.Context(), set, scheduled...))
 
 		held, err := set.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
@@ -981,7 +1076,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 			scheduled = append(scheduled, Timer[string]{Key: fmt.Sprintf("l%02d", i), RunAt: past()})
 		}
 
-		must.NoError(t, set.Schedule(t.Context(), scheduled...))
+		must.NoError(t, commitSchedule(t.Context(), set, scheduled...))
 
 		unspecified, err := set.Claim(t.Context(), 0, time.Hour)
 		must.NoError(t, err)
@@ -1000,7 +1095,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		first := newSet(t, client, nil)
 		second := newSet(t, client, nil)
 
-		must.NoError(t, first.ScheduleAt(t.Context(), "shared-key", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), first, "shared-key", past(), nil))
 
 		fired, err := second.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -1016,7 +1111,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil, WithKeyCodec[string](upperCodec{}))
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "lower", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "lower", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -1036,8 +1131,8 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.ScheduleIn(t.Context(), "soon", -time.Minute, nil))
-		must.NoError(t, set.ScheduleIn(t.Context(), "later", 24*time.Hour, nil))
+		must.NoError(t, commitScheduleIn(t.Context(), set, "soon", -time.Minute, nil))
+		must.NoError(t, commitScheduleIn(t.Context(), set, "later", 24*time.Hour, nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -1050,7 +1145,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			Timer[string]{Key: "k", RunAt: past(), Payload: []byte("first")},
 			Timer[string]{Key: "k", RunAt: past(), Payload: []byte("last")},
 		))
@@ -1083,7 +1178,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		// Deliberately out of key order: the sort and the split that follow it
 		// are what the pairing survives.
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			scheduled[2], scheduled[0], scheduled[3], scheduled[1]))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
@@ -1116,7 +1211,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		set := newSet(t, client, nil)
 
-		must.NoError(t, set.Schedule(t.Context(),
+		must.NoError(t, commitSchedule(t.Context(), set,
 			Timer[string]{Key: "a", RunAt: past()},
 			Timer[string]{Key: "b", RunAt: past()},
 			Timer[string]{Key: "c", RunAt: past()},
@@ -1128,7 +1223,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 
 		// b moves while it is being fired, so the instant its claimant holds no
 		// longer describes the row.
-		must.NoError(t, set.ScheduleAt(t.Context(), "b", past().Add(time.Minute), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "b", past().Add(time.Minute), nil))
 
 		must.NoError(t, set.Complete(t.Context(), fired...))
 
@@ -1151,7 +1246,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		createTable(t, client, "ddb")
 
 		set := newSet(t, client, func(cfg *Config) { cfg.TablePrefix = "ddb" })
-		must.NoError(t, set.ScheduleAt(t.Context(), "namespaced", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "namespaced", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -1195,7 +1290,7 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 		done := make(chan error, 1)
 		go func() { done <- worker.Run(ctx) }()
 
-		must.NoError(t, set.ScheduleAt(t.Context(), "fire-me", past(), []byte("payload")))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "fire-me", past(), []byte("payload")))
 
 		select {
 		case key := <-handled:
@@ -1232,7 +1327,7 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 			scheduled = append(scheduled, Timer[string]{Key: fmt.Sprintf("d%02d", i), RunAt: past()})
 		}
 
-		must.NoError(t, set.Schedule(t.Context(), scheduled...))
+		must.NoError(t, commitSchedule(t.Context(), set, scheduled...))
 
 		handled := make(chan string, backlog)
 
@@ -1272,7 +1367,7 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MinWakeInterval = 10 * time.Millisecond })
-		must.NoError(t, set.ScheduleAt(t.Context(), "fails", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "fails", past(), nil))
 
 		attempts := make(chan int, 8)
 
@@ -1329,7 +1424,7 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.MinWakeInterval = 10 * time.Millisecond })
-		must.NoError(t, set.ScheduleAt(t.Context(), "explodes", past(), nil))
+		must.NoError(t, commitScheduleAt(t.Context(), set, "explodes", past(), nil))
 
 		reached := make(chan struct{}, 4)
 
@@ -1397,7 +1492,7 @@ func runClaimFillsItsBatch(t *testing.T, client database.Client) {
 		scheduled = append(scheduled, Timer[string]{Key: fmt.Sprintf("k%02d", i), RunAt: past()})
 	}
 
-	must.NoError(t, set.Schedule(ctx, scheduled...))
+	must.NoError(t, commitSchedule(ctx, set, scheduled...))
 
 	held := holdThree(t, client, set)
 
@@ -1483,8 +1578,8 @@ func runAClaimHidesNoOtherSet(t *testing.T, client database.Client) {
 	second, err := New[string](ctx, &Config{Name: "neighbor-b", TablePrefix: "neighbors"}, client)
 	must.NoError(t, err)
 
-	must.NoError(t, first.ScheduleAt(ctx, "k", past(), nil))
-	must.NoError(t, second.ScheduleAt(ctx, "k", past(), nil))
+	must.NoError(t, commitScheduleAt(ctx, first, "k", past(), nil))
+	must.NoError(t, commitScheduleAt(ctx, second, "k", past(), nil))
 
 	raw, ok := client.(database.RawAccess)
 	must.True(t, ok, must.Sprintf("%T exposes no pool to hold a transaction open on", client))
@@ -1536,7 +1631,7 @@ func runStoredInstantNeverRoundsDown(t *testing.T, client database.Client) {
 		timers = append(timers, Timer[string]{Key: key, RunAt: at})
 	}
 
-	must.NoError(t, set.Schedule(t.Context(), timers...))
+	must.NoError(t, commitSchedule(t.Context(), set, timers...))
 
 	fired, err := set.Claim(t.Context(), 10, time.Minute)
 	must.NoError(t, err)
@@ -1570,7 +1665,7 @@ func runNeverClaimedEarly(t *testing.T, client database.Client) {
 	set := newSet(t, client, nil)
 
 	runAt := time.Now().Truncate(time.Second).Add(2*time.Second + 700*time.Millisecond + 700*time.Microsecond)
-	must.NoError(t, set.ScheduleAt(ctx, "precise", runAt, nil))
+	must.NoError(t, commitScheduleAt(ctx, set, "precise", runAt, nil))
 
 	time.Sleep(time.Until(runAt.Truncate(time.Second).Add(-50 * time.Millisecond)))
 
@@ -1609,7 +1704,7 @@ func runLargestPayloadFits(t *testing.T, client database.Client) {
 	payload := bytes.Repeat([]byte{0xa5}, MaxPayloadSize)
 	payload[len(payload)-1] = 0x5a
 
-	must.NoError(t, set.ScheduleAt(t.Context(), "large", past(), payload))
+	must.NoError(t, commitScheduleAt(t.Context(), set, "large", past(), payload))
 
 	fired, err := set.Claim(t.Context(), 10, time.Minute)
 	must.NoError(t, err)
@@ -1687,8 +1782,8 @@ func runTheSessionTimeZoneNeverEnters(t *testing.T, client database.Client) {
 	ctx := t.Context()
 	set := newSet(t, client, nil)
 
-	must.NoError(t, set.ScheduleAt(ctx, "ahead", time.Now().Add(time.Hour), nil))
-	must.NoError(t, set.ScheduleAt(ctx, "behind", past(), nil))
+	must.NoError(t, commitScheduleAt(ctx, set, "ahead", time.Now().Add(time.Hour), nil))
+	must.NoError(t, commitScheduleAt(ctx, set, "behind", past(), nil))
 
 	claimed, err := set.Claim(ctx, 10, time.Minute)
 	must.NoError(t, err)
@@ -1705,7 +1800,7 @@ func runTheSessionTimeZoneNeverEnters(t *testing.T, client database.Client) {
 	test.Between(t, 59*time.Minute, next, 61*time.Minute)
 
 	// A reschedule, so last_updated_at has been written as well as created_at.
-	must.NoError(t, set.ScheduleAt(ctx, "ahead", time.Now().Add(2*time.Hour), nil))
+	must.NoError(t, commitScheduleAt(ctx, set, "ahead", time.Now().Add(2*time.Hour), nil))
 
 	var createdAt, lastUpdatedAt time.Time
 
