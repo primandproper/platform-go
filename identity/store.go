@@ -930,6 +930,18 @@ type AdminWriter interface {
 	//
 	// The row is read before the delete, because nothing describes it after —
 	// see ArchiveAccount for why a caller's audit entry wants it.
+	//
+	// It is on the store and nowhere else, and that is deliberate: there is no
+	// Service method, no hook and no RPC for it, where ArchiveAccount has all
+	// three. It exists for the two callers that genuinely destroy — a privacy
+	// erasure that leaves an account with nobody to hand it to, and a sweep
+	// clearing what a retention period has run out on — and a product's
+	// "delete account" button is neither: it is ArchiveAccount, which is
+	// hooked, audited and reachable over the wire. The audit gap a store-only
+	// archive would open does not arise here, because each of those callers
+	// is already recorded by what drives it — an erasure by the privacy
+	// request that ran it, a sweep by its own schedule — and a hook or RPC
+	// would hand every consumer a hard delete that nothing above it asked for.
 	DeleteAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*Account, error)
 }
 
