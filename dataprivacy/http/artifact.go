@@ -333,6 +333,22 @@ func (h *Handlers) describeArtifact(r *routing.Router, pattern string) {
 				Description: "A signed URL the artifact is fetched from directly.",
 			},
 		},
+		"404": {
+			Response: &openapi3.Response{
+				Description: "No request by that id belongs to the caller: it does not exist, or it is somebody else's.",
+				Content: map[string]openapi3.MediaType{
+					h.codec.ContentType(): {},
+				},
+			},
+		},
+		"409": {
+			Response: &openapi3.Response{
+				Description: "The request has no artifact to hand over: it was an erasure, it has not completed, or its artifact has expired and been deleted.",
+				Content: map[string]openapi3.MediaType{
+					h.codec.ContentType(): {},
+				},
+			},
+		},
 	}
 
 	// The reflector's own error accumulator is not reachable from here, so a

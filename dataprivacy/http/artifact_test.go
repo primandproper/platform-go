@@ -69,6 +69,32 @@ func downloading(req *dataprivacy.Request, err error) *dataprivacymock.ServiceMo
 	return svc
 }
 
+func TestHandlers_MountArtifact(T *testing.T) {
+	T.Parallel()
+
+	T.Run("describes every answer the route gives", func(t *testing.T) {
+		t.Parallel()
+
+		handlers, router := build(t, serviceReturning(nil))
+
+		route := handlers.MountArtifact(router)
+		must.NoError(t, router.Err())
+
+		item, ok := router.Spec().Paths.MapOfPathItemValues[route.Path]
+		must.True(t, ok)
+
+		operation, ok := item.MapOfOperationValues["get"]
+		must.True(t, ok)
+		must.NotNil(t, operation.ID)
+		test.EqOp(t, artifactOperationID, *operation.ID)
+
+		for _, code := range []string{"200", "303", "404", "409"} {
+			test.MapContainsKey(t, operation.Responses.MapOfResponseOrRefValues, code,
+				test.Sprintf("the artifact route answers %s and its document does not say so", code))
+		}
+	})
+}
+
 func TestHandlers_artifact(T *testing.T) {
 	T.Parallel()
 
