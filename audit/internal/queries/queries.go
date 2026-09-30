@@ -587,8 +587,8 @@ func selectors() []querygen.Match {
 // scope — the platform's — which is the reading a get by id must not take: a
 // caller who did not narrow is asking across every tenant, and a caller who
 // named the empty scope is asking about the platform's own events. Only the
-// narrowing leaves both spellable, and audit.Reader.Get carries the distinction
-// out to the caller as a *tenancy.Scope.
+// narrowing leaves both spellable, and audit.Reader carries the distinction out
+// to the caller as two methods: Get, and GetAcrossScopes.
 func scopeNarrowing() querygen.Match {
 	return narrowing(ScopeColumn)
 }

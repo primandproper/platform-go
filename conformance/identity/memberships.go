@@ -111,6 +111,36 @@ func memberships(t *testing.T, s *conformance.Session) {
 			test.Sprint("a removed member is still on the roster"))
 	})
 
+	t.Run("removing a member from where they land moves them to an account they still hold", func(t *testing.T) {
+		t.Parallel()
+
+		owner := s.Subject(t, conformance.Making(invite, removeMembership))
+		needsAccount(t, owner)
+		member := colleague(t, s, owner, conformance.Making(getPrincipal, acceptInvitation, setDefaultAccount, listMembershipsForUser))
+		needsAccount(t, member)
+		join(t, s, owner, member, role)
+
+		_, err := member.Surfaces.Identity.SetDefaultAccount(member.Context(t.Context()),
+			&identitypb.SetDefaultAccountRequest{AccountId: owner.AccountID})
+		must.NoError(t, err)
+
+		// The control: the member lands in the account they are about to be
+		// removed from, which is what gives the move below something to move.
+		_, defaults := landing(t, member, member.UserID)
+		must.Eq(t, []string{owner.AccountID}, defaults,
+			must.Sprint("the member does not land in the owner's account; the move below proves nothing"))
+
+		_, err = owner.Surfaces.Identity.RemoveMembership(owner.Context(t.Context()),
+			&identitypb.RemoveMembershipRequest{AccountId: owner.AccountID, UserId: member.UserID})
+		must.NoError(t, err)
+
+		held, defaults := landing(t, member, member.UserID)
+		test.SliceNotContains(t, held, owner.AccountID,
+			test.Sprint("a removed membership is still held"))
+		test.Eq(t, []string{member.AccountID}, defaults,
+			test.Sprint("a member removed from where they land was left landing somewhere other than the one account they still hold"))
+	})
+
 	t.Run("the last owner cannot be removed", func(t *testing.T) {
 		t.Parallel()
 

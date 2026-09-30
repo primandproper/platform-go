@@ -2,6 +2,7 @@ package issuereports
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/conformance"
@@ -84,6 +85,94 @@ func queue(t *testing.T, s *conformance.Session) {
 	byStatus(t, s)
 	byReporter(t, s)
 	bySubject(t, s)
+	acrossTenants(t, s)
+}
+
+// acrossTenants is the operator's queue: every tenant's reports, each saying
+// whose it is.
+//
+// The operator is an administrator, because whether a member may make this call
+// is the deployment's to decide — platform grants its permission to nobody —
+// and conformance/reservations is what holds a deployment that reserves it to
+// refusing its members.
+func acrossTenants(t *testing.T, s *conformance.Session) {
+	t.Helper()
+
+	t.Run("an operator pages the reports of two tenants and is told whose each is", func(t *testing.T) {
+		t.Parallel()
+
+		mine, theirs := twoTenants(t, s, conformance.Making(createReport))
+		needsUser(t, theirs)
+
+		own := fileOne(t, mine)
+		neighbor := fileOne(t, theirs)
+
+		operator := s.Subject(t, conformance.AsAdmin(), conformance.Making(listReportsAcrossScopes))
+
+		scopes := walkAcrossTenants(t, operator, own.GetId(), neighbor.GetId())
+
+		test.EqOp(t, mine.ScopeFor(surface).Owner(), scopes[own.GetId()],
+			test.Sprint("the operator's queue named the wrong tenant for a report"))
+		test.EqOp(t, theirs.ScopeFor(surface).Owner(), scopes[neighbor.GetId()],
+			test.Sprint("the operator's queue named the wrong tenant for a neighbor's report"))
+	})
+}
+
+// walkAcrossTenants pages the operator's queue newest first until it has seen
+// every report named, and answers with the scope each row carried.
+//
+// It walks rather than reads one page because the queue is every tenant's, on a
+// database the suite may share with anything else writing reports, and it is
+// newest first because the reports it is looking for were filed a moment ago.
+// Presence is asserted, never a count.
+func walkAcrossTenants(t *testing.T, operator *conformance.Subject, want ...string) map[string]string {
+	t.Helper()
+
+	var (
+		scopes    = map[string]string{}
+		cursor    string
+		size      = uint32(100)
+		newest    = "desc"
+		remaining = len(want)
+	)
+
+	// A bound rather than a bare loop: a cursor that fails to advance is a test
+	// that hangs, and a hang reads as an unrelated timeout.
+	for range 64 {
+		filter := &filteringpb.QueryFilter{MaxResponseSize: &size, SortBy: &newest}
+		if cursor != "" {
+			filter.Cursor = &cursor
+		}
+
+		page, err := operator.Surfaces.IssueReports.ListReportsAcrossScopes(operator.Context(t.Context()),
+			&issuereportspb.ListReportsAcrossScopesRequest{Filter: filter})
+		must.NoError(t, err, must.Sprint("an operator was refused the queue across tenants"))
+
+		for _, row := range page.GetResults() {
+			id := row.GetReport().GetId()
+			if _, seen := scopes[id]; !seen && slices.Contains(want, id) {
+				remaining--
+			}
+
+			scopes[id] = row.GetScope()
+		}
+
+		if remaining == 0 {
+			return scopes
+		}
+
+		cursor = page.GetPagination().GetCursor()
+		if cursor == "" || len(page.GetResults()) == 0 {
+			break
+		}
+	}
+
+	for _, id := range want {
+		_, found := scopes[id]
+		must.True(t, found, must.Sprintf("report %s was missing from the operator's queue across tenants", id))
+	}
+
+	return scopes
 }
 
 func everyListing(t *testing.T, s *conformance.Session) {

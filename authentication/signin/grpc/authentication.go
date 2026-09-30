@@ -199,12 +199,13 @@ func (r *AuthenticationRequirements) Lookup(fullMethod string) (Authentication, 
 	return requirement, ok
 }
 
-// RequireAuthentication declares every SignInService method onto a
-// requirements table, from this package's own three lists.
+// RequireAuthentication declares every method this package serves onto a
+// requirements table, from its own three lists and [Permissions].
 //
 // The anonymous methods are declared anonymous, save one: GetAuthStatus is
 // optional, because a whoami that never looks at the credential answers "no"
-// to everybody. The self-service and registrar methods are required. It takes
+// to everybody. The self-service and registrar methods are required, and so is
+// every SignInAdministrationService method. It takes
 // and returns the builder, as [Require] does, so a consumer composes several
 // surfaces and their own methods into one table:
 //
@@ -229,6 +230,10 @@ func RequireAuthentication(b *AuthenticationRequirementsBuilder) *Authentication
 
 	b.Declare(AuthenticationRequired, SelfServiceMethods()...)
 	b.Declare(AuthenticationRequired, RegistrarMethods()...)
+
+	for method := range Permissions() {
+		b.Declare(AuthenticationRequired, method)
+	}
 
 	return b
 }

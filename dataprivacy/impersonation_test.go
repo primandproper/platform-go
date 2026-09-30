@@ -97,7 +97,7 @@ func TestService_ImpersonatedSubmission(T *testing.T) {
 	must.NoError(T, err)
 
 	scope := testScope
-	page, err := reader.List(T.Context(), env.client.Reader(), &audit.Query{Scope: &scope, ResourceID: req.ID},
+	page, err := reader.List(T.Context(), env.client.Reader(), scope, &audit.Query{ResourceID: req.ID},
 		filtering.DefaultQueryFilter())
 	must.NoError(T, err)
 	must.SliceLen(T, 1, page.Data)
@@ -106,7 +106,7 @@ func TestService_ImpersonatedSubmission(T *testing.T) {
 	test.EqOp(T, "customer_1", entry.Actor.ID, test.Sprint("the request is the customer's"))
 	test.EqOp(T, "operator_1", entry.Actor.Impersonator, test.Sprint("and the operator made it"))
 
-	byOperator, err := reader.List(T.Context(), env.client.Reader(), &audit.Query{Scope: &scope, ImpersonatorID: "operator_1"},
+	byOperator, err := reader.List(T.Context(), env.client.Reader(), scope, &audit.Query{ImpersonatorID: "operator_1"},
 		filtering.DefaultQueryFilter())
 	must.NoError(T, err)
 	must.SliceLen(T, 1, byOperator.Data)

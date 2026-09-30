@@ -80,6 +80,13 @@ func (m *Membership) ValidateWithContext(ctx context.Context) error {
 		return err
 	}
 
+	// Ahead of the struct validation, because ozzo's validation.Errors has no
+	// Unwrap: a membership opened with no role is a refusal of what a client
+	// sent, and has to reach a transport as one. See checkTimeZone.
+	if len(m.Roles) == 0 {
+		return platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "membership carries no role")
+	}
+
 	if slices.Contains(m.Roles, "") {
 		return platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "membership carries an empty role name")
 	}
@@ -87,7 +94,6 @@ func (m *Membership) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, m,
 		validation.Field(&m.BelongsToUser, validation.Required),
 		validation.Field(&m.BelongsToAccount, validation.Required),
-		validation.Field(&m.Roles, validation.Required),
 	)
 }
 

@@ -422,6 +422,89 @@ func (s *SQLStore) ListReportsForSubject(
 	}), filter), nil
 }
 
+// ListReportsAcrossScopes pages every tenant's reports: the operator's queue.
+// See [Store.ListReportsAcrossScopes] for why it takes no scope, and who may
+// reach it.
+func (s *SQLStore) ListReportsAcrossScopes(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	filter *filtering.QueryFilter,
+) (*filtering.QueryFilteredResult[Report], error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if q == nil {
+		return nil, op.Error(ErrNilExecutor, "listing issue reports across scopes")
+	}
+
+	filter = pageFilter(filter)
+
+	rows, err := sortedRows(filter,
+		func() ([]issuereportsdb.ListReportsAcrossScopesRow, error) {
+			return s.q.ListReportsAcrossScopes(ctx, q, listAcrossScopesParams(filter))
+		},
+		func() ([]issuereportsdb.ListReportsAcrossScopesDescendingRow, error) {
+			return s.q.ListReportsAcrossScopesDescending(ctx, q,
+				issuereportsdb.ListReportsAcrossScopesDescendingParams(listAcrossScopesParams(filter)))
+		},
+		func(r issuereportsdb.ListReportsAcrossScopesDescendingRow) issuereportsdb.ListReportsAcrossScopesRow {
+			return issuereportsdb.ListReportsAcrossScopesRow(r)
+		})
+	if err != nil {
+		return nil, op.Error(err, "listing issue reports across scopes")
+	}
+
+	return listPage(op, convert(rows, func(r issuereportsdb.ListReportsAcrossScopesRow) issuereportsdb.ListReportsRow {
+		return issuereportsdb.ListReportsRow(r)
+	}), filter), nil
+}
+
+// ListReportsByStatusAcrossScopes is ListReportsAcrossScopes restricted to one
+// status: every tenant's triage queue.
+func (s *SQLStore) ListReportsByStatusAcrossScopes(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	status Status,
+	filter *filtering.QueryFilter,
+) (*filtering.QueryFilteredResult[Report], error) {
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(statusKey, status.String()))
+	defer op.End()
+
+	if q == nil {
+		return nil, op.Error(ErrNilExecutor, "listing issue reports by status across scopes")
+	}
+
+	// Refused for ListReportsByStatus's reason: a misspelled queue and an empty
+	// one look the same from the console.
+	if !status.Valid() {
+		return nil, op.Error(platformerrors.Wrapf(ErrUnknownStatus, "issue report status %q", status),
+			"listing issue reports by status across scopes")
+	}
+
+	filter = pageFilter(filter)
+
+	rows, err := sortedRows(filter,
+		func() ([]issuereportsdb.ListReportsByStatusAcrossScopesRow, error) {
+			return s.q.ListReportsByStatusAcrossScopes(ctx, q,
+				listByStatusAcrossScopesParams(status, filter))
+		},
+		func() ([]issuereportsdb.ListReportsByStatusAcrossScopesDescendingRow, error) {
+			return s.q.ListReportsByStatusAcrossScopesDescending(ctx, q,
+				issuereportsdb.ListReportsByStatusAcrossScopesDescendingParams(
+					listByStatusAcrossScopesParams(status, filter)))
+		},
+		func(r issuereportsdb.ListReportsByStatusAcrossScopesDescendingRow) issuereportsdb.ListReportsByStatusAcrossScopesRow {
+			return issuereportsdb.ListReportsByStatusAcrossScopesRow(r)
+		})
+	if err != nil {
+		return nil, op.Error(err, "listing issue reports by status across scopes")
+	}
+
+	return listPage(op, convert(rows, func(r issuereportsdb.ListReportsByStatusAcrossScopesRow) issuereportsdb.ListReportsRow {
+		return issuereportsdb.ListReportsRow(r)
+	}), filter), nil
+}
+
 // convert casts a narrowed list's rows to the base list's row type.
 //
 // The list statements are one projection rendered once per list, with more

@@ -220,6 +220,41 @@ func invitations(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 
+	t.Run("a cancelled invitation cannot be accepted, even with its token", func(t *testing.T) {
+		t.Parallel()
+
+		sender := s.Subject(t, conformance.Making(invite, cancelInvitation, listAccountMembers))
+		needsAccount(t, sender)
+		invitee := colleague(t, s, sender, conformance.Making(getPrincipal, acceptInvitation))
+		address := self(t, invitee).GetEmailAddress()
+
+		cancelled := sendInvitation(t, sender, address, role)
+		token := tokenFor(t, s, sender, cancelled.GetId())
+
+		response, err := sender.Surfaces.Identity.CancelInvitation(sender.Context(t.Context()),
+			&identitypb.CancelInvitationRequest{InvitationId: cancelled.GetId()})
+		must.NoError(t, err)
+		must.EqOp(t, identitypb.InvitationStatus_INVITATION_STATUS_CANCELLED, response.GetInvitation().GetStatus())
+
+		// The token is the one the deployment delivered, so the refusal is
+		// the cancellation's and not a wrong token's.
+		_, err = invitee.Surfaces.Identity.AcceptInvitation(invitee.Context(t.Context()),
+			&identitypb.AcceptInvitationRequest{InvitationId: cancelled.GetId(), Token: token})
+		must.Error(t, err, must.Sprint("a cancelled invitation was accepted"))
+		test.EqOp(t, codes.NotFound, status.Code(err))
+		test.SliceNotContains(t, memberIDs(t, sender, sender.AccountID), invitee.UserID,
+			test.Sprint("a cancelled invitation put its invitee on the roster"))
+
+		// The positive control: the same sender, the same invitee, an
+		// invitation nobody cancelled.
+		pending := sendInvitation(t, sender, address, role)
+
+		_, err = invitee.Surfaces.Identity.AcceptInvitation(invitee.Context(t.Context()),
+			&identitypb.AcceptInvitationRequest{InvitationId: pending.GetId(), Token: tokenFor(t, s, sender, pending.GetId())})
+		must.NoError(t, err, must.Sprint("the invitee cannot accept a pending invitation; the refusal above proves nothing"))
+		test.SliceContains(t, memberIDs(t, sender, sender.AccountID), invitee.UserID)
+	})
+
 	t.Run("an invitation read is confined to the sender's directory", func(t *testing.T) {
 		t.Parallel()
 

@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -24,6 +25,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
@@ -350,9 +352,10 @@ func isAdministrator(principal callers.Principal) bool {
 // that keeps its console to its staff, the way a product with a back office
 // does. The directory's administration, the catalog's writes, the scope-wide
 // ledgers and their corrections, the chain's verification, the moderation read,
-// the settings catalog, the client registry and the waitlist console are an
-// operator's; everything a person does to their own rows, and every door
-// reached with nobody on the call, is left to members.
+// the report queue across tenants, the settings catalog, somebody else's logins,
+// the client registry and the waitlist console are an operator's; everything a
+// person does to their own rows, and every door reached with nobody on the
+// call, is left to members.
 //
 // A list rather than a rule, and not the whole surface, because what it
 // exercises is the path a consumer's reservation takes: each call named here
@@ -373,6 +376,9 @@ var staffOnly = []string{
 
 	commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
 
+	issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName,
+	issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
+
 	identitypb.IdentityService_GetUser_FullMethodName,
 	identitypb.IdentityService_ListUsers_FullMethodName,
 	identitypb.IdentityService_SearchUsersByUsername_FullMethodName,
@@ -391,6 +397,10 @@ var staffOnly = []string{
 	settingspb.SettingsService_UpdateDefinition_FullMethodName,
 	settingspb.SettingsService_ArchiveDefinition_FullMethodName,
 	settingspb.SettingsService_ListValuesForDefinition_FullMethodName,
+
+	signinpb.SignInAdministrationService_ListSignInsForUser_FullMethodName,
+	signinpb.SignInAdministrationService_EndSignInForUser_FullMethodName,
+	signinpb.SignInAdministrationService_EndAllSignInsForUser_FullMethodName,
 
 	waitlistspb.WaitlistsService_CreateList_FullMethodName,
 	waitlistspb.WaitlistsService_UpdateList_FullMethodName,

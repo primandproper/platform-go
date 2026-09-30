@@ -435,11 +435,15 @@ No device, browser or address is listed, and none will be: whether those are rec
 the consumer's decision, keyed on `family_id` from the `AfterIssueToken` hook, and a client that
 shows them reads them from the consumer's own surface.
 
-An operator listing or ending somebody else's sessions is not here and will not be: these RPCs
-name nobody, so there is no field an administrator could use. That act is a Go-side call —
-`signin.Service.ListSignIns`, `signin.Service.EndSignIn` and `signin.Service.EndOtherSignIns`
-take the subject as an argument —
-behind the consumer's own administrative surface.
+An operator listing or ending somebody else's sessions is not on these RPCs and will not be:
+they name nobody, so there is no field an administrator could use. That act is
+`SignInAdministrationService` — `ListSignInsForUser`, `EndSignInForUser` and
+`EndAllSignInsForUser`, each naming the user — a separate service so that nothing on
+`SignInService` needs a permission. Each of its RPCs requires one
+(`signin.sign_ins.read_any` for the list, `signin.sign_ins.end_any` for the two ends), no role
+holds either by default, and a deployment enforcing `signingrpc.Require` refuses a caller without
+it as `PERMISSION_DENIED` before the request is read. An operator's end is reported to the revocation hook as `operator`, with the caller as the
+actor.
 
 ## Errors
 
@@ -647,6 +651,7 @@ something that streams.
 
 No UI. No product protos — a product's own services generate clients in the product's
 repository; this covers `platform-go`'s. No retrying a non-idempotent call without an
-idempotency key on it (R4). No administrative surface: every RPC this document covers is about
-the caller or about the credential the caller presented, and an operator acting on somebody else
-goes through a consumer's own service.
+idempotency key on it (R4). No administrative surface beyond sign-in's: every other RPC this
+document covers is about the caller or about the credential the caller presented, and an operator
+acting on somebody else goes through a consumer's own service — or, for their logins,
+`SignInAdministrationService`.

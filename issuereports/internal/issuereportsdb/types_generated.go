@@ -114,6 +114,66 @@ type ListReportsRow struct {
 	TotalCount    int64
 }
 
+// ListReportsAcrossScopesParams are the arguments to ListReportsAcrossScopes.
+type ListReportsAcrossScopesParams struct {
+	CreatedAfter    *time.Time
+	CreatedBefore   *time.Time
+	UpdatedAfter    *time.Time
+	UpdatedBefore   *time.Time
+	IncludeArchived bool
+	PageCursor      *string
+	ResultLimit     int64
+}
+
+// ListReportsAcrossScopesRow is one row of ListReportsAcrossScopes's result.
+type ListReportsAcrossScopesRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Reporter      string
+	Kind          string
+	Details       string
+	SubjectType   string
+	SubjectID     string
+	Status        string
+	Resolution    string
+	ClosedAt      *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+	FilteredCount int64
+	TotalCount    int64
+}
+
+// ListReportsAcrossScopesDescendingParams are the arguments to ListReportsAcrossScopesDescending.
+type ListReportsAcrossScopesDescendingParams struct {
+	CreatedAfter    *time.Time
+	CreatedBefore   *time.Time
+	UpdatedAfter    *time.Time
+	UpdatedBefore   *time.Time
+	IncludeArchived bool
+	PageCursor      *string
+	ResultLimit     int64
+}
+
+// ListReportsAcrossScopesDescendingRow is one row of ListReportsAcrossScopesDescending's result.
+type ListReportsAcrossScopesDescendingRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Reporter      string
+	Kind          string
+	Details       string
+	SubjectType   string
+	SubjectID     string
+	Status        string
+	Resolution    string
+	ClosedAt      *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+	FilteredCount int64
+	TotalCount    int64
+}
+
 // ListReportsByReporterParams are the arguments to ListReportsByReporter.
 type ListReportsByReporterParams struct {
 	CreatedAfter    *time.Time
@@ -193,6 +253,68 @@ type ListReportsByStatusParams struct {
 
 // ListReportsByStatusRow is one row of ListReportsByStatus's result.
 type ListReportsByStatusRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Reporter      string
+	Kind          string
+	Details       string
+	SubjectType   string
+	SubjectID     string
+	Status        string
+	Resolution    string
+	ClosedAt      *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+	FilteredCount int64
+	TotalCount    int64
+}
+
+// ListReportsByStatusAcrossScopesParams are the arguments to ListReportsByStatusAcrossScopes.
+type ListReportsByStatusAcrossScopesParams struct {
+	CreatedAfter    *time.Time
+	CreatedBefore   *time.Time
+	UpdatedAfter    *time.Time
+	UpdatedBefore   *time.Time
+	IncludeArchived bool
+	Status          string
+	PageCursor      *string
+	ResultLimit     int64
+}
+
+// ListReportsByStatusAcrossScopesRow is one row of ListReportsByStatusAcrossScopes's result.
+type ListReportsByStatusAcrossScopesRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Reporter      string
+	Kind          string
+	Details       string
+	SubjectType   string
+	SubjectID     string
+	Status        string
+	Resolution    string
+	ClosedAt      *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+	FilteredCount int64
+	TotalCount    int64
+}
+
+// ListReportsByStatusAcrossScopesDescendingParams are the arguments to ListReportsByStatusAcrossScopesDescending.
+type ListReportsByStatusAcrossScopesDescendingParams struct {
+	CreatedAfter    *time.Time
+	CreatedBefore   *time.Time
+	UpdatedAfter    *time.Time
+	UpdatedBefore   *time.Time
+	IncludeArchived bool
+	Status          string
+	PageCursor      *string
+	ResultLimit     int64
+}
+
+// ListReportsByStatusAcrossScopesDescendingRow is one row of ListReportsByStatusAcrossScopesDescending's result.
+type ListReportsByStatusAcrossScopesDescendingRow struct {
 	ID            string
 	Scope         tenancy.Scope
 	Reporter      string

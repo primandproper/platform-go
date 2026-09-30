@@ -140,7 +140,7 @@ func mountsGRPC(s *Surfaces) bool {
 	return s.Audit != nil || s.Billing != nil || s.Comments != nil || s.Identity != nil ||
 		s.IssueReports != nil || s.MediaRegistry != nil || s.Notifications != nil || s.OAuth2Clients != nil ||
 		s.Passkeys != nil || s.PasswordReset != nil || s.Settings != nil || s.SignIn != nil ||
-		s.Waitlists != nil || s.Webhooks != nil
+		s.SignInAdministration != nil || s.Waitlists != nil || s.Webhooks != nil
 }
 
 // surfacesOver is mounted rebuilt over conn, surface for surface.
@@ -193,6 +193,10 @@ func surfacesOver(mounted *Surfaces, conn grpc.ClientConnInterface) Surfaces {
 
 	if mounted.SignIn != nil {
 		out.SignIn = signinpb.NewSignInServiceClient(conn)
+	}
+
+	if mounted.SignInAdministration != nil {
+		out.SignInAdministration = signinpb.NewSignInAdministrationServiceClient(conn)
 	}
 
 	if mounted.Waitlists != nil {

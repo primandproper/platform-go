@@ -21,6 +21,7 @@ import (
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
@@ -349,6 +350,19 @@ func TestRegisterTransports(T *testing.T) {
 
 		test.SliceContainsAll(t, []string{"password reset gRPC", "sign-in gRPC"}, mounted.names)
 		test.SliceLen(t, 2, mounted.registrations)
+
+		// The operator half of sign-in mounts with it: one surface, two
+		// services, the second gated by permissions no role holds by default.
+		srv := grpc.NewServer()
+		t.Cleanup(srv.Stop)
+
+		for _, register := range mounted.registrations {
+			register(srv)
+		}
+
+		services := srv.GetServiceInfo()
+		test.MapContainsKey(t, services, signinpb.SignInService_ServiceDesc.ServiceName)
+		test.MapContainsKey(t, services, signinpb.SignInAdministrationService_ServiceDesc.ServiceName)
 	})
 
 	T.Run("the passkeys surface mounts from its config block beside sign-in's", func(t *testing.T) {
@@ -1071,8 +1085,8 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		var asked *tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				asked = query.Scope
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = &scope
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},
@@ -1095,7 +1109,7 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		t.Parallel()
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			ListFunc: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 				t.Error("the reader must not be consulted for a request with nobody on it")
 
 				return nil, nil
@@ -1122,8 +1136,8 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		var asked *tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				asked = query.Scope
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = &scope
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},

@@ -22,6 +22,7 @@ const (
 	archiveAccount                 = identitypb.IdentityService_ArchiveAccount_FullMethodName
 	archiveUser                    = identitypb.IdentityService_ArchiveUser_FullMethodName
 	cancelInvitation               = identitypb.IdentityService_CancelInvitation_FullMethodName
+	createAccount                  = identitypb.IdentityService_CreateAccount_FullMethodName
 	getAccount                     = identitypb.IdentityService_GetAccount_FullMethodName
 	getInvitation                  = identitypb.IdentityService_GetInvitation_FullMethodName
 	getMembership                  = identitypb.IdentityService_GetMembership_FullMethodName
@@ -77,6 +78,10 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("users", func(t *testing.T) {
 		t.Parallel()
 		users(t, s)
+	})
+	t.Run("absences", func(t *testing.T) {
+		t.Parallel()
+		absences(t, s)
 	})
 
 	t.Run("a read by id is scoped to the caller's directory", func(t *testing.T) {

@@ -377,6 +377,9 @@ func builders() map[string]builder {
 		issuereportspb.IssueReportsService_ListReportsByStatus_FullMethodName: func(*conformance.Subject, *conformance.Seams) (proto.Message, string) {
 			return &issuereportspb.ListReportsByStatusRequest{Status: issuereportspb.ReportStatus_REPORT_STATUS_OPEN}, ""
 		},
+		issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName: func(*conformance.Subject, *conformance.Seams) (proto.Message, string) {
+			return &issuereportspb.ListReportsByStatusAcrossScopesRequest{Status: issuereportspb.ReportStatus_REPORT_STATUS_OPEN}, ""
+		},
 		issuereportspb.IssueReportsService_ListReportsByReporter_FullMethodName: func(s *conformance.Subject, _ *conformance.Seams) (proto.Message, string) {
 			if s.UserID == "" {
 				return nil, needsUser

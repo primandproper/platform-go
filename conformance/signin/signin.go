@@ -97,6 +97,11 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 		handleReminders(t, s)
 	})
+
+	t.Run("administration", func(t *testing.T) {
+		t.Parallel()
+		administration(t, s)
+	})
 }
 
 // The reasons docs/client-contract.md lists for the refusals asserted here,

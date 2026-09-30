@@ -72,10 +72,10 @@ import (
 //
 // # The scope is an argument, on every method
 //
-// Every method takes a tenancy.Scope, and none of them offers a variant that
-// omits it — an implementation must filter on it rather than treat it as a hint.
-// A deployment with one tenant passes tenancy.Global() everywhere and behaves
-// exactly as it would have without the column.
+// Every method but two takes a tenancy.Scope, and an implementation must filter
+// on it rather than treat it as a hint. A deployment with one tenant passes
+// tenancy.Global() everywhere and behaves exactly as it would have without the
+// column. The two are the operator's, below.
 //
 // That includes the two writes that take a whole [Report]. They read the scope
 // off the argument rather than off Report.Scope, and the alternative — letting
@@ -88,14 +88,28 @@ import (
 // A Report.Scope that disagrees with the argument is [ErrScopeMismatch] rather
 // than either value quietly winning; an unset one adopts the argument.
 //
-// There is deliberately no cross-scope listing, and it is worth being clear
-// about what that costs. An operator triaging every tenant's reports from one
-// console is a real thing to want, and this interface will not answer it in one
-// call: they list the scopes they administer and page each. The alternative is a
-// read that omits the scope, which is the one read that cannot tell an
-// operator's caller from a tenant's — and a paged list cannot bind a set of
-// scopes either, because a bound set may not sit in a statement that also binds
-// a cursor and a page size on two of the three dialects this package serves.
+// # The operator's two reads, which name no scope
+//
+// [Store.ListReportsAcrossScopes] and [Store.ListReportsByStatusAcrossScopes]
+// page every tenant's reports, and they are a stated exception to the module's
+// rule that no read path omits the scope. Triage across tenants is the reason an
+// operator console exists, and an operator who had to list the scopes they
+// administer and page each would be doing by hand the read this table can do in
+// one statement.
+//
+// What keeps the exception narrow is that it is spelled apart. The scoped reads
+// take a tenancy.Scope, not a pointer to one, so no tenant-facing caller can
+// widen a read by losing its scope — a nil that widens is the scopeless call the
+// type exists to rule out. The wide read is a different method, with a
+// different name, which a transport serves behind a permission of its own that
+// nothing in this module grants: issuereports/grpc's PermissionReadAnyReports.
+// A Go caller holding the store is inside the trust boundary, and reaching for
+// one of these is a decision the method name makes visible in review.
+//
+// They are not a read over a caller-supplied set of scopes. The operator's
+// question is "every tenant", not "these tenants", and a set bound into a paged
+// read is not expressible on two of the three dialects this package serves
+// anyway.
 type Store interface {
 	// CreateReport files one report through the caller's transaction, so the
 	// report commits with whatever the caller writes beside it, and answers with
@@ -151,6 +165,26 @@ type Store interface {
 
 	// ListReportsForSubject pages every report about one particular thing.
 	ListReportsForSubject(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectType, subjectID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Report], error)
+
+	// ListReportsAcrossScopes pages every tenant's reports, in the direction
+	// the filter names: the operator's queue. Each report carries its Scope, so
+	// a row read here says whose it is.
+	//
+	// It takes no scope, and that is a stated exception to "no read path omits
+	// it", not an oversight: it is an operator's read, reached over the wire
+	// only behind issuereports/grpc's PermissionReadAnyReports, which this
+	// module grants to nobody. A tenant-facing caller wants ListReports. See
+	// [Store] for why the exception is a separate method rather than an
+	// optional scope. A nil q is an error wrapping ErrNilExecutor.
+	ListReportsAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Report], error)
+
+	// ListReportsByStatusAcrossScopes is ListReportsAcrossScopes restricted to
+	// one status: every tenant's triage queue. It is the same stated exception,
+	// behind the same permission.
+	//
+	// A status this package does not serve is ErrUnknownStatus, for
+	// ListReportsByStatus's reason.
+	ListReportsByStatusAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, status Status, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Report], error)
 
 	// UpdateReport revises what the reporter said — the kind, the details, and
 	// what the report is about — through the caller's transaction, so the
