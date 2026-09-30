@@ -321,12 +321,6 @@ func authorizeOutcome(
 	return grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), code, descriptionFmt, descriptionArgs...)
 }
 
-//
-// Each is told whether its call reads or acts, which is the one thing the
-// authorizer is not told and the operator bypass needs: a refusal the seam
-// gives is answered by admitOperator, against the permission for that kind of
-// call, before it becomes a status.
-
 func (s *Server) authorizeAccount(
 	ctx context.Context,
 	op observability.Operation,
