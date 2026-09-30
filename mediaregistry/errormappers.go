@@ -26,11 +26,11 @@ import (
 //
 // Not mediaregistry/http, which is the guarded serve and answers its own 404
 // before any encoding happens — that package's documentation says so and still
-// does. The endpoint these are for is the consumer's own upload handler,
-// over the consumer's own form, because the key, the owner and the subject an
-// object hangs off are all theirs; StoreAndRecord is the line at the end of it,
-// and every one of these is a thing that line can tell them. Without a pair here
-// a collided object key reaches that handler's client as a 500.
+// does. The endpoints these are for are mediaregistry/grpc, whose uploads,
+// registrations and reads can meet every one of them, and the consumer's own
+// upload handler for an object attached to one of its own nouns, which ends in
+// StoreAndRecord. Without a pair here a collided object key reaches either
+// one's client as a 500.
 //
 // The five nil arguments are absent from both switches on purpose: they wrap a
 // platform sentinel the platform mappers already answer, and a case here would be

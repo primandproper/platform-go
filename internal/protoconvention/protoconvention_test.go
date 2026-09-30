@@ -17,6 +17,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -53,6 +54,8 @@ var schemas = map[string]protoreflect.FileDescriptor{
 		File_primandproper_platform_identity_v1_identity_proto,
 	"issuereports/proto/primandproper/platform/issuereports/v1/issuereports.proto": issuereportspb.
 		File_primandproper_platform_issuereports_v1_issuereports_proto,
+	"mediaregistry/proto/primandproper/platform/mediaregistry/v1/mediaregistry.proto": mediaregistrypb.
+		File_primandproper_platform_mediaregistry_v1_mediaregistry_proto,
 	"notifications/proto/primandproper/platform/notifications/v1/notifications.proto": notificationspb.
 		File_primandproper_platform_notifications_v1_notifications_proto,
 	"settings/proto/primandproper/platform/settings/v1/settings.proto": settingspb.

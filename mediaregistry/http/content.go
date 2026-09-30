@@ -57,14 +57,27 @@ var activeContentTypes = []string{
 // worse than offering none, and a filename parameter is also the one part of
 // this header that has to be escaped.
 func dispositionFor(contentType string) string {
-	base, _, _ := strings.Cut(contentType, ";")
-
-	base = strings.ToLower(strings.TrimSpace(base))
-	if base == "" || slices.Contains(activeContentTypes, base) {
+	if ActiveContent(contentType) {
 		return dispositionAttachment
 	}
 
 	return dispositionInline
+}
+
+// ActiveContent reports whether an object of this content type is one a
+// browser would execute on the origin that served it — or one whose type is
+// not stated, which leaves the browser to decide by looking.
+//
+// It is exported because it is one answer with two readers. This route serves
+// such an object as an attachment, and mediaregistry/grpc refuses to store one
+// by default; a second copy of the list is a list that can disagree with this
+// one about what an executed type is.
+func ActiveContent(contentType string) bool {
+	base, _, _ := strings.Cut(contentType, ";")
+
+	base = strings.ToLower(strings.TrimSpace(base))
+
+	return base == "" || slices.Contains(activeContentTypes, base)
 }
 
 // The two seeks that cannot be served. Neither is reachable from net/http,

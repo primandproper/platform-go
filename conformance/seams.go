@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -462,6 +463,7 @@ type Surfaces struct {
 	Comments      commentspb.CommentsServiceClient
 	Identity      identitypb.IdentityServiceClient
 	IssueReports  issuereportspb.IssueReportsServiceClient
+	MediaRegistry mediaregistrypb.MediaRegistryServiceClient
 	Notifications notificationspb.NotificationsServiceClient
 	OAuth2Clients oauth2clientspb.OAuth2ClientsServiceClient
 	Passkeys      passkeyspb.PasskeysServiceClient
@@ -650,14 +652,14 @@ type Actions struct {
 	// as the user's, the way the deployment's own upload path does, and
 	// reports what it registered.
 	//
-	// There is no route or RPC that creates one, and that is mediaregistry's
-	// design rather than a gap: an object comes to exist through whatever
-	// upload the application offers — a form, a signed URL, a migration from
-	// an existing bucket — and the registry is the row the application writes
-	// once the bytes are somewhere. Only the read is served. A consumer
-	// implements this by uploading through their own path; this module's
-	// harnesses by mediaregistry.StoreAndRecord over the manager and store the
-	// composition root built, which is where that path ends anyway.
+	// The serve route's assertions start here rather than at
+	// mediaregistry/grpc's UploadObject, because a deployment may upload
+	// through a path of its own — a form, a signed URL, a migration from an
+	// existing bucket — and serve the result all the same. A consumer
+	// implements this by uploading through whichever path it offers; this
+	// module's harnesses by mediaregistry.StoreAndRecord over the manager and
+	// store the composition root built, which is where every path ends anyway.
+	// The resource surface's assertions need none: they upload through it.
 	//
 	// The bytes come back rather than going in for Audited's reason: what an
 	// object is belongs to the deployment, and what the suite asserts is which

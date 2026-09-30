@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -137,7 +138,7 @@ func declare(t *testing.T, sub *Subject, methods []string) *Subject {
 // uncomparable type panics.
 func mountsGRPC(s *Surfaces) bool {
 	return s.Audit != nil || s.Billing != nil || s.Comments != nil || s.Identity != nil ||
-		s.IssueReports != nil || s.Notifications != nil || s.OAuth2Clients != nil ||
+		s.IssueReports != nil || s.MediaRegistry != nil || s.Notifications != nil || s.OAuth2Clients != nil ||
 		s.Passkeys != nil || s.PasswordReset != nil || s.Settings != nil || s.SignIn != nil ||
 		s.Waitlists != nil || s.Webhooks != nil
 }
@@ -164,6 +165,10 @@ func surfacesOver(mounted *Surfaces, conn grpc.ClientConnInterface) Surfaces {
 
 	if mounted.IssueReports != nil {
 		out.IssueReports = issuereportspb.NewIssueReportsServiceClient(conn)
+	}
+
+	if mounted.MediaRegistry != nil {
+		out.MediaRegistry = mediaregistrypb.NewMediaRegistryServiceClient(conn)
 	}
 
 	if mounted.Notifications != nil {

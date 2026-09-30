@@ -64,6 +64,8 @@ import (
 	linksmigrations "github.com/primandproper/platform-go/v14/links/database/migrations"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
+	mediaregistryclient "github.com/primandproper/platform-go/v14/mediaregistry/grpc/client"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	mediaregistrymigrations "github.com/primandproper/platform-go/v14/mediaregistry/migrations"
 	"github.com/primandproper/platform-go/v14/notifications"
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
@@ -296,7 +298,13 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		extractor.UnaryServerInterceptor(authenticationRequirements(t)),
 		reserveStaffCalls(extractor),
 	})
-	do.ProvideValue(i, []grpc.StreamServerInterceptor{})
+	// The stream halves of the same two, which the media registry's upload is
+	// reached through: a server that installed only the unary ones would
+	// leave every upload with nobody on it.
+	do.ProvideValue(i, []grpc.StreamServerInterceptor{
+		grpcerrors.StreamErrorEncodingInterceptor(),
+		extractor.StreamServerInterceptor(authenticationRequirements(t)),
+	})
 	// The HTTP half, on the router before anything mounts on it: chi refuses
 	// middleware added after the first route, which is a constraint a
 	// consumer's main meets in the same place.
@@ -339,6 +347,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Comments:      commentsclient.Wrap(conn),
 		Identity:      identityclient.Wrap(conn),
 		IssueReports:  issuereportsclient.Wrap(conn),
+		MediaRegistry: mediaregistryclient.Wrap(conn),
 		Notifications: notificationsclient.Wrap(conn),
 		OAuth2Clients: oauth2clientsclient.Wrap(conn),
 		Passkeys:      passkeysclient.Wrap(conn),
@@ -753,6 +762,7 @@ func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirem
 			commentspb.CommentsService_ServiceDesc.ServiceName,
 			identitypb.IdentityService_ServiceDesc.ServiceName,
 			issuereportspb.IssueReportsService_ServiceDesc.ServiceName,
+			mediaregistrypb.MediaRegistryService_ServiceDesc.ServiceName,
 			notificationspb.NotificationsService_ServiceDesc.ServiceName,
 			oauth2clientspb.OAuth2ClientsService_ServiceDesc.ServiceName,
 			passkeyspb.PasskeysService_ServiceDesc.ServiceName,
