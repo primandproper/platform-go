@@ -71,8 +71,8 @@ type ActiveSignIn struct {
 // It is the self-service read and the administrative one both, and which it is
 // depends on where userID came from. authentication/signin/grpc's ListSignIns
 // takes it off the caller, so a person sees their own logins and nobody
-// else's; an operator's surface takes it from a request and stands its own
-// authorization in front of the call. That split is the one
+// else's; its ListSignInsForUser takes it from the request, on a service of
+// its own behind a permission the deployment grants. That split is the one
 // [Service.RevokeRefreshTokensForSubject] already has with [Service.SignOutEverywhere],
 // and this package holds no grant for the second half because it decides
 // nothing about who may act for whom.
