@@ -262,11 +262,17 @@ func confinement(t *testing.T, s *conformance.Session) {
 	// The same question inside one directory, where no wall stands between
 	// the two accounts and the refusal is the deployment's SubjectAuthorizer's.
 	// This module ships no default for it, and a deployment that resolves no
-	// account subjects at all would refuse this too — so the caller's own
-	// account is asked first, and the assertion is only made where that one is
-	// answered, which is what makes the refusal about membership.
+	// account subjects at all would refuse this too — which it says in
+	// Seams.AccountSettingsUnresolved, and this skips. Everywhere else the
+	// caller's own account is asked first and must be answered, which is what
+	// makes the refusal about membership.
 	t.Run("an account the caller holds no membership in is not the caller's to resolve", func(t *testing.T) {
 		t.Parallel()
+
+		if s.Seams().AccountSettingsUnresolved {
+			conformance.Skip(t, "conformance: this subject resolves no account subjects (Seams.AccountSettingsUnresolved), "+
+				"so a refused stranger's account says nothing about membership")
+		}
 
 		caller := s.Subject(t, conformance.Making(resolve), conformance.AsMember())
 		needsUser(t, caller)
@@ -286,11 +292,8 @@ func confinement(t *testing.T, s *conformance.Session) {
 			Subject: &settingspb.SettingSubject{Type: subjectAccount, Id: caller.AccountID},
 			Name:    c.digest,
 		})
-		if status.Code(err) == codes.PermissionDenied {
-			t.Skip("conformance: this subject resolves no account subjects, so a refused stranger's account says nothing about membership")
-		}
-
-		must.NoError(t, err, must.Sprint("this caller cannot resolve its own account's setting; the refusal below proves nothing"))
+		must.NoError(t, err, must.Sprint("this caller cannot resolve its own account's setting, and the subject does not "+
+			"declare Seams.AccountSettingsUnresolved; the refusal below would prove nothing"))
 
 		_, err = caller.Surfaces.Settings.Resolve(caller.Context(t.Context()), &settingspb.ResolveRequest{
 			Subject: &settingspb.SettingSubject{Type: subjectAccount, Id: stranger.AccountID},

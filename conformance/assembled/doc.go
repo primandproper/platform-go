@@ -116,6 +116,11 @@ and dataprivacy, which fulfills its requests as operations. Subject.HTTP still
 says which are mounted, because the flags are how a hand-built subject that
 serves fewer reports it; this harness sets all three.
 
+Every run is held to its skips as well as its failures. The harness sets every
+seam and action to the value that makes an assertion run, so a skip it makes is
+either one skips_test.go names, with why, or a wiring regression — and it fails
+the run, as does an entry that stopped firing.
+
 dataprivacy refuses to start with no collector registered, so the harness
 registers identity's privacy adapter through privacyadapters — the call a
 consumer makes — over the directory the composition root built. service mounts

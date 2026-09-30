@@ -123,7 +123,7 @@ func doors(t *testing.T, s *conformance.Session) {
 		inviter := directoryCaller(t, s, invite)
 
 		if inviter.AccountID == "" {
-			t.Skip("conformance: this subject does not surface the inviter's account, so there is no second account to name; skipping")
+			conformance.Skip(t, "conformance: this subject does not surface the inviter's account, so there is no second account to name; skipping")
 		}
 
 		must.NotEqOp(t, who.accountID, inviter.AccountID, must.Sprint("the inviter is in the registrant's own account"))
@@ -175,7 +175,7 @@ func doors(t *testing.T, s *conformance.Session) {
 
 		role := s.Roles().Administrator
 		if role == "" {
-			t.Skip("conformance: this subject names no Roles.Administrator, so nobody can be made one the administrative door admits; skipping")
+			conformance.Skip(t, "conformance: this subject names no Roles.Administrator, so nobody can be made one the administrative door admits; skipping")
 		}
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, adminLoginForToken)

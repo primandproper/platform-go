@@ -88,7 +88,7 @@ func runRoster(t *testing.T, s *conformance.Session) {
 
 			surface, method := resolve(t, full)
 			if !surface.Mounted(probe.Surfaces) {
-				t.Skipf("conformance: this subject mounts no %s surface to make %s on", surface.Name, full)
+				conformance.Skipf(t, "conformance: this subject mounts no %s surface to make %s on", surface.Name, full)
 			}
 
 			admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(full))

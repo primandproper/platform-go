@@ -56,8 +56,10 @@ and says so in Seams.InvitationTokenReturned; elsewhere it skips.
 
 Refresh tokens are optional — a deployment built without a store answers a
 sign-in with none, which the client contract calls a valid shape — so the
-assertions about rotation and signing out skip, with the reason printed, when
-the sign-in they start from carried no refresh token.
+assertions about rotation and signing out skip, with the reason printed, where
+the subject declares Seams.RefreshTokensUnissued. Elsewhere a sign-in that
+carries none fails: read off the answer, the absence is also what a service that
+stopped wiring its store would say.
 
 # Calling as somebody the suite signed in
 

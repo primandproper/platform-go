@@ -73,7 +73,7 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		// A fresh caller, always: this one is erased.
 		me := s.Subject(t, conformance.Making(dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteConfirm, dataprivacyhttp.RouteGet))
 		if me.Surfaces.Identity == nil {
-			t.Skip("conformance: this subject mounts no directory, and no client can observe an erasure without one")
+			conformance.Skip(t, "conformance: this subject mounts no directory, and no client can observe an erasure without one")
 		}
 
 		// Beside the erased caller in their directory, so what spares the

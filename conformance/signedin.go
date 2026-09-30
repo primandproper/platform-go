@@ -27,7 +27,7 @@ func (s *Session) SignedIn(t *testing.T, issued *signinpb.IssuedToken, opts ...S
 
 	dial := s.seams.SignedIn
 	if dial == nil {
-		t.Skip("conformance: this subject supplies no SignedIn seam, so a token the suite signed in for cannot be called with; skipping")
+		Skip(t, "conformance: this subject supplies no SignedIn seam, so a token the suite signed in for cannot be called with; skipping")
 
 		return nil
 	}
@@ -46,7 +46,7 @@ func (s *Session) SignedIn(t *testing.T, issued *signinpb.IssuedToken, opts ...S
 	}
 
 	if reserved := s.reservedAmong(req.Methods); reserved != "" && !issued.GetAdministrative() {
-		t.Skipf("conformance: this subject reserves %s to an operator, and this caller signed in through the ordinary door; skipping", reserved)
+		Skipf(t, "conformance: this subject reserves %s to an operator, and this caller signed in through the ordinary door; skipping", reserved)
 
 		return nil
 	}

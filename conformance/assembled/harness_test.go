@@ -562,17 +562,26 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// caller makes is one it declared is checked in both, on the caller's own
 	// connection. Sequential rather than parallel, because each claims the
 	// database as its own.
+	//
+	// Each run is held to the skips skips_test.go names for it, and fails on
+	// any other.
 	t.Run("members make every call", func(t *testing.T) {
+		expectSkips(t, suiteSkips(membersSkips, waitlists))
+
 		conformanceall.Run(t, seams(nil, nil))
 	})
 
 	t.Run("staff calls reserved", func(t *testing.T) {
+		expectSkips(t, suiteSkips(staffSkips, waitlists))
+
 		conformanceall.Run(t, seams(staffOnly, staffOnlyRoutes))
 	})
 
 	// And the record the reservations suite skips by, held to the handlers it
 	// describes, which here sit behind this module's own authorizers.
 	t.Run("empty requests refused", func(t *testing.T) {
+		expectSkips(t, rosterSkips)
+
 		conformance.Run(t, seams(nil, nil), conformancereservations.RosterSuite())
 	})
 }

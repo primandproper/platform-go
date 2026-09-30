@@ -21,16 +21,23 @@ import (
 )
 
 // rotating signs somebody in and returns the token, skipping where the
-// deployment minted no refresh token — which docs/client-contract.md calls a
-// valid shape rather than an error, so it is an absence and not a failure.
-func rotating(t *testing.T, client signinpb.SignInServiceClient, username, secret string) *signinpb.IssuedToken {
+// deployment declared Seams.RefreshTokensUnissued.
+//
+// A sign-in with no refresh token is a valid shape by docs/client-contract.md,
+// so a deployment may have one — but only by saying so. Read off the answer
+// instead, it is also what a service that stopped wiring its refresh store
+// answers, and every rotation assertion would pass by skipping.
+func rotating(t *testing.T, s *conformance.Session, client signinpb.SignInServiceClient, username, secret string) *signinpb.IssuedToken {
 	t.Helper()
+
+	if s.Seams().RefreshTokensUnissued {
+		conformance.Skip(t, "conformance: this subject stores no refresh tokens (Seams.RefreshTokensUnissued), so there is no login to rotate or end")
+	}
 
 	issued := loggedIn(t, client, username, secret)
 
-	if issued.GetRefreshToken() == "" {
-		t.Skip("conformance: this deployment stores no refresh tokens, so a sign-in answered none and there is no login to rotate or end")
-	}
+	must.NotEqOp(t, "", issued.GetRefreshToken(), must.Sprint(
+		"a sign-in answered no refresh token, and the subject does not declare Seams.RefreshTokensUnissued"))
 
 	return issued
 }
@@ -60,7 +67,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
-		first := rotating(t, anon, who.username, password)
+		first := rotating(t, s, anon, who.username, password)
 
 		test.NotEqOp(t, "", first.GetFamilyId())
 		test.NotNil(t, first.GetRefreshTokenExpiresAt(), test.Sprint("a refresh token answered with no deadline"))
@@ -81,7 +88,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
-		first := rotating(t, anon, who.username, password)
+		first := rotating(t, s, anon, who.username, password)
 
 		_, err := exchange(t.Context(), anon, first.GetRefreshToken())
 		must.NoError(t, err, must.Sprint("the control: the first exchange was refused"))
@@ -101,7 +108,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
-		first := rotating(t, anon, who.username, password)
+		first := rotating(t, s, anon, who.username, password)
 
 		second, err := exchange(t.Context(), anon, first.GetRefreshToken())
 		must.NoError(t, err)
@@ -122,7 +129,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
-		first := rotating(t, anon, who.username, password)
+		first := rotating(t, s, anon, who.username, password)
 
 		keyed := metadata.AppendToOutgoingContext(t.Context(), idempotencygrpc.MetadataKey, identifiers.New())
 
@@ -151,7 +158,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
-		first := rotating(t, anon, who.username, password)
+		first := rotating(t, s, anon, who.username, password)
 
 		tooLong := metadata.AppendToOutgoingContext(t.Context(), idempotencygrpc.MetadataKey, strings.Repeat("k", 256))
 
@@ -168,7 +175,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken, signOut)
 		who := signInAs(t, s, anon)
-		ended := rotating(t, anon, who.username, password)
+		ended := rotating(t, s, anon, who.username, password)
 		kept := loggedIn(t, anon, who.username, password)
 
 		_, err := anon.SignOut(t.Context(), &signinpb.SignOutRequest{RefreshToken: ended.GetRefreshToken()})
@@ -192,7 +199,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, signOut)
 		who := signInAs(t, s, anon)
-		issued := rotating(t, anon, who.username, password)
+		issued := rotating(t, s, anon, who.username, password)
 
 		first, err := anon.SignOut(t.Context(), &signinpb.SignOutRequest{RefreshToken: issued.GetRefreshToken()})
 		must.NoError(t, err)
@@ -216,7 +223,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		sub, who := signedIn(t, s, anon, signOutEverywhere)
 
-		phone := rotating(t, anon, who.username, password)
+		phone := rotating(t, s, anon, who.username, password)
 		laptop := loggedIn(t, anon, who.username, password)
 		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
 
@@ -244,7 +251,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		if !s.Seams().ImmediateRevocation {
-			t.Skip("conformance: this subject does not declare Seams.ImmediateRevocation, so an ended login's access token is promised only to stop within its lifetime; skipping")
+			conformance.Skip(t, "conformance: this subject does not declare Seams.ImmediateRevocation, so an ended login's access token is promised only to stop within its lifetime; skipping")
 		}
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
@@ -286,7 +293,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		sub, who := signedIn(t, s, anon, listSignIns, endSignIn)
 
-		phone := rotating(t, anon, who.username, password)
+		phone := rotating(t, s, anon, who.username, password)
 		laptop := loggedIn(t, anon, who.username, password)
 		must.NotEqOp(t, phone.GetFamilyId(), laptop.GetFamilyId(), must.Sprint("two sign-ins were one login"))
 
@@ -347,7 +354,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		// Somebody else's login, one that never existed, and the one just
 		// ended: each is answered exactly as the ending that worked was.
 		stranger := signInAs(t, s, anon)
-		theirs := rotating(t, anon, stranger.username, password)
+		theirs := rotating(t, s, anon, stranger.username, password)
 
 		for what, family := range map[string]string{
 			"somebody else's login": theirs.GetFamilyId(),
@@ -374,7 +381,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken)
 		who := signInAs(t, s, anon)
 
-		other := rotating(t, anon, who.username, password)
+		other := rotating(t, s, anon, who.username, password)
 		asking := loggedIn(t, anon, who.username, password)
 		must.NotEqOp(t, other.GetFamilyId(), asking.GetFamilyId(), must.Sprint("two sign-ins were one login"))
 
@@ -389,7 +396,7 @@ func refresh(t *testing.T, s *conformance.Session) {
 				test.NoError(t, exchangeErr, test.Sprint("a refused sign-out of the other logins ended one"))
 			}
 
-			t.Skip("conformance: this deployment's principal does not name the login a request came through, so there is no login to keep; the refusal is asserted and the rest skipped")
+			conformance.Skip(t, "conformance: this deployment's principal does not name the login a request came through, so there is no login to keep; the refusal is asserted and the rest skipped")
 		}
 
 		must.NoError(t, err)

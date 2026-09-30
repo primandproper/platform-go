@@ -63,6 +63,15 @@ Actions is a state this subject cannot bring about, and the assertions that need
 one skip with the reason named. Nothing here degrades quietly: a skip prints what was
 missing, because a suite that silently asserted nothing is worse than no suite.
 
+A skip is decided by what the subject declared, never by what its server
+answered. A suite that skipped on a refusal or an absence it read off the wire
+would pass hardest when the server was most broken, so where an answer could
+mean either "this deployment does not do that" or "this deployment's wiring
+regressed", a seam says which and the answer fails without one. Every skip goes
+through Skip or Skipf, which record it, and Skips hands a harness the ones made
+beneath a test, so a subject that sets every seam to the value that makes
+assertions run can fail on any skip it did not expect.
+
 # Who a call is made as
 
 Which calls a deployment keeps from its members is its product's decision, and

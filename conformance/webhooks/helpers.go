@@ -42,7 +42,7 @@ func catalog(t *testing.T, caller *conformance.Subject, atLeast int) []string {
 	}
 
 	if len(names) < atLeast {
-		t.Skipf("conformance: this deployment's event catalog offers %d event types and the assertion needs %d",
+		conformance.Skipf(t, "conformance: this deployment's event catalog offers %d event types and the assertion needs %d",
 			len(names), atLeast)
 	}
 
@@ -266,7 +266,7 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 	t.Helper()
 
 	if sub.UserID == "" {
-		t.Skip("conformance: this subject does not surface the caller's user identifier")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's user identifier")
 	}
 }
 

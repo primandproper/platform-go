@@ -51,12 +51,12 @@ func run(t *testing.T, s *conformance.Session) {
 	probe := s.Subject(t)
 
 	if probe.Conn == nil {
-		t.Skip("conformance: this subject supplies no connection to invoke a read by name through")
+		conformance.Skip(t, "conformance: this subject supplies no connection to invoke a read by name through")
 	}
 
 	reads := pagedrpc.Mounted(&probe.Surfaces)
 	if len(reads) == 0 {
-		t.Skip("conformance: this subject mounts no surface with a paged read")
+		conformance.Skip(t, "conformance: this subject mounts no surface with a paged read")
 	}
 
 	seams := s.Seams()
@@ -72,7 +72,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 			control, reason := read.Request(subject, &seams, &filteringpb.QueryFilter{SortBy: new("asc")})
 			if reason != "" {
-				t.Skipf("conformance: %s cannot be asserted here: %s", read.FullName, reason)
+				conformance.Skipf(t, "conformance: %s cannot be asserted here: %s", read.FullName, reason)
 			}
 
 			controlErr := subject.Conn.Invoke(ctx, read.FullName, control, read.Response())

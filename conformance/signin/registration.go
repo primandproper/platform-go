@@ -133,7 +133,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		operator := directoryCaller(t, s, updateUserAccountStatus)
 
 		if s.Seams().SignedIn == nil {
-			t.Skip("conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
+			conformance.Skip(t, "conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
 		}
 
 		who, _ := register(t, s, withPassword(registrationRequest(s)))
@@ -272,12 +272,12 @@ func registration(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		if !s.Seams().InvitationTokenReturned {
-			t.Skip("conformance: this subject does not return an invitation's token to its sender (Seams.InvitationTokenReturned), so there is no copied link; skipping")
+			conformance.Skip(t, "conformance: this subject does not return an invitation's token to its sender (Seams.InvitationTokenReturned), so there is no copied link; skipping")
 		}
 
 		inviter := directoryCaller(t, s, invite)
 		if inviter.AccountID == "" {
-			t.Skip("conformance: this subject does not surface the inviter's account, so there is no account to be invited into; skipping")
+			conformance.Skip(t, "conformance: this subject does not surface the inviter's account, so there is no account to be invited into; skipping")
 		}
 
 		addressed := freshEmail()

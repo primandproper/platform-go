@@ -70,7 +70,7 @@ func colleague(t *testing.T, s *conformance.Session, of *conformance.Subject, me
 	other := s.Subject(t, conformance.Making(methods...), conformance.InTenant(surface, of.ScopeFor(surface)))
 
 	if of.UserID == other.UserID {
-		t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a colleague's registration cannot be told from the caller's own")
+		conformance.Skip(t, "conformance: the subject answers one administrator for every request in a tenant, so a colleague's registration cannot be told from the caller's own")
 	}
 
 	return other

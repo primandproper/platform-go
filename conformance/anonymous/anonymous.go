@@ -109,7 +109,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 	anonymous := s.Seams().Anonymous
 	if anonymous == nil {
-		t.Skip("conformance: this subject supplies no callerless connection, and one cannot be synthesized from an authenticated one")
+		conformance.Skip(t, "conformance: this subject supplies no callerless connection, and one cannot be synthesized from an authenticated one")
 	}
 
 	conn, err := anonymous(t.Context())

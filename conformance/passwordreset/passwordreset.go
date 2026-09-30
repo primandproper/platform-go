@@ -68,7 +68,7 @@ func resettable(t *testing.T, s *conformance.Session, doors ...string) (*conform
 		conformance.InTenant(surface, tenancy.Global()))
 
 	if sub.Surfaces.Identity == nil {
-		t.Skip("conformance: this subject mounts no identity surface, so a caller's address cannot be read")
+		conformance.Skip(t, "conformance: this subject mounts no identity surface, so a caller's address cannot be read")
 	}
 
 	found, err := sub.Surfaces.Identity.GetPrincipal(sub.Context(t.Context()), &identitypb.GetPrincipalRequest{})

@@ -35,7 +35,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 	reserved := s.Seams().OperatorMethods
 	if len(reserved) == 0 {
-		t.Skip("conformance: this subject reserves nothing, so there is no reservation to hold it to")
+		conformance.Skip(t, "conformance: this subject reserves nothing, so there is no reservation to hold it to")
 	}
 
 	probe := s.Subject(t)
@@ -61,7 +61,7 @@ func assertReserved(t *testing.T, s *conformance.Session, probe *conformance.Sub
 
 	surface, method := resolve(t, full)
 	if !surface.Mounted(probe.Surfaces) {
-		t.Skipf("conformance: this subject reserves %s and mounts no %s surface to make it on", full, surface.Name)
+		conformance.Skipf(t, "conformance: this subject reserves %s and mounts no %s surface to make it on", full, surface.Name)
 	}
 
 	admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(full))
@@ -69,7 +69,7 @@ func assertReserved(t *testing.T, s *conformance.Session, probe *conformance.Sub
 	switch control := call(admin.Context(t.Context()), admin.Conn, full, method); status.Code(control) {
 	case codes.PermissionDenied:
 		if reason, listed := emptyRequestRefused[full]; listed {
-			t.Skipf("conformance: %s refuses an administrator's empty request as PermissionDenied too (%s), "+
+			conformance.Skipf(t, "conformance: %s refuses an administrator's empty request as PermissionDenied too (%s), "+
 				"so a reservation cannot be told from it", full, reason)
 		}
 
@@ -127,7 +127,7 @@ func resolve(t *testing.T, full string) (*services.Service, protoreflect.MethodD
 		return &all[i], method
 	}
 
-	t.Skipf("conformance: %s is not on one of this module's surfaces; that the subject refuses it to a member is "+
+	conformance.Skipf(t, "conformance: %s is not on one of this module's surfaces; that the subject refuses it to a member is "+
 		"the subject's own test, beside its test that an operator may make it", full)
 
 	return nil, nil

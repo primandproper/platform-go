@@ -110,7 +110,7 @@ func needsAccount(t *testing.T, sub *conformance.Subject) {
 	t.Helper()
 
 	if sub.AccountID == "" {
-		t.Skip("conformance: this subject does not surface the caller's account identifier")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's account identifier")
 	}
 }
 

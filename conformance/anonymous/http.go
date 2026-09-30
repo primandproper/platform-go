@@ -112,9 +112,9 @@ func runHTTP(t *testing.T, s *conformance.Session, probe *conformance.Subject) {
 
 	switch {
 	case probe.HTTP == nil:
-		t.Skip("conformance: this subject serves no HTTP surfaces")
+		conformance.Skip(t, "conformance: this subject serves no HTTP surfaces")
 	case anonymousHTTP == nil:
-		t.Skip("conformance: this subject supplies no callerless HTTP client, and one cannot be synthesized from an authenticated one")
+		conformance.Skip(t, "conformance: this subject supplies no callerless HTTP client, and one cannot be synthesized from an authenticated one")
 	}
 
 	client, err := anonymousHTTP(t.Context())

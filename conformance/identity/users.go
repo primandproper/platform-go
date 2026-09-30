@@ -418,7 +418,7 @@ func users(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		if !s.Seams().PrincipalPermissions {
-			t.Skip("conformance: this deployment serves no permissions on the principal read")
+			conformance.Skip(t, "conformance: this deployment serves no permissions on the principal read")
 		}
 
 		// The second role, because a vocabulary may spell the first as the

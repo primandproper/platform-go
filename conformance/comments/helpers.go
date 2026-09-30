@@ -47,7 +47,7 @@ func needsTarget(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
 	if s.Seams().Actions.CommentTarget == nil && s.Seams().CommentTargetType == "" {
-		t.Skip("conformance: this subject names no comment target type (Seams.CommentTargetType) and supplies " +
+		conformance.Skip(t, "conformance: this subject names no comment target type (Seams.CommentTargetType) and supplies "+
 			"no comment target action, and every comment is about a thing of some type")
 	}
 }
@@ -128,22 +128,23 @@ func replies(t *testing.T, caller *conformance.Subject, about *commentspb.Commen
 	return commentIDs(page.GetResults())
 }
 
-// byTargetType lists everything said about things of one type, skipping where
-// the caller may not.
+// byTargetType lists everything said about things of one type.
 //
 // It is the moderation read and carries a grant of its own, so a deployment
-// may well reserve it, and caller is minted naming it. Where the subject does
-// not reserve it that is an ordinary caller, which a deployment enforcing a
-// grant inside the handler may still refuse; that refusal is the deployment
-// being right rather than the surface being wrong, so the assertion that
-// needed the read skips rather than failing.
+// may well reserve it, and caller is minted naming it: an administrator where
+// the subject reserves it in Seams.OperatorMethods, and an ordinary caller
+// where it does not. A refusal of that caller is a refusal the deployment did
+// not declare, and fails naming the declaration it owes rather than skipping —
+// a skip decided by the server's answer is one a deployment refusing the read
+// to everybody would pass.
 func byTargetType(t *testing.T, caller *conformance.Subject, targetType string) []string {
 	t.Helper()
 
 	page, err := caller.Surfaces.Comments.ListCommentsByTargetType(caller.Context(t.Context()),
 		&commentspb.ListCommentsByTargetTypeRequest{TargetType: targetType})
 	if status.Code(err) == codes.PermissionDenied {
-		t.Skip("conformance: this caller may not make the moderation read, and the subject mints no caller who may")
+		t.Fatalf("conformance: the moderation read was refused (%v) to a caller minted for it; "+
+			"a deployment that keeps ListCommentsByTargetType from its members names it in Seams.OperatorMethods", err)
 	}
 
 	must.NoError(t, err, must.Sprintf("listing everything said about %q", targetType))
@@ -191,7 +192,7 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 	t.Helper()
 
 	if sub.UserID == "" {
-		t.Skip("conformance: this subject does not surface the caller's user identifier")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's user identifier")
 	}
 }
 
