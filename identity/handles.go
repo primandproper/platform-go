@@ -44,10 +44,10 @@ func FoldHandle(handle string) string { return strings.ToLower(handle) }
 // whitespace, which is the one spelling of a handle FoldHandle does not settle
 // and the columns' collation answers differently per dialect.
 //
-// MariaDB's utf8mb4_bin — the collation these columns carry to settle the
-// accent half — is still PAD SPACE, so "ada  " compares equal to "ada" there
-// and UNIQUE (scope, username) refuses it, where Postgres and SQLite compare
-// the trailing bytes and store a second user. The remaining divergence is
+// MySQL 8's utf8mb4_bin — the collation these columns carry to settle the
+// accent half — is PAD SPACE, so "ada  " compares equal to "ada" there and
+// UNIQUE (scope, username) refuses it, where Postgres and SQLite compare the
+// trailing bytes and store a second user. The remaining divergence is
 // therefore a registration that succeeds on one engine and collides on
 // another, which is the failure the fold was written to remove.
 //
@@ -77,6 +77,25 @@ func checkUsernameWhitespace(username string) error {
 	}
 
 	return platformerrors.Wrapf(ErrUsernameWhitespace, "username %q", username)
+}
+
+// lookupHandle is checkUsernameWhitespace's lookup-side twin: it folds a
+// handle a read is about to bind, and reports false for one that begins or
+// ends with whitespace, which the caller answers as not found without asking
+// the database.
+//
+// The write side refuses such a handle, so no row holds one and "not found" is
+// the true answer on every dialect. Asking the database would not give it on
+// every dialect: MySQL 8's PAD SPACE collation ignores trailing spaces in a
+// comparison, so "ada " would find ada there and nothing on Postgres or SQLite,
+// and a lockout keyed on the typed handle could be spread across padded
+// spellings of one account. Trimming instead would sign "ada " in as ada on all
+// three, a leniency the write side deliberately refused.
+//
+// It covers email addresses too. emailAddressRule already refuses a padded
+// address on write, so the same reasoning holds for email_address and to_email.
+func lookupHandle(handle string) (folded string, ok bool) {
+	return FoldHandle(handle), strings.TrimSpace(handle) == handle
 }
 
 // foldUserHandles settles the three columns a user write does not store

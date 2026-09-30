@@ -203,7 +203,7 @@ func TestMappers_aScopeMismatchIsABadRequest(T *testing.T) {
 
 // TestMappers_aPaddedHandleIsABadRequest. Nothing collided and nothing was
 // refused on authority: the value is one no two engines agree about, because
-// MariaDB's PAD SPACE collation calls "ada  " a collision with "ada" and the
+// MySQL 8's PAD SPACE collation calls "ada  " a collision with "ada" and the
 // other two do not. The message is the remedy rather than the reason, which is
 // the part a form can act on.
 func TestMappers_aPaddedHandleIsABadRequest(T *testing.T) {
