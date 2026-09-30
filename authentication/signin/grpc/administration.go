@@ -20,7 +20,9 @@ var _ signinpb.SignInAdministrationServiceServer = (*Server)(nil)
 // It is ListSignIns with the subject taken from the request rather than the
 // caller, which is the whole of why it is on a service of its own behind
 // [PermissionReadAnySignIns]. No entry is marked current: the request was made
-// through the operator's login, and none of these is that.
+// through the operator's login, and none of these is that. The attributes are
+// the [SignInAnnotator]'s answer for the named user, as ListSignIns' are for
+// the caller.
 func (s *Server) ListSignInsForUser(
 	ctx context.Context,
 	request *signinpb.ListSignInsForUserRequest,
@@ -39,12 +41,12 @@ func (s *Server) ListSignInsForUser(
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "listing a user's sign-ins")
 	}
 
-	response := &signinpb.ListSignInsForUserResponse{SignIns: make([]*signinpb.ActiveSignIn, 0, len(signIns))}
-	for _, signIn := range signIns {
-		response.SignIns = append(response.SignIns, ActiveSignInToProto(signIn))
+	converted, err := s.annotated(ctx, req.scope, request.GetUserId(), signIns)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "annotating a user's sign-ins")
 	}
 
-	return response, nil
+	return &signinpb.ListSignInsForUserResponse{SignIns: converted}, nil
 }
 
 // EndSignInForUser ends one of the named user's logins, named by its family.

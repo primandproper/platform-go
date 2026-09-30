@@ -1,6 +1,9 @@
 package grpc_test
 
 import (
+	"context"
+	"slices"
+	"sync"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -9,6 +12,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -273,5 +277,177 @@ func TestServer_EndOtherSignIns(T *testing.T) {
 		_, err := h.client.EndOtherSignIns(h.rootCtx, &signinpb.EndOtherSignInsRequest{})
 		test.ErrorIs(t, err, signingrpc.ErrNoPrincipal)
 		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+}
+
+// annotatorCall is what a SignInAnnotator was asked.
+type annotatorCall struct {
+	scope     tenancy.Scope
+	userID    string
+	familyIDs []string
+}
+
+// recordingAnnotator answers with what it was given and records every call,
+// standing in for a consumer's device table keyed on the family.
+type recordingAnnotator struct {
+	answer map[string]map[string]string
+	err    error
+	calls  []annotatorCall
+	mu     sync.Mutex
+}
+
+func (a *recordingAnnotator) annotate(
+	_ context.Context,
+	scope tenancy.Scope,
+	userID string,
+	familyIDs []string,
+) (map[string]map[string]string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.calls = append(a.calls, annotatorCall{scope: scope, userID: userID, familyIDs: slices.Clone(familyIDs)})
+
+	return a.answer, a.err
+}
+
+func (a *recordingAnnotator) heard() []annotatorCall {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	return slices.Clone(a.calls)
+}
+
+func TestServer_ListSignIns_Annotation(T *testing.T) {
+	T.Parallel()
+
+	// The platform's half of the screen is on the wire whether or not a
+	// consumer annotates: how the login happened is signin's to say.
+	T.Run("says how each login happened, and carries no attributes without an annotator", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		h.signInAsJane(t)
+
+		listed, err := h.client.ListSignIns(h.asJane(), &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, listed.GetSignIns())
+		test.EqOp(t, string(signin.CredentialKindPassword), listed.GetSignIns()[0].GetCredentialKind())
+		test.MapEmpty(t, listed.GetSignIns()[0].GetAttributes())
+	})
+
+	T.Run("fills each login's attributes from the annotator's answer", func(t *testing.T) {
+		t.Parallel()
+
+		annotator := &recordingAnnotator{}
+		h := newRefreshHarness(t, nil, signingrpc.WithSignInAnnotator(annotator.annotate))
+
+		phone := h.signInAsJane(t)
+		laptop := h.signInAsJane(t)
+
+		annotator.answer = map[string]map[string]string{
+			phone.GetFamilyId(): {"device": "Jane's phone", "user_agent": "Mobile Safari"},
+			// A family the listing did not return is ignored rather than
+			// invented into an entry.
+			"family_not_listed": {"device": "somebody else's"},
+		}
+
+		listed, err := h.client.ListSignIns(asUserIn(h.rootCtx, h.user.ID, laptop.GetFamilyId()), &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+		must.SliceLen(t, 2, listed.GetSignIns())
+
+		attributes := map[string]map[string]string{}
+		for _, signIn := range listed.GetSignIns() {
+			attributes[signIn.GetFamilyId()] = signIn.GetAttributes()
+		}
+
+		test.Eq(t, map[string]string{"device": "Jane's phone", "user_agent": "Mobile Safari"}, attributes[phone.GetFamilyId()])
+		test.MapEmpty(t, attributes[laptop.GetFamilyId()], test.Sprint("a login the annotator had nothing for was given something"))
+
+		// One call for the whole listing, about the caller, in the listing's
+		// scope, naming every family it returned.
+		calls := annotator.heard()
+		must.SliceLen(t, 1, calls)
+		test.EqOp(t, testScope, calls[0].scope)
+		test.EqOp(t, h.user.ID, calls[0].userID)
+		test.SliceContainsAll(t, []string{phone.GetFamilyId(), laptop.GetFamilyId()}, calls[0].familyIDs)
+	})
+
+	// No silent half-answer: a screen listing the logins and none of their
+	// devices would look like an answer and not be one.
+	T.Run("an annotator that fails fails the listing", func(t *testing.T) {
+		t.Parallel()
+
+		annotator := &recordingAnnotator{err: platformerrors.New("device table unreachable")}
+		h := newRefreshHarness(t, nil, signingrpc.WithSignInAnnotator(annotator.annotate))
+
+		h.signInAsJane(t)
+
+		listed, err := h.client.ListSignIns(h.asJane(), &signinpb.ListSignInsRequest{})
+		test.Nil(t, listed)
+		test.EqOp(t, codes.Internal, status.Code(err))
+		test.SliceLen(t, 1, annotator.heard())
+	})
+
+	T.Run("is not asked about a listing with no logins in it", func(t *testing.T) {
+		t.Parallel()
+
+		annotator := &recordingAnnotator{err: platformerrors.New("should not have been asked")}
+		h := newRefreshHarness(t, nil, signingrpc.WithSignInAnnotator(annotator.annotate))
+
+		listed, err := h.client.ListSignIns(h.asJane(), &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+		test.SliceEmpty(t, listed.GetSignIns())
+		test.SliceEmpty(t, annotator.heard())
+	})
+
+	T.Run("a nil annotator is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil, signingrpc.WithSignInAnnotator(nil))
+
+		h.signInAsJane(t)
+
+		listed, err := h.client.ListSignIns(h.asJane(), &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, listed.GetSignIns())
+		test.MapEmpty(t, listed.GetSignIns()[0].GetAttributes())
+	})
+
+	// The operator's view of somebody else's logins is annotated about the
+	// user it names, not about the operator asking.
+	T.Run("annotates an operator's listing about the user it names", func(t *testing.T) {
+		t.Parallel()
+
+		annotator := &recordingAnnotator{}
+		h := newRefreshHarness(t, nil, signingrpc.WithSignInAnnotator(annotator.annotate))
+
+		phone := h.signInAsJane(t)
+		annotator.answer = map[string]map[string]string{phone.GetFamilyId(): {"device": "Jane's phone"}}
+
+		listed, err := h.admin.ListSignInsForUser(asUser(h.rootCtx, operatorID),
+			&signinpb.ListSignInsForUserRequest{UserId: h.user.ID})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, listed.GetSignIns())
+		test.Eq(t, map[string]string{"device": "Jane's phone"}, listed.GetSignIns()[0].GetAttributes())
+		test.EqOp(t, string(signin.CredentialKindPassword), listed.GetSignIns()[0].GetCredentialKind())
+
+		calls := annotator.heard()
+		must.SliceLen(t, 1, calls)
+		test.EqOp(t, h.user.ID, calls[0].userID)
+		test.Eq(t, []string{phone.GetFamilyId()}, calls[0].familyIDs)
+	})
+
+	T.Run("an annotator that fails fails an operator's listing", func(t *testing.T) {
+		t.Parallel()
+
+		annotator := &recordingAnnotator{err: platformerrors.New("device table unreachable")}
+		h := newRefreshHarness(t, nil, signingrpc.WithSignInAnnotator(annotator.annotate))
+
+		h.signInAsJane(t)
+
+		_, err := h.admin.ListSignInsForUser(asUser(h.rootCtx, operatorID),
+			&signinpb.ListSignInsForUserRequest{UserId: h.user.ID})
+		test.EqOp(t, codes.Internal, status.Code(err))
 	})
 }

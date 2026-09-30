@@ -32,7 +32,8 @@ const getLiveRefreshTokenForFamilyPostgreSQL = `SELECT
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at,
 	{{prefix}}signin_refresh_tokens.access_token_id,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = $1
 	AND {{prefix}}signin_refresh_tokens.family_id = $2
@@ -53,7 +54,8 @@ const getRefreshTokenPostgreSQL = `SELECT
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at,
 	{{prefix}}signin_refresh_tokens.access_token_id,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = $1
 	AND {{prefix}}signin_refresh_tokens.scope = $2`
@@ -78,7 +80,8 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	expires_at,
 	purge_after,
 	access_token_id,
-	actor_id
+	actor_id,
+	credential_kind
 ) VALUES (
 	$1,
 	$2,
@@ -91,7 +94,8 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	$9,
 	$10,
 	$11,
-	$12
+	$12,
+	$13
 )`
 
 const listLiveRefreshTokenFamiliesPostgreSQL = `SELECT
@@ -101,7 +105,8 @@ const listLiveRefreshTokenFamiliesPostgreSQL = `SELECT
 	{{prefix}}signin_refresh_tokens.issued_at,
 	{{prefix}}signin_refresh_tokens.signed_in_at,
 	{{prefix}}signin_refresh_tokens.expires_at,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = $1
 	AND {{prefix}}signin_refresh_tokens.subject_id = $2
@@ -284,6 +289,7 @@ func (q *postgresqlQueries) GetLiveRefreshTokenForFamily(ctx context.Context, db
 		&i.RevokedAt,
 		&i.AccessTokenID,
 		&i.ActorID,
+		&i.CredentialKind,
 	)
 
 	return i, err
@@ -312,6 +318,7 @@ func (q *postgresqlQueries) GetRefreshToken(ctx context.Context, db DBTX, arg Ge
 		&i.RevokedAt,
 		&i.AccessTokenID,
 		&i.ActorID,
+		&i.CredentialKind,
 	)
 
 	return i, err
@@ -349,6 +356,7 @@ func (q *postgresqlQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg
 		arg.PurgeAfter,
 		arg.AccessTokenID,
 		arg.ActorID,
+		arg.CredentialKind,
 	)
 
 	return err
@@ -381,6 +389,7 @@ func (q *postgresqlQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db
 			&i.SignedInAt,
 			&i.ExpiresAt,
 			&i.ActorID,
+			&i.CredentialKind,
 		); err != nil {
 			return nil, err
 		}
@@ -658,6 +667,7 @@ var (
 		RevokedAt       *time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(GetLiveRefreshTokenForFamilyRow{})
 	_ = struct {
 		Hash  string
@@ -677,6 +687,7 @@ var (
 		RevokedAt       *time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(GetRefreshTokenRow{})
 	_ = struct {
 		Hash  string
@@ -699,6 +710,7 @@ var (
 		PurgeAfter      time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(InsertRefreshTokenParams{})
 	_ = struct {
 		Scope       tenancy.Scope
@@ -714,6 +726,7 @@ var (
 		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		ActorID         *string
+		CredentialKind  *string
 	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
 		Scope       tenancy.Scope

@@ -51,6 +51,7 @@ func rotate(tb testing.TB, store *SQLStore, scope tenancy.Scope, secret string) 
 			SubjectID:       spent.SubjectID,
 			ActiveAccountID: spent.ActiveAccountID,
 			Administrative:  spent.Administrative,
+			CredentialKind:  spent.CredentialKind,
 		})
 
 		return err
@@ -173,6 +174,69 @@ func TestSQLStore_ListActiveSignIns(T *testing.T) {
 		must.SliceLen(t, 1, signIns)
 		test.True(t, signIns[0].Administrative)
 		test.EqOp(t, "", signIns[0].ActiveAccountID)
+	})
+
+	// The kind is written by the mint, read back off the spent row by the
+	// exchange, and so carried onto the successor the listing then reads — the
+	// round trip a login that refreshes for a month makes every hour.
+	T.Run("reports how a login happened, across a refresh", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		first, err := issueFor(t, store, testScope(), &signin.RefreshTokenRequest{
+			TTL:            time.Hour,
+			FamilyID:       testFamilyID,
+			SubjectID:      testSubject,
+			CredentialKind: signin.CredentialKindMagicLink,
+		})
+		must.NoError(t, err)
+		test.EqOp(t, signin.CredentialKindMagicLink, first.Token.CredentialKind)
+
+		second := rotate(t, store, testScope(), first.Secret)
+		test.EqOp(t, signin.CredentialKindMagicLink, second.Token.CredentialKind)
+
+		signIns := listSignIns(t, store, testScope(), testSubject, 10)
+		must.SliceLen(t, 1, signIns)
+		test.EqOp(t, signin.CredentialKindMagicLink, signIns[0].CredentialKind)
+
+		live, err := store.LiveToken(t.Context(), store.db.Reader(), testScope(), testFamilyID)
+		must.NoError(t, err)
+		test.EqOp(t, signin.CredentialKindMagicLink, live.CredentialKind)
+	})
+
+	// A kind is the consumer's to name through the service, so one this package
+	// has never heard of is recorded as given.
+	T.Run("records a kind this package has not heard of as given", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		_, err := issueFor(t, store, testScope(), &signin.RefreshTokenRequest{
+			TTL:            time.Hour,
+			FamilyID:       testFamilyID,
+			SubjectID:      testSubject,
+			CredentialKind: signin.CredentialKind("passkey"),
+		})
+		must.NoError(t, err)
+
+		signIns := listSignIns(t, store, testScope(), testSubject, 10)
+		must.SliceLen(t, 1, signIns)
+		test.EqOp(t, signin.CredentialKind("passkey"), signIns[0].CredentialKind)
+	})
+
+	// A mint that names no kind stores NULL, and it reads back as none rather
+	// than as some kind the store chose.
+	T.Run("reports no kind for a login that recorded none", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		mintInto(t, store, testScope(), testFamilyID, testSubject)
+
+		signIns := listSignIns(t, store, testScope(), testSubject, 10)
+		must.SliceLen(t, 1, signIns)
+		test.EqOp(t, signin.CredentialKind(""), signIns[0].CredentialKind)
 	})
 
 	// Live is the exchange's reading: revoked and lapsed logins are gone from

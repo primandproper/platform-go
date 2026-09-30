@@ -95,6 +95,18 @@ being constructed is a process-wide side effect a consumer cannot opt out of.
 Without it every refusal below arrives as codes.Unknown, which for a sign-in
 means a client cannot tell "wrong password" from "the database is down".
 
+# Where you're signed in
+
+ListSignIns and ListSignInsForUser answer each login with what signin knows
+about it — when it began and last refreshed, the account, the operator behind an
+impersonation, and the credential kind that began it — and with the attributes
+a [SignInAnnotator] answers for it. The division is the one signin's package
+documentation draws: the platform lists the logins and records how each one
+happened, and the consumer annotates the device. [WithSignInAnnotator] is the
+seam, asked once per listing for every family in it; a server built without one
+lists every login with no attributes, and one whose annotator fails answers the
+RPC with that error rather than with half the screen.
+
 # What a consumer still owes
 
 Transport security. Several of these RPCs carry a plaintext password and one

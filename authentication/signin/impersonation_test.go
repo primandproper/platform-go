@@ -314,6 +314,7 @@ func TestService_IssueImpersonationToken_IsALogin(T *testing.T) {
 	must.SliceLen(T, 1, signIns)
 	test.EqOp(T, signedIn.FamilyID, signIns[0].FamilyID)
 	test.EqOp(T, operator.ID, signIns[0].ActorID, test.Sprint("the subject's list did not say who was signed in as them"))
+	test.EqOp(T, signin.CredentialKindImpersonation, signIns[0].CredentialKind)
 	test.EqOp(T, signin.DefaultImpersonationTokenTTL,
 		signIns[0].ExpiresAt.Sub(signIns[0].SignedInAt).Round(time.Minute))
 

@@ -48,3 +48,6 @@ ALTER TABLE signin_refresh_tokens
 ALTER TABLE signin_refresh_tokens
     ADD COLUMN IF NOT EXISTS actor_id TEXT;
 
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN IF NOT EXISTS credential_kind TEXT;
+
