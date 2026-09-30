@@ -25,6 +25,10 @@ import (
 // response's rows all belong to the scope the connection resolved, so a scope
 // field would tell a client something it supplied — and its absence is what
 // makes a converter unable to read one back out of a request.
+//
+// The one exception is ScopedIssueReport, the row the operator's reads across
+// tenants answer with, whose rows are not the caller's. It is named rather than
+// detected, and TestOnlyAResponseCarriesAScope holds it to being output.
 func TestTheScopeNameIsReservedEverywhere(T *testing.T) {
 	T.Parallel()
 
@@ -36,7 +40,7 @@ func TestTheScopeNameIsReservedEverywhere(T *testing.T) {
 
 		// The two empty responses have nothing to say about a scope and nothing
 		// to hide one in; a reservation on them would be paperwork.
-		if message.Fields().Len() == 0 {
+		if message.Fields().Len() == 0 || message.FullName() == scopedReport {
 			continue
 		}
 
@@ -47,6 +51,57 @@ func TestTheScopeNameIsReservedEverywhere(T *testing.T) {
 				"%s does not reserve the name \"scope\", so protoc would accept one being added", message.Name()))
 		})
 	}
+}
+
+// scopedReport is the one message that carries a scope.
+const scopedReport protoreflect.FullName = "primandproper.platform.issuereports.v1.ScopedIssueReport"
+
+// TestOnlyAResponseCarriesAScope keeps the exception above to what it was
+// argued for: a scope a server tells an operator, never one a client tells the
+// server. A request that grew a ScopedIssueReport field would be a scope a
+// client could name, reached by a path TestTheScopeNameIsReservedEverywhere
+// does not look down.
+func TestOnlyAResponseCarriesAScope(T *testing.T) {
+	T.Parallel()
+
+	must.NotNil(T, messageNamed(T, scopedReport).Fields().ByName("scope"),
+		must.Sprint("ScopedIssueReport carries no scope, so the exception exempts nothing"))
+
+	methods := issuereportspb.File_primandproper_platform_issuereports_v1_issuereports_proto.
+		Services().ByName("IssueReportsService").Methods()
+
+	for i := range methods.Len() {
+		input := methods.Get(i).Input()
+
+		T.Run(string(input.Name()), func(t *testing.T) {
+			t.Parallel()
+
+			test.False(t, reaches(input, scopedReport, map[protoreflect.FullName]bool{}), test.Sprintf(
+				"%s can carry a ScopedIssueReport, so a client could name a scope", input.Name()))
+		})
+	}
+}
+
+// reaches reports whether a message can hold target anywhere beneath it.
+func reaches(message protoreflect.MessageDescriptor, target protoreflect.FullName, seen map[protoreflect.FullName]bool) bool {
+	if message.FullName() == target {
+		return true
+	}
+
+	if seen[message.FullName()] {
+		return false
+	}
+
+	seen[message.FullName()] = true
+
+	fields := message.Fields()
+	for i := range fields.Len() {
+		if nested := fields.Get(i).Message(); nested != nil && reaches(nested, target, seen) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // TestNoWriteCanCarryAReporter is the structural half of "a report is filed by
@@ -206,16 +261,16 @@ func TestTheStatusEnumCarriesItsNoun(T *testing.T) {
 	test.EqOp(T, protoreflect.Name("REPORT_STATUS_UNSPECIFIED"), values.ByNumber(0).Name())
 }
 
-// TestTheServiceIsTenMethods pins the count the .proto's service comment argues
-// for, so that an eleventh arrives with a failing test naming the argument
-// rather than as a diff nobody weighed against it.
-func TestTheServiceIsTenMethods(T *testing.T) {
+// TestTheServiceIsTwelveMethods pins the count the .proto's service comment
+// argues for, so that a thirteenth arrives with a failing test naming the
+// argument rather than as a diff nobody weighed against it.
+func TestTheServiceIsTwelveMethods(T *testing.T) {
 	T.Parallel()
 
 	methods := issuereportspb.File_primandproper_platform_issuereports_v1_issuereports_proto.
 		Services().ByName("IssueReportsService").Methods()
 
-	test.EqOp(T, 10, methods.Len())
+	test.EqOp(T, 12, methods.Len())
 }
 
 func reserves(message protoreflect.MessageDescriptor, name protoreflect.Name) bool {

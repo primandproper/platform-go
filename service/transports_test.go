@@ -1075,8 +1075,8 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		var asked *tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				asked = query.Scope
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = &scope
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},
@@ -1099,7 +1099,7 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		t.Parallel()
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			ListFunc: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 				t.Error("the reader must not be consulted for a request with nobody on it")
 
 				return nil, nil
@@ -1126,8 +1126,8 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		var asked *tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				asked = query.Scope
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = &scope
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},

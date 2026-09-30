@@ -668,3 +668,213 @@ WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT date
 	AND (issue_reports.id <= COALESCE(sqlc.narg(page_cursor), issue_reports.id) AND issue_reports.id <> COALESCE(sqlc.narg(page_cursor), ''))
 ORDER BY issue_reports.id DESC
 LIMIT COALESCE(sqlc.narg(result_limit), 50);
+
+-- name: ListReportsAcrossScopes :many
+SELECT
+	issue_reports.id,
+	issue_reports.scope,
+	issue_reports.reporter,
+	issue_reports.kind,
+	issue_reports.details,
+	issue_reports.subject_type,
+	issue_reports.subject_id,
+	issue_reports.status,
+	issue_reports.resolution,
+	issue_reports.closed_at,
+	issue_reports.created_at,
+	issue_reports.last_updated_at,
+	issue_reports.archived_at,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM issue_reports
+WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	AND issue_reports.id > COALESCE(sqlc.narg(page_cursor), '')
+ORDER BY issue_reports.id ASC
+LIMIT COALESCE(sqlc.narg(result_limit), 50);
+
+-- name: ListReportsAcrossScopesDescending :many
+SELECT
+	issue_reports.id,
+	issue_reports.scope,
+	issue_reports.reporter,
+	issue_reports.kind,
+	issue_reports.details,
+	issue_reports.subject_type,
+	issue_reports.subject_id,
+	issue_reports.status,
+	issue_reports.resolution,
+	issue_reports.closed_at,
+	issue_reports.created_at,
+	issue_reports.last_updated_at,
+	issue_reports.archived_at,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM issue_reports
+WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	AND (issue_reports.id <= COALESCE(sqlc.narg(page_cursor), issue_reports.id) AND issue_reports.id <> COALESCE(sqlc.narg(page_cursor), ''))
+ORDER BY issue_reports.id DESC
+LIMIT COALESCE(sqlc.narg(result_limit), 50);
+
+-- name: ListReportsByStatusAcrossScopes :many
+SELECT
+	issue_reports.id,
+	issue_reports.scope,
+	issue_reports.reporter,
+	issue_reports.kind,
+	issue_reports.details,
+	issue_reports.subject_type,
+	issue_reports.subject_id,
+	issue_reports.status,
+	issue_reports.resolution,
+	issue_reports.closed_at,
+	issue_reports.created_at,
+	issue_reports.last_updated_at,
+	issue_reports.archived_at,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+			AND issue_reports.status = sqlc.arg(status)
+	) AS filtered_count,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+			AND issue_reports.status = sqlc.arg(status)
+	) AS total_count
+FROM issue_reports
+WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	AND issue_reports.status = sqlc.arg(status)
+	AND issue_reports.id > COALESCE(sqlc.narg(page_cursor), '')
+ORDER BY issue_reports.id ASC
+LIMIT COALESCE(sqlc.narg(result_limit), 50);
+
+-- name: ListReportsByStatusAcrossScopesDescending :many
+SELECT
+	issue_reports.id,
+	issue_reports.scope,
+	issue_reports.reporter,
+	issue_reports.kind,
+	issue_reports.details,
+	issue_reports.subject_type,
+	issue_reports.subject_id,
+	issue_reports.status,
+	issue_reports.resolution,
+	issue_reports.closed_at,
+	issue_reports.created_at,
+	issue_reports.last_updated_at,
+	issue_reports.archived_at,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				issue_reports.last_updated_at IS NULL
+				OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+			AND issue_reports.status = sqlc.arg(status)
+	) AS filtered_count,
+	(
+		SELECT COUNT(issue_reports.id)
+		FROM issue_reports
+		WHERE (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+			AND issue_reports.status = sqlc.arg(status)
+	) AS total_count
+FROM issue_reports
+WHERE issue_reports.created_at > COALESCE(sqlc.narg(created_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND issue_reports.created_at < COALESCE(sqlc.narg(created_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at > COALESCE(sqlc.narg(updated_after), (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		issue_reports.last_updated_at IS NULL
+		OR issue_reports.last_updated_at < COALESCE(sqlc.narg(updated_before), (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(sqlc.narg(include_archived), false) = true OR issue_reports.archived_at IS NULL)
+	AND issue_reports.status = sqlc.arg(status)
+	AND (issue_reports.id <= COALESCE(sqlc.narg(page_cursor), issue_reports.id) AND issue_reports.id <> COALESCE(sqlc.narg(page_cursor), ''))
+ORDER BY issue_reports.id DESC
+LIMIT COALESCE(sqlc.narg(result_limit), 50);

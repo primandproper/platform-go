@@ -48,8 +48,8 @@ import (
 // asked for, which is how a test sees which resolver a mounted surface used.
 func scopeRecordingReader(asked **tenancy.Scope) *auditmock.ReaderMock {
 	return &auditmock.ReaderMock{
-		ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-			*asked = query.Scope
+		ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			*asked = &scope
 
 			return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 		},

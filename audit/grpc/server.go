@@ -86,9 +86,9 @@ var (
 // transport lane's rule is derived from.
 //
 // The scope is never the client's to choose. [ScopeResolver] answers it off the
-// connection and this package binds it into every call — as audit.Query.Scope
-// on a list, as the *tenancy.Scope audit.Reader.Get takes, and as the chain a
-// verification walks — and the schema reserves the field name in every request
+// connection and this package binds it into every call — as the scope
+// audit.Reader.List and audit.Reader.Get take, and as the chain a verification
+// walks — and the schema reserves the field name in every request
 // message, so a client has nothing to send it in. Nothing here compares a scope
 // back after an unconfined read: an entry in somebody else's log is not read at
 // all, and the reader answers that with the same audit.ErrEntryNotFound an id
@@ -245,9 +245,8 @@ func (s *Server) begin(ctx context.Context, method string) (
 	// Validated here rather than left to the reader, so that a resolver which
 	// answered the zero Scope without an error is one refusal with one message
 	// for every RPC. Each of them would refuse it on its own — the reader
-	// validates the scope it is handed, and the *tenancy.Scope a get takes
-	// reads a non-nil pointer at the zero Scope as a lookup that came back
-	// empty rather than as "every tenant" — but "the connection could not be
+	// validates the scope it is handed, and reads the zero Scope as a lookup
+	// that came back empty rather than as "every tenant" — but "the connection could not be
 	// placed" is a fact about the request, and it is answered before the
 	// request is answered at all.
 	if err = scope.Validate(); err != nil {

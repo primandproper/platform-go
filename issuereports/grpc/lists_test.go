@@ -369,3 +369,95 @@ func TestEveryListIsAnonymousToNobody(T *testing.T) {
 		})
 	}
 }
+
+// TestListReportsAcrossScopes is the operator's queue: every tenant's reports,
+// each saying whose it is.
+func TestListReportsAcrossScopes(T *testing.T) {
+	T.Parallel()
+
+	T.Run("pages every tenant and names each report's", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		mine := h.seedReport(t, testScope, testReporter)
+		theirs := h.seedReport(t, otherScope, otherReporter)
+
+		res, err := h.server.ListReportsAcrossScopes(h.ctx(t, triager), &issuereportspb.ListReportsAcrossScopesRequest{})
+		must.NoError(t, err)
+		must.NotNil(t, res.GetPagination())
+
+		scopes := map[string]string{}
+		for _, row := range res.GetResults() {
+			scopes[row.GetReport().GetId()] = row.GetScope()
+		}
+
+		test.MapLen(t, 2, scopes)
+		test.EqOp(t, testScope.Owner(), scopes[mine.ID])
+		test.EqOp(t, otherScope.Owner(), scopes[theirs.ID], test.Sprint(
+			"a report from another tenant is missing or unattributed, so the operator cannot act on it"))
+	})
+
+	T.Run("a filter nothing can read is malformed", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		res, err := h.server.ListReportsAcrossScopes(h.ctx(t, triager),
+			&issuereportspb.ListReportsAcrossScopesRequest{Filter: badFilter()})
+		must.Error(t, err)
+		test.Nil(t, res)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+	})
+
+	T.Run("a caller with nobody on the request is unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		_, err := h.server.ListReportsAcrossScopes(t.Context(), &issuereportspb.ListReportsAcrossScopesRequest{})
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+}
+
+// TestListReportsByStatusAcrossScopes is every tenant's triage queue.
+func TestListReportsByStatusAcrossScopes(T *testing.T) {
+	T.Parallel()
+
+	T.Run("pages one status in every tenant", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		open := h.seedReport(t, testScope, testReporter)
+		openElsewhere := h.seedReport(t, otherScope, otherReporter)
+		resolved := h.seedReport(t, otherScope, otherReporter)
+		h.move(t, otherScope, resolved.ID, issuereports.StatusOpen, issuereports.StatusResolved, "done")
+
+		res, err := h.server.ListReportsByStatusAcrossScopes(h.ctx(t, triager),
+			&issuereportspb.ListReportsByStatusAcrossScopesRequest{Status: issuereportspb.ReportStatus_REPORT_STATUS_OPEN})
+		must.NoError(t, err)
+
+		ids := make([]string, 0, len(res.GetResults()))
+		for _, row := range res.GetResults() {
+			ids = append(ids, row.GetReport().GetId())
+		}
+
+		test.SliceContains(t, ids, open.ID)
+		test.SliceContains(t, ids, openElsewhere.ID)
+		test.SliceNotContains(t, ids, resolved.ID)
+	})
+
+	T.Run("STATUS_UNSPECIFIED is refused rather than read as every status", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		res, err := h.server.ListReportsByStatusAcrossScopes(h.ctx(t, triager),
+			&issuereportspb.ListReportsByStatusAcrossScopesRequest{})
+		must.Error(t, err)
+		test.Nil(t, res)
+		test.ErrorIs(t, err, issuereports.ErrUnknownStatus)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+	})
+}

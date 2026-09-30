@@ -209,6 +209,27 @@ func users(t *testing.T, s *conformance.Session) {
 		}
 	})
 
+	t.Run("recording agreement to nothing is refused, and stamps nothing", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(getPrincipal, recordAgreement))
+		before := self(t, caller).GetLastAcceptedTermsOfService()
+
+		// The positive control is "recording agreement stamps every document
+		// named", above: the same call, naming something.
+		_, err := caller.Surfaces.Identity.RecordAgreement(caller.Context(t.Context()), &identitypb.RecordAgreementRequest{})
+		must.Error(t, err, must.Sprint("an agreement to nothing was recorded"))
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		after := self(t, caller).GetLastAcceptedTermsOfService()
+		test.EqOp(t, before == nil, after == nil,
+			test.Sprint("an agreement to nothing stamped the terms of service"))
+		if before != nil && after != nil {
+			test.EqOp(t, before.AsTime(), after.AsTime(),
+				test.Sprint("an agreement to nothing restamped the terms of service"))
+		}
+	})
+
 	t.Run("a search by username prefix is confined to the caller's directory", func(t *testing.T) {
 		t.Parallel()
 

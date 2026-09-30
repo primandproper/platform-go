@@ -379,9 +379,9 @@ read one entry, page them, verify a scope's hash chain. `Record` is not there
 and cannot be — an audit entry that can commit while the change it describes
 rolls back, or the reverse, is not a record of what happened, which is the
 sharpest instance of the rule that a write already inside your transaction is
-not an RPC. `Query.Scope` is not there either: in the Go type it is a `*string`
-in which nil means every tenant's events, so the scope binds off the connection
-and the schema *reserves* the field name, which makes the absence something
+not an RPC. `ListAcrossScopes` and `GetAcrossScopes` are not there either:
+they are the operator's reads of every tenant's events, so the scope binds off
+the connection and the schema *reserves* the field name, which makes the absence something
 `protoc` enforces rather than something a reviewer has to notice. What makes the
 crossing worth it is `Verify` — establishing that nobody edited, removed or
 reordered an entry is the capability a hand-written log reader never gets around
@@ -540,7 +540,7 @@ is not uniform and neither is the subset of a store that crosses:
 | `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the delivery machinery its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
-| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
+| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, `GetAcrossScopes` and `ListAcrossScopes` |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
 | `mediaregistry` | binding, not a resource surface | HTTP | every store method; what ships is the guarded serve |
 

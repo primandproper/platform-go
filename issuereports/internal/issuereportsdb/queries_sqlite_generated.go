@@ -139,6 +139,106 @@ WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT
 ORDER BY {{prefix}}issue_reports.id ASC
 LIMIT COALESCE(?8, 50)`
 
+const listReportsAcrossScopesSQLite = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.id > COALESCE(?6, '')
+ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT COALESCE(?7, 50)`
+
+const listReportsAcrossScopesDescendingSQLite = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND ({{prefix}}issue_reports.id <= COALESCE(?6, {{prefix}}issue_reports.id) AND {{prefix}}issue_reports.id <> COALESCE(?6, ''))
+ORDER BY {{prefix}}issue_reports.id DESC
+LIMIT COALESCE(?7, 50)`
+
 const listReportsByReporterSQLite = `SELECT
 	{{prefix}}issue_reports.id,
 	{{prefix}}issue_reports.scope,
@@ -306,6 +406,112 @@ WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT
 	AND {{prefix}}issue_reports.id > COALESCE(?8, '')
 ORDER BY {{prefix}}issue_reports.id ASC
 LIMIT COALESCE(?9, 50)`
+
+const listReportsByStatusAcrossScopesSQLite = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?6
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?6
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.status = ?6
+	AND {{prefix}}issue_reports.id > COALESCE(?7, '')
+ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT COALESCE(?8, 50)`
+
+const listReportsByStatusAcrossScopesDescendingSQLite = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+			)
+			AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?6
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?6
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?1, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?4, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
+	)
+	AND (COALESCE(?5, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.status = ?6
+	AND ({{prefix}}issue_reports.id <= COALESCE(?7, {{prefix}}issue_reports.id) AND {{prefix}}issue_reports.id <> COALESCE(?7, ''))
+ORDER BY {{prefix}}issue_reports.id DESC
+LIMIT COALESCE(?8, 50)`
 
 const listReportsByStatusDescendingSQLite = `SELECT
 	{{prefix}}issue_reports.id,
@@ -668,46 +874,54 @@ WHERE archived_at IS NULL
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
-	archiveReport                      string
-	createReport                       string
-	deleteReportsByReporter            string
-	getArchivedReport                  string
-	getReport                          string
-	listReports                        string
-	listReportsByReporter              string
-	listReportsByReporterDescending    string
-	listReportsByStatus                string
-	listReportsByStatusDescending      string
-	listReportsBySubjectType           string
-	listReportsBySubjectTypeDescending string
-	listReportsDescending              string
-	listReportsForSubject              string
-	listReportsForSubjectDescending    string
-	transitionReport                   string
-	updateReport                       string
+	archiveReport                             string
+	createReport                              string
+	deleteReportsByReporter                   string
+	getArchivedReport                         string
+	getReport                                 string
+	listReports                               string
+	listReportsAcrossScopes                   string
+	listReportsAcrossScopesDescending         string
+	listReportsByReporter                     string
+	listReportsByReporterDescending           string
+	listReportsByStatus                       string
+	listReportsByStatusAcrossScopes           string
+	listReportsByStatusAcrossScopesDescending string
+	listReportsByStatusDescending             string
+	listReportsBySubjectType                  string
+	listReportsBySubjectTypeDescending        string
+	listReportsDescending                     string
+	listReportsForSubject                     string
+	listReportsForSubjectDescending           string
+	transitionReport                          string
+	updateReport                              string
 }
 
 // newSQLite returns the sqlite querier with prefix substituted into every
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
-		archiveReport:                      strings.ReplaceAll(archiveReportSQLite, prefixMarker, prefix),
-		createReport:                       strings.ReplaceAll(createReportSQLite, prefixMarker, prefix),
-		deleteReportsByReporter:            strings.ReplaceAll(deleteReportsByReporterSQLite, prefixMarker, prefix),
-		getArchivedReport:                  strings.ReplaceAll(getArchivedReportSQLite, prefixMarker, prefix),
-		getReport:                          strings.ReplaceAll(getReportSQLite, prefixMarker, prefix),
-		listReports:                        strings.ReplaceAll(listReportsSQLite, prefixMarker, prefix),
-		listReportsByReporter:              strings.ReplaceAll(listReportsByReporterSQLite, prefixMarker, prefix),
-		listReportsByReporterDescending:    strings.ReplaceAll(listReportsByReporterDescendingSQLite, prefixMarker, prefix),
-		listReportsByStatus:                strings.ReplaceAll(listReportsByStatusSQLite, prefixMarker, prefix),
-		listReportsByStatusDescending:      strings.ReplaceAll(listReportsByStatusDescendingSQLite, prefixMarker, prefix),
-		listReportsBySubjectType:           strings.ReplaceAll(listReportsBySubjectTypeSQLite, prefixMarker, prefix),
-		listReportsBySubjectTypeDescending: strings.ReplaceAll(listReportsBySubjectTypeDescendingSQLite, prefixMarker, prefix),
-		listReportsDescending:              strings.ReplaceAll(listReportsDescendingSQLite, prefixMarker, prefix),
-		listReportsForSubject:              strings.ReplaceAll(listReportsForSubjectSQLite, prefixMarker, prefix),
-		listReportsForSubjectDescending:    strings.ReplaceAll(listReportsForSubjectDescendingSQLite, prefixMarker, prefix),
-		transitionReport:                   strings.ReplaceAll(transitionReportSQLite, prefixMarker, prefix),
-		updateReport:                       strings.ReplaceAll(updateReportSQLite, prefixMarker, prefix),
+		archiveReport:                             strings.ReplaceAll(archiveReportSQLite, prefixMarker, prefix),
+		createReport:                              strings.ReplaceAll(createReportSQLite, prefixMarker, prefix),
+		deleteReportsByReporter:                   strings.ReplaceAll(deleteReportsByReporterSQLite, prefixMarker, prefix),
+		getArchivedReport:                         strings.ReplaceAll(getArchivedReportSQLite, prefixMarker, prefix),
+		getReport:                                 strings.ReplaceAll(getReportSQLite, prefixMarker, prefix),
+		listReports:                               strings.ReplaceAll(listReportsSQLite, prefixMarker, prefix),
+		listReportsAcrossScopes:                   strings.ReplaceAll(listReportsAcrossScopesSQLite, prefixMarker, prefix),
+		listReportsAcrossScopesDescending:         strings.ReplaceAll(listReportsAcrossScopesDescendingSQLite, prefixMarker, prefix),
+		listReportsByReporter:                     strings.ReplaceAll(listReportsByReporterSQLite, prefixMarker, prefix),
+		listReportsByReporterDescending:           strings.ReplaceAll(listReportsByReporterDescendingSQLite, prefixMarker, prefix),
+		listReportsByStatus:                       strings.ReplaceAll(listReportsByStatusSQLite, prefixMarker, prefix),
+		listReportsByStatusAcrossScopes:           strings.ReplaceAll(listReportsByStatusAcrossScopesSQLite, prefixMarker, prefix),
+		listReportsByStatusAcrossScopesDescending: strings.ReplaceAll(listReportsByStatusAcrossScopesDescendingSQLite, prefixMarker, prefix),
+		listReportsByStatusDescending:             strings.ReplaceAll(listReportsByStatusDescendingSQLite, prefixMarker, prefix),
+		listReportsBySubjectType:                  strings.ReplaceAll(listReportsBySubjectTypeSQLite, prefixMarker, prefix),
+		listReportsBySubjectTypeDescending:        strings.ReplaceAll(listReportsBySubjectTypeDescendingSQLite, prefixMarker, prefix),
+		listReportsDescending:                     strings.ReplaceAll(listReportsDescendingSQLite, prefixMarker, prefix),
+		listReportsForSubject:                     strings.ReplaceAll(listReportsForSubjectSQLite, prefixMarker, prefix),
+		listReportsForSubjectDescending:           strings.ReplaceAll(listReportsForSubjectDescendingSQLite, prefixMarker, prefix),
+		transitionReport:                          strings.ReplaceAll(transitionReportSQLite, prefixMarker, prefix),
+		updateReport:                              strings.ReplaceAll(updateReportSQLite, prefixMarker, prefix),
 	}
 }
 
@@ -894,6 +1108,110 @@ func (q *sqliteQueries) ListReports(ctx context.Context, db DBTX, arg ListReport
 	return items, nil
 }
 
+// ListReportsAcrossScopes runs the :many query against sqlite.
+func (q *sqliteQueries) ListReportsAcrossScopes(ctx context.Context, db DBTX, arg ListReportsAcrossScopesParams) ([]ListReportsAcrossScopesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsAcrossScopes,
+		timeTextPtr(arg.CreatedAfter),
+		timeTextPtr(arg.CreatedBefore),
+		timeTextPtr(arg.UpdatedAfter),
+		timeTextPtr(arg.UpdatedBefore),
+		arg.IncludeArchived,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsAcrossScopesRow
+
+	for rows.Next() {
+		var i ListReportsAcrossScopesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsAcrossScopesDescending runs the :many query against sqlite.
+func (q *sqliteQueries) ListReportsAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsAcrossScopesDescendingParams) ([]ListReportsAcrossScopesDescendingRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsAcrossScopesDescending,
+		timeTextPtr(arg.CreatedAfter),
+		timeTextPtr(arg.CreatedBefore),
+		timeTextPtr(arg.UpdatedAfter),
+		timeTextPtr(arg.UpdatedBefore),
+		arg.IncludeArchived,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsAcrossScopesDescendingRow
+
+	for rows.Next() {
+		var i ListReportsAcrossScopesDescendingRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // ListReportsByReporter runs the :many query against sqlite.
 func (q *sqliteQueries) ListReportsByReporter(ctx context.Context, db DBTX, arg ListReportsByReporterParams) ([]ListReportsByReporterRow, error) {
 	rows, err := db.QueryContext(ctx, q.listReportsByReporter,
@@ -1025,6 +1343,112 @@ func (q *sqliteQueries) ListReportsByStatus(ctx context.Context, db DBTX, arg Li
 
 	for rows.Next() {
 		var i ListReportsByStatusRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsByStatusAcrossScopes runs the :many query against sqlite.
+func (q *sqliteQueries) ListReportsByStatusAcrossScopes(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesParams) ([]ListReportsByStatusAcrossScopesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsByStatusAcrossScopes,
+		timeTextPtr(arg.CreatedAfter),
+		timeTextPtr(arg.CreatedBefore),
+		timeTextPtr(arg.UpdatedAfter),
+		timeTextPtr(arg.UpdatedBefore),
+		arg.IncludeArchived,
+		arg.Status,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsByStatusAcrossScopesRow
+
+	for rows.Next() {
+		var i ListReportsByStatusAcrossScopesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsByStatusAcrossScopesDescending runs the :many query against sqlite.
+func (q *sqliteQueries) ListReportsByStatusAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesDescendingParams) ([]ListReportsByStatusAcrossScopesDescendingRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsByStatusAcrossScopesDescending,
+		timeTextPtr(arg.CreatedAfter),
+		timeTextPtr(arg.CreatedBefore),
+		timeTextPtr(arg.UpdatedAfter),
+		timeTextPtr(arg.UpdatedBefore),
+		arg.IncludeArchived,
+		arg.Status,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsByStatusAcrossScopesDescendingRow
+
+	for rows.Next() {
+		var i ListReportsByStatusAcrossScopesDescendingRow
 
 		if err := rows.Scan(
 			&i.ID,
@@ -1513,6 +1937,58 @@ var (
 		UpdatedAfter    *time.Time
 		UpdatedBefore   *time.Time
 		IncludeArchived bool
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsAcrossScopesRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsAcrossScopesDescendingParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsAcrossScopesDescendingRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
 		Scope           tenancy.Scope
 		Reporter        string
 		PageCursor      *string
@@ -1591,6 +2067,60 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListReportsByStatusRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		Status          string
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsByStatusAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsByStatusAcrossScopesRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		Status          string
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsByStatusAcrossScopesDescendingParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsByStatusAcrossScopesDescendingRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

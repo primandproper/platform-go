@@ -39,11 +39,17 @@ var _ issuereports.Store = &StoreMock{}
 //			ListReportsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
 //				panic("mock out the ListReports method")
 //			},
+//			ListReportsAcrossScopesFunc: func(ctx context.Context, q database.SQLQueryExecutor, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
+//				panic("mock out the ListReportsAcrossScopes method")
+//			},
 //			ListReportsByReporterFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, reporter string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
 //				panic("mock out the ListReportsByReporter method")
 //			},
 //			ListReportsByStatusFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, status issuereports.Status, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
 //				panic("mock out the ListReportsByStatus method")
+//			},
+//			ListReportsByStatusAcrossScopesFunc: func(ctx context.Context, q database.SQLQueryExecutor, status issuereports.Status, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
+//				panic("mock out the ListReportsByStatusAcrossScopes method")
 //			},
 //			ListReportsBySubjectTypeFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectType string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
 //				panic("mock out the ListReportsBySubjectType method")
@@ -79,11 +85,17 @@ type StoreMock struct {
 	// ListReportsFunc mocks the ListReports method.
 	ListReportsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
 
+	// ListReportsAcrossScopesFunc mocks the ListReportsAcrossScopes method.
+	ListReportsAcrossScopesFunc func(ctx context.Context, q database.SQLQueryExecutor, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
+
 	// ListReportsByReporterFunc mocks the ListReportsByReporter method.
 	ListReportsByReporterFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, reporter string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
 
 	// ListReportsByStatusFunc mocks the ListReportsByStatus method.
 	ListReportsByStatusFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, status issuereports.Status, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
+
+	// ListReportsByStatusAcrossScopesFunc mocks the ListReportsByStatusAcrossScopes method.
+	ListReportsByStatusAcrossScopesFunc func(ctx context.Context, q database.SQLQueryExecutor, status issuereports.Status, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
 
 	// ListReportsBySubjectTypeFunc mocks the ListReportsBySubjectType method.
 	ListReportsBySubjectTypeFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectType string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
@@ -154,6 +166,15 @@ type StoreMock struct {
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
+		// ListReportsAcrossScopes holds details about calls to the ListReportsAcrossScopes method.
+		ListReportsAcrossScopes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Filter is the filter argument value.
+			Filter *filtering.QueryFilter
+		}
 		// ListReportsByReporter holds details about calls to the ListReportsByReporter method.
 		ListReportsByReporter []struct {
 			// Ctx is the ctx argument value.
@@ -175,6 +196,17 @@ type StoreMock struct {
 			Q database.SQLQueryExecutor
 			// Scope is the scope argument value.
 			Scope tenancy.Scope
+			// Status is the status argument value.
+			Status issuereports.Status
+			// Filter is the filter argument value.
+			Filter *filtering.QueryFilter
+		}
+		// ListReportsByStatusAcrossScopes holds details about calls to the ListReportsByStatusAcrossScopes method.
+		ListReportsByStatusAcrossScopes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
 			// Status is the status argument value.
 			Status issuereports.Status
 			// Filter is the filter argument value.
@@ -237,17 +269,19 @@ type StoreMock struct {
 			Report *issuereports.Report
 		}
 	}
-	lockArchiveReport            sync.RWMutex
-	lockCreateReport             sync.RWMutex
-	lockDeleteReportsByReporter  sync.RWMutex
-	lockGetReport                sync.RWMutex
-	lockListReports              sync.RWMutex
-	lockListReportsByReporter    sync.RWMutex
-	lockListReportsByStatus      sync.RWMutex
-	lockListReportsBySubjectType sync.RWMutex
-	lockListReportsForSubject    sync.RWMutex
-	lockTransitionReport         sync.RWMutex
-	lockUpdateReport             sync.RWMutex
+	lockArchiveReport                   sync.RWMutex
+	lockCreateReport                    sync.RWMutex
+	lockDeleteReportsByReporter         sync.RWMutex
+	lockGetReport                       sync.RWMutex
+	lockListReports                     sync.RWMutex
+	lockListReportsAcrossScopes         sync.RWMutex
+	lockListReportsByReporter           sync.RWMutex
+	lockListReportsByStatus             sync.RWMutex
+	lockListReportsByStatusAcrossScopes sync.RWMutex
+	lockListReportsBySubjectType        sync.RWMutex
+	lockListReportsForSubject           sync.RWMutex
+	lockTransitionReport                sync.RWMutex
+	lockUpdateReport                    sync.RWMutex
 }
 
 // ArchiveReport calls ArchiveReportFunc.
@@ -470,6 +504,46 @@ func (mock *StoreMock) ListReportsCalls() []struct {
 	return calls
 }
 
+// ListReportsAcrossScopes calls ListReportsAcrossScopesFunc.
+func (mock *StoreMock) ListReportsAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
+	if mock.ListReportsAcrossScopesFunc == nil {
+		panic("StoreMock.ListReportsAcrossScopesFunc: method is nil but Store.ListReportsAcrossScopes was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Filter *filtering.QueryFilter
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Filter: filter,
+	}
+	mock.lockListReportsAcrossScopes.Lock()
+	mock.calls.ListReportsAcrossScopes = append(mock.calls.ListReportsAcrossScopes, callInfo)
+	mock.lockListReportsAcrossScopes.Unlock()
+	return mock.ListReportsAcrossScopesFunc(ctx, q, filter)
+}
+
+// ListReportsAcrossScopesCalls gets all the calls that were made to ListReportsAcrossScopes.
+// Check the length with:
+//
+//	len(mockedStore.ListReportsAcrossScopesCalls())
+func (mock *StoreMock) ListReportsAcrossScopesCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Filter *filtering.QueryFilter
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Filter *filtering.QueryFilter
+	}
+	mock.lockListReportsAcrossScopes.RLock()
+	calls = mock.calls.ListReportsAcrossScopes
+	mock.lockListReportsAcrossScopes.RUnlock()
+	return calls
+}
+
 // ListReportsByReporter calls ListReportsByReporterFunc.
 func (mock *StoreMock) ListReportsByReporter(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, reporter string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
 	if mock.ListReportsByReporterFunc == nil {
@@ -563,6 +637,50 @@ func (mock *StoreMock) ListReportsByStatusCalls() []struct {
 	mock.lockListReportsByStatus.RLock()
 	calls = mock.calls.ListReportsByStatus
 	mock.lockListReportsByStatus.RUnlock()
+	return calls
+}
+
+// ListReportsByStatusAcrossScopes calls ListReportsByStatusAcrossScopesFunc.
+func (mock *StoreMock) ListReportsByStatusAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, status issuereports.Status, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
+	if mock.ListReportsByStatusAcrossScopesFunc == nil {
+		panic("StoreMock.ListReportsByStatusAcrossScopesFunc: method is nil but Store.ListReportsByStatusAcrossScopes was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Status issuereports.Status
+		Filter *filtering.QueryFilter
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Status: status,
+		Filter: filter,
+	}
+	mock.lockListReportsByStatusAcrossScopes.Lock()
+	mock.calls.ListReportsByStatusAcrossScopes = append(mock.calls.ListReportsByStatusAcrossScopes, callInfo)
+	mock.lockListReportsByStatusAcrossScopes.Unlock()
+	return mock.ListReportsByStatusAcrossScopesFunc(ctx, q, status, filter)
+}
+
+// ListReportsByStatusAcrossScopesCalls gets all the calls that were made to ListReportsByStatusAcrossScopes.
+// Check the length with:
+//
+//	len(mockedStore.ListReportsByStatusAcrossScopesCalls())
+func (mock *StoreMock) ListReportsByStatusAcrossScopesCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Status issuereports.Status
+	Filter *filtering.QueryFilter
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Status issuereports.Status
+		Filter *filtering.QueryFilter
+	}
+	mock.lockListReportsByStatusAcrossScopes.RLock()
+	calls = mock.calls.ListReportsByStatusAcrossScopes
+	mock.lockListReportsByStatusAcrossScopes.RUnlock()
 	return calls
 }
 

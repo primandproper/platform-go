@@ -220,7 +220,7 @@ func TestRecorder_Record(T *testing.T) {
 		// in.
 		test.EqOp(t, scope, entry.Scope)
 
-		read, err := reader.Get(t.Context(), client.Reader(), &scope, entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), scope, entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, scope, read.Scope)
 	})
@@ -412,7 +412,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		record(t, client, r, entry)
 
-		got, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
+		got, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, ActorUnattributed, got.Actor.ID)
 		test.EqOp(t, ActorUnattributed, got.Actor.Type)
@@ -445,7 +445,7 @@ func TestRecorder_Record(T *testing.T) {
 		// And the round trip is exact, which is the whole reason the truncation
 		// is there: a value that changed on the way back out would make every
 		// entry in the table read as tampered.
-		got, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
+		got, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, got.RecordedAt)
 

@@ -25,10 +25,10 @@ can commit while the change it describes rolls back — or the reverse — is no
 record of what happened, and no amount of retrying fixes it after the fact. See
 identity/grpc, where that rule is stated once for every surface that follows it.
 
-The scope is not settable. Both of the reads that may decline to narrow take a
-*tenancy.Scope in which nil means every tenant's events, and those fields' own
-comments say getting that backwards is a cross-tenant disclosure rather than a
-wrong answer. Held in a process the unnarrowed read is a capability an operator
+The scope is not settable. The reader's reads across every tenant's events are
+methods of their own — audit.Reader.GetAcrossScopes and ListAcrossScopes — and
+their documentation says reaching one by mistake is a cross-tenant disclosure
+rather than a wrong answer. This surface calls neither. Held in a process the unnarrowed read is a capability an operator
 built deliberately; in a request field it would be one any caller has. So the
 scope binds off the connection through a [ScopeResolver] —
 authentication/signin/grpc is the precedent — and the schema reserves the field

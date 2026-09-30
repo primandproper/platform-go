@@ -61,6 +61,13 @@
 // field; it comes off the principal the consumer's interceptor put on the
 // context. See identity.proto, which says this at greater length.
 //
+// One message says whose a report is, and no request does. The operator's two
+// reads -- [ListReportsAcrossScopesRequest] and
+// [ListReportsByStatusAcrossScopesRequest] -- page every tenant's reports, so
+// each row they answer with is a [ScopedIssueReport], which carries the scope as
+// output. Everywhere else a row's scope is the one the connection resolved, and
+// a field repeating it would tell a client something it supplied.
+//
 // No reporter on any write. A report is filed by whoever is calling, and the
 // name is taken off the principal for the same reason the scope is: a reporter a
 // client could name is a report filed in somebody else's words. It is output
@@ -427,6 +434,60 @@ message ListReportsForSubjectResponse {
   repeated IssueReport results = 2;
 }
 
+// ScopedIssueReport is a report read across tenants, with the tenant it
+// belongs to. It is the only message in this file that carries a scope, and
+// only as output: the operator's reads answer with every tenant's reports, and
+// a console that could not say whose each one is could not act on any of them.
+message ScopedIssueReport {
+  // scope is the tenant the report was filed in, as the opaque owner identifier
+  // the store holds. Empty is the global scope -- a report belonging to no
+  // tenant -- rather than an unknown one.
+  string scope = 1;
+
+  IssueReport report = 2;
+}
+
+// ListReportsAcrossScopesRequest pages every tenant's reports. There is no
+// scope to name, which is the point: this is the operator's queue, and it is
+// behind issues.reports.read_any, a grant this module gives to nobody.
+message ListReportsAcrossScopesRequest {
+  reserved "scope";
+
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction, exactly as on every other paged read here. See the file
+  // comment.
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListReportsAcrossScopesResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated ScopedIssueReport results = 2;
+}
+
+// ListReportsByStatusAcrossScopesRequest pages one status's queue in every
+// tenant, behind the same grant as ListReportsAcrossScopesRequest.
+message ListReportsByStatusAcrossScopesRequest {
+  reserved "scope";
+
+  // status is the queue to page. REPORT_STATUS_UNSPECIFIED is refused rather
+  // than treated as "any", for ListReportsByStatusRequest's reason: a caller
+  // wanting every status sends ListReportsAcrossScopes.
+  ReportStatus status = 1;
+
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction. See the file comment.
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListReportsByStatusAcrossScopesResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated ScopedIssueReport results = 2;
+}
+
 message UpdateReportRequest {
   reserved "scope";
   reserved "reporter";
@@ -492,9 +553,14 @@ message ArchiveReportResponse {}
 // the two whose target is a person or somebody's row ask a second question of
 // the consumer's own rule.
 //
-// The tenant is not among any method's arguments. It comes off the
-// principal the consumer's interceptor resolved, so there is no listing across
-// tenants here and no way to ask for one.
+// The tenant is not among any method's arguments. It comes off the principal
+// the consumer's interceptor resolved, and no request can name another one.
+//
+// The two exceptions are the operator's, and they are exceptions by being
+// separate methods rather than by a request field: ListReportsAcrossScopes and
+// ListReportsByStatusAcrossScopes read every tenant's reports, behind
+// issues.reports.read_any, which issuereports/grpc declares and grants to
+// nobody. A deployment gives it to its operators or to no one.
 service IssueReportsService {
   rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
   rpc GetReport(GetReportRequest) returns (GetReportResponse);
@@ -503,6 +569,8 @@ service IssueReportsService {
   rpc ListReportsByReporter(ListReportsByReporterRequest) returns (ListReportsByReporterResponse);
   rpc ListReportsBySubjectType(ListReportsBySubjectTypeRequest) returns (ListReportsBySubjectTypeResponse);
   rpc ListReportsForSubject(ListReportsForSubjectRequest) returns (ListReportsForSubjectResponse);
+  rpc ListReportsAcrossScopes(ListReportsAcrossScopesRequest) returns (ListReportsAcrossScopesResponse);
+  rpc ListReportsByStatusAcrossScopes(ListReportsByStatusAcrossScopesRequest) returns (ListReportsByStatusAcrossScopesResponse);
   rpc UpdateReport(UpdateReportRequest) returns (UpdateReportResponse);
   rpc TransitionReport(TransitionReportRequest) returns (TransitionReportResponse);
   rpc ArchiveReport(ArchiveReportRequest) returns (ArchiveReportResponse);

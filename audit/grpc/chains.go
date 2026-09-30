@@ -10,7 +10,6 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
-	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
@@ -108,7 +107,7 @@ func (s *Server) getAcrossChains(
 	entryID string,
 ) (*audit.Entry, error) {
 	for i := range scopes {
-		entry, err := s.reader.Get(ctx, q, &scopes[i], entryID)
+		entry, err := s.reader.Get(ctx, q, scopes[i], entryID)
 		if err != nil {
 			if errors.Is(err, audit.ErrEntryNotFound) {
 				continue
@@ -166,9 +165,7 @@ func (s *Server) listAcrossChains(
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[audit.Entry], error) {
 	if len(scopes) == 1 {
-		query.Scope = pointer.To(scopes[0])
-
-		return s.reader.List(ctx, q, query, filter)
+		return s.reader.List(ctx, q, scopes[0], query, filter)
 	}
 
 	merged := &filtering.QueryFilteredResult[audit.Entry]{}
@@ -180,12 +177,7 @@ func (s *Server) listAcrossChains(
 	)
 
 	for _, scope := range scopes {
-		// A copy per chain: Scope is the only field that differs, and the
-		// reader is entitled to the same query otherwise.
-		scoped := *query
-		scoped.Scope = pointer.To(scope)
-
-		page, err := s.reader.List(ctx, q, &scoped, filter)
+		page, err := s.reader.List(ctx, q, scope, query, filter)
 		if err != nil {
 			return nil, err
 		}

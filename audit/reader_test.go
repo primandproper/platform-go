@@ -60,7 +60,7 @@ func TestReader_Get(T *testing.T) {
 		written.Metadata = map[string]string{"reason": "typo"}
 		record(t, client, recorder, written)
 
-		read, err := reader.Get(t.Context(), client.Reader(), nil, written.ID)
+		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), written.ID)
 		must.NoError(t, err)
 
 		test.EqOp(t, written.ID, read.ID)
@@ -81,7 +81,7 @@ func TestReader_Get(T *testing.T) {
 		client := newTestClient(t)
 		reader := newTestReader(t, client)
 
-		_, err := reader.Get(t.Context(), client.Reader(), nil, "nope")
+		_, err := reader.GetAcrossScopes(t.Context(), client.Reader(), "nope")
 		test.ErrorIs(t, err, ErrEntryNotFound)
 	})
 
@@ -91,7 +91,7 @@ func TestReader_Get(T *testing.T) {
 		client := newTestClient(t)
 		reader := newTestReader(t, client)
 
-		_, err := reader.Get(t.Context(), client.Reader(), nil, "")
+		_, err := reader.GetAcrossScopes(t.Context(), client.Reader(), "")
 		test.ErrorIs(t, err, platformerrors.ErrInvalidIDProvided)
 	})
 
@@ -100,13 +100,12 @@ func TestReader_Get(T *testing.T) {
 
 		reader := newTestReader(t, newTestClient(t))
 
-		_, err := reader.Get(t.Context(), nil, nil, "entry_1")
+		_, err := reader.GetAcrossScopes(t.Context(), nil, "entry_1")
 		test.ErrorIs(t, err, ErrNilExecutor)
 	})
 
-	// The three readings of the scope pointer, which is the whole of what this
-	// argument is for: nil is the operator's read, a scope confines, and a
-	// pointer at the zero Scope is a caller whose lookup came back empty.
+	// A scope confines, the zero Scope is a caller whose lookup came back empty,
+	// and the operator's read across every tenant is GetAcrossScopes.
 	T.Run("confines the read to a named scope", func(t *testing.T) {
 		t.Parallel()
 
@@ -118,18 +117,18 @@ func TestReader_Get(T *testing.T) {
 		theirs := entryFor(tenancy.Of("acct_2"), "recipe_2")
 		record(t, client, recorder, mine, theirs)
 
-		read, err := reader.Get(t.Context(), client.Reader(), pointer.To(tenancy.Of("acct_1")), mine.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), tenancy.Of("acct_1"), mine.ID)
 		must.NoError(t, err)
 		test.EqOp(t, mine.ID, read.ID)
 
 		// The entry exists, and from inside acct_1 it is absent — the same
 		// answer an id that was never written gets, so a caller cannot use this
 		// to learn which ids another tenant's log holds.
-		_, err = reader.Get(t.Context(), client.Reader(), pointer.To(tenancy.Of("acct_1")), theirs.ID)
+		_, err = reader.Get(t.Context(), client.Reader(), tenancy.Of("acct_1"), theirs.ID)
 		test.ErrorIs(t, err, ErrEntryNotFound)
 	})
 
-	T.Run("a nil scope reads across every tenant", func(t *testing.T) {
+	T.Run("the read across scopes reaches every tenant", func(t *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
@@ -141,7 +140,7 @@ func TestReader_Get(T *testing.T) {
 		record(t, client, recorder, mine, theirs)
 
 		for _, entry := range []*Entry{mine, theirs} {
-			read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
+			read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
 			must.NoError(t, err)
 			test.EqOp(t, entry.ID, read.ID)
 		}
@@ -161,11 +160,11 @@ func TestReader_Get(T *testing.T) {
 		tenant := entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, recorder, platform, tenant)
 
-		read, err := reader.Get(t.Context(), client.Reader(), pointer.To(tenancy.Global()), platform.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), tenancy.Global(), platform.ID)
 		must.NoError(t, err)
 		test.EqOp(t, platform.ID, read.ID)
 
-		_, err = reader.Get(t.Context(), client.Reader(), pointer.To(tenancy.Global()), tenant.ID)
+		_, err = reader.Get(t.Context(), client.Reader(), tenancy.Global(), tenant.ID)
 		test.ErrorIs(t, err, ErrEntryNotFound)
 	})
 
@@ -179,11 +178,11 @@ func TestReader_Get(T *testing.T) {
 		written := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, written)
 
-		// Not widened to the read a nil pointer makes. A caller who passed a
-		// pointer had a scope in hand and lost it, and answering them across
-		// every tenant is the cross-tenant disclosure the pointer exists to
-		// keep spellable apart.
-		_, err := reader.Get(t.Context(), client.Reader(), pointer.To(tenancy.Scope{}), written.ID)
+		// Not widened to the read GetAcrossScopes makes. A caller who passed a
+		// scope had one in hand and lost it, and answering them across every
+		// tenant is the cross-tenant disclosure a separately named method
+		// exists to keep spellable apart.
+		_, err := reader.Get(t.Context(), client.Reader(), tenancy.Scope{}, written.ID)
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 
@@ -203,7 +202,7 @@ func TestReader_Get(T *testing.T) {
 				return err
 			}
 
-			read, err := reader.Get(t.Context(), tx, pointer.To(tenancy.Of("acct_1")), written.ID)
+			read, err := reader.Get(t.Context(), tx, tenancy.Of("acct_1"), written.ID)
 			if err != nil {
 				return err
 			}
@@ -216,7 +215,7 @@ func TestReader_Get(T *testing.T) {
 		// And the replica handle cannot see it until the transaction commits,
 		// which is the half that says the read above was the transaction's own
 		// rather than a lucky one.
-		read, err := reader.Get(t.Context(), client.Reader(), nil, written.ID)
+		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), written.ID)
 		must.NoError(t, err)
 		test.EqOp(t, written.Hash, read.Hash)
 	})
@@ -243,7 +242,7 @@ func TestReader_ReadsTakeTheCallersExecutor(T *testing.T) {
 				return err
 			}
 
-			listed, err := reader.List(t.Context(), tx, &Query{Scope: &scope}, nil)
+			listed, err := reader.List(t.Context(), tx, scope, &Query{}, nil)
 			if err != nil {
 				return err
 			}
@@ -286,7 +285,7 @@ func TestReader_ReadsTakeTheCallersExecutor(T *testing.T) {
 
 		reader := newTestReader(t, newTestClient(t))
 
-		_, err := reader.List(t.Context(), nil, nil, nil)
+		_, err := reader.ListAcrossScopes(t.Context(), nil, nil, nil)
 		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = reader.Verify(t.Context(), nil, tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
@@ -314,31 +313,31 @@ func TestReader_List(T *testing.T) {
 
 		record(t, client, recorder, mine, theirs, deletion)
 
-		listed, err := reader.List(t.Context(), client.Reader(), &Query{Scope: pointer.To(tenancy.Of("acct_1"))}, nil)
+		listed, err := reader.List(t.Context(), client.Reader(), tenancy.Of("acct_1"), &Query{}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 		test.EqOp(t, uint64(2), listed.TotalCount)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{ActorID: "user_2"}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{ActorID: "user_2"}, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, listed.Data)
 		test.EqOp(t, theirs.ID, listed.Data[0].ID)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{EventType: EventDeleted}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{EventType: EventDeleted}, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, listed.Data)
 		test.EqOp(t, deletion.ID, listed.Data[0].ID)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{ResourceType: "recipe", ResourceID: "recipe_1"}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{ResourceType: "recipe", ResourceID: "recipe_1"}, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, listed.Data)
 		test.EqOp(t, mine.ID, listed.Data[0].ID)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{ActorType: ActorUser}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{ActorType: ActorUser}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 3, listed.Data)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{ActorType: ActorSystem}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{ActorType: ActorSystem}, nil)
 		must.NoError(t, err)
 		test.SliceEmpty(t, listed.Data)
 	})
@@ -357,12 +356,12 @@ func TestReader_List(T *testing.T) {
 		// A plain string field could not have expressed this: it would have
 		// been indistinguishable from "do not filter", and would have returned
 		// the tenant's entry too.
-		listed, err := reader.List(t.Context(), client.Reader(), &Query{Scope: pointer.To(tenancy.Global())}, nil)
+		listed, err := reader.List(t.Context(), client.Reader(), tenancy.Global(), &Query{}, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, listed.Data)
 		test.EqOp(t, platform.ID, listed.Data[0].ID)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 	})
@@ -376,15 +375,15 @@ func TestReader_List(T *testing.T) {
 
 		record(t, client, recorder, entryFor(tenancy.Global(), "config_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
 
-		// The three readings, and the one that is not a reading. A nil Scope
-		// narrows nothing; a Scope narrows to it; and a pointer at the zero
-		// Scope is a caller whose own lookup came back empty, which is refused
-		// rather than widened into either of the other two.
-		listed, err := reader.List(t.Context(), client.Reader(), &Query{Scope: pointer.To(tenancy.Scope{})}, nil)
+		// A Scope narrows to it, and the zero Scope is a caller whose own
+		// lookup came back empty, which is refused rather than widened. The
+		// read that narrows nothing is ListAcrossScopes, and only that method
+		// reaches it.
+		listed, err := reader.List(t.Context(), client.Reader(), tenancy.Scope{}, &Query{}, nil)
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 		test.Nil(t, listed)
 
-		listed, err = reader.List(t.Context(), client.Reader(), &Query{Scope: nil}, nil)
+		listed, err = reader.ListAcrossScopes(t.Context(), client.Reader(), &Query{}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 	})
@@ -404,7 +403,7 @@ func TestReader_List(T *testing.T) {
 		filter := filtering.DefaultQueryFilter()
 		filter.CreatedAfter = pointer.To(c.Now().Add(-time.Hour))
 
-		listed, err := reader.List(t.Context(), client.Reader(), &Query{Scope: pointer.To(tenancy.Of("acct_1"))}, filter)
+		listed, err := reader.List(t.Context(), client.Reader(), tenancy.Of("acct_1"), &Query{}, filter)
 		must.NoError(t, err)
 
 		filtered, total, known := listed.Counts()
@@ -429,7 +428,7 @@ func TestReader_List(T *testing.T) {
 		// The counts ride on the rows, so a page with no rows has none to read
 		// them off — and a zero reported there is indistinguishable from "no
 		// rows match", which is the ambiguity CountsKnown exists to remove.
-		listed, err := reader.List(t.Context(), client.Reader(), &Query{Scope: pointer.To(tenancy.Of("acct_9"))}, nil)
+		listed, err := reader.List(t.Context(), client.Reader(), tenancy.Of("acct_9"), &Query{}, nil)
 		must.NoError(t, err)
 
 		test.SliceEmpty(t, listed.Data)
@@ -452,14 +451,14 @@ func TestReader_List(T *testing.T) {
 		filter := filtering.DefaultQueryFilter()
 		filter.MaxResponseSize = pointer.To(uint16(2))
 
-		first, err := reader.List(t.Context(), client.Reader(), nil, filter)
+		first, err := reader.ListAcrossScopes(t.Context(), client.Reader(), nil, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, first.Data)
 		test.EqOp(t, uint64(5), first.TotalCount)
 
 		filter.Cursor = &first.Cursor
 
-		second, err := reader.List(t.Context(), client.Reader(), nil, filter)
+		second, err := reader.ListAcrossScopes(t.Context(), client.Reader(), nil, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, second.Data)
 		test.NotEq(t, first.Data[0].ID, second.Data[0].ID)
@@ -481,7 +480,7 @@ func TestReader_List(T *testing.T) {
 		filter := filtering.DefaultQueryFilter()
 		filter.SortBy = filtering.SortDescending
 
-		listed, err := reader.List(t.Context(), client.Reader(), nil, filter)
+		listed, err := reader.ListAcrossScopes(t.Context(), client.Reader(), nil, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, listed.Data)
 		test.EqOp(t, last.ID, listed.Data[0].ID)
@@ -506,7 +505,7 @@ func TestReader_List(T *testing.T) {
 		filter := filtering.DefaultQueryFilter()
 		filter.CreatedAfter = pointer.To(old.RecordedAt.Add(time.Hour))
 
-		listed, err := reader.List(t.Context(), client.Reader(), nil, filter)
+		listed, err := reader.ListAcrossScopes(t.Context(), client.Reader(), nil, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, listed.Data)
 		test.EqOp(t, recent.ID, listed.Data[0].ID)
