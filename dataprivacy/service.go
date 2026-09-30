@@ -25,7 +25,6 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"gocloud.dev/gcerrors"
 )
 
 // auditResourceType is what this package's audit entries are about.
@@ -542,10 +541,10 @@ func (s *StoreService) Download(ctx context.Context, scope *tenancy.Scope, reque
 	if err != nil {
 		// Implementing URLSigner is not being able to sign. objectstorage's
 		// Uploader implements it for every provider and the memory and
-		// filesystem ones refuse at the call, as Unimplemented — which is the
-		// provider that cannot sign this error was declared for, arrived at one
-		// step later than the type assertion above.
-		if gcerrors.Code(err) == gcerrors.Unimplemented {
+		// filesystem ones refuse at the call, with uploads.ErrSigningUnsupported
+		// — which is the provider that cannot sign this error was declared for,
+		// arrived at one step later than the type assertion above.
+		if errors.Is(err, uploads.ErrSigningUnsupported) {
 			err = platformerrors.Join(platformerrors.Wrapf(ErrNoURLSigner, "dataprivacy request %q", requestID), err)
 		}
 
