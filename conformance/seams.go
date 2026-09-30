@@ -302,6 +302,31 @@ type Seams struct {
 	// False is the server's default, and so it is the zero value: a server with
 	// no role policy to consult serves no field rather than an empty one.
 	PrincipalPermissions bool
+
+	// AccountSettingsUnresolved says the deployment's settings
+	// SubjectAuthorizer resolves no account subjects at all, so a caller asking
+	// for their own account's setting is refused as a stranger asking for
+	// somebody else's would be. True skips the assertion that a stranger's
+	// account is refused, with that printed, because the refusal says nothing
+	// about membership there.
+	//
+	// It is a declaration rather than something a suite could find out: a
+	// refusal of the caller's own account is either a deployment that resolves
+	// none or an authorizer that is broken, and only the deployment knows which
+	// it meant. False asserts the caller's own account is answered first.
+	AccountSettingsUnresolved bool
+
+	// RefreshTokensUnissued says the deployment's sign-in service was built
+	// with no refresh token store, so a sign-in answers an access token alone.
+	// True skips the assertions about rotating and ending a login, with that
+	// printed.
+	//
+	// docs/client-contract.md calls a sign-in with no refresh token a valid
+	// shape, so a deployment may have it — but a sign-in that answers none is
+	// also what a service that stopped wiring its store answers, and a suite
+	// that read the absence off the answer would pass every rotation assertion
+	// by skipping it. False, the zero value, fails a sign-in that carries none.
+	RefreshTokensUnissued bool
 }
 
 // Subject is one caller, and the clients it calls through.

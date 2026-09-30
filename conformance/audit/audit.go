@@ -129,7 +129,7 @@ func run(t *testing.T, s *conformance.Session) {
 		ours, neighbor := act(t, mine), act(t, theirs)
 
 		if ours.ActorID == "" || neighbor.ActorID == "" {
-			t.Skip("conformance: this subject's auditable action reports no actor, so there is no actor to query by")
+			conformance.Skip(t, "conformance: this subject's auditable action reports no actor, so there is no actor to query by")
 		}
 
 		// The positive control: the same query shape, naming this caller's own

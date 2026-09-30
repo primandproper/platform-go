@@ -69,23 +69,24 @@ func names() catalog {
 	}
 }
 
-// define adds a setting to op's catalog through the surface, skipping where the
-// deployment does not let op do that.
+// define adds a setting to op's catalog through the surface.
 //
 // Defining a setting is a deployment's decision in the sense a database column
 // is, so op is minted naming CreateDefinition: an administrator where the
-// subject reserves it, and an ordinary caller where it does not. A deployment
-// that refuses that ordinary caller a grant inside the handler is caught here,
-// and skips rather than asserting against a refusal the deployment was right
-// to make.
+// subject reserves it, and an ordinary caller where it does not. That makes the
+// reservation the deployment's declaration, and the only one: a deployment
+// that refuses the ordinary caller a grant inside the handler without having
+// named the call in Seams.OperatorMethods has contradicted what it declared,
+// and fails here saying so rather than skipping — a skip decided by the
+// server's answer is one a deployment refusing every definition would pass.
 func define(t *testing.T, op *conformance.Subject, input *settingspb.SettingDefinitionInput) *settingspb.SettingDefinition {
 	t.Helper()
 
 	response, err := op.Surfaces.Settings.CreateDefinition(op.Context(t.Context()),
 		&settingspb.CreateDefinitionRequest{Definition: input})
 	if status.Code(err) == codes.PermissionDenied {
-		t.Skip("conformance: this caller may not define a setting and the subject mints no administrator who may; " +
-			"the assertion needs a setting it defined")
+		t.Fatalf("conformance: defining setting %q was refused (%v) to a caller minted for it; "+
+			"a deployment that keeps CreateDefinition from its members names it in Seams.OperatorMethods", input.GetName(), err)
 	}
 
 	must.NoError(t, err, must.Sprintf("defining setting %q", input.GetName()))
@@ -162,7 +163,7 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 	t.Helper()
 
 	if sub.UserID == "" {
-		t.Skip("conformance: this subject does not surface the caller's user identifier")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's user identifier")
 	}
 }
 
@@ -171,7 +172,7 @@ func needsAccount(t *testing.T, sub *conformance.Subject) {
 	t.Helper()
 
 	if sub.AccountID == "" {
-		t.Skip("conformance: this subject does not surface the caller's account identifier")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's account identifier")
 	}
 }
 

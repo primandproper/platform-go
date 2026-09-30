@@ -94,7 +94,7 @@ func notified(t *testing.T, s *conformance.Session, sub *conformance.Subject) st
 	s.NeedsAction(t, notify != nil, "notified")
 
 	if sub.UserID == "" {
-		t.Skip("conformance: this subject does not surface the caller's user identifier, so there is nobody to notify")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's user identifier, so there is nobody to notify")
 	}
 
 	id, err := notify(t.Context(), sub.ScopeFor(surface), sub.UserID)

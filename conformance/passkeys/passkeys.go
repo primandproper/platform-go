@@ -49,7 +49,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
 	if s.Seams().WebAuthn == nil {
-		t.Skip("conformance: this subject names no WebAuthn relying party, so no authenticator can answer its ceremonies; skipping")
+		conformance.Skip(t, "conformance: this subject names no WebAuthn relying party, so no authenticator can answer its ceremonies; skipping")
 	}
 
 	t.Run("registration", func(t *testing.T) {

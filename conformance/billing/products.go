@@ -67,7 +67,7 @@ func products(t *testing.T, s *conformance.Session) {
 		// A second operator in the tenant, stocking under a user of its own.
 		other := s.Subject(t, conformance.Making(createProduct), conformance.InTenant(surface, mine.ScopeFor(surface)))
 		if other.UserID == mine.UserID {
-			t.Skip("conformance: the subject answers one administrator for every request in a tenant, so a catalog being the tenant's rather than the stocker's cannot be observed")
+			conformance.Skip(t, "conformance: the subject answers one administrator for every request in a tenant, so a catalog being the tenant's rather than the stocker's cannot be observed")
 		}
 
 		own, shared, foreign := stock(t, mine), stock(t, other), stock(t, theirs)

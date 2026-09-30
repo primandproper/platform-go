@@ -108,7 +108,7 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 
 	switch {
 	case reserved != "" && req.member:
-		t.Skipf("conformance: this subject reserves %s to an operator, so no ordinary member makes it and nothing is promised to one about it; skipping", reserved)
+		Skipf(t, "conformance: this subject reserves %s to an operator, so no ordinary member makes it and nothing is promised to one about it; skipping", reserved)
 
 		return nil
 	case reserved != "":
@@ -118,11 +118,11 @@ func (s *Session) subject(t *testing.T, ctx context.Context, opts ...SubjectOpti
 	subject, err := s.seams.NewSubject(ctx, opts...)
 	switch {
 	case platformerrors.Is(err, ErrSubjectUnsupported) && reserved != "":
-		t.Skipf("conformance: this subject reserves %s to an operator and mints no administrator to make it; skipping", reserved)
+		Skipf(t, "conformance: this subject reserves %s to an operator and mints no administrator to make it; skipping", reserved)
 
 		return nil
 	case platformerrors.Is(err, ErrSubjectUnsupported):
-		t.Skipf("conformance: the subject cannot mint this caller (admin=%t, tenant named=%t, surface=%q); skipping",
+		Skipf(t, "conformance: the subject cannot mint this caller (admin=%t, tenant named=%t, surface=%q); skipping",
 			req.Admin, req.Scope != nil, req.Surface)
 
 		return nil
@@ -163,7 +163,7 @@ func (s *Session) TwoTenants(t *testing.T, surface string, opts ...SubjectOption
 	case separate:
 		return mine, theirs
 	case sharedGlobal:
-		t.Skipf("conformance: this subject serves %s from the global scope, so no caller's rows there are confined from another's", surface)
+		Skipf(t, "conformance: this subject serves %s from the global scope, so no caller's rows there are confined from another's", surface)
 	case sharedTenant:
 		t.Fatalf("conformance: the subject minted two callers in one %s tenant; the confinement this asserts cannot be observed", surface)
 	}
@@ -202,7 +202,7 @@ func (s *Session) NeedsAction(t *testing.T, present bool, what string) {
 	t.Helper()
 
 	if !present {
-		t.Skipf("conformance: this subject supplies no %s action, and no client can bring that state about on its own", what)
+		Skipf(t, "conformance: this subject supplies no %s action, and no client can bring that state about on its own", what)
 	}
 }
 
@@ -332,7 +332,7 @@ func Run(t *testing.T, seams Seams, suites ...Suite) {
 			t.Parallel()
 
 			if suite.Mounted != nil && !suite.Mounted(probe.Surfaces) {
-				t.Skipf("conformance: this subject mounts no %s surface", suite.Name)
+				Skipf(t, "conformance: this subject mounts no %s surface", suite.Name)
 			}
 
 			suite.Run(t, session)

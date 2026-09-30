@@ -69,7 +69,7 @@ func passwordless(t *testing.T, s *conformance.Session) *conformance.Subject {
 
 	registrar := s.Subject(t, conformance.Making(register), conformance.InTenant(signInSurface, tenancy.Global()))
 	if registrar.Surfaces.SignIn == nil {
-		t.Skip("conformance: this subject mounts no sign-in surface, so nobody can be registered without a password")
+		conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so nobody can be registered without a password")
 	}
 
 	username := "conf_" + identifiers.New()

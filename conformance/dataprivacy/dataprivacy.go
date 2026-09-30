@@ -69,7 +69,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 	probe := s.Subject(t)
 	if probe.HTTP == nil || !probe.HTTP.DataPrivacy {
-		t.Skip("conformance: this subject does not serve the privacy-request surface")
+		conformance.Skip(t, "conformance: this subject does not serve the privacy-request surface")
 	}
 
 	t.Run("a request is listed for its subject, and not for a neighbor", func(t *testing.T) {
@@ -127,7 +127,7 @@ func run(t *testing.T, s *conformance.Session) {
 			[]string{dataprivacyhttp.RouteSubmit, operationshttp.RouteGet},
 			[]string{operationshttp.RouteGet})
 		if !mine.HTTP.Operations {
-			t.Skip("conformance: this subject serves privacy requests but not the operations that fulfill them")
+			conformance.Skip(t, "conformance: this subject serves privacy requests but not the operations that fulfill them")
 		}
 
 		submitted := submit(t, mine, "export")

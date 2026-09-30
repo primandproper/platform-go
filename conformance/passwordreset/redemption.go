@@ -48,7 +48,7 @@ func redemption(t *testing.T, s *conformance.Session) {
 		sub, user := resettable(t, s, requestReset, completeReset, signinpb.SignInService_LoginForToken_FullMethodName)
 
 		if sub.Surfaces.SignIn == nil {
-			t.Skip("conformance: this subject mounts no sign-in surface, so a reset's effect cannot be observed")
+			conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so a reset's effect cannot be observed")
 		}
 
 		signIn := func(password string) error {

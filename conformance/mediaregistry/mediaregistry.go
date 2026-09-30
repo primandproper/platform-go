@@ -43,7 +43,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 	probe := s.Subject(t)
 	if probe.HTTP == nil || !probe.HTTP.MediaRegistry {
-		t.Skip("conformance: this subject does not serve the registered-object read")
+		conformance.Skip(t, "conformance: this subject does not serve the registered-object read")
 	}
 
 	t.Run("an object is served to the caller who registered it", func(t *testing.T) {
@@ -86,7 +86,7 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		if s.Seams().MediaObjectsShared {
-			t.Skip("conformance: this deployment's entitlement lets somebody other than the owner read an object")
+			conformance.Skip(t, "conformance: this deployment's entitlement lets somebody other than the owner read an object")
 		}
 
 		mine := s.Subject(t, conformance.Making(mediaregistryhttp.RouteServe))
@@ -135,7 +135,7 @@ func registered(t *testing.T, s *conformance.Session, sub *conformance.Subject) 
 	s.NeedsAction(t, register != nil, "registered")
 
 	if sub.UserID == "" {
-		t.Skip("conformance: this subject does not surface the caller's user identifier, so there is nobody to register an object as")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's user identifier, so there is nobody to register an object as")
 	}
 
 	object, err := register(t.Context(), sub.ScopeFor(surface), sub.UserID)

@@ -129,7 +129,7 @@ func (r RPC) Caller(t *testing.T, s *conformance.Session) *conformance.Subject {
 
 	caller := s.Subject(t, conformance.Making(r.FullName))
 	if caller.Conn == nil {
-		t.Skip("conformance: this subject's caller has no connection to invoke a read by name through")
+		conformance.Skip(t, "conformance: this subject's caller has no connection to invoke a read by name through")
 	}
 
 	return caller

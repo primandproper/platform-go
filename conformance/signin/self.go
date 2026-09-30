@@ -257,7 +257,7 @@ func self(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		if s.Seams().PasswordChangeGateDisabled {
-			t.Skip("conformance: this subject says it installs no password change gate (Seams.PasswordChangeGateDisabled), so a forced change is reported and not enforced; skipping")
+			conformance.Skip(t, "conformance: this subject says it installs no password change gate (Seams.PasswordChangeGateDisabled), so a forced change is reported and not enforced; skipping")
 		}
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken)

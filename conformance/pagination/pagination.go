@@ -48,12 +48,12 @@ func run(t *testing.T, s *conformance.Session) {
 	probe := s.Subject(t)
 
 	if probe.Conn == nil {
-		t.Skip("conformance: this subject supplies no connection to invoke a read by name through")
+		conformance.Skip(t, "conformance: this subject supplies no connection to invoke a read by name through")
 	}
 
 	reads := pagedrpc.Mounted(&probe.Surfaces)
 	if len(reads) == 0 {
-		t.Skip("conformance: this subject mounts no surface with a paged read")
+		conformance.Skip(t, "conformance: this subject mounts no surface with a paged read")
 	}
 
 	seams := s.Seams()
@@ -71,14 +71,18 @@ func run(t *testing.T, s *conformance.Session) {
 
 				req, reason := read.Request(subject, &seams, filter)
 				if reason != "" {
-					t.Skipf("conformance: %s cannot be asserted here: %s", read.FullName, reason)
+					conformance.Skipf(t, "conformance: %s cannot be asserted here: %s", read.FullName, reason)
 				}
 
 				resp := read.Response()
 
 				err := subject.Conn.Invoke(subject.Context(t.Context()), read.FullName, req, resp)
-				if code := status.Code(err); code != codes.OK {
-					t.Skipf("conformance: %s answers this request with %s rather than a page, so there is no pagination to read", read.FullName, code)
+				switch code := status.Code(err); code {
+				case codes.OK:
+				case codes.NotFound, codes.FailedPrecondition:
+					conformance.Skipf(t, "conformance: %s answers this request with %s rather than a page, so there is no pagination to read", read.FullName, code)
+				default:
+					t.Fatalf("conformance: %s answered a plain request with %v; only an absence or a precondition this sweep cannot meet excuses a read from having a page", read.FullName, err)
 				}
 
 				pagination, err := pagedrpc.Pagination(resp)

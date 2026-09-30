@@ -63,7 +63,7 @@ func login(t *testing.T, s *conformance.Session) {
 		issued := signIn(t, anon, key)
 
 		if sub.Surfaces.SignIn == nil {
-			t.Skip("conformance: this subject mounts no sign-in surface, so whom the token names cannot be read")
+			conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so whom the token names cannot be read")
 		}
 
 		caller := s.SignedIn(t, issued, conformance.Making(getAuthStatus))
@@ -146,7 +146,7 @@ func usernameOf(t *testing.T, sub *conformance.Subject) string {
 	t.Helper()
 
 	if sub.Surfaces.SignIn == nil {
-		t.Skip("conformance: this subject mounts no sign-in surface, so a caller's username cannot be read for a named login")
+		conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so a caller's username cannot be read for a named login")
 	}
 
 	answered, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})

@@ -84,7 +84,7 @@ func needsConfirmation(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
 	if !confirms(s) {
-		t.Skip("conformance: this subject supplies no Actions.WaitlistLinks, so its joins are not confirmed and there is no link to follow")
+		conformance.Skip(t, "conformance: this subject supplies no Actions.WaitlistLinks, so its joins are not confirmed and there is no link to follow")
 	}
 }
 
@@ -183,7 +183,7 @@ func needsUser(t *testing.T, sub *conformance.Subject) {
 	t.Helper()
 
 	if sub.UserID == "" {
-		t.Skip("conformance: this subject does not surface the caller's user identifier")
+		conformance.Skip(t, "conformance: this subject does not surface the caller's user identifier")
 	}
 }
 
@@ -254,11 +254,11 @@ func visitor(t *testing.T, s *conformance.Session, doors []string, methods ...st
 	seams := s.Seams()
 
 	if seams.Anonymous == nil {
-		t.Skip("conformance: this subject supplies no anonymous connection, so the signup page cannot be reached as a visitor")
+		conformance.Skip(t, "conformance: this subject supplies no anonymous connection, so the signup page cannot be reached as a visitor")
 	}
 
 	if seams.VisitorScope == nil {
-		t.Skip("conformance: this subject does not say which tenant a visitor lands in, so no list can be opened where one would find it")
+		conformance.Skip(t, "conformance: this subject does not say which tenant a visitor lands in, so no list can be opened where one would find it")
 	}
 
 	conn, err := seams.Anonymous(t.Context())
@@ -295,7 +295,7 @@ func elsewhere(t *testing.T, s *conformance.Session, methods ...string) *conform
 	}
 
 	if lands.IsGlobal() {
-		t.Skipf("conformance: this subject serves %s from the global scope, so no caller's rows there are confined from another's", surface)
+		conformance.Skipf(t, "conformance: this subject serves %s from the global scope, so no caller's rows there are confined from another's", surface)
 	}
 
 	t.Fatalf("conformance: the subject minted an operator in a %s tenant of its own that is the one a visitor lands in; the confinement this asserts cannot be observed", surface)

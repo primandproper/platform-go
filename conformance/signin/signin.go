@@ -201,7 +201,7 @@ func anonymous(t *testing.T, s *conformance.Session, calls ...string) signinpb.S
 
 	open := s.Seams().Anonymous
 	if open == nil {
-		t.Skip("conformance: this subject supplies no anonymous connection, so the doors a person signs in through cannot be reached as that person")
+		conformance.Skip(t, "conformance: this subject supplies no anonymous connection, so the doors a person signs in through cannot be reached as that person")
 	}
 
 	conn, err := open(t.Context())
@@ -441,7 +441,7 @@ func signedIn(
 	t.Helper()
 
 	if s.Seams().SignedIn == nil {
-		t.Skip("conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
+		conformance.Skip(t, "conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
 	}
 
 	who := signInAs(t, s, anon)
@@ -459,7 +459,7 @@ func directoryCaller(t *testing.T, s *conformance.Session, methods ...string) *c
 
 	sub := s.Subject(t, conformance.Making(methods...), conformance.InTenant(identitySurface, tenancy.Global()))
 	if sub.Surfaces.Identity == nil {
-		t.Skip("conformance: this subject mounts no identity surface, so nobody can act on a registrant from the directory; skipping")
+		conformance.Skip(t, "conformance: this subject mounts no identity surface, so nobody can act on a registrant from the directory; skipping")
 	}
 
 	return sub

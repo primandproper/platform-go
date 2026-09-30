@@ -19,9 +19,11 @@ a seam for it would be a backdoor with a nicer name. What a client cannot
 assume is that it is allowed to: defining a setting is an administrator's
 decision, and a deployment enforcing method grants refuses an ordinary caller.
 So the catalog is written by an administrator minted into the caller's tenant
-where the subject has one, by an ordinary caller in that tenant where it does
-not, and an assertion whose definition is refused skips with the reason printed
-rather than failing a deployment for being right. Every name is minted per test, because a
+where the subject reserves CreateDefinition in Seams.OperatorMethods, and by an
+ordinary caller in that tenant where it does not. A definition refused to the
+caller minted for it fails, naming the declaration the deployment owes: the
+reservation is how a deployment says an ordinary caller may not define, and a
+refusal it did not declare is the one a broken grant would also produce. Every name is minted per test, because a
 deployment declares its own catalog at boot and a suite asserting against a
 fixed name would be asserting against theirs.
 

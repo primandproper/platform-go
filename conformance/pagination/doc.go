@@ -21,9 +21,13 @@ than against a number this suite carries:
   - A sort direction is reported normalized: "DESC" is answered as "desc".
   - A cursor is echoed back as the page's previous_cursor.
 
-A read that answers the plain request with something other than a page — an
-absence, for a read keyed on an identifier nothing holds — has no pagination to
-read, and skips with the code it gave.
+A read that answers the plain request with an absence or an unmet
+precondition — NotFound for a read keyed on an identifier nothing holds,
+FailedPrecondition for one that needs state this sweep cannot invent — has no
+pagination to read, and skips with the code it gave. Any other code fails: a
+read that answers Internal or Unimplemented is a surface that is broken or was
+never mounted, and a sweep that skipped it would pass hardest when the server
+was most wrong.
 
 Each read the subject reserves in Seams.OperatorMethods is made by an operator
 and every other read by an ordinary caller, for the reason the filters suite gives: a read an

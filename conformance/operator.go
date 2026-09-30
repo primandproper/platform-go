@@ -87,7 +87,7 @@ func (s *Session) NeedsPublic(t *testing.T, methods ...string) {
 	t.Helper()
 
 	if reserved := s.reservedAmong(methods); reserved != "" {
-		t.Skipf("conformance: this subject reserves %s to an operator, so nobody reaches it without a caller; skipping", reserved)
+		Skipf(t, "conformance: this subject reserves %s to an operator, so nobody reaches it without a caller; skipping", reserved)
 	}
 }
 
