@@ -181,6 +181,51 @@ func TestService_AfterRevokeSignIns(T *testing.T) {
 		test.SliceLen(t, 1, e.hooks.revocations)
 	})
 
+	// Confined to a named person, an operator's end of one login is still
+	// the operator's act, and a family that is somebody else's ends nothing.
+	T.Run("an operator's revocation of a login confined to its holder", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		revoked, err := e.svc.RevokeRefreshTokenFamily(t.Context(), testScope, signedIn.FamilyID,
+			signin.HeldBy("somebody_else"), signin.RevokedBy("operator_1"))
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), revoked)
+		test.SliceEmpty(t, e.hooks.revocations)
+		test.EqOp(t, 1, liveSignIns(t, e))
+
+		revoked, err = e.svc.RevokeRefreshTokenFamily(t.Context(), testScope, signedIn.FamilyID,
+			signin.HeldBy(e.user.ID), signin.RevokedBy("operator_1"))
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), revoked)
+
+		revocation := requireRevocation(t, e)
+		test.EqOp(t, signin.RevocationOperator, revocation.Reason)
+		test.EqOp(t, e.user.ID, revocation.SubjectID)
+		test.EqOp(t, "operator_1", revocation.ActorID)
+		test.Eq(t, []string{signedIn.FamilyID}, revocation.FamilyIDs)
+		test.EqOp(t, 0, liveSignIns(t, e))
+	})
+
+	// A confinement to nobody fails closed rather than confining nothing.
+	T.Run("an operator's revocation confined to nobody is refused", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.RevokeRefreshTokenFamily(t.Context(), testScope, signedIn.FamilyID, signin.HeldBy(""))
+		must.ErrorIs(t, err, signin.ErrEmptyUserID)
+		test.SliceEmpty(t, e.hooks.revocations)
+		test.EqOp(t, 1, liveSignIns(t, e))
+	})
+
 	T.Run("ending one login reports it", func(t *testing.T) {
 		t.Parallel()
 

@@ -181,9 +181,9 @@ func (s *Server) SignOut(
 //
 // It requires a caller and takes the subject from the principal, so there is no
 // field that could name anybody else: an operator ending somebody else's sessions
-// is a different act, and it is
+// is a different act, and it is [Server.EndAllSignInsForUser] — which calls
 // [github.com/primandproper/platform-go/v14/authentication/signin.Service.RevokeRefreshTokensForSubject]
-// behind a consumer's own administrative surface rather than this RPC. The two
+// behind a permission — rather than this RPC. The two
 // are told apart in the hooks as well — this one is reported as the person's own
 // sign-out — which is why it calls SignOutEverywhere rather than that.
 //

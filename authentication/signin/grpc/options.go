@@ -81,7 +81,9 @@ func WithPillars(p *observability.Pillars) Option {
 // is handed and the user is not in that one — so the failure is a read that finds
 // nobody. That is the safe direction and it is still a confusing one, which is
 // why the scope belongs in the token's claims: signin.DefaultClaims puts it
-// there.
+// there. The administrative RPCs, whose subject is named by the request rather
+// than being the caller, do not read the resolver at all: they act in the
+// operator's own directory, the principal's Scope.
 func WithScopeResolver(resolve ScopeResolver) Option {
 	return func(s *Server) {
 		if resolve != nil {

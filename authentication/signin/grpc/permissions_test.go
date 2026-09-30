@@ -2,6 +2,7 @@ package grpc_test
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"testing"
 
@@ -16,21 +17,42 @@ import (
 	"google.golang.org/grpc"
 )
 
-// serviceMethods is every RPC the generated service descriptor declares, in the
+// methodsOf is every RPC a generated service descriptor declares, in the
 // full-method form an interceptor sees.
 //
 // Reading it off the descriptor rather than listing it here is what makes this
 // file a check rather than a second copy: an RPC added to the schema appears
 // here without anybody remembering to add it.
-func serviceMethods() []string {
-	prefix := "/" + signinpb.SignInService_ServiceDesc.ServiceName + "/"
+func methodsOf(desc *grpc.ServiceDesc) []string {
+	prefix := "/" + desc.ServiceName + "/"
 
-	out := make([]string, 0, len(signinpb.SignInService_ServiceDesc.Methods))
-	for _, m := range signinpb.SignInService_ServiceDesc.Methods {
+	out := make([]string, 0, len(desc.Methods))
+	for _, m := range desc.Methods {
 		out = append(out, prefix+m.MethodName)
 	}
 
 	return out
+}
+
+// signInMethods are SignInService's RPCs, none of them permissioned.
+func signInMethods() []string {
+	return methodsOf(&signinpb.SignInService_ServiceDesc)
+}
+
+// administrationMethods are SignInAdministrationService's RPCs, every one of
+// them permissioned.
+func administrationMethods() []string {
+	return methodsOf(&signinpb.SignInAdministrationService_ServiceDesc)
+}
+
+// serviceMethods is every RPC Server serves, across both services.
+func serviceMethods() []string {
+	return slices.Concat(signInMethods(), administrationMethods())
+}
+
+// permissioned is the methods Permissions names.
+func permissioned() []string {
+	return slices.Collect(maps.Keys(signingrpc.Permissions()))
 }
 
 // TestMethodsAreDecidedAbout is the property the three lists exist for: an RPC
@@ -44,6 +66,7 @@ func TestMethodsAreDecidedAbout(T *testing.T) {
 		"AnonymousMethods":   signingrpc.AnonymousMethods(),
 		"RegistrarMethods":   signingrpc.RegistrarMethods(),
 		"SelfServiceMethods": signingrpc.SelfServiceMethods(),
+		"Permissions":        permissioned(),
 	}
 
 	for _, method := range serviceMethods() {
@@ -73,6 +96,7 @@ func TestListsNameOnlyRealMethods(T *testing.T) {
 		signingrpc.AnonymousMethods(),
 		signingrpc.RegistrarMethods(),
 		signingrpc.SelfServiceMethods(),
+		permissioned(),
 	) {
 		test.SliceContains(T, methods, method, test.Sprintf(
 			"%s is named in a list but is not an RPC on this service", method))
@@ -82,7 +106,7 @@ func TestListsNameOnlyRealMethods(T *testing.T) {
 func TestRequire(T *testing.T) {
 	T.Parallel()
 
-	T.Run("declares every method as public", func(t *testing.T) {
+	T.Run("declares every method", func(t *testing.T) {
 		t.Parallel()
 
 		reqs, err := signingrpc.Require(authzgrpc.NewRequirements()).Build()
@@ -121,8 +145,8 @@ func TestRequire(T *testing.T) {
 }
 
 // TestNothingIsPermissioned pins the conclusion the package documentation
-// argues for, so that a permission added later is a deliberate change to this
-// file rather than a quiet one.
+// argues for about SignInService, so that a permission added later is a
+// deliberate change to this file rather than a quiet one.
 //
 // It asserts it the way it will actually be experienced: an enforcer built over
 // this fragment lets every method through for a caller who holds no grants at
@@ -133,26 +157,79 @@ func TestRequire(T *testing.T) {
 func TestNothingIsPermissioned(T *testing.T) {
 	T.Parallel()
 
-	reqs, err := signingrpc.Require(authzgrpc.NewRequirements()).Build()
-	must.NoError(T, err)
+	interceptor := enforcing(T)
 
-	enforcer, err := authzgrpc.NewEnforcer(reqs,
-		func(context.Context) (authorization.Grants, bool) { return authorization.NewGrants(), true })
-	must.NoError(T, err)
-
-	interceptor := enforcer.UnaryServerInterceptor()
-
-	for _, method := range serviceMethods() {
-		reached := false
-
-		_, err = interceptor(T.Context(), nil, &grpc.UnaryServerInfo{FullMethod: method},
-			func(ctx context.Context, _ any) (any, error) {
-				reached = true
-
-				return nil, nil
-			})
+	for _, method := range signInMethods() {
+		reached, err := reaches(T, interceptor, method)
 
 		test.NoError(T, err, test.Sprintf("%s was refused", method))
 		test.True(T, reached, test.Sprintf("%s never reached its handler", method))
 	}
+}
+
+// TestAdministrationIsPermissioned is the other half: every
+// SignInAdministrationService method is refused to a caller holding no grants,
+// admitted to one holding the permission Permissions names for it, and refused
+// to one holding only the other — so a grant to read somebody's logins is not
+// a grant to end them.
+func TestAdministrationIsPermissioned(T *testing.T) {
+	T.Parallel()
+
+	for _, method := range administrationMethods() {
+		T.Run(method, func(t *testing.T) {
+			t.Parallel()
+
+			required := signingrpc.Permissions()[method]
+			must.SliceNotEmpty(t, required)
+
+			_, err := reaches(t, enforcing(t), method)
+			test.Error(t, err, test.Sprintf("%s was admitted to a caller holding no grants", method))
+
+			reached, err := reaches(t, enforcing(t, required...), method)
+			test.NoError(t, err)
+			test.True(t, reached, test.Sprintf("%s refused a caller holding %v", method, required))
+
+			other := signingrpc.PermissionReadAnySignIns
+			if slices.Contains(required, other) {
+				other = signingrpc.PermissionEndAnySignIns
+			}
+
+			_, err = reaches(t, enforcing(t, other), method)
+			test.Error(t, err, test.Sprintf("%s was admitted to a caller holding only %s", method, other))
+		})
+	}
+}
+
+// enforcing is an enforcer over Require's fragment, for a caller holding
+// exactly held.
+func enforcing(t *testing.T, held ...authorization.Permission) grpc.UnaryServerInterceptor {
+	t.Helper()
+
+	reqs, err := signingrpc.Require(authzgrpc.NewRequirements()).Build()
+	must.NoError(t, err)
+
+	grants := authorization.NewGrants(authorization.NewPermissionSet(held...))
+
+	enforcer, err := authzgrpc.NewEnforcer(reqs,
+		func(context.Context) (authorization.Grants, bool) { return grants, true })
+	must.NoError(t, err)
+
+	return enforcer.UnaryServerInterceptor()
+}
+
+// reaches makes method through interceptor and reports whether it got as far
+// as a handler.
+func reaches(t *testing.T, interceptor grpc.UnaryServerInterceptor, method string) (bool, error) {
+	t.Helper()
+
+	reached := false
+
+	_, err := interceptor(t.Context(), nil, &grpc.UnaryServerInfo{FullMethod: method},
+		func(context.Context, any) (any, error) {
+			reached = true
+
+			return nil, nil
+		})
+
+	return reached, err
 }

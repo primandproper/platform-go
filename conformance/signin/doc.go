@@ -84,6 +84,20 @@ skips.
 The administrative door is asserted the same way, once the registrant is
 granted Seams.Roles.Administrator, and skips where the subject names none.
 
+# An operator and somebody else's logins
+
+SignInAdministrationService is asserted from the operator's side: an operator
+lists a member's logins, ends one, and the member's refresh through that login
+is refused while their other login goes on working; a login named against the
+wrong person ends nothing; and ending all of a member's logins ends every one
+and nobody else's. The operator is a caller making those calls, which is an
+administrator where the subject reserves them, as every call here is.
+
+That a member is refused them is not asserted here. A deployment that keeps
+them to its staff names them in Seams.OperatorMethods, and the reservations
+suite holds every name there to a refusal. The assertions skip where the
+subject mounts no administrative surface in Surfaces.SignInAdministration.
+
 A forced change is asserted twice: that it is reported and still signs in, and
 that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
 made. The second is the gate signin/grpc's extractor runs by default, and
