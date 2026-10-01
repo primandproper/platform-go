@@ -36,8 +36,14 @@ type httpRoute struct {
 // session: the handler resolves the subject before it reads the request.
 type httpSurface struct {
 	mounted func(*conformance.HTTPSurfaces) bool
-	name    string
-	routes  []httpRoute
+
+	// routeMounted, where set, is whether one of routes is mounted on a
+	// surface that is: operations' event stream is registered only where the
+	// deployment runs a watcher, and the deployment says so.
+	routeMounted func(*conformance.HTTPSurfaces, httpRoute) bool
+
+	name   string
+	routes []httpRoute
 }
 
 func httpRoster() []httpSurface {
@@ -67,6 +73,9 @@ func httpRoster() []httpSurface {
 		{
 			name:    "operations",
 			mounted: func(h *conformance.HTTPSurfaces) bool { return h.Operations },
+			routeMounted: func(h *conformance.HTTPSurfaces, route httpRoute) bool {
+				return route.path != ops+"/{operationID}"+operationshttp.EventsSuffix || h.OperationEvents
+			},
 			routes: []httpRoute{
 				{http.MethodGet, ops},
 				{http.MethodGet, ops + "/{operationID}"},
@@ -138,6 +147,10 @@ func runHTTP(t *testing.T, s *conformance.Session, probe *conformance.Subject) {
 
 			for j := range surf.routes {
 				route := surf.routes[j]
+
+				if surf.routeMounted != nil && !surf.routeMounted(probe.HTTP, route) {
+					continue
+				}
 
 				t.Run(subtestName(route), func(t *testing.T) {
 					t.Parallel()

@@ -129,7 +129,11 @@ and names no tenant, so the adapter's scope resolver is the harness's record of
 which directory it registered each caller into: that is where their data is.
 Actions.ArtifactExpired is dataprivacy's own Sweeper at a clock past the
 request's expiry, over a store narrowed to that one request, so a sweep never
-expires an artifact a parallel assertion is still reading.
+expires an artifact a parallel assertion is still reading. Actions.Operated
+starts an operation of a kind the harness registers as the application's own
+and whose work waits to be cancelled, because operations.Service.Start refuses
+a kind nobody registered and a cancellation leaves a finished operation as it
+was.
 
 # Isolation
 
