@@ -118,6 +118,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "the sign-in this request came through cannot be identified",
 			grpcCode: codes.FailedPrecondition,
 		},
+		"a handle change that proved nothing again": {
+			err:      signin.ErrReauthenticationRequired,
+			httpCode: httperrors.ErrUserIsNotAuthorized,
+			httpMsg:  "re-authentication is required: send the current password, or sign in again",
+			grpcCode: codes.PermissionDenied,
+		},
 	}
 
 	for name, tc := range cases {
@@ -195,7 +201,7 @@ func TestClientSafeSentinels(T *testing.T) {
 	// necessary here. The count is pinned because a sentinel added to the package
 	// and left out of this list is one a gRPC client is told the code's name for,
 	// and nothing else reports that.
-	must.SliceLen(T, 18, signin.ClientSafeSentinels)
+	must.SliceLen(T, 19, signin.ClientSafeSentinels)
 
 	for _, err := range signin.ClientSafeSentinels {
 		_, _, ok := signin.HTTPMapper.Map(err)

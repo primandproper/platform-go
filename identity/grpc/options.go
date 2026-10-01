@@ -141,6 +141,24 @@ func WithInvitationTokenReturned() Option {
 	return func(s *Server) { s.returnInvitationToken = true }
 }
 
+// WithoutReauthenticatedHandles lets UpdateProfile move a username and an email
+// address again, on nothing but the caller being signed in.
+//
+// Absent, it refuses a save naming either with
+// identity.ErrHandleChangeRequiresReauthentication, as InvalidArgument, and the
+// rest of the profile is a separate save without them. An email address is
+// where a password reset is mailed and a username is what somebody signs in
+// with, so a save that could move either is a stolen session's way to own the
+// account; authentication/signin's UpdateEmailAddress and UpdateUsername are
+// where they change instead, behind a password or a recent sign-in.
+//
+// It is for a deployment that re-authenticates in front of this RPC by some
+// means of its own. One that names it and re-authenticates nowhere has put the
+// hole back.
+func WithoutReauthenticatedHandles() Option {
+	return func(s *Server) { s.handlesUngated = true }
+}
+
 // defaultTokenMinter is the CSPRNG the module already uses for single-use
 // tokens.
 func defaultTokenMinter(ctx context.Context) (string, error) {

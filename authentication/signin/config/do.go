@@ -116,7 +116,19 @@ func RegisterService(i do.Injector) {
 					do.NameOf[*identity.Service]())
 			}
 
-			opts = append(opts, WithRegistrar(registrar))
+			opts = append(opts, WithRegistrar(registrar), WithProfileUpdater(registrar))
+		} else {
+			// The handle doors write through the same Service, and want it
+			// whether or not anybody registers here. Absent, they refuse as
+			// the wiring failure they are.
+			profiles, profilesErr := injection.InvokeOptional[*identity.Service](i)
+			if profilesErr != nil {
+				return nil, platformerrors.Wrap(profilesErr, "invoking the identity service handle changes write through")
+			}
+
+			if profiles != nil {
+				opts = append(opts, WithProfileUpdater(profiles))
+			}
 		}
 
 		if cfg.MagicLinks != nil {

@@ -82,6 +82,21 @@ func runAgainst(t *testing.T, db database.Client, d dialect.Dialect) {
 func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy func(identity.Store) identity.Store) {
 	t.Helper()
 
+	runDeployment(t, db, d, deploy, false)
+}
+
+// runDeployment is runAgainstStore with one more fact about the deployment:
+// whether its surface was built WithoutReauthenticatedHandles, which the seam
+// of the same name reports to the suites.
+func runDeployment(
+	t *testing.T,
+	db database.Client,
+	d dialect.Dialect,
+	deploy func(identity.Store) identity.Store,
+	handlesUngated bool,
+) {
+	t.Helper()
+
 	prefix := migrate(t, db, d)
 
 	sqlStore, err := identity.NewSQLStore(db, identity.WithTablePrefix(prefix))
@@ -94,8 +109,12 @@ func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy
 	svc, err := identity.NewService(db, store, identity.WithHooks(invites))
 	must.NoError(t, err)
 
-	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal,
-		identitygrpc.WithPermissionResolver(vocabularyPolicy))
+	serverOpts := []identitygrpc.Option{identitygrpc.WithPermissionResolver(vocabularyPolicy)}
+	if handlesUngated {
+		serverOpts = append(serverOpts, identitygrpc.WithoutReauthenticatedHandles())
+	}
+
+	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal, serverOpts...)
 	must.NoError(t, err)
 
 	conn := serve(t, srv)
@@ -196,6 +215,8 @@ func runAgainstStore(t *testing.T, db database.Client, d dialect.Dialect, deploy
 		Roles: vocabulary,
 
 		PrincipalPermissions: true,
+
+		ReauthenticatedHandlesDisabled: handlesUngated,
 
 		Dialect: d,
 	})

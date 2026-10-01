@@ -821,6 +821,47 @@ func WithVerificationLinkTTL(ttl time.Duration) ServiceOption {
 	}
 }
 
+// WithProfileUpdater attaches the profile write the two handle doors make,
+// which is what turns them on. A nil updater is ignored, leaving none, and
+// [Service.UpdateEmailAddress] and [Service.UpdateUsername] refuse with
+// ErrProfileUpdaterNotConfigured.
+//
+// identity's Service satisfies it, and it is the layer rather than the store so
+// that identity's AfterUpdateProfile hook records the change — see
+// ProfileUpdater.
+func WithProfileUpdater(updater ProfileUpdater) ServiceOption {
+	return func(s *Service) {
+		if updater != nil {
+			s.profiles = updater
+		}
+	}
+}
+
+// WithRecentSignInWindow sets how long after a login began it still stands in
+// for the password on a handle change. A non-positive duration is ignored,
+// leaving DefaultRecentSignInWindow; WithoutRecentSignIn is how a deployment
+// says no login stands in for one.
+//
+// A recent sign-in is read off the login's refresh token, so a service built
+// without WithRefreshTokenStore accepts none whatever this says.
+func WithRecentSignInWindow(window time.Duration) ServiceOption {
+	return func(s *Service) {
+		if window > 0 {
+			s.recentSignInWindow = window
+		}
+	}
+}
+
+// WithoutRecentSignIn builds the service so that a handle change always asks
+// for the password, however recently the caller signed in.
+//
+// It is the deliberate no to DefaultRecentSignInWindow, and it costs every user
+// who holds no password the ability to change their address or username at
+// all: they have nothing else to prove it with.
+func WithoutRecentSignIn() ServiceOption {
+	return func(s *Service) { s.recentSignInWindow = 0 }
+}
+
 // WithMagicLinkRequestFloor sets how long Service.RequestMagicLink takes at the
 // least. A non-positive duration is ignored, leaving
 // DefaultMagicLinkRequestFloor.

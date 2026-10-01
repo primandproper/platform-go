@@ -121,6 +121,13 @@ const (
 	opSignOutEverywhere    = "sign_out_everywhere"
 	opUpdatePassword       = "update_password"
 
+	// The two handle changes, a series apiece rather than folded into the
+	// profile write identity counts: what a dashboard asks of them is how often
+	// somebody moves the recovery path for their password, which is the number
+	// an account takeover moves first.
+	opUpdateEmailAddress = "update_email_address"
+	opUpdateUsername     = "update_username"
+
 	// Listing a person's logins and ending one of them are two series of their
 	// own. Ending one is not folded into revoke_refresh_token_family for the
 	// reason signing out is not: it is a person's decision, and that series is
@@ -501,6 +508,10 @@ type Service struct {
 	// refuses with ErrHandleRemindersNotConfigured.
 	handleReminderMailer HandleReminderMailer
 
+	// profiles is nil until WithProfileUpdater names one, and nil means the two
+	// handle doors refuse with ErrProfileUpdaterNotConfigured.
+	profiles ProfileUpdater
+
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
@@ -551,6 +562,11 @@ type Service struct {
 	// which refuses a zero one — see DefaultVerificationLinkTTL.
 	verificationLinkTTL time.Duration
 	magicLinkFloor      time.Duration
+
+	// recentSignInWindow is how old a login may be and still stand in for a
+	// password on a handle change — see DefaultRecentSignInWindow. Zero is
+	// WithoutRecentSignIn: no login stands in for one.
+	recentSignInWindow time.Duration
 
 	// handleReminderFloor is the handle reminder door's own floor, apart from
 	// magicLinkFloor so the two anonymous mail doors can be tuned apart.
@@ -645,6 +661,7 @@ func NewService(
 
 		verificationLinkTTL: DefaultVerificationLinkTTL,
 		magicLinkFloor:      DefaultMagicLinkRequestFloor,
+		recentSignInWindow:  DefaultRecentSignInWindow,
 		handleReminderFloor: DefaultHandleReminderFloor,
 	}
 

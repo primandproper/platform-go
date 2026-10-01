@@ -325,6 +325,57 @@ func TestUpdateProfileSavesTheCallersOwnRow(T *testing.T) {
 	test.EqOp(T, "somebody@example.com", response.GetUser().GetEmailAddress())
 }
 
+// TestUpdateProfileRefusesAHandle: by default a save naming a username or an
+// email address is refused whole, before anything is written, and the rest of
+// the profile is a save of its own. A session is not proof enough to move the
+// recovery path for the password.
+func TestUpdateProfileRefusesAHandle(T *testing.T) {
+	T.Parallel()
+
+	for name, input := range map[string]*identitypb.ProfileUpdateInput{
+		"an email address": {EmailAddress: new("thief@example.com"), FirstName: new("Renamed")},
+		"a username":       {Username: new("thief"), FirstName: new("Renamed")},
+	} {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+
+			registration := h.seedAccount(t, testScope, "somebody")
+			ctx := h.as(&testPrincipal{userID: registration.User.ID, scope: testScope})
+
+			_, err := h.client.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{Input: input})
+			test.ErrorIs(t, err, identity.ErrHandleChangeRequiresReauthentication)
+			test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+			found, err := h.client.GetUser(h.ctx(), &identitypb.GetUserRequest{UserId: registration.User.ID})
+			must.NoError(t, err)
+			test.EqOp(t, "somebody", found.GetUser().GetUsername())
+			test.EqOp(t, "somebody@example.com", found.GetUser().GetEmailAddress())
+			test.EqOp(t, "", found.GetUser().GetFirstName(), test.Sprint("a refused save wrote the rest of itself"))
+		})
+	}
+}
+
+// TestUpdateProfileMovesAHandleWhenUngated: a server built
+// WithoutReauthenticatedHandles takes both fields, as one that re-authenticates
+// somewhere of its own needs.
+func TestUpdateProfileMovesAHandleWhenUngated(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, identitygrpc.WithoutReauthenticatedHandles())
+
+	registration := h.seedAccount(T, testScope, "somebody")
+	ctx := h.as(&testPrincipal{userID: registration.User.ID, scope: testScope})
+
+	response, err := h.client.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{
+		Input: &identitypb.ProfileUpdateInput{Username: new("renamed"), EmailAddress: new("renamed@example.com")},
+	})
+	must.NoError(T, err)
+	test.EqOp(T, "renamed", response.GetUser().GetUsername())
+	test.EqOp(T, "renamed@example.com", response.GetUser().GetEmailAddress())
+}
+
 func TestUpdateAccountLeavesWhatTheRequestDidNotName(T *testing.T) {
 	T.Parallel()
 

@@ -83,6 +83,7 @@ func NewService(
 		signin.WithAdminTokenTTL(cfg.AdminTokenTTL),
 		signin.WithImpersonationTokenTTL(cfg.ImpersonationTokenTTL),
 		signin.WithHandleReminderMailer(options.handleReminderMailer),
+		signin.WithProfileUpdater(options.profileUpdater),
 		signin.WithHandleReminderFloor(cfg.HandleReminderFloor),
 	}
 
