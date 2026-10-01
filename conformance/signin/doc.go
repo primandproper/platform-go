@@ -116,6 +116,11 @@ admitting them at once, and the link to proving the address all the same, as
 the registrant's own auth status reads it. Seams.RegistrationIssuesSecondFactor
 holds the registration to answering with the secret it issued, unproven until a
 code from it is, and skips the assertion about proving a factor nobody issued.
+Seams.PasswordlessRegistrationRefused holds a registration naming no password
+to the refusal a policy's is answered with — InvalidArgument, carrying
+REGISTRATION_REFUSED — with nobody left behind, and skips the assertions about
+somebody with no password. Every other assertion registers somebody with a
+password, so it holds whichever arrivals a deployment admits.
 
 A handle change is asserted as a password change is: an address or a username
 moved with the wrong current password is refused and moves nothing, and the

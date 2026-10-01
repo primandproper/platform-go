@@ -41,7 +41,8 @@ surface and Seams.SignedIn. A named login needs the sign-in surface to read the
 caller's username. The last-passkey assertion needs somebody with no password
 at all, which is a registration naming none and a mailed sign-in link, so it
 needs the sign-in surface and the MagicLinkToken action, and skips without
-either.
+either, or where Seams.PasswordlessRegistrationRefused says the deployment's
+registration policy refuses such a registrant.
 
 What stays out is anything read off a row. dinnerdonebetter asserted durable
 single consumption by counting ceremony rows and a sign count by reading its

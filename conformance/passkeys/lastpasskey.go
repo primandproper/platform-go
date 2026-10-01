@@ -59,7 +59,8 @@ func lastPasskey(t *testing.T, s *conformance.Session) {
 // passwordless registers somebody naming no password and signs them in on a
 // mailed link, answering with a caller making the passkey self-service calls
 // as them. It skips where the subject cannot: no sign-in surface, a door
-// reserved, or no way to read the link it mailed.
+// reserved or closed, a policy refusing a registrant with no password, or no
+// way to read the link it mailed.
 func passwordless(t *testing.T, s *conformance.Session) *conformance.Subject {
 	t.Helper()
 
@@ -69,6 +70,10 @@ func passwordless(t *testing.T, s *conformance.Session) *conformance.Subject {
 
 	if s.Seams().RegistrationClosed {
 		conformance.Skip(t, "conformance: this subject closes its sign-up door (Seams.RegistrationClosed), so nobody can be registered without a password")
+	}
+
+	if s.Seams().PasswordlessRegistrationRefused {
+		conformance.Skip(t, "conformance: this subject's registration policy refuses a registrant who names no password (Seams.PasswordlessRegistrationRefused), so nobody can be registered without a password")
 	}
 
 	registrar := s.Subject(t, conformance.Making(register), conformance.InTenant(signInSurface, tenancy.Global()))

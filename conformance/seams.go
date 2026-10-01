@@ -261,6 +261,23 @@ type Seams struct {
 	// either a policy that issued a secret or a door that misreads its state.
 	RegistrationIssuesSecondFactor bool
 
+	// PasswordlessRegistrationRefused says the deployment's
+	// signin.RegistrationPolicy refuses a registrant who names no password —
+	// signin.NoPassword, the no_password arm of RegisterRequest — because the
+	// deployment has no passwordless arrival. True asserts that refusal, as a
+	// policy's refusal is answered — InvalidArgument, carrying
+	// REGISTRATION_REFUSED — and that it leaves nobody behind, and skips every
+	// assertion whose subject is somebody with no password, with that printed.
+	// Assertions that only happen to register somebody register them with a
+	// password, so they hold either way.
+	//
+	// A declaration for RegistrantsAdmittedUnverified's reason: a passwordless
+	// registration refused is either a policy that refuses it or a door that
+	// has stopped honoring the arm, and only the deployment knows which it
+	// meant. False, the zero value, is what a registration with no policy
+	// does, and fails a passwordless registration that is refused.
+	PasswordlessRegistrationRefused bool
+
 	// ReauthenticatedHandlesDisabled says the deployment's identity surface
 	// lets UpdateProfile move a username or an email address on nothing but a
 	// session — it built identity/grpc's server WithoutReauthenticatedHandles.

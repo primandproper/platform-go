@@ -97,66 +97,13 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registrant owns their account with the deployment's owner role", func(t *testing.T) {
 		t.Parallel()
 
-		_, registered := register(t, s, withNoPassword(registrationRequest()))
+		_, registered := register(t, s, withPassword(registrationRequest()))
 
 		test.Eq(t, []string{s.Roles().Owner}, registered.GetMembership().GetRoles(),
 			test.Sprint("a registrant holds other roles in their own account than the deployment's owner role"))
 	})
 
-	// The other arrival: somebody who named no password claims their account
-	// from the same mail, with nobody signed in. Attaching does not spend the
-	// link, so the one click goes on to verify.
-	t.Run("a registrant with no password attaches one through the mailed link", func(t *testing.T) {
-		t.Parallel()
-
-		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
-		link := mailedVerification(t, s, who.email)
-
-		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{Token: link, NewPassword: password})
-		must.NoError(t, err, must.Sprint("attaching a first password through the mailed link"))
-
-		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
-		must.NoError(t, err, must.Sprint("attaching a password spent the link it was answered with"))
-
-		loggedIn(t, anon, who.username, password)
-	})
-
-	// What keeps a verification link from being a password reset: against an
-	// account that holds a password it can do nothing. The control is the same
-	// door furnishing an account that holds none, and the password afterwards
-	// is still the one the registrant chose.
-	t.Run("a mailed link cannot replace a password somebody already holds", func(t *testing.T) {
-		t.Parallel()
-
-		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
-
-		without, _ := register(t, s, withNoPassword(registrationRequest()))
-		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
-			Token:       mailedVerification(t, s, without.email),
-			NewPassword: password,
-		})
-		must.NoError(t, err, must.Sprint("the control: an account with no password could not be given one"))
-
-		holder, _ := register(t, s, withPassword(registrationRequest()))
-		link := mailedVerification(t, s, holder.email)
-
-		const chosenBySomebodyElse = "a password somebody else chose, long enough"
-
-		_, err = anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
-			Token:       link,
-			NewPassword: chosenBySomebodyElse,
-		})
-		refused(t, s, err, codes.FailedPrecondition, reasonPasswordAlreadySet)
-
-		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
-		must.NoError(t, err)
-
-		loggedIn(t, anon, holder.username, password)
-
-		_, err = login(t.Context(), anon, holder.username, chosenBySomebodyElse, "")
-		test.Error(t, err, test.Sprint("a refused attach changed the password anyway"))
-	})
+	passwordlessRegistration(t, s)
 
 	// Expired, already answered, never issued and simply wrong share a remedy,
 	// and telling them apart tells whoever is guessing which guesses are getting
@@ -313,7 +260,7 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registration's answer never carries the link that claims it", func(t *testing.T) {
 		t.Parallel()
 
-		who, registered := register(t, s, withNoPassword(registrationRequest()))
+		who, registered := register(t, s, withPassword(registrationRequest()))
 		link := mailedVerification(t, s, who.email)
 
 		test.StrNotContains(t, registered.String(), link,
@@ -518,5 +465,93 @@ func registration(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, inviter.AccountID, registered.GetMembership().GetBelongsToAccount(),
 			test.Sprint("a copied link registered its addressee somewhere other than the inviting account"))
 		test.EqOp(t, identitypb.InvitationStatus_INVITATION_STATUS_ACCEPTED, registered.GetInvitation().GetStatus())
+	})
+}
+
+// passwordlessRegistration is the registrant who names no password: the arrival
+// a deployment's registration policy may refuse, and declares that it does in
+// Seams.PasswordlessRegistrationRefused. Where it is admitted, the registrant
+// attaches a password through the mail that verifies them; where it is refused,
+// the refusal is the policy's, and the assertions about attaching one skip.
+func passwordlessRegistration(t *testing.T, s *conformance.Session) {
+	t.Helper()
+
+	// A policy refusing the arm is answered as any policy's refusal is, with the
+	// code and reason the contract lists, and refuses before anything is
+	// written: the same username and address register with a password
+	// afterwards, which they could not if the refusal had left half a
+	// registrant behind.
+	t.Run("a deployment refusing passwordless registration refuses it by its policy and leaves nobody behind", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().PasswordlessRegistrationRefused {
+			conformance.Skip(t, "conformance: this subject admits a registrant who names no password (Seams.PasswordlessRegistrationRefused is false), so there is no refusal to assert; skipping")
+		}
+
+		request := withNoPassword(registrationRequest())
+
+		_, err := registrationDoor(t, s)(t.Context(), request)
+		refused(t, s, err, codes.InvalidArgument, reasonRegistrationRefused)
+
+		register(t, s, withPassword(request))
+	})
+
+	// The other arrival: somebody who named no password claims their account
+	// from the same mail, with nobody signed in. Attaching does not spend the
+	// link, so the one click goes on to verify.
+	t.Run("a registrant with no password attaches one through the mailed link", func(t *testing.T) {
+		t.Parallel()
+
+		admitsPasswordless(t, s)
+
+		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
+		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		link := mailedVerification(t, s, who.email)
+
+		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{Token: link, NewPassword: password})
+		must.NoError(t, err, must.Sprint("attaching a first password through the mailed link"))
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
+		must.NoError(t, err, must.Sprint("attaching a password spent the link it was answered with"))
+
+		loggedIn(t, anon, who.username, password)
+	})
+
+	// What keeps a verification link from being a password reset: against an
+	// account that holds a password it can do nothing. The control is the same
+	// door furnishing an account that holds none, and the password afterwards
+	// is still the one the registrant chose.
+	t.Run("a mailed link cannot replace a password somebody already holds", func(t *testing.T) {
+		t.Parallel()
+
+		admitsPasswordless(t, s)
+
+		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
+
+		without, _ := register(t, s, withNoPassword(registrationRequest()))
+		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
+			Token:       mailedVerification(t, s, without.email),
+			NewPassword: password,
+		})
+		must.NoError(t, err, must.Sprint("the control: an account with no password could not be given one"))
+
+		holder, _ := register(t, s, withPassword(registrationRequest()))
+		link := mailedVerification(t, s, holder.email)
+
+		const chosenBySomebodyElse = "a password somebody else chose, long enough"
+
+		_, err = anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
+			Token:       link,
+			NewPassword: chosenBySomebodyElse,
+		})
+		refused(t, s, err, codes.FailedPrecondition, reasonPasswordAlreadySet)
+
+		_, err = anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
+		must.NoError(t, err)
+
+		loggedIn(t, anon, holder.username, password)
+
+		_, err = login(t.Context(), anon, holder.username, chosenBySomebodyElse, "")
+		test.Error(t, err, test.Sprint("a refused attach changed the password anyway"))
 	})
 }

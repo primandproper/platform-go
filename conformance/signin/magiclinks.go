@@ -71,6 +71,8 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 	t.Run("somebody with no password signs in on one mailed link", func(t *testing.T) {
 		t.Parallel()
 
+		admitsPasswordless(t, s)
+
 		anon := anonymous(t, s, requestMagicLink, redeemMagicLink)
 		who, _ := register(t, s, withNoPassword(registrationRequest()))
 
@@ -128,7 +130,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, requestMagicLink)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 
 		known := requestLink(t, anon, who.email)
 		mailedLink(t, s, who.email)
@@ -145,7 +147,7 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, requestMagicLink, redeemMagicLink)
-		who, _ := register(t, s, withNoPassword(registrationRequest()))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 
 		_, never := redeem(t, anon, identifiers.New())
 		refused(t, s, never, codes.Unauthenticated, reasonInvalidCredentials)

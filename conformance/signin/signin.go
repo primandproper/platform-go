@@ -124,6 +124,7 @@ const (
 	reasonPasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
 	reasonSignInNotIdentified     = "SIGN_IN_NOT_IDENTIFIED"
 	reasonRegistrationClosed      = "REGISTRATION_CLOSED"
+	reasonRegistrationRefused     = "REGISTRATION_REFUSED"
 )
 
 // password is what the registrations here choose, and newPassword is what a
@@ -329,6 +330,18 @@ func withNoPassword(request *signinpb.RegisterRequest) *signinpb.RegisterRequest
 	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
 
 	return request
+}
+
+// admitsPasswordless skips where the subject's registration policy refuses a
+// registrant who names no password, which it declares in
+// Seams.PasswordlessRegistrationRefused. Every assertion whose subject is
+// somebody with no password calls it before registering one.
+func admitsPasswordless(t *testing.T, s *conformance.Session) {
+	t.Helper()
+
+	if s.Seams().PasswordlessRegistrationRefused {
+		conformance.Skip(t, "conformance: this subject's registration policy refuses a registrant who names no password (Seams.PasswordlessRegistrationRefused), so there is nobody with no password to assert about; skipping")
+	}
 }
 
 // register registers somebody through sign-in's own door — see
