@@ -452,6 +452,16 @@ type HTTPSurfaces struct {
 	DataPrivacy   bool
 	MediaRegistry bool
 	Operations    bool
+
+	// OperationEvents is the operations surface's event stream, which is
+	// mounted only where the deployment runs an operations.Watcher to serve it:
+	// without one the route is not registered at all, and the other three are.
+	// It means nothing without Operations.
+	//
+	// A flag of its own rather than a 404 the suites read as "not mounted",
+	// because a 404 is also what a broken route answers, and a suite that
+	// skipped on it would pass hardest when the stream is broken.
+	OperationEvents bool
 }
 
 // Context applies Decorate, or returns ctx when there is nothing to add.
@@ -737,6 +747,26 @@ type Actions struct {
 	// request's artifact was not expired, rather than reporting success on a
 	// sweep that found nothing.
 	ArtifactExpired func(ctx context.Context, scope tenancy.Scope, requestID string) error
+
+	// Operated starts a piece of the application's own long-running work in
+	// this tenant, owned by the tenant, and reports the operation's identifier.
+	//
+	// An action because starting is not something operations/http serves:
+	// each kind of work is started from the consumer's own typed endpoint, with
+	// its own body, middleware and documentation, so no client of this
+	// module's surfaces can start one. What the suite needs is only an
+	// operation the tenant owns, which it then reads, lists and refuses to a
+	// caller elsewhere; what kind it is and what it does are the consumer's.
+	//
+	// The kind must be one the deployment registered: operations.Service.Start
+	// refuses a kind its Registry does not hold. Its work should run until it
+	// is cancelled: the suite asserts that a cancellation refused to another
+	// tenant left the operation as it was, which a finished operation is
+	// whatever the surface did, and it ends by cancelling the operation as its
+	// owner. Started operations.WithOwner(scope), because a tenant-owned
+	// operation is the one the owners fan-out admits a colleague to, and the
+	// suite asserts that it does.
+	Operated func(ctx context.Context, scope tenancy.Scope) (operationID string, err error)
 }
 
 // WaitlistLinks are the two secrets a confirming deployment mails to an address
