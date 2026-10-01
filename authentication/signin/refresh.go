@@ -746,6 +746,158 @@ func (s *Service) ExchangeRefreshToken(
 	return signIn, nil
 }
 
+// SwitchAccount spends a refresh token and answers with a fresh pair for
+// another of its subject's accounts: the same login, moved.
+//
+// It is how a person who belongs to several accounts — households, workspaces,
+// organizations — moves between them without proving a credential again. The
+// refresh token is its whole authority, exactly as it is
+// [Service.ExchangeRefreshToken]'s, and it is a separate door from that one
+// because it is a deliberate act rather than a refresh: the one place a login's
+// [RefreshToken.ActiveAccountID] is changed rather than carried.
+//
+// The account must be one the subject currently holds a live membership in,
+// and that is read on the switch's own transaction through
+// [Directory.GetPrincipal], which refuses a named account the user is not a
+// member of. That refusal is answered as [ErrInvalidCredentials], the way any
+// other bad exchange is, so a switch to somebody else's account says nothing
+// about whether that account exists. It rolls the transaction back, so the
+// presented token is left unspent and the login stays in the account it was in.
+// An empty accountID is [ErrEmptyAccountID] rather than the default account: a
+// switch says where it is going.
+//
+// The successor stays in the login's family. [Service.ListSignIns] still shows
+// one login, [Service.EndSignIn] still ends it, the "sid" claim still names it,
+// and presenting the token this call spent is still [ErrRefreshTokenReused] and
+// still ends the family, successor included — reuse detection runs across a
+// switch as it does across a refresh. Every exchange after this one carries the
+// new account, because it is the new row's.
+//
+// Everything else the login carries is carried unchanged: when it began, what
+// proved it, and which door it came through, so an administrative session stays
+// administrative and on its shorter lifetimes. An impersonation cannot switch,
+// because its login holds no refresh token anybody could present — see
+// [Service.IssueImpersonationToken].
+//
+// The principal is re-resolved, as an exchange's is, so a user suspended since
+// they signed in is refused here on the same terms.
+//
+// [Hooks.AfterSwitchAccount] runs with the login and both accounts, and then
+// [Hooks.AfterIssueToken] with the successor, both in the switch's transaction.
+//
+// It takes no idempotency key, and what that costs is stated rather than left
+// to be found. A client whose switch answer was lost holds only the token it
+// presented, which the switch may already have spent, and presenting it again
+// is a reuse that ends the login: the person signs in again. An exchange's
+// retry path is for the call a client makes unattended, on a timer, where a
+// dropped packet would otherwise sign somebody out while they were not looking;
+// a switch is made by a person pressing a button, who is there to sign in.
+//
+// A service built without [WithRefreshTokenStore] mints no refresh tokens, so
+// every call here is [ErrRefreshTokensNotConfigured].
+func (s *Service) SwitchAccount(
+	ctx context.Context,
+	scope tenancy.Scope,
+	refreshToken string,
+	accountID string,
+) (signIn *SignIn, err error) {
+	ctx, op, done := s.begin(ctx, opSwitchAccount,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(accountIDKey, accountID),
+	)
+	defer func() { done(err) }()
+
+	if s.refreshTokens == nil {
+		return nil, op.Error(ErrRefreshTokensNotConfigured, "switching accounts")
+	}
+
+	if err = scope.Validate(); err != nil {
+		return nil, op.Error(err, "checking the scope an account switch was made in")
+	}
+
+	if refreshToken == "" {
+		return nil, op.Error(ErrEmptyRefreshToken, "reading the refresh token an account switch presented")
+	}
+
+	if accountID == "" {
+		return nil, op.Error(ErrEmptyAccountID, "reading the account a switch names")
+	}
+
+	// Held for after the commit, for ExchangeRefreshToken's reason: a detected
+	// reuse revokes the family inside tx, and returning it would roll that back.
+	var reuse error
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		spent, txErr := s.refreshTokens.Redeem(ctx, tx, scope, refreshToken)
+		if txErr != nil {
+			if platformerrors.Is(txErr, ErrRefreshTokenReused) {
+				reuse = txErr
+
+				return s.afterReuse(ctx, tx, scope, txErr)
+			}
+
+			return txErr
+		}
+
+		op.SetValues(map[string]any{userIDKey: spent.SubjectID, familyKey: spent.FamilyID})
+
+		// The account the caller named rather than the row's, which is the whole
+		// of the difference from an exchange — and the membership check is the
+		// directory's, on tx, so a membership ended a moment ago is ended here.
+		principal, txErr := s.directory.GetPrincipal(ctx, tx, scope, spent.SubjectID, accountID)
+		if txErr != nil {
+			if platformerrors.Is(txErr, identity.ErrMembershipNotFound) ||
+				platformerrors.Is(txErr, identity.ErrAccountNotFound) {
+				op.SpanOnly(switchNotAMemberKey, true)
+
+				return ErrInvalidCredentials
+			}
+
+			return txErr
+		}
+
+		if !principal.User.AccountStatus.AdmitsSignIn() {
+			return statusRefusal(principal.User)
+		}
+
+		if signIn, txErr = s.mintToken(ctx, principal, spent.FamilyID, spent.Administrative); txErr != nil {
+			return txErr
+		}
+
+		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID, spent.SignedInAt, spent.CredentialKind); txErr != nil {
+			return txErr
+		}
+
+		if txErr = s.hooks.AfterSwitchAccount(ctx, tx, scope, &AccountSwitch{
+			SubjectID:      spent.SubjectID,
+			FamilyID:       spent.FamilyID,
+			FromAccountID:  spent.ActiveAccountID,
+			ToAccountID:    principal.ActiveAccountID,
+			Administrative: spent.Administrative,
+		}); txErr != nil {
+			return txErr
+		}
+
+		return s.hooks.AfterIssueToken(ctx, tx, scope, signIn)
+	}); err != nil {
+		if isRefreshRefusal(err) {
+			return nil, op.Error(err, "switching accounts")
+		}
+
+		return nil, op.Error(err, "rotating a refresh token into another account")
+	}
+
+	if reuse != nil {
+		if contractErr := reuseAnswer(reuse); contractErr != nil {
+			return nil, op.Error(contractErr, "reading the reuse a refresh token store reported")
+		}
+
+		return nil, op.Error(reuse, "switching accounts")
+	}
+
+	return signIn, nil
+}
+
 // SignOut ends the login a refresh token belongs to, named by the token itself.
 //
 // It is the deliberate half of what [Service.RevokeRefreshTokenFamily] does, and

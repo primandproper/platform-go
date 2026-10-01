@@ -375,6 +375,28 @@ no token is issued. Archiving the last passkey of somebody with no other way in 
 | `PASSKEY_ALREADY_REGISTERED` | `ALREADY_EXISTS` | this authenticator is already enrolled |
 | `LAST_PASSKEY` | `FAILED_PRECONDITION` | enroll another way in first, then archive this one |
 
+## Switching accounts
+
+A person who belongs to several accounts — households, workspaces, organizations — moves
+between them with `SwitchAccount(refresh_token, account_id)`, and no password. It is anonymous
+for `ExchangeRefreshToken`'s reason, and it answers with the `IssuedToken` an exchange answers
+with: the same login (`family_id` unchanged, listed once by `ListSignIns`), and an access token
+for the named account. Every exchange after it stays in that account. The accounts a person may
+name are `GetAuthStatus`'s `account_ids`.
+
+**R20 — a switch is a refresh, as far as R1 is concerned.** It spends the refresh token the
+client holds, so it goes through the same single flight as `ExchangeRefreshToken`: a switch
+racing an exchange presents one token twice, which is reuse, which ends the login. On ok,
+`save(successor)` and serve waiters exactly as the `refreshing` row does.
+
+An account the person is not in is `UNAUTHENTICATED` with reason `INVALID_CREDENTIALS`, exactly
+as a dead token is, so it says nothing about that account. Unlike a dead token it leaves the
+login where it was and the presented token unspent, so a client that cannot tell which it met —
+a membership ended since it last read `account_ids` looks the same — may `ExchangeRefreshToken`
+before it `clear()`s: an exchange that succeeds says the login is fine and the account was what
+was refused. An empty `account_id` is `INVALID_ARGUMENT`. A switch carries no idempotency key, so
+an ambiguous failure is not R10's: the token may already be spent, and the person signs in again.
+
 ## Signing out
 
 Two RPCs, and a client wants both. `SignOut` carries the refresh token and needs no caller;

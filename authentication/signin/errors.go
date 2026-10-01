@@ -521,6 +521,15 @@ var (
 	// ErrEmptyFamilyID indicates a revocation that named no login.
 	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")
 
+	// ErrEmptyAccountID indicates an account switch that named no account to
+	// move to.
+	//
+	// It is refused rather than read as "the default account", because a
+	// switch is a deliberate act and the default is whatever it has since
+	// become — the re-resolution RefreshToken.ActiveAccountID exists to rule
+	// out, reached by leaving a field empty.
+	ErrEmptyAccountID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty account ID to switch to")
+
 	// ErrEmptyMagicLinkToken indicates a redemption presenting no token at all.
 	//
 	// It is not ErrInvalidMagicLink, for the reason ErrEmptyVerificationToken is
