@@ -71,7 +71,7 @@ func TestTable_Validate(T *testing.T) {
 		for _, name := range []string{
 			"audit_log_entries",
 			"audit_log_chains",
-			"ddb_audit_log_entries",
+			"app_audit_log_entries",
 			"archive.audit_log_chains",
 		} {
 			err := Table{Name: name, Column: "recorded_at"}.Validate(dialect.Postgres)
@@ -85,7 +85,7 @@ func TestTable_Validate(T *testing.T) {
 
 		// Taken from audit rather than spelled here, so a rename of the table
 		// cannot leave this package refusing a name nobody uses any more.
-		for _, prefix := range []string{"", "ddb"} {
+		for _, prefix := range []string{"", "app"} {
 			name := audit.PruneTarget{TablePrefix: prefix}.Describe()
 
 			test.ErrorIs(t, Table{Name: name, Column: "recorded_at"}.Validate(dialect.SQLite),

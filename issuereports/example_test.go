@@ -40,9 +40,9 @@ func Example() {
 	report := &issuereports.Report{
 		Reporter:    "user_1",
 		Kind:        "bug",
-		Details:     "the save button does nothing on the recipe editor",
-		SubjectType: "recipes",
-		SubjectID:   "recipe_1",
+		Details:     "the save button does nothing on the article editor",
+		SubjectType: "articles",
+		SubjectID:   "article_1",
 	}
 
 	var filed *issuereports.Report

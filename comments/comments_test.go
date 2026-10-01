@@ -13,14 +13,14 @@ func TestTargets(T *testing.T) {
 	T.Run("knows what it was given and nothing else", func(t *testing.T) {
 		t.Parallel()
 
-		catalog := Targets{recipeType: {Description: "a recipe"}}
+		catalog := Targets{articleType: {Description: "an article"}}
 
-		test.True(t, catalog.Known(recipeType))
+		test.True(t, catalog.Known(articleType))
 		test.False(t, catalog.Known(unknownType))
 
 		// The zero value is a catalog that holds nothing, which is what a store
 		// built without one enforces.
-		test.False(t, Targets(nil).Known(recipeType))
+		test.False(t, Targets(nil).Known(articleType))
 	})
 
 	T.Run("renders its types sorted", func(t *testing.T) {
@@ -30,11 +30,11 @@ func TestTargets(T *testing.T) {
 		// one: an unsorted list is a settings page whose rows move between
 		// refreshes.
 		catalog := Targets{
-			mealType:   {Description: "a meal"},
-			recipeType: {Description: "a recipe"},
+			newsletterType: {Description: "a newsletter"},
+			articleType:    {Description: "an article"},
 		}
 
-		test.Eq(t, []TargetType{mealType, recipeType}, catalog.TargetTypes())
+		test.Eq(t, []TargetType{articleType, newsletterType}, catalog.TargetTypes())
 		test.SliceEmpty(t, Targets{}.TargetTypes())
 	})
 }
@@ -45,7 +45,7 @@ func TestTarget_Validate(T *testing.T) {
 	T.Run("accepts a target naming both halves", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, Target{Type: recipeType, ID: "recipe_1"}.Validate())
+		test.NoError(t, Target{Type: articleType, ID: "article_1"}.Validate())
 	})
 
 	T.Run("refuses a half that is missing or only whitespace", func(t *testing.T) {
@@ -53,10 +53,10 @@ func TestTarget_Validate(T *testing.T) {
 
 		// Whitespace is not a name. A target holding it renders as blank in every
 		// console and matches nothing anyone would search for.
-		must.ErrorIs(t, Target{ID: "recipe_1"}.Validate(), ErrEmptyTargetType)
-		must.ErrorIs(t, Target{Type: " ", ID: "recipe_1"}.Validate(), ErrEmptyTargetType)
-		must.ErrorIs(t, Target{Type: recipeType}.Validate(), ErrEmptyTargetID)
-		must.ErrorIs(t, Target{Type: recipeType, ID: "\t"}.Validate(), ErrEmptyTargetID)
+		must.ErrorIs(t, Target{ID: "article_1"}.Validate(), ErrEmptyTargetType)
+		must.ErrorIs(t, Target{Type: " ", ID: "article_1"}.Validate(), ErrEmptyTargetType)
+		must.ErrorIs(t, Target{Type: articleType}.Validate(), ErrEmptyTargetID)
+		must.ErrorIs(t, Target{Type: articleType, ID: "\t"}.Validate(), ErrEmptyTargetID)
 	})
 
 	T.Run("says nothing about whether the catalog holds the type", func(t *testing.T) {
@@ -76,8 +76,8 @@ func TestTarget_Zero(t *testing.T) {
 	// half-filled target is not zero: it is a caller who meant something and got
 	// it wrong, and Validate is what tells them so.
 	test.True(t, Target{}.Zero())
-	test.False(t, Target{Type: recipeType}.Zero())
-	test.False(t, Target{ID: "recipe_1"}.Zero())
+	test.False(t, Target{Type: articleType}.Zero())
+	test.False(t, Target{ID: "article_1"}.Zero())
 }
 
 func TestComment_Root(t *testing.T) {
@@ -99,5 +99,5 @@ func TestTargetType_String(t *testing.T) {
 	// Spelled at the observability seams rather than left to a reflective
 	// default: a defined string type is neither string nor fmt.Stringer to the
 	// switch that records an attribute.
-	test.EqOp(t, "recipe", recipeType.String())
+	test.EqOp(t, "article", articleType.String())
 }

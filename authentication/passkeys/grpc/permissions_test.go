@@ -86,7 +86,7 @@ func TestRequire(T *testing.T) {
 	T.Run("composes onto a builder that already has entries", func(t *testing.T) {
 		t.Parallel()
 
-		const otherMethod = "/consumer.v1.Meals/GetMeal"
+		const otherMethod = "/consumer.v1.Newsletters/GetNewsletter"
 
 		builder := authzgrpc.NewRequirements()
 		builder.Public(otherMethod)

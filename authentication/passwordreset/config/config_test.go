@@ -100,14 +100,14 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		// sweeper. Both are answers a deployment gives, and defaulting either
 		// would take the answer away.
 		cfg := &Config{
-			TablePrefix:   "ddb",
+			TablePrefix:   "app",
 			TokenLifetime: 15 * time.Minute,
 			RequestFloor:  pointer.To(time.Duration(0)),
 			SweepInterval: pointer.To(time.Duration(0)),
 		}
 		cfg.EnsureDefaults()
 
-		test.EqOp(t, "ddb", cfg.TablePrefix)
+		test.EqOp(t, "app", cfg.TablePrefix)
 		test.EqOp(t, 15*time.Minute, cfg.TokenLifetime)
 		test.EqOp(t, time.Duration(0), *cfg.RequestFloor)
 		test.EqOp(t, time.Duration(0), *cfg.SweepInterval)
@@ -122,7 +122,7 @@ func TestConfig_Validate(T *testing.T) {
 
 		must.NoError(t, (&Config{}).ValidateWithContext(t.Context()))
 		must.NoError(t, (&Config{
-			TablePrefix:   "ddb",
+			TablePrefix:   "app",
 			TokenLifetime: time.Minute,
 			RequestFloor:  pointer.To(time.Second),
 			SweepInterval: pointer.To(time.Minute),

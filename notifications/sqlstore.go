@@ -25,8 +25,8 @@ import (
 // notifications_devices.
 //
 // The notifications_ segment is the schema's, not the caller's: a table always
-// says which package created it. Setting a namespace of "ddb" renders
-// ddb_notifications_inbox, for a database shared between applications. A
+// says which package created it. Setting a namespace of "app" renders
+// app_notifications_inbox, for a database shared between applications. A
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 

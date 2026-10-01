@@ -61,14 +61,14 @@ func TestNewSQLStore(T *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
-		createTable(t, client, dialect.SQLite, "ddb")
+		createTable(t, client, dialect.SQLite, "app")
 
-		store, err := NewSQLStore(&Config{TablePrefix: "ddb"}, client, WithClock(newFakeClock()))
+		store, err := NewSQLStore(&Config{TablePrefix: "app"}, client, WithClock(newFakeClock()))
 		must.NoError(t, err)
 
 		issue(t, store, time.Hour)
 
-		test.EqOp(t, 1, rowsIn(t, client, "ddb_password_reset_tokens"))
+		test.EqOp(t, 1, rowsIn(t, client, "app_password_reset_tokens"))
 		test.EqOp(t, 0, rowsIn(t, client, "password_reset_tokens"))
 	})
 }

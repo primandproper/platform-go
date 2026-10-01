@@ -163,10 +163,10 @@ func TestListObjectsBySubject(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		subject := mediaregistry.Subject{Type: "recipe", ID: "recipe_1"}
+		subject := mediaregistry.Subject{Type: "article", ID: "article_1"}
 
 		// Attached through the store, as the consumer's own RPC would: this
-		// surface attaches nothing to a recipe.
+		// surface attaches nothing to an article.
 		mine := h.seed(t, testScope, mediaregistry.ObjectInput{Key: "a/1", OwnerID: alice, BelongsTo: subject})
 		h.seed(t, testScope, mediaregistry.ObjectInput{Key: "b/1", OwnerID: bob, BelongsTo: subject})
 		h.seed(t, testScope, mediaregistry.ObjectInput{Key: "b/2", OwnerID: bob, BelongsTo: subject})
@@ -187,7 +187,7 @@ func TestListObjectsBySubject(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t, mediaregistrygrpc.WithEntitlement(shareEverything))
-		subject := mediaregistry.Subject{Type: "recipe", ID: "recipe_1"}
+		subject := mediaregistry.Subject{Type: "article", ID: "article_1"}
 
 		h.seed(t, testScope, mediaregistry.ObjectInput{Key: "a/1", OwnerID: alice, BelongsTo: subject})
 		h.seed(t, testScope, mediaregistry.ObjectInput{Key: "b/1", OwnerID: bob, BelongsTo: subject})
@@ -209,7 +209,7 @@ func TestListObjectsBySubject(T *testing.T) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
 		_, err = h.client.ListObjectsBySubject(as(t, alice, testScope), &mediaregistrypb.ListObjectsBySubjectRequest{
-			Subject: &mediaregistrypb.Subject{Id: "recipe_1"},
+			Subject: &mediaregistrypb.Subject{Id: "article_1"},
 		})
 		test.ErrorIs(t, err, mediaregistry.ErrPartialSubject)
 	})

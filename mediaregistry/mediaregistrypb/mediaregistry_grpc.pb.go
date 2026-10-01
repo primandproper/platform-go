@@ -26,13 +26,13 @@
 // types it accepts, how large, where in the bucket they go, what it meters --
 // and mediaregistry/grpc takes each of those as an option with a default. What
 // an object is *for* is the consumer's, and it stays theirs: an avatar, a
-// receipt, a recipe's photo. The one place this file touches that vocabulary is
+// receipt, an article's photo. The one place this file touches that vocabulary is
 // [Subject], and it touches it only as an opaque pair of strings.
 //
 // # What a caller may attach an object to
 //
 // Upload and record may attach an object to the caller's own user subject, or
-// to nothing. This service cannot know whether recipe 123 is the caller's, so it
+// to nothing. This service cannot know whether article 123 is the caller's, so it
 // does not let a caller say so: an attachment to one of the consumer's nouns
 // goes through the consumer's own RPC, which authorizes the subject and calls
 // mediaregistry.StoreAndRecord with it.

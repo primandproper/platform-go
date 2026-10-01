@@ -39,7 +39,7 @@ func TestIdentitydbDialect(t *testing.T) {
 		must.NoError(t, err, must.Sprintf("dialect %q", platform))
 		test.EqOp(t, generated, mapped, test.Sprintf("dialect %q", platform))
 
-		q, err := identitydb.New(mapped, "ddb_")
+		q, err := identitydb.New(mapped, "app_")
 		must.NoError(t, err)
 		must.NotNil(t, q)
 	}

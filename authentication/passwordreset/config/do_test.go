@@ -50,7 +50,7 @@ func TestRegisterStore(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		i := base(t, &Config{TablePrefix: "ddb"})
+		i := base(t, &Config{TablePrefix: "app"})
 		RegisterStore(i)
 
 		store, err := do.Invoke[passwordreset.Store](i)

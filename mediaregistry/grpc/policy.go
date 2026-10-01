@@ -36,7 +36,7 @@ const DefaultMaxBytes int64 = 100 << 20
 // object to, paired with the caller's own principal identifier.
 //
 // It is the one word of the consumer's vocabulary this surface speaks, and it
-// speaks it only about the caller. Whether recipe 123 is the caller's is a
+// speaks it only about the caller. Whether article 123 is the caller's is a
 // question only the consumer can answer, so an attachment to anything but the
 // caller goes through the consumer's own RPC, which authorizes the subject and
 // calls mediaregistry.StoreAndRecord with it. A user attaching an upload to

@@ -85,7 +85,7 @@ func TestServer_GetAnyEntry(T *testing.T) {
 
 		response, err := h.admin.GetAnyEntry(h.asOurs(), &auditpb.GetAnyEntryRequest{EntryId: h.yours.ID})
 		must.NoError(t, err)
-		test.EqOp(t, "recipe_2", response.GetEntry().GetEntry().GetResourceId())
+		test.EqOp(t, "article_2", response.GetEntry().GetEntry().GetResourceId())
 		test.EqOp(t, theirs.Owner(), response.GetEntry().GetOwnerId())
 
 		reads := h.operatorReads(t)
@@ -138,7 +138,7 @@ func TestServer_ListAnyEntries(T *testing.T) {
 		h := operatorHarness(t)
 
 		response, err := h.admin.ListAnyEntries(h.asOurs(), &auditpb.ListAnyEntriesRequest{
-			Query: &auditpb.EntryQuery{ResourceType: "recipe"},
+			Query: &auditpb.EntryQuery{ResourceType: "article"},
 		})
 		must.NoError(t, err)
 
@@ -147,8 +147,8 @@ func TestServer_ListAnyEntries(T *testing.T) {
 			owners[owned.GetEntry().GetResourceId()] = owned.GetOwnerId()
 		}
 
-		test.EqOp(t, ours.Owner(), owners["recipe_1"])
-		test.EqOp(t, theirs.Owner(), owners["recipe_2"])
+		test.EqOp(t, ours.Owner(), owners["article_1"])
+		test.EqOp(t, theirs.Owner(), owners["article_2"])
 
 		reads := h.operatorReads(t)
 		must.SliceLen(t, 1, reads)
@@ -166,7 +166,7 @@ func TestServer_ListAnyEntries(T *testing.T) {
 		response, err := h.admin.ListAnyEntries(h.asOurs(), &auditpb.ListAnyEntriesRequest{OwnerId: &owner})
 		must.NoError(t, err)
 		must.SliceLen(t, 1, response.GetResults())
-		test.EqOp(t, "recipe_2", response.GetResults()[0].GetEntry().GetResourceId())
+		test.EqOp(t, "article_2", response.GetResults()[0].GetEntry().GetResourceId())
 
 		reads := h.operatorReads(t)
 		must.SliceLen(t, 1, reads)
@@ -182,7 +182,7 @@ func TestServer_ListAnyEntries(T *testing.T) {
 		must.NoError(t, err)
 
 		for _, entry := range response.GetResults() {
-			test.NotEqOp(t, "recipe_2", entry.GetResourceId(), test.Sprint("an armed server widened an ordinary read"))
+			test.NotEqOp(t, "article_2", entry.GetResourceId(), test.Sprint("an armed server widened an ordinary read"))
 		}
 
 		test.SliceEmpty(t, h.operatorReads(t), test.Sprint("an ordinary read was recorded as an operator's"))

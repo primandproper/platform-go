@@ -419,7 +419,7 @@ archiving and erasing is the same code in every application; what varies is the
 catalog of things that can be commented on, and the package already refuses to
 guess at it. That refusal is what makes a transport safe to ship: a target type
 stays an opaque string in the proto rather than becoming a generated enum, so
-adding a `meal_plan` is your release and not ours, and the optional existence
+adding a `newsletter` is your release and not ours, and the optional existence
 check stays a Go func on your side of the surface. Two other things come off the
 connection rather than out of a request field, and the schema reserves both
 names so they cannot come back: the scope, as everywhere here, and the author —

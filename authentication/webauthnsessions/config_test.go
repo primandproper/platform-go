@@ -21,7 +21,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Run("accepts a namespace the schema can render", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, (&Config{TablePrefix: "ddb"}).ValidateWithContext(t.Context()))
+		test.NoError(t, (&Config{TablePrefix: "app"}).ValidateWithContext(t.Context()))
 	})
 
 	// Vetted against the schema rather than against a pattern: a prefix that is
@@ -41,7 +41,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Run("rejects a namespace that ends in the separator", func(t *testing.T) {
 		t.Parallel()
 
-		err := (&Config{TablePrefix: "ddb_"}).ValidateWithContext(t.Context())
+		err := (&Config{TablePrefix: "app_"}).ValidateWithContext(t.Context())
 		test.ErrorContains(t, err, ddl.ErrPrefixTrailingSeparator.Error())
 	})
 }

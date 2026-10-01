@@ -97,7 +97,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a prefix the schema cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewSQLStore(&Config{TablePrefix: "ddb_"}, newTestClient(t))
+		_, err := NewSQLStore(&Config{TablePrefix: "app_"}, newTestClient(t))
 		test.ErrorIs(t, err, ddl.ErrPrefixTrailingSeparator)
 	})
 }
@@ -109,13 +109,13 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		test.NoError(t, (&Config{}).ValidateWithContext(t.Context()))
-		test.NoError(t, (&Config{TablePrefix: "ddb"}).ValidateWithContext(t.Context()))
+		test.NoError(t, (&Config{TablePrefix: "app"}).ValidateWithContext(t.Context()))
 	})
 
 	T.Run("refuses a prefix the schema cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		test.Error(t, (&Config{TablePrefix: "ddb_"}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{TablePrefix: "app_"}).ValidateWithContext(t.Context()))
 	})
 }
 
@@ -545,14 +545,14 @@ func TestSQLStore_namespacedTable(t *testing.T) {
 	t.Parallel()
 
 	client := newTestClient(t)
-	createTable(t, client, dialect.SQLite, "ddb")
+	createTable(t, client, dialect.SQLite, "app")
 
 	plain := newHarnessOn(t, client, &Config{})
-	namespaced := newHarnessOn(t, client, &Config{TablePrefix: "ddb"})
+	namespaced := newHarnessOn(t, client, &Config{TablePrefix: "app"})
 
 	codes := namespaced.mint(t, testUser)
 
-	test.EqOp(t, testCount, rowsIn(t, client, "ddb_signin_recovery_codes"))
+	test.EqOp(t, testCount, rowsIn(t, client, "app_signin_recovery_codes"))
 	test.EqOp(t, 0, rowsIn(t, client, "signin_recovery_codes"))
 
 	test.ErrorIs(t, plain.store.Verify(t.Context(), client.Reader(), testScope(), testUser, codes[0]),

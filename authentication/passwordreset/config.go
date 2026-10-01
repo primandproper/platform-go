@@ -12,8 +12,8 @@ import (
 // configured, which is none — rendering plain "password_reset_tokens".
 //
 // The password_reset segment is the schema's, not the caller's: a table always
-// says which package created it. Setting a namespace of "ddb" renders
-// ddb_password_reset_tokens, for a database shared between applications. A
+// says which package created it. Setting a namespace of "app" renders
+// app_password_reset_tokens, for a database shared between applications. A
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 
@@ -35,7 +35,7 @@ type Config struct {
 	// TablePrefix is the namespace prepended to the token table's name. Empty
 	// renders the schema's own name, "password_reset_tokens"; set it to share a
 	// database between applications, which renders e.g.
-	// ddb_password_reset_tokens. It must not end in '_' — the separator is
+	// app_password_reset_tokens. It must not end in '_' — the separator is
 	// supplied for you.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 }

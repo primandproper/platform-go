@@ -128,7 +128,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
 		cfg = cacheConfig()
-		cfg.Database = webauthnsessions.Config{TablePrefix: "ddb_"}
+		cfg.Database = webauthnsessions.Config{TablePrefix: "app_"}
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
@@ -137,7 +137,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		cfg := databaseConfig()
-		cfg.Database = webauthnsessions.Config{TablePrefix: "ddb_"}
+		cfg.Database = webauthnsessions.Config{TablePrefix: "app_"}
 
 		test.Error(t, cfg.ValidateWithContext(t.Context()))
 	})

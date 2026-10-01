@@ -12,8 +12,8 @@ const (
 	// is configured, which is none — rendering operations.
 	//
 	// The table's own name is the schema's, not the caller's: a table always
-	// says which package created it. Setting a namespace of "ddb" renders
-	// ddb_operations, for a database shared between applications. A namespace
+	// says which package created it. Setting a namespace of "app" renders
+	// app_operations, for a database shared between applications. A namespace
 	// must not end in '_'; database/ddl supplies the separator.
 	DefaultTablePrefix = ""
 
@@ -70,7 +70,7 @@ const (
 // the one thing that cannot be wrong about its own dialect.
 type Config struct {
 	// TablePrefix is the namespace the operations table carries. Empty renders
-	// operations; "ddb" renders ddb_operations. It must match the namespace the
+	// operations; "app" renders app_operations. It must match the namespace the
 	// migrations were rendered with.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 

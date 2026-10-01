@@ -29,8 +29,8 @@ import (
 // billing_purchases and billing_transactions.
 //
 // The billing_ segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders
-// ddb_billing_products, for a database shared between applications. A namespace
+// which package created it. Setting a namespace of "app" renders
+// app_billing_products, for a database shared between applications. A namespace
 // must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 

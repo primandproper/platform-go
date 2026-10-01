@@ -272,7 +272,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		// does not assign: the write succeeds and none of it lands.
 		moved := *child
 		moved.Body = "child, edited"
-		moved.Target = Target{Type: mealType, ID: "meal_9"}
+		moved.Target = Target{Type: newsletterType, ID: "newsletter_9"}
 		moved.ParentID = RootParentID
 		moved.Author = "somebody_else"
 
@@ -402,13 +402,13 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		typeless := newComment(testAuthor, "words")
-		typeless.Target = Target{ID: "recipe_1"}
+		typeless.Target = Target{ID: "article_1"}
 		must.ErrorIs(t, env.createErr(t, store, testScope, typeless), ErrEmptyTargetType)
 
 		// The empty id is not a wildcard: a comment holding it would be about
-		// every recipe and no recipe at once.
+		// every article and no article at once.
 		idless := newComment(testAuthor, "words")
-		idless.Target = Target{Type: recipeType}
+		idless.Target = Target{Type: articleType}
 		must.ErrorIs(t, env.createErr(t, store, testScope, idless), ErrEmptyTargetID)
 	})
 
@@ -417,7 +417,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 
 		check := newRecordingCheck(true, nil)
 		store := env.newStore(t, WithTargets(Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		}))
 
 		must.NoError(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")))
@@ -431,13 +431,13 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 
 		check := newRecordingCheck(false, nil)
 		store := env.newStore(t, WithTargets(Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		}))
 
-		c := newComment(testAuthor, "about a deleted recipe")
+		c := newComment(testAuthor, "about a deleted article")
 		must.ErrorIs(t, env.createErr(t, store, testScope, c), ErrTargetNotFound)
 
-		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, recipeType, nil)
+		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, articleType, nil)
 		must.NoError(t, err)
 		test.SliceEmpty(t, page.Data)
 	})
@@ -450,7 +450,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		// rather than deciding the target is gone.
 		check := newRecordingCheck(false, errCheckUnavailable)
 		store := env.newStore(t, WithTargets(Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		}))
 
 		err := env.createErr(t, store, testScope, newComment(testAuthor, "words"))
@@ -461,7 +461,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 	t.Run("the catalog is copied, so a later mutation changes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		catalog := Targets{recipeType: {Description: "a recipe"}}
+		catalog := Targets{articleType: {Description: "an article"}}
 		store := env.newStore(t, WithTargets(catalog))
 
 		catalog[unknownType] = TargetDefinition{Description: "smuggled in afterwards"}
@@ -470,7 +470,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		c.Target = Target{Type: unknownType, ID: "x"}
 
 		must.ErrorIs(t, env.createErr(t, store, testScope, c), ErrUnknownTargetType)
-		test.Eq(t, []TargetType{recipeType}, store.TargetTypes())
+		test.Eq(t, []TargetType{articleType}, store.TargetTypes())
 	})
 
 	t.Run("a read is not gated on the catalog", func(t *testing.T) {
@@ -483,10 +483,10 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		written(t, env, store, newComment(testAuthor, "written while the type was live"))
 
 		withdrawn, err := NewSQLStore(env.client,
-			WithTablePrefix(prefix), WithTargets(Targets{mealType: {Description: "a meal"}}))
+			WithTablePrefix(prefix), WithTargets(Targets{newsletterType: {Description: "a newsletter"}}))
 		must.NoError(t, err)
 
-		page, err := withdrawn.ListCommentsByTargetType(t.Context(), env.reader(), testScope, recipeType, nil)
+		page, err := withdrawn.ListCommentsByTargetType(t.Context(), env.reader(), testScope, articleType, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, page.Data)
 
@@ -544,7 +544,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		root := written(t, env, store, newComment(testAuthor, "root"))
 
 		child := reply(root.ID, otherAuthor, "child")
-		child.Target = Target{Type: mealType, ID: "meal_9"}
+		child.Target = Target{Type: newsletterType, ID: "newsletter_9"}
 
 		must.ErrorIs(t, env.createErr(t, store, testScope, child), ErrTargetMismatch)
 	})
@@ -650,10 +650,10 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		mine := written(t, env, store, newComment(testAuthor, "on recipe_1"))
+		mine := written(t, env, store, newComment(testAuthor, "on article_1"))
 
-		elsewhere := newComment(testAuthor, "on recipe_2")
-		elsewhere.Target = Target{Type: recipeType, ID: "recipe_2"}
+		elsewhere := newComment(testAuthor, "on article_2")
+		elsewhere.Target = Target{Type: articleType, ID: "article_2"}
 		written(t, env, store, elsewhere)
 
 		nextDoor := newComment(testAuthor, "in another tenant")
@@ -671,18 +671,18 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		root := written(t, env, store, newComment(testAuthor, "on recipe_1"))
+		root := written(t, env, store, newComment(testAuthor, "on article_1"))
 		child := written(t, env, store, reply(root.ID, otherAuthor, "a reply"))
 
-		second := newComment(testAuthor, "on recipe_2")
-		second.Target = Target{Type: recipeType, ID: "recipe_2"}
+		second := newComment(testAuthor, "on article_2")
+		second.Target = Target{Type: articleType, ID: "article_2"}
 		second = written(t, env, store, second)
 
-		meal := newComment(testAuthor, "on a meal")
-		meal.Target = Target{Type: mealType, ID: "meal_1"}
-		written(t, env, store, meal)
+		newsletter := newComment(testAuthor, "on a newsletter")
+		newsletter.Target = Target{Type: newsletterType, ID: "newsletter_1"}
+		written(t, env, store, newsletter)
 
-		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, recipeType, nil)
+		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, articleType, nil)
 		must.NoError(t, err)
 		test.Eq(t, []string{root.ID, child.ID, second.ID}, ids(page.Data))
 	})
@@ -775,7 +775,7 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, "", nil)
 		must.ErrorIs(t, err, ErrEmptyTargetType)
 
-		_, err = store.ListRootComments(t.Context(), env.reader(), testScope, Target{Type: recipeType}, nil)
+		_, err = store.ListRootComments(t.Context(), env.reader(), testScope, Target{Type: articleType}, nil)
 		must.ErrorIs(t, err, ErrEmptyTargetID)
 	})
 }
@@ -794,14 +794,14 @@ func runSweepSuite(t *testing.T, env *storeEnv) {
 		gone := written(t, env, store, newComment(testAuthor, "already archived"))
 		must.NoError(t, env.archiveErr(t, store, testScope, gone.ID))
 
-		elsewhere := newComment(testAuthor, "about another recipe")
-		elsewhere.Target = Target{Type: recipeType, ID: "recipe_2"}
+		elsewhere := newComment(testAuthor, "about another article")
+		elsewhere.Target = Target{Type: articleType, ID: "article_2"}
 		survivor := written(t, env, store, elsewhere)
 
 		deleted := sweep(t, env, store, testScope, testTarget)
 		test.EqOp(t, int64(3), deleted)
 
-		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, recipeType, nil)
+		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, articleType, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, page.Data)
 		test.EqOp(t, survivor.ID, page.Data[0].ID)
@@ -816,7 +816,7 @@ func runSweepSuite(t *testing.T, env *storeEnv) {
 		written(t, env, store, newComment(testAuthor, "written while the type was live"))
 
 		withdrawn, err := NewSQLStore(env.client,
-			WithTablePrefix(prefix), WithTargets(Targets{mealType: {Description: "a meal"}}))
+			WithTablePrefix(prefix), WithTargets(Targets{newsletterType: {Description: "a newsletter"}}))
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(1), sweep(t, env, withdrawn, testScope, testTarget))
@@ -1195,7 +1195,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListReplies(t.Context(), nil, testScope, testTarget, "cmt_1", nil)
 		must.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = store.ListCommentsByTargetType(t.Context(), nil, testScope, recipeType, nil)
+		_, err = store.ListCommentsByTargetType(t.Context(), nil, testScope, articleType, nil)
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.ListCommentsByAuthor(t.Context(), nil, testScope, testAuthor, nil)
@@ -1303,12 +1303,12 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// was committed.
 		check := newRecordingCheck(false, nil)
 		store := env.newStore(t, WithTargets(Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		}))
 
 		err := env.inTx(t, func(tx database.Tx) error {
 			_, createErr := store.CreateComment(t.Context(), tx, testScope,
-				newComment(testAuthor, "about a recipe nobody can find"))
+				newComment(testAuthor, "about an article nobody can find"))
 
 			return createErr
 		})

@@ -63,7 +63,7 @@ func TestRegisterStore(T *testing.T) {
 
 		// The prefix is the whole of what this package configures, so it is the
 		// one thing worth reading back off what the container built.
-		i := base(t, &Config{TablePrefix: "ddb"})
+		i := base(t, &Config{TablePrefix: "app"})
 		RegisterStore(i)
 
 		store, err := do.Invoke[oauth2clients.Store](i)
@@ -71,7 +71,7 @@ func TestRegisterStore(T *testing.T) {
 
 		sqlStore, ok := store.(*oauth2clients.SQLStore)
 		must.True(t, ok)
-		test.EqOp(t, "ddb", sqlStore.TablePrefix())
+		test.EqOp(t, "app", sqlStore.TablePrefix())
 	})
 
 	T.Run("surfaces a bad config", func(t *testing.T) {

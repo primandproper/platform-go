@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}comments (
     -- the ruling on what a comment on a vanished target is.
     --
     -- Two columns rather than one composite key, because a key like
-    -- "recipes:1234" scopes by construction and cannot be indexed, filtered or
-    -- enumerated as the two facts it is: "every comment about recipes" is a
+    -- "articles:1234" scopes by construction and cannot be indexed, filtered or
+    -- enumerated as the two facts it is: "every comment about articles" is a
     -- question this shape answers and that one does not.
     target_type     TEXT NOT NULL,
     target_id       TEXT NOT NULL,

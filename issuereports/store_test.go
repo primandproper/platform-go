@@ -101,8 +101,8 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, created.ID, read.ID)
 		test.EqOp(t, "bug", read.Kind)
 		test.EqOp(t, "the button does nothing", read.Details)
-		test.EqOp(t, "recipes", read.SubjectType)
-		test.EqOp(t, "recipe_1", read.SubjectID)
+		test.EqOp(t, "articles", read.SubjectType)
+		test.EqOp(t, "article_1", read.SubjectID)
 		test.EqOp(t, StatusOpen, read.Status)
 		test.EqOp(t, "", read.Resolution)
 	})
@@ -568,10 +568,10 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		first := filed(t, env, store, newReport(testReporter, "bug", "about recipe 1"))
+		first := filed(t, env, store, newReport(testReporter, "bug", "about article 1"))
 
-		second := newReport(testReporter, "bug", "about recipe 2")
-		second.SubjectID = "recipe_2"
+		second := newReport(testReporter, "bug", "about article 2")
+		second.SubjectID = "article_2"
 		filed(t, env, store, second)
 
 		elsewhere := newReport(testReporter, "bug", "about a label")
@@ -579,11 +579,11 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 		elsewhere.SubjectID = "label_1"
 		filed(t, env, store, elsewhere)
 
-		byType, err := store.ListReportsBySubjectType(t.Context(), env.reader(), testScope, "recipes", nil)
+		byType, err := store.ListReportsBySubjectType(t.Context(), env.reader(), testScope, "articles", nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, byType.Data)
 
-		bySubject, err := store.ListReportsForSubject(t.Context(), env.reader(), testScope, "recipes", "recipe_1", nil)
+		bySubject, err := store.ListReportsForSubject(t.Context(), env.reader(), testScope, "articles", "article_1", nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, bySubject.Data)
 		test.EqOp(t, first.ID, bySubject.Data[0].ID)
@@ -760,10 +760,10 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListReportsByReporter(t.Context(), env.reader(), blank, testReporter, nil)
 		test.Error(t, err)
 
-		_, err = store.ListReportsBySubjectType(t.Context(), env.reader(), blank, "recipes", nil)
+		_, err = store.ListReportsBySubjectType(t.Context(), env.reader(), blank, "articles", nil)
 		test.Error(t, err)
 
-		_, err = store.ListReportsForSubject(t.Context(), env.reader(), blank, "recipes", "recipe_1", nil)
+		_, err = store.ListReportsForSubject(t.Context(), env.reader(), blank, "articles", "article_1", nil)
 		test.Error(t, err)
 	})
 }
@@ -1143,10 +1143,10 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListReportsByReporter(t.Context(), nil, testScope, testReporter, nil)
 		must.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = store.ListReportsBySubjectType(t.Context(), nil, testScope, "recipes", nil)
+		_, err = store.ListReportsBySubjectType(t.Context(), nil, testScope, "articles", nil)
 		must.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = store.ListReportsForSubject(t.Context(), nil, testScope, "recipes", "recipe_1", nil)
+		_, err = store.ListReportsForSubject(t.Context(), nil, testScope, "articles", "article_1", nil)
 		must.ErrorIs(t, err, ErrNilExecutor)
 	})
 

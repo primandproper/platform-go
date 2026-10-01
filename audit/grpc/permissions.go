@@ -92,7 +92,7 @@ func Permissions() map[string][]authorization.Permission {
 // composes several domains and their own methods into one table:
 //
 //	reqs, err := auditgrpc.Require(identitygrpc.Require(authzgrpc.NewRequirements())).
-//		RequireAll(mealplanning.Permissions()).
+//		RequireAll(newsletters.Permissions()).
 //		Public(healthpb.Health_Check_FullMethodName).
 //		Build()
 //

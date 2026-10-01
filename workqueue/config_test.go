@@ -57,10 +57,10 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		t.Parallel()
 
 		cfg := validConfig()
-		cfg.TablePrefix = "ddb"
+		cfg.TablePrefix = "app"
 		cfg.EnsureDefaults()
 
-		test.EqOp(t, "ddb_work_queue_items", cfg.resolvedTable())
+		test.EqOp(t, "app_work_queue_items", cfg.resolvedTable())
 	})
 }
 
@@ -152,6 +152,6 @@ func TestTableFor(T *testing.T) {
 	T.Run("a namespace is separated by the renderer", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, "ddb_work_queue_items", tableFor("ddb"))
+		test.EqOp(t, "app_work_queue_items", tableFor("app"))
 	})
 }

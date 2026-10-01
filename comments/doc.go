@@ -11,7 +11,7 @@ that is the one part this package refuses to guess at.
 
 # The target, and why the store cannot check it
 
-A comment is about something: a recipe, a meal plan, another user's post. Which
+A comment is about something: an article, a newsletter, another user's post. Which
 kinds of thing exist is an application fact, and the rows themselves live in
 tables this package has never seen — in another schema, sometimes in another
 database. There is no foreign key available to it and no join it could make.

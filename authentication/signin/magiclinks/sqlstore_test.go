@@ -586,16 +586,16 @@ func TestSQLStore_addressesTheNamespacedTable(t *testing.T) {
 	t.Parallel()
 
 	client := newTestClient(t)
-	createTable(t, client, dialect.SQLite, "ddb")
+	createTable(t, client, dialect.SQLite, "app")
 
 	c := newFakeClock()
 
-	store, err := NewSQLStore(&Config{TablePrefix: "ddb"}, client, WithClock(c))
+	store, err := NewSQLStore(&Config{TablePrefix: "app"}, client, WithClock(c))
 	must.NoError(t, err)
 
 	issuance := issue(t, store)
 
-	test.EqOp(t, 1, rowsIn(t, client, "ddb_signin_magic_links"))
+	test.EqOp(t, 1, rowsIn(t, client, "app_signin_magic_links"))
 	test.EqOp(t, 0, rowsIn(t, client, "signin_magic_links"))
 
 	link, err := redeem(t, store, testScope(), issuance.Secret)

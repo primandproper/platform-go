@@ -60,7 +60,7 @@ func TestPruneTarget_IsWhatSweepsTheseTables(T *testing.T) {
 	T.Run("a retention.Table pointed at them does not validate", func(t *testing.T) {
 		t.Parallel()
 
-		for _, prefix := range []string{"", "ddb"} {
+		for _, prefix := range []string{"", "app"} {
 			name := audit.PruneTarget{TablePrefix: prefix}.Describe()
 
 			err := retention.Table{Name: name, Column: "recorded_at"}.Validate(dialect.Postgres)
@@ -71,6 +71,6 @@ func TestPruneTarget_IsWhatSweepsTheseTables(T *testing.T) {
 	T.Run("the target itself still does", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, audit.PruneTarget{TablePrefix: "ddb"}.Validate(dialect.Postgres))
+		test.NoError(t, audit.PruneTarget{TablePrefix: "app"}.Validate(dialect.Postgres))
 	})
 }

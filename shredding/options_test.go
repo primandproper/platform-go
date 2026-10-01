@@ -70,10 +70,10 @@ func TestOptions(T *testing.T) {
 	T.Run("ignores an empty table prefix", func(t *testing.T) {
 		t.Parallel()
 
-		s := &SQLStore{prefix: "ddb"}
+		s := &SQLStore{prefix: "app"}
 		WithTablePrefix("")(s)
 
-		test.EqOp(t, "ddb", s.prefix)
+		test.EqOp(t, "app", s.prefix)
 	})
 
 	T.Run("skips a nil option", func(t *testing.T) {

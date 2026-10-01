@@ -1263,8 +1263,8 @@ type InvitationStore interface {
 // not: a registration is three rows, an accepted invitation is two, and an
 // erasure spans every domain a subject appears in. What the other twenty-five
 // had instead was a transaction each, which is the same argument answered
-// wrongly — a consumer's write almost never travels alone. Every dinnerdonebetter
-// write carries an audit entry and a data change event in the row's transaction,
+// wrongly — a consumer's write almost never travels alone. A consumer's write
+// typically carries an audit entry and a data change event in the row's transaction,
 // so a credential rotation that opened its own left its provenance in a second
 // one, and a refused audit entry left the new password hash committed with
 // nothing recording who changed it.

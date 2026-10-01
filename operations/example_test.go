@@ -25,7 +25,7 @@ type exportRequest struct {
 func Example_register() {
 	registry := operations.NewRegistry()
 
-	domains := []string{"identity", "webhooks", "mealplanning"}
+	domains := []string{"identity", "webhooks", "newsletters"}
 
 	err := operations.Register(registry, operations.Definition[exportRequest]{
 		Kind:       "dataprivacy.export",

@@ -328,8 +328,8 @@ func newReport(reporter, kind, details string) *Report {
 		Reporter:    reporter,
 		Kind:        kind,
 		Details:     details,
-		SubjectType: "recipes",
-		SubjectID:   "recipe_1",
+		SubjectType: "articles",
+		SubjectID:   "article_1",
 	}
 }
 

@@ -20,7 +20,7 @@ database.Client.WithTransaction hands its callback an executor and nothing else
 is just another statement in the caller's transaction and lives or dies with it:
 
 	err := client.WithTransaction(ctx, func(q database.Tx) error {
-		if err := updateRecipe(ctx, q, after); err != nil {
+		if err := updateArticle(ctx, q, after); err != nil {
 			return err
 		}
 
@@ -31,7 +31,7 @@ is just another statement in the caller's transaction and lives or dies with it:
 
 		return recorder.Record(ctx, q, tenancy.Of(accountID), &audit.Entry{
 			EventType:    audit.EventUpdated,
-			ResourceType: "recipe",
+			ResourceType: "article",
 			ResourceID:   after.ID,
 			Actor:        audit.Actor{ID: userID, Type: audit.ActorUser, IP: remoteIP},
 			Changes:      changes,

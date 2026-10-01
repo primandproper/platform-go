@@ -232,7 +232,7 @@ type EventDefinition struct {
 // Subscribing to an event outside the catalog is rejected at registration, and
 // dispatching one is rejected at Dispatch. Both matter: an event type is a
 // string underneath, string literals are typo-prone, and a subscription to
-// "reciped.created" that is accepted silently produces an endpoint that never
+// "artcile.created" that is accepted silently produces an endpoint that never
 // fires and no signal explaining why. Declaring the event types as EventType
 // constants and keying the catalog by those constants moves that check to
 // compile time for everything except the catalog's own literals.

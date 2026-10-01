@@ -28,7 +28,7 @@ import (
 func auditEntry(scope tenancy.Scope, resourceID string) *audit.Entry {
 	return &audit.Entry{
 		EventType:    audit.EventUpdated,
-		ResourceType: "recipe",
+		ResourceType: "article",
 		ResourceID:   resourceID,
 		Scope:        scope,
 		Actor:        audit.Actor{ID: "user_1", Type: audit.ActorUser},

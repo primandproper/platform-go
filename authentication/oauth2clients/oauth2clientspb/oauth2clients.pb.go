@@ -27,13 +27,10 @@
 //
 // # Why there are four RPCs
 //
-// Because four is what a consumer asked for. This service was drawn from
-// dinnerdonebetter's proto/oauth, which declares create, get, list and archive
-// and nothing else; the file was diffed against it rather than remembered, and
-// six further methods that had shipped here -- an update, and a self-service
-// mirror of all five operations -- turned out to answer no caller in that
-// repository or any other. They were removed before anything consumed this
-// package.
+// Because create, get, list and archive are the operations a registry of
+// clients is called for. Six further methods had shipped here -- an update,
+// and a self-service mirror of all five operations -- and they answered no
+// caller. They were removed before anything consumed this package.
 //
 // The self-service half is the one worth recording, because it was not merely
 // unused. Its five methods were reachable behind no permission at all, on the

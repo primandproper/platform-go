@@ -57,7 +57,7 @@ func (p *productRegistration) policy(_ context.Context, registration *signin.Reg
 	}
 
 	if registration.Account.Name == "" {
-		registration.Account.Name = registration.User.Username + "'s household"
+		registration.Account.Name = registration.User.Username + "'s workspace"
 	}
 
 	return nil
@@ -94,7 +94,7 @@ func TestRegistrationPolicy_shapesWhatIsWritten(T *testing.T) {
 	test.EqOp(T, *stored.LastAcceptedTermsOfService, *stored.LastAcceptedPrivacyPolicy)
 
 	must.NotNil(T, registered.Account)
-	test.EqOp(T, "ada's household", registered.Account.Name)
+	test.EqOp(T, "ada's workspace", registered.Account.Name)
 	must.NotNil(T, registered.Membership)
 	test.SliceContainsAll(T, []string{"owner", "account_admin"}, registered.Membership.Roles)
 

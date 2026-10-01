@@ -1,8 +1,8 @@
 # The client contract
 
 What a client of a `platform-go`-backed service must do, stated once, in no particular
-language. `platform-client-ts` and `platform-client-swift` implement this; DDB's iOS app and
-web frontend get it by using them.
+language. `platform-client-ts` and `platform-client-swift` implement this, so an application's
+clients get it by using them.
 
 It lives here because it describes **this module's wire behaviour**. A change to the sign-in
 flow in v15 updates this file in the same pull request that makes the change, rather than two

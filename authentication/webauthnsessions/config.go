@@ -12,8 +12,8 @@ import (
 // none is configured, which is none — rendering plain "webauthn_sessions".
 //
 // The webauthn segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders
-// ddb_webauthn_sessions, for a database shared between applications. A
+// which package created it. Setting a namespace of "app" renders
+// app_webauthn_sessions, for a database shared between applications. A
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 
@@ -29,7 +29,7 @@ type Config struct {
 	// TablePrefix is the namespace prepended to the ceremony session table's
 	// name. Empty renders the schema's own name, "webauthn_sessions"; set it to
 	// share a database between applications, which renders e.g.
-	// ddb_webauthn_sessions. It must not end in '_' — the separator is supplied
+	// app_webauthn_sessions. It must not end in '_' — the separator is supplied
 	// for you.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 }

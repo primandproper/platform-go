@@ -21,13 +21,13 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Run("with a namespace", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, (&Config{TablePrefix: "ddb"}).ValidateWithContext(t.Context()))
+		test.NoError(t, (&Config{TablePrefix: "app"}).ValidateWithContext(t.Context()))
 	})
 
 	T.Run("with a trailing separator", func(t *testing.T) {
 		t.Parallel()
 
-		test.Error(t, (&Config{TablePrefix: "ddb_"}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{TablePrefix: "app_"}).ValidateWithContext(t.Context()))
 	})
 
 	T.Run("with an illegal identifier", func(t *testing.T) {

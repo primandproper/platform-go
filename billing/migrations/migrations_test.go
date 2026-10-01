@@ -49,14 +49,14 @@ func TestStatements(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range allDialects {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 
 			joined := strings.Join(stmts, "\n")
 
 			for _, name := range tableNames {
-				test.StrContains(t, joined, "ddb_"+name,
-					test.Sprintf("%s does not create ddb_%s", d, name))
+				test.StrContains(t, joined, "app_"+name,
+					test.Sprintf("%s does not create app_%s", d, name))
 			}
 		}
 	})
@@ -101,12 +101,12 @@ func TestTables(T *testing.T) {
 		// created the tables, and agreeing at the empty prefix is not the same as
 		// agreeing at theirs.
 		for _, d := range allDialects {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 
 			joined := strings.Join(stmts, "\n")
 
-			names, err := Tables("ddb")
+			names, err := Tables("app")
 			must.NoError(t, err)
 
 			for _, name := range names {

@@ -171,7 +171,7 @@ type Seams struct {
 	//
 	// Any call may be named, on any service. Which calls a deployment keeps
 	// from its members is its product's decision — a dispute desk that keeps
-	// commenting to its staff is as legitimate as a household app that keeps
+	// commenting to its staff is as legitimate as a team app that keeps
 	// nothing — and this module draws no line of its own. The suites make each
 	// call named here as an operator and every other call as a member: each
 	// caller declares the calls it goes on to make (see Making), is minted an
@@ -762,7 +762,7 @@ type Actions struct {
 
 	// CommentTarget brings a thing that accepts comments into being in this
 	// tenant, the way the deployment does, and reports its target type and
-	// identifier — a recipe created, a ticket opened. The tenant is the one
+	// identifier — an article created, a ticket opened. The tenant is the one
 	// the commenting caller is in on the comments surface, as
 	// Subject.ScopeFor reads it.
 	//

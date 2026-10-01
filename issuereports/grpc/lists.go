@@ -189,7 +189,7 @@ func (s *Server) ListReportsByReporter(
 }
 
 // ListReportsBySubjectType pages every report about one kind of thing —
-// everything anybody has said about recipes.
+// everything anybody has said about articles.
 //
 // The subject type is the application's own word and nothing here validates it:
 // one this deployment does not use is an empty page rather than a refusal, which

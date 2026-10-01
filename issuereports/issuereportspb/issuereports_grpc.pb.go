@@ -47,7 +47,7 @@
 // [IssueReport.kind] and [IssueReport.subject_type] are strings, and they are
 // the borrowed vocabulary in this file. What a report is *about*, and what
 // categories a product sorts its reports into, are the application's -- bug,
-// billing, abuse; recipe, household, meal plan -- and the Go package says so:
+// billing, abuse; article, workspace, newsletter -- and the Go package says so:
 // what varies is the catalog of categories and what a report can be about, and
 // both of those are opaque to this package. An enum here would put a consumer's
 // vocabulary on this module's release cadence, and a category they added would

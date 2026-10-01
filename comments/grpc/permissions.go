@@ -44,7 +44,7 @@ const (
 	PermissionReadComments authorization.Permission = "comments.read"
 
 	// PermissionModerateComments covers paging every comment about one kind of
-	// thing — "everything anybody has said about recipes", roots and replies
+	// thing — "everything anybody has said about articles", roots and replies
 	// alike, across every target of that type.
 	//
 	// It is its own grant because it is the only read here that is not about a

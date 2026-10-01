@@ -323,9 +323,9 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	})
 
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {
-		createTable(t, client, d, "ddb")
+		createTable(t, client, d, "app")
 
-		namespaced, storeErr := NewSQLStore(client, WithClock(c), WithTablePrefix("ddb"))
+		namespaced, storeErr := NewSQLStore(client, WithClock(c), WithTablePrefix("app"))
 		must.NoError(t, storeErr)
 
 		issuance, issueErr := issueFor(t, namespaced, testScope(), &IssueRequest{SubjectID: "contact_ns", PhoneNumber: "+15550000015"})

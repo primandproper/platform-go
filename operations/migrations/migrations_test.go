@@ -43,12 +43,12 @@ func TestStatements(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range everyDialect {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 
 			joined := strings.Join(stmts, "\n")
 
-			test.StrContains(t, joined, "ddb_operations")
+			test.StrContains(t, joined, "app_operations")
 			test.StrNotContains(t, joined, ddl.Placeholder)
 
 			// An index that kept the unprefixed name would collide with another
@@ -95,11 +95,11 @@ func TestValidatePrefix(T *testing.T) {
 	T.Parallel()
 
 	test.NoError(T, ValidatePrefix(""))
-	test.NoError(T, ValidatePrefix("ddb"))
+	test.NoError(T, ValidatePrefix("app"))
 
 	// database/ddl supplies the separator, so a prefix that brings its own
 	// renders a double underscore.
-	test.Error(T, ValidatePrefix("ddb_"))
+	test.Error(T, ValidatePrefix("app_"))
 
 	test.Error(T, ValidatePrefix("has spaces"))
 	test.Error(T, ValidatePrefix(strings.Repeat("a", 64)))

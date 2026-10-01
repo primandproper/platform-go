@@ -30,9 +30,9 @@ func TestConfig_EnsureDefaults(t *testing.T) {
 	cfg.EnsureDefaults()
 	test.EqOp(t, waitlists.DefaultTablePrefix, cfg.TablePrefix)
 
-	set := &Config{TablePrefix: "ddb"}
+	set := &Config{TablePrefix: "app"}
 	set.EnsureDefaults()
-	test.EqOp(t, "ddb", set.TablePrefix)
+	test.EqOp(t, "app", set.TablePrefix)
 }
 
 func TestConfig_Validate(T *testing.T) {
@@ -42,7 +42,7 @@ func TestConfig_Validate(T *testing.T) {
 		t.Parallel()
 
 		must.NoError(t, (&Config{}).ValidateWithContext(t.Context()))
-		must.NoError(t, (&Config{TablePrefix: "ddb"}).ValidateWithContext(t.Context()))
+		must.NoError(t, (&Config{TablePrefix: "app"}).ValidateWithContext(t.Context()))
 	})
 
 	T.Run("refuses a prefix that cannot render", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestNewStore(T *testing.T) {
 
 		// A caller can override anything the config derived, the table prefix
 		// included.
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.Postgres),
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres),
 			WithStoreOptions(waitlists.WithTablePrefix("override")))
 		must.NoError(t, err)
 		must.NotNil(t, store)
