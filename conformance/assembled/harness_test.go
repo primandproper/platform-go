@@ -70,6 +70,7 @@ import (
 	notificationsclient "github.com/primandproper/platform-go/v14/notifications/grpc/client"
 	notificationsmigrations "github.com/primandproper/platform-go/v14/notifications/migrations"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v14/operations"
 	operationsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
 	"github.com/primandproper/platform-go/v14/service"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
@@ -435,6 +436,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						DataPrivacy:   true,
 						MediaRegistry: true,
 						Operations:    true,
+						// service registers a watcher wherever it builds
+						// operations, so the stream is mounted.
+						OperationEvents: true,
 					},
 					Decorate: func(ctx context.Context) context.Context {
 						md := metadata.Pairs(
@@ -462,6 +466,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				CommentTarget: commentable.bring,
 				ArtifactExpired: expireArtifact(client,
 					do.MustInvoke[dataprivacy.Store](i), do.MustInvoke[uploads.UploadManager](i)),
+				Operated: operate(do.MustInvoke[operations.Service](i)),
 
 				// The recorder the composition root built, inside a transaction on
 				// the client it built — the end of the path a consumer's handler

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/conformance/internal/httpcall"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
@@ -54,10 +55,10 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 			return
 		}
 
-		code, body := call(t, me, http.MethodGet, operationshttp.BasePath+"/"+fulfilled.OperationID, nil)
+		code, body := httpcall.Call(t, me, http.MethodGet, operationshttp.BasePath+"/"+fulfilled.OperationID, nil)
 		must.EqOp(t, http.StatusOK, code, must.Sprintf("reading the operation that fulfilled an export answered %d: %s", code, body))
 
-		op := &envelope[struct {
+		op := &httpcall.Envelope[struct {
 			State string `json:"state"`
 			Done  bool   `json:"done"`
 		}]{}
@@ -94,7 +95,7 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		if submitted.Request.Status == statusAwaitingConfirmation {
 			// The subject's own link, reached with their session and no token:
 			// this deployment waits for a person before it erases one.
-			code, body := call(t, me, http.MethodGet,
+			code, body := httpcall.Call(t, me, http.MethodGet,
 				dataprivacyhttp.BasePath+"/"+submitted.Request.ID+dataprivacyhttp.ConfirmSuffix, nil)
 			must.EqOp(t, http.StatusOK, code, must.Sprintf("confirming an erasure answered %d: %s", code, body))
 		}
@@ -119,12 +120,12 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 		// While the subject can still read their request, it says what
 		// happened. A deployment that signs an erased person out answers
 		// otherwise, and that is its to decide: nothing here requires the read.
-		code, body := call(t, me, http.MethodGet, dataprivacyhttp.BasePath+"/"+submitted.Request.ID, nil)
+		code, body := httpcall.Call(t, me, http.MethodGet, dataprivacyhttp.BasePath+"/"+submitted.Request.ID, nil)
 		if code != http.StatusOK {
 			return
 		}
 
-		read := &envelope[receipt]{}
+		read := &httpcall.Envelope[receipt]{}
 		must.NoError(t, json.Unmarshal(body, read))
 		test.EqOp(t, statusCompleted, read.Data.Request.Status)
 		test.EqOp(t, "", read.Data.Request.ArtifactRef, test.Sprint("an erasure left an artifact behind"))
@@ -143,10 +144,10 @@ func fulfillment(t *testing.T, s *conformance.Session) {
 
 		// Still there: a subject is entitled to know what was asked in their
 		// name after the thing they asked for is gone.
-		code, body := call(t, me, http.MethodGet, dataprivacyhttp.BasePath+"/"+fulfilled.ID, nil)
+		code, body := httpcall.Call(t, me, http.MethodGet, dataprivacyhttp.BasePath+"/"+fulfilled.ID, nil)
 		must.EqOp(t, http.StatusOK, code, must.Sprintf("a swept export's request could not be read by its subject: %s", body))
 
-		read := &envelope[receipt]{}
+		read := &httpcall.Envelope[receipt]{}
 		must.NoError(t, json.Unmarshal(body, read))
 		test.EqOp(t, statusExpired, read.Data.Request.Status)
 		test.EqOp(t, "", read.Data.Request.ArtifactRef,
@@ -187,12 +188,12 @@ func awaitTerminal(t *testing.T, s *conformance.Session, caller *conformance.Sub
 	var last request
 
 	s.Await(t, "privacy request "+requestID+" to finish", func() (bool, error) {
-		code, body := call(t, caller, http.MethodGet, dataprivacyhttp.BasePath+"/"+requestID, nil)
+		code, body := httpcall.Call(t, caller, http.MethodGet, dataprivacyhttp.BasePath+"/"+requestID, nil)
 		if code != http.StatusOK {
 			return false, platformerrors.Newf("reading the request answered %d: %s", code, body)
 		}
 
-		read := &envelope[receipt]{}
+		read := &httpcall.Envelope[receipt]{}
 		if err := json.Unmarshal(body, read); err != nil {
 			return false, err
 		}

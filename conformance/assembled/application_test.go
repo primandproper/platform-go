@@ -72,10 +72,12 @@ func registerApplication(i do.Injector, prefix string, commentable *things, peop
 		"conformance.followed": {Description: "something that followed from what the suite made happen"},
 	})
 
-	// What kinds of long-running work the application runs. Empty is a real
-	// answer: dataprivacy registers its own operation kinds into it as it is
-	// built, and the application here runs none of its own.
-	do.ProvideValue(i, operations.NewRegistry())
+	// What kinds of long-running work the application runs: one of its own,
+	// which the Operated action starts. dataprivacy registers its own operation
+	// kinds into it as it is built.
+	registry := operations.NewRegistry()
+	registerOperatedKind(registry)
+	do.ProvideValue(i, registry)
 
 	// Which collectors and erasers answer a privacy request. dataprivacy refuses
 	// an empty registry — a subject access request nothing can answer is not a

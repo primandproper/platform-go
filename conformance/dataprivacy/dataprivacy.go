@@ -1,15 +1,14 @@
 package dataprivacy
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/conformance/internal/httpcall"
+	"github.com/primandproper/platform-go/v14/conformance/internal/people"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
@@ -31,12 +30,6 @@ func Suite() conformance.Suite {
 		Mounted: func(conformance.Surfaces) bool { return true },
 		Run:     run,
 	}
-}
-
-// envelope is how the router answers every route: the handler's value under
-// data, beside details a deployment fills in.
-type envelope[T any] struct {
-	Data T `json:"data"`
 }
 
 // receipt is the part of a submission's answer, and of a read, the assertions
@@ -75,7 +68,7 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a request is listed for its subject, and not for a neighbor", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s,
+		mine, theirs := people.Two(t, s, surface,
 			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteList},
 			[]string{dataprivacyhttp.RouteList})
 		submitted := submit(t, mine, "export")
@@ -89,41 +82,41 @@ func run(t *testing.T, s *conformance.Session) {
 	t.Run("a request is read by its subject, and absent to a neighbor", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s,
+		mine, theirs := people.Two(t, s, surface,
 			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet},
 			[]string{dataprivacyhttp.RouteGet})
 		submitted := submit(t, mine, "export")
 		path := dataprivacyhttp.BasePath + "/" + submitted.Request.ID
 
-		status, _ := call(t, mine, http.MethodGet, path, nil)
+		status, _ := httpcall.Call(t, mine, http.MethodGet, path, nil)
 		must.EqOp(t, http.StatusOK, status, must.Sprint("a caller could not read their own request"))
 
 		// Absent rather than forbidden: a refusal would confirm that the
 		// identifier names somebody's request.
-		status, _ = call(t, theirs, http.MethodGet, path, nil)
+		status, _ = httpcall.Call(t, theirs, http.MethodGet, path, nil)
 		test.EqOp(t, http.StatusNotFound, status)
 	})
 
 	t.Run("a neighbor cannot cancel a request, and it survives their attempt", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s,
+		mine, theirs := people.Two(t, s, surface,
 			[]string{dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteGet},
 			[]string{dataprivacyhttp.RouteCancel})
 		submitted := submit(t, mine, "export")
 		path := dataprivacyhttp.BasePath + "/" + submitted.Request.ID
 
-		status, _ := call(t, theirs, http.MethodPost, path+"/cancel", []byte("{}"))
+		status, _ := httpcall.Call(t, theirs, http.MethodPost, path+"/cancel", []byte("{}"))
 		test.EqOp(t, http.StatusNotFound, status)
 
-		status, _ = call(t, mine, http.MethodGet, path, nil)
+		status, _ = httpcall.Call(t, mine, http.MethodGet, path, nil)
 		test.EqOp(t, http.StatusOK, status, test.Sprint("a neighbor's refused cancellation took the request with it"))
 	})
 
 	t.Run("the operation fulfilling a request is its subject's alone", func(t *testing.T) {
 		t.Parallel()
 
-		mine, theirs := twoPeople(t, s,
+		mine, theirs := people.Two(t, s, surface,
 			[]string{dataprivacyhttp.RouteSubmit, operationshttp.RouteGet},
 			[]string{operationshttp.RouteGet})
 		if !mine.HTTP.Operations {
@@ -140,14 +133,14 @@ func run(t *testing.T, s *conformance.Session) {
 
 		path := operationshttp.BasePath + "/" + submitted.Request.OperationID
 
-		status, body := call(t, mine, http.MethodGet, path, nil)
+		status, body := httpcall.Call(t, mine, http.MethodGet, path, nil)
 		must.EqOp(t, http.StatusOK, status, must.Sprint("a caller could not read the operation fulfilling their own request"))
 		test.StrContains(t, string(body), submitted.Request.OperationID)
 
 		// The neighbor shares the tenant but not the person, and the operation
 		// is the person's: following somebody's export is not something being
 		// in their tenant grants.
-		status, _ = call(t, theirs, http.MethodGet, path, nil)
+		status, _ = httpcall.Call(t, theirs, http.MethodGet, path, nil)
 		test.EqOp(t, http.StatusNotFound, status,
 			test.Sprint("a colleague in the same tenant could follow somebody's privacy request"))
 	})
@@ -168,11 +161,11 @@ func run(t *testing.T, s *conformance.Session) {
 		test.SliceNotContains(t, listed(t, theirs), submitted.Request.ID,
 			test.Sprint("a privacy request in one tenant reached a listing in another"))
 
-		status, _ := call(t, theirs, http.MethodGet, dataprivacyhttp.BasePath+"/"+submitted.Request.ID, nil)
+		status, _ := httpcall.Call(t, theirs, http.MethodGet, dataprivacyhttp.BasePath+"/"+submitted.Request.ID, nil)
 		test.EqOp(t, http.StatusNotFound, status)
 
 		if submitted.Request.OperationID != "" && mine.HTTP.Operations {
-			status, _ = call(t, theirs, http.MethodGet, operationshttp.BasePath+"/"+submitted.Request.OperationID, nil)
+			status, _ = httpcall.Call(t, theirs, http.MethodGet, operationshttp.BasePath+"/"+submitted.Request.OperationID, nil)
 			test.EqOp(t, http.StatusNotFound, status,
 				test.Sprint("a caller in another tenant could follow somebody's privacy request"))
 		}
@@ -183,7 +176,7 @@ func run(t *testing.T, s *conformance.Session) {
 
 		caller := s.Subject(t, conformance.Making(dataprivacyhttp.RouteSubmit))
 
-		status, _ := call(t, caller, http.MethodPost, dataprivacyhttp.BasePath, []byte(`{"type":"sideways"}`))
+		status, _ := httpcall.Call(t, caller, http.MethodPost, dataprivacyhttp.BasePath, []byte(`{"type":"sideways"}`))
 		test.EqOp(t, http.StatusBadRequest, status)
 	})
 
@@ -194,41 +187,13 @@ func run(t *testing.T, s *conformance.Session) {
 	})
 }
 
-// twoPeople mints two different people in one directory: a caller, and a
-// colleague in the caller's tenant — or beside them in the global scope, where
-// a deployment serves this surface from one.
-//
-// Not two tenants. A privacy request is confined to the person it is about, so
-// the neighbor this surface owes a refusal is the one sharing everything but
-// the person; minting them apart would let a tenant wall answer for a subject
-// check that is missing, and would skip every assertion on a deployment with
-// no tenants at all, which is where two users in one directory are commonest.
-// The wall between tenants is asserted on its own, with TwoTenants.
-//
-// It refuses to proceed if the subject handed back one caller twice — every
-// confinement assertion here would then compare a person with themselves and
-// pass.
-//
-// Each is minted Making the routes named for it, which are the routes it goes
-// on to call.
-func twoPeople(t *testing.T, s *conformance.Session, mineCalls, theirCalls []string) (mine, theirs *conformance.Subject) {
-	t.Helper()
-
-	mine = s.Subject(t, conformance.Making(mineCalls...))
-	theirs = s.Subject(t, conformance.Making(theirCalls...), conformance.InTenant(surface, mine.ScopeFor(surface)))
-
-	must.StrNotEqFold(t, mine.UserID, theirs.UserID, must.Sprint("the subject minted two callers as one user"))
-
-	return mine, theirs
-}
-
 func submit(t *testing.T, caller *conformance.Subject, kind string) *receipt {
 	t.Helper()
 
-	status, body := call(t, caller, http.MethodPost, dataprivacyhttp.BasePath, []byte(`{"type":"`+kind+`"}`))
+	status, body := httpcall.Call(t, caller, http.MethodPost, dataprivacyhttp.BasePath, []byte(`{"type":"`+kind+`"}`))
 	must.True(t, status >= 200 && status < 300, must.Sprintf("submitting a %s request answered %d: %s", kind, status, body))
 
-	out := &envelope[receipt]{}
+	out := &httpcall.Envelope[receipt]{}
 	must.NoError(t, json.Unmarshal(body, out))
 	must.StrNotEqFold(t, "", out.Data.Request.ID, must.Sprintf("a submission's receipt named no request: %s", body))
 
@@ -238,10 +203,10 @@ func submit(t *testing.T, caller *conformance.Subject, kind string) *receipt {
 func listed(t *testing.T, caller *conformance.Subject) []string {
 	t.Helper()
 
-	status, body := call(t, caller, http.MethodGet, dataprivacyhttp.BasePath, nil)
+	status, body := httpcall.Call(t, caller, http.MethodGet, dataprivacyhttp.BasePath, nil)
 	must.EqOp(t, http.StatusOK, status, must.Sprintf("listing privacy requests answered %d: %s", status, body))
 
-	out := &envelope[page]{}
+	out := &httpcall.Envelope[page]{}
 	must.NoError(t, json.Unmarshal(body, out))
 
 	ids := make([]string, 0, len(out.Data.Data))
@@ -250,30 +215,4 @@ func listed(t *testing.T, caller *conformance.Subject) []string {
 	}
 
 	return ids
-}
-
-func call(t *testing.T, caller *conformance.Subject, method, path string, body []byte) (status int, response []byte) {
-	t.Helper()
-
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequestWithContext(t.Context(), method, strings.TrimSuffix(caller.HTTP.BaseURL, "/")+path, reader)
-	must.NoError(t, err)
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	res, err := caller.HTTP.Client.Do(req)
-	must.NoError(t, err)
-
-	defer func() { test.NoError(t, res.Body.Close()) }()
-
-	response, err = io.ReadAll(res.Body)
-	must.NoError(t, err)
-
-	return res.StatusCode, response
 }
