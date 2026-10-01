@@ -63,7 +63,7 @@ func All() []Service {
 			Mounted: func(s conformance.Surfaces) bool { return s.Billing != nil }},
 		{Name: "comments", Service: "CommentsService", Sample: &commentspb.GetCommentRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Comments != nil }},
-		{Name: "identity", Service: "IdentityService", Sample: &identitypb.RegisterRequest{},
+		{Name: "identity", Service: "IdentityService", Sample: &identitypb.GetUserRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Identity != nil }},
 		{Name: "issuereports", Service: "IssueReportsService", Sample: &issuereportspb.GetReportRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.IssueReports != nil }},

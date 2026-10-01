@@ -279,7 +279,7 @@ func buildEnv(
 		directory = wrapDirectory(directory)
 	}
 
-	e.svc, err = signin.NewService(client, directory, argon2.NewArgon2Authenticator(), e.issuer, opts...)
+	e.svc, err = signin.NewService(client, directory, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, opts...)
 	must.NoError(t, err)
 
 	e.register(t)

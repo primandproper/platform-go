@@ -471,26 +471,27 @@ func (s *Server) VerifyTOTPSecret(
 // Register creates somebody who can then sign in: the user, what they own, and
 // the credential they chose.
 //
-// It is the one RPC here whose caller is not the subject, and the principal it
-// requires is the registrar's — the same reading identity/grpc.Register takes of
-// the same question. An unauthenticated public sign-up is a flow with policy in
-// it, a captcha, a rate limit, an invitation, an email domain rule, and this
-// service holds none of that. A consumer building open registration puts that
-// policy in front of this call and gives the request a principal of its own.
+// It is the sign-up door, and it is anonymous: no principal is required, and
+// one is used when the request carries it — an operator provisioning users
+// calls this signed in, and the deployment's policy may read them off the
+// context. It is open by default because the policy an open sign-up has in it
+// is not this surface's to hold. Who may register, which agreements they must
+// accept, what standing they start in and which roles they own their account
+// with are the service's signin.RegistrationPolicy, which runs here exactly as
+// it does in process, before anything is hashed, minted or written; a refusal
+// is InvalidArgument carrying REGISTRATION_REFUSED. The request has no field
+// for owner roles: a registration that mints an account starts from the
+// service's default owner roles, which only that policy may replace. What is
+// left in front of the call is the rate it is called at, which is the
+// consumer's to bound — see the package documentation.
 //
-// The scope is still the resolver's rather than that principal's, which is the
-// one place this surface differs from identity's: one wiring decision governs
-// every RPC here, including the ones with nobody on them.
+// A server built [WithoutOpenRegistration] refuses every call with
+// signin.ErrRegistrationClosed as Unimplemented, carrying REGISTRATION_CLOSED,
+// before the service sees anything.
 //
 // A request naming neither credential arm is refused with InvalidArgument. It is
 // not read as no_password — see signin.Credential for why that inference is the
 // one this schema exists to prevent. So is an unspecified agreement.
-//
-// What the consumer's own registration adds — roles, standing, the account's
-// name, a second factor minted with it, agreements it insists on — is the
-// service's signin.RegistrationPolicy, which runs here exactly as it does in
-// process. Nothing here holds one of its own; a refusal is InvalidArgument
-// carrying REGISTRATION_REFUSED.
 //
 // What comes back carries no verification token. The secret that promotes this
 // registrant out of the unverified standing travels to them in mail the consumer
@@ -502,12 +503,18 @@ func (s *Server) Register(
 	ctx context.Context,
 	request *signinpb.RegisterRequest,
 ) (*signinpb.RegisterResponse, error) {
-	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_Register_FullMethodName)
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_Register_FullMethodName)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() { done(err) }()
+
+	if s.registrationClosed {
+		err = grpcerrors.PrepareAndLogGRPCStatus(signin.ErrRegistrationClosed, req.op.Logger(), req.op.Span(), codes.Unimplemented, "registering a user")
+
+		return nil, err
+	}
 
 	registration, err := registrationFromProto(request)
 	if err != nil {

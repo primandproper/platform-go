@@ -291,8 +291,10 @@ func NewServer(
 //
 //	[]grpcserver.RegistrationFunc{srv.RegisterOn}
 //
-// It is not called Register because that name is taken by the RPC that
-// registers a user, which is the more important of the two and was here first.
+// It is not called Register because, when it was written, that name was taken
+// by an RPC that registered a user. Registration has since become
+// SignInService's alone, and renaming this would break every consumer's wiring
+// for nothing.
 func (s *Server) RegisterOn(srv *grpc.Server) {
 	identitypb.RegisterIdentityServiceServer(srv, s)
 }

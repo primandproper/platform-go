@@ -171,7 +171,7 @@ func newSignInHarness(t *testing.T, scope tenancy.Scope, opts ...signin.ServiceO
 
 	issuer, hooks := &fakeIssuer{}, &recordingHooks{}
 
-	svc, err := signin.NewService(db, store, authenticator, issuer,
+	svc, err := signin.NewService(db, store, authenticator, issuer, []string{"owner"},
 		append([]signin.ServiceOption{
 			signin.WithTOTPIssuer("Example"),
 			signin.WithHooks(hooks),

@@ -2,12 +2,16 @@ package signincfg
 
 import (
 	"context"
+	"maps"
 	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
 
@@ -21,6 +25,8 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // testDBClient is a SQLite database nothing has migrated. The doors these
@@ -39,6 +45,10 @@ func testDBClient(t *testing.T) database.Client {
 
 	return client
 }
+
+// ownerRoles are the default owner roles every config here names, since a
+// config naming none is refused.
+var ownerRoles = []string{"owner"}
 
 // stubIssuer mints a token nobody reads.
 type stubIssuer struct{}
@@ -63,7 +73,8 @@ type stubRegistrar struct{ signin.Registrar }
 // the sweepers off so no test leaves a goroutine reading an unmigrated table.
 func everyBlock() *Config {
 	return &Config{
-		RefreshTokens: RefreshTokensConfig{TablePrefix: "ddb", SweepInterval: pointer.To(time.Duration(0))},
+		DefaultOwnerRoles: ownerRoles,
+		RefreshTokens:     RefreshTokensConfig{TablePrefix: "ddb", SweepInterval: pointer.To(time.Duration(0))},
 		MagicLinks: &MagicLinksConfig{
 			TablePrefix:   "ddb",
 			SweepInterval: pointer.To(time.Duration(0)),
@@ -77,10 +88,20 @@ func everyBlock() *Config {
 func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Parallel()
 
-	T.Run("accepts a zero config and a filled one", func(t *testing.T) {
+	T.Run("refuses a config naming no default owner roles", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, (&Config{}).ValidateWithContext(t.Context()))
+		err := (&Config{}).ValidateWithContext(t.Context())
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "defaultOwnerRoles")
+
+		test.Error(t, (&Config{DefaultOwnerRoles: []string{"owner", ""}}).ValidateWithContext(t.Context()))
+	})
+
+	T.Run("accepts a minimal config and a filled one", func(t *testing.T) {
+		t.Parallel()
+
+		test.NoError(t, (&Config{DefaultOwnerRoles: ownerRoles}).ValidateWithContext(t.Context()))
 
 		cfg := everyBlock()
 		cfg.SecondFactor = SecondFactorRequired
@@ -93,7 +114,8 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{
-			MagicLinks: &MagicLinksConfig{TablePrefix: "ddb", SweepInterval: pointer.To(time.Duration(0))},
+			DefaultOwnerRoles: ownerRoles,
+			MagicLinks:        &MagicLinksConfig{TablePrefix: "ddb", SweepInterval: pointer.To(time.Duration(0))},
 		}
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
@@ -104,7 +126,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Run("refuses an unknown second factor policy", func(t *testing.T) {
 		t.Parallel()
 
-		err := (&Config{SecondFactor: "sometimes"}).ValidateWithContext(t.Context())
+		err := (&Config{DefaultOwnerRoles: ownerRoles, SecondFactor: "sometimes"}).ValidateWithContext(t.Context())
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), SecondFactorRequired)
 	})
@@ -112,13 +134,15 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Run("refuses a negative lifetime", func(t *testing.T) {
 		t.Parallel()
 
-		test.Error(t, (&Config{TokenTTL: -time.Second}).ValidateWithContext(t.Context()))
-		test.Error(t, (&Config{ImpersonationTokenTTL: -time.Second}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{DefaultOwnerRoles: ownerRoles, TokenTTL: -time.Second}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{DefaultOwnerRoles: ownerRoles, ImpersonationTokenTTL: -time.Second}).ValidateWithContext(t.Context()))
 		test.Error(t, (&Config{
-			RefreshTokens: RefreshTokensConfig{TablePrefix: "ddb", AdminTTL: -time.Second},
+			DefaultOwnerRoles: ownerRoles,
+			RefreshTokens:     RefreshTokensConfig{TablePrefix: "ddb", AdminTTL: -time.Second},
 		}).ValidateWithContext(t.Context()))
 		test.Error(t, (&Config{
-			Registration: RegistrationConfig{VerificationLinkTTL: -time.Second},
+			DefaultOwnerRoles: ownerRoles,
+			Registration:      RegistrationConfig{VerificationLinkTTL: -time.Second},
 		}).ValidateWithContext(t.Context()))
 	})
 
@@ -126,14 +150,17 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		test.Error(t, (&Config{
-			MagicLinks: &MagicLinksConfig{TablePrefix: "ddb", RequestFloor: -time.Second},
+			DefaultOwnerRoles: ownerRoles,
+			MagicLinks:        &MagicLinksConfig{TablePrefix: "ddb", RequestFloor: -time.Second},
 		}).ValidateWithContext(t.Context()))
-		test.Error(t, (&Config{HandleReminderFloor: -time.Second}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{DefaultOwnerRoles: ownerRoles, HandleReminderFloor: -time.Second}).ValidateWithContext(t.Context()))
 		test.Error(t, (&Config{
-			RecoveryCodes: RecoveryCodesConfig{TablePrefix: "ddb", Count: -1},
+			DefaultOwnerRoles: ownerRoles,
+			RecoveryCodes:     RecoveryCodesConfig{TablePrefix: "ddb", Count: -1},
 		}).ValidateWithContext(t.Context()))
 		test.Error(t, (&Config{
-			RefreshTokens: RefreshTokensConfig{TablePrefix: "ddb", SweepInterval: pointer.To(-time.Second)},
+			DefaultOwnerRoles: ownerRoles,
+			RefreshTokens:     RefreshTokensConfig{TablePrefix: "ddb", SweepInterval: pointer.To(-time.Second)},
 		}).ValidateWithContext(t.Context()))
 	})
 
@@ -142,9 +169,9 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 
 		const bad = "ends_in_"
 
-		test.Error(t, (&Config{RefreshTokens: RefreshTokensConfig{TablePrefix: bad}}).ValidateWithContext(t.Context()))
-		test.Error(t, (&Config{MagicLinks: &MagicLinksConfig{TablePrefix: bad}}).ValidateWithContext(t.Context()))
-		test.Error(t, (&Config{RecoveryCodes: RecoveryCodesConfig{TablePrefix: bad}}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{DefaultOwnerRoles: ownerRoles, RefreshTokens: RefreshTokensConfig{TablePrefix: bad}}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{TablePrefix: bad}}).ValidateWithContext(t.Context()))
+		test.Error(t, (&Config{DefaultOwnerRoles: ownerRoles, RecoveryCodes: RecoveryCodesConfig{TablePrefix: bad}}).ValidateWithContext(t.Context()))
 	})
 }
 
@@ -157,6 +184,13 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 
 	parse := func(t *testing.T, environment map[string]string) *Config {
 		t.Helper()
+
+		// The one variable every environment must set, unless the case is
+		// about it.
+		if _, ok := environment["DEFAULT_OWNER_ROLES"]; !ok {
+			environment = maps.Clone(environment)
+			environment["DEFAULT_OWNER_ROLES"] = "owner"
+		}
 
 		cfg := &Config{}
 		must.NoError(t, env.ParseWithOptions(cfg, env.Options{Environment: environment}))
@@ -173,6 +207,13 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 		test.Nil(t, cfg.MagicLinks)
 		test.False(t, cfg.Registration.Disabled)
 		test.EqOp(t, DefaultSweepInterval, pointer.Dereference(cfg.RefreshTokens.SweepInterval))
+	})
+
+	T.Run("the default owner roles are a list", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := parse(t, map[string]string{"DEFAULT_OWNER_ROLES": "owner,billing_admin"})
+		test.Eq(t, []string{"owner", "billing_admin"}, cfg.DefaultOwnerRoles)
 	})
 
 	T.Run("naming anything in the magic links block switches that door on", func(t *testing.T) {
@@ -204,6 +245,65 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 		cfg := parse(t, map[string]string{"REGISTRATION_DISABLED": "true"})
 		test.True(t, cfg.Registration.Disabled)
 	})
+
+	T.Run("the sign-up door is closed on the wire by name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := parse(t, map[string]string{"REGISTRATION_CLOSED": "true"})
+		test.True(t, cfg.Registration.Closed)
+		test.False(t, cfg.Registration.Disabled)
+	})
+}
+
+// TestConfig_ServerOptions pins what the registration block does to the wire:
+// open unless the block says otherwise, and closed — with the refusal a client
+// can tell from a broken server — by either Closed or Disabled.
+func TestConfig_ServerOptions(T *testing.T) {
+	T.Parallel()
+
+	nobody := func(context.Context) (callers.Principal, bool) { return nil, false }
+
+	register := func(t *testing.T, registration RegistrationConfig) error {
+		t.Helper()
+
+		cfg := &Config{
+			DefaultOwnerRoles: ownerRoles,
+			RefreshTokens:     RefreshTokensConfig{SweepInterval: pointer.To(time.Duration(0))},
+			Registration:      registration,
+		}
+
+		svc, err := NewService(t.Context(), cfg, testDBClient(t), &identitymock.StoreMock{},
+			argon2.NewArgon2Authenticator(), stubIssuer{}, WithRegistrar(stubRegistrar{}))
+		must.NoError(t, err)
+
+		srv, err := signingrpc.NewServer(svc, nobody, cfg.ServerOptions()...)
+		must.NoError(t, err)
+
+		_, err = srv.Register(t.Context(), &signinpb.RegisterRequest{})
+
+		return err
+	}
+
+	T.Run("an unset block leaves the door open", func(t *testing.T) {
+		t.Parallel()
+
+		err := register(t, RegistrationConfig{})
+		must.Error(t, err)
+		test.NotEqOp(t, codes.Unimplemented, status.Code(err))
+	})
+
+	for name, registration := range map[string]RegistrationConfig{
+		"closed":   {Closed: true},
+		"disabled": {Disabled: true},
+	} {
+		T.Run("a "+name+" block closes the door", func(t *testing.T) {
+			t.Parallel()
+
+			err := register(t, registration)
+			test.ErrorIs(t, err, signin.ErrRegistrationClosed)
+			test.EqOp(t, codes.Unimplemented, status.Code(err))
+		})
+	}
 }
 
 func TestNewService(T *testing.T) {
@@ -219,7 +319,7 @@ func TestNewService(T *testing.T) {
 	// noSweepers is the zero config with the refresh token sweeper off, so no
 	// test leaves a goroutine reading an unmigrated table.
 	noSweepers := func() *Config {
-		return &Config{RefreshTokens: RefreshTokensConfig{SweepInterval: pointer.To(time.Duration(0))}}
+		return &Config{DefaultOwnerRoles: ownerRoles, RefreshTokens: RefreshTokensConfig{SweepInterval: pointer.To(time.Duration(0))}}
 	}
 
 	scope := tenancy.Of("tenant")
@@ -297,7 +397,7 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses a magic links block with no mailer", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := build(t, &Config{MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}})
+		svc, err := build(t, &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}})
 		must.Error(t, err)
 		test.Nil(t, svc)
 		test.StrContains(t, err.Error(), "mailer")
@@ -314,7 +414,7 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses an invalid config", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := build(t, &Config{SecondFactor: "sometimes"})
+		svc, err := build(t, &Config{DefaultOwnerRoles: ownerRoles, SecondFactor: "sometimes"})
 		test.Error(t, err)
 		test.Nil(t, svc)
 	})
@@ -332,8 +432,9 @@ func TestNewService(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{
-			TokenTTL:      time.Hour,
-			RefreshTokens: RefreshTokensConfig{TablePrefix: "ddb", TTL: time.Minute, SweepInterval: pointer.To(time.Duration(0))},
+			DefaultOwnerRoles: ownerRoles,
+			TokenTTL:          time.Hour,
+			RefreshTokens:     RefreshTokensConfig{TablePrefix: "ddb", TTL: time.Minute, SweepInterval: pointer.To(time.Duration(0))},
 		}
 
 		svc, err := build(t, cfg)
@@ -369,8 +470,9 @@ func TestNewService(T *testing.T) {
 		// explicit option after it replaces the token lifetime that made it too
 		// short, which only works if the explicit one is applied last.
 		cfg := &Config{
-			TokenTTL:      time.Hour,
-			RefreshTokens: RefreshTokensConfig{TablePrefix: "ddb", TTL: time.Minute, SweepInterval: pointer.To(time.Duration(0))},
+			DefaultOwnerRoles: ownerRoles,
+			TokenTTL:          time.Hour,
+			RefreshTokens:     RefreshTokensConfig{TablePrefix: "ddb", TTL: time.Minute, SweepInterval: pointer.To(time.Duration(0))},
 		}
 
 		svc, err := build(t, cfg, WithServiceOptions(signin.WithTokenTTL(time.Second)))
@@ -394,7 +496,7 @@ func TestNewService_aFailedBuildLeavesNoSweeper(t *testing.T) {
 		// deadlock rather than waiting on.
 		ctx := context.Background()
 
-		cfg := &Config{MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}}
+		cfg := &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}}
 
 		// Both sweepers start, then the service itself refuses the nil
 		// authenticator.

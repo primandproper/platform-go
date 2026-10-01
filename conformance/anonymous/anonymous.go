@@ -49,7 +49,7 @@ func exceptions() map[string]surface {
 		},
 		"signin": {
 			anonymous: signingrpc.AnonymousMethods(),
-			why:       "sign-in itself, and the doors that finish a registration or end a session",
+			why:       "signing up and signing in, and the doors that finish a registration or end a session",
 		},
 		"waitlists": {
 			anonymous: waitlistsgrpc.PublicMethods(),

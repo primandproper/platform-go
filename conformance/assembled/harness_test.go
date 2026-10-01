@@ -201,6 +201,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		// and registration are on by default. The passwordless door is the
 		// one a block switches on.
 		SignIn: &signincfg.Config{
+			DefaultOwnerRoles: []string{"owner"},
 			TOTPIssuer:        "conformance",
 			AdminServiceRoles: []string{adminServiceRole},
 			RefreshTokens:     signincfg.RefreshTokensConfig{TablePrefix: prefix},

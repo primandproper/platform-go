@@ -243,7 +243,7 @@ func TestRegister(T *testing.T) {
 			sagacfg.JobsKey:              {Saga: &sagacfg.Config{}},
 			passwordresetcfg.JobsKey:     {PasswordReset: &passwordresetcfg.Config{}},
 			oauth2serverstorecfg.JobsKey: {OAuth2Server: &oauth2serverstorecfg.Config{}},
-			signincfg.JobsKey:            {SignIn: &signincfg.Config{}},
+			signincfg.JobsKey:            {SignIn: &signincfg.Config{DefaultOwnerRoles: []string{"owner"}}},
 		} {
 			cfg.Name = "example"
 			test.MapContainsKey(t, provided(newInjector(t, cfg)), key)

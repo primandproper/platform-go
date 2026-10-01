@@ -280,6 +280,18 @@ var (
 	// correct, and nothing was hashed, minted or written before it was refused.
 	ErrRegistrationRefused = platformerrors.New("registration does not meet this service's requirements")
 
+	// ErrRegistrationClosed indicates a registration refused because the
+	// deployment closed its sign-up door: signin/grpc's WithoutOpenRegistration
+	// answers every Register with it before anything runs.
+	//
+	// It is a sentinel a client can branch on rather than a bare
+	// codes.Unimplemented, because that code is also what a server answers for
+	// an RPC it never mounted, and a client — or the conformance suite — that
+	// cannot tell a door closed on purpose from a broken one cannot say which
+	// it is looking at. It names no rule and nobody: whether sign-up is open is
+	// the deployment's decision, and that it is closed is all a caller learns.
+	ErrRegistrationClosed = platformerrors.New("registration is closed")
+
 	// ErrPasswordChangeRequired indicates a call refused because an operator
 	// has forced the caller to change their password and they have not yet.
 	//
@@ -309,6 +321,19 @@ var (
 	// nil dereference in this package for a mistake made in theirs. It is a
 	// wiring failure and no status is mapped for it.
 	ErrRegistrationIncomplete = platformerrors.New("registrar answered with no registration")
+
+	// ErrNoOwnerRoles indicates a registration that would mint an account with
+	// nobody able to do anything in it: the service's RegistrationPolicy
+	// replaced the owner roles with none.
+	//
+	// The service is built with default owner roles and refuses an empty list
+	// at construction, so the only way to reach this is a policy that emptied
+	// them. That is the deployment's bug rather than anything the registrant
+	// sent, so it is refused after the policy runs and before anything is
+	// hashed or written, and no status is mapped for it: it is a 500, which is
+	// what it is. It deliberately does not wrap errors.ErrEmptyInputParameter,
+	// which the platform mappers would answer as the caller's mistake.
+	ErrNoOwnerRoles = platformerrors.New("registration policy left the registrant no owner roles")
 
 	// ErrVerificationsNotConfigured indicates one of the doors that finish a
 	// registration on a service built without WithVerifications. It is a wiring
@@ -412,6 +437,13 @@ var (
 
 	// ErrNilTokenIssuer indicates a nil tokens.Issuer.
 	ErrNilTokenIssuer = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil token issuer for the sign-in service")
+
+	// ErrNoDefaultOwnerRoles indicates a service built with no default owner
+	// roles, or with one that is blank. A registration that mints an account
+	// starts with those roles, so a service without them could register
+	// nobody — refused at construction, so a deployment that forgot fails at
+	// startup rather than on its first sign-up.
+	ErrNoDefaultOwnerRoles = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "no default owner roles for the sign-in service")
 
 	// ErrNilCredentials indicates a nil *Credentials.
 	ErrNilCredentials = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil sign-in credentials")

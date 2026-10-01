@@ -75,13 +75,15 @@
 // interface that could also impose a forced change on any user is one that
 // could be made to.
 //
-// Registration here therefore mints the passwordless user that package already
-// treats as first-class. A registration that carries a credential is
-// SignInService.Register, in signin.proto: that service holds the authenticator,
-// hashes what arrives, and comes back through this package's own registration on
-// one transaction. Which of the two a consumer calls is the question of whether
-// the registrant is choosing a password at that moment -- a directory being
-// filled from elsewhere is this one, and somebody signing up is that one.
+// No registration either. Registering somebody is SignInService.Register, in
+// signin.proto, and it is the module's only registration on the wire: that
+// service holds the authenticator, hashes what arrives, mints the verification
+// mail, runs the deployment's registration policy and hooks, and comes back
+// through this package's own registration on one transaction. A second door
+// here could do none of that -- it would mint a user with no credential and no
+// verification mail, and let its caller name their own roles -- which made it
+// the one way around the deployment's policy. An operator provisioning users
+// calls SignInService.Register signed in.
 //
 // No avatar. The media registry is this module's, but identity has no avatar
 // column and joining one is a contract between two packages that has not been
@@ -494,23 +496,6 @@ message AccountUpdateInput {
   optional string time_zone = 2;
 
   BillingAddress billing_address = 3;
-}
-
-message RegisterRequest {
-  reserved "scope";
-
-  UserRegistrationInput user = 1;
-
-  AccountCreationInput account = 2;
-
-  // owner_roles are the roles the registrant holds in the account they now own.
-  // They are the consumer's role names and are required: a membership with none
-  // is a member who may do nothing.
-  repeated string owner_roles = 3;
-}
-
-message RegisterResponse {
-  Registration registration = 1;
 }
 
 message UpdateProfileRequest {
@@ -1006,8 +991,7 @@ message ListInvitationsForEmailAddressResponse {
 // into its own policy, and who is calling is resolved from the context by the
 // consumer's authentication interceptor.
 service IdentityService {
-  // The writes.
-  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // The writes. There is no Register: see the file documentation.
   rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
   rpc UpdateAccount(UpdateAccountRequest) returns (UpdateAccountResponse);
   rpc RecordAgreement(RecordAgreementRequest) returns (RecordAgreementResponse);

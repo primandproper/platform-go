@@ -169,7 +169,7 @@ func TestService_RefreshTOTPSecret(T *testing.T) {
 		e := newEnv(t)
 
 		// newEnv sets one, so this builds a second service without it.
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer)
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"})
 		must.NoError(t, err)
 
 		enrollment, err := svc.RefreshTOTPSecret(t.Context(), testScope, e.user.ID,

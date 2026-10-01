@@ -71,7 +71,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles})))
 		RegisterService(i)
 
 		svc, err := do.Invoke[*signin.Service](i)
@@ -82,7 +82,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a missing authenticator fails naming it rather than defaulting", func(t *testing.T) {
 		t.Parallel()
 
-		i := base(t, &Config{})
+		i := base(t, &Config{DefaultOwnerRoles: ownerRoles})
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -97,7 +97,7 @@ func TestRegisterService(T *testing.T) {
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
 		do.ProvideValue[identity.Store](i, &identitymock.StoreMock{})
-		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, &Config{DefaultOwnerRoles: ownerRoles})
 		withAuthenticator(i)
 		RegisterService(i)
 
@@ -113,7 +113,7 @@ func TestRegisterService(T *testing.T) {
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
 		do.ProvideValue[tokens.Issuer](i, stubTokenIssuer{})
-		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, &Config{DefaultOwnerRoles: ownerRoles})
 		withAuthenticator(i)
 		RegisterService(i)
 
@@ -125,7 +125,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("open registration needs identity's service", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{}))
+		i := withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles}))
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -136,7 +136,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("disabled registration needs no identity service", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{Registration: RegistrationConfig{Disabled: true}}))
+		i := withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, Registration: RegistrationConfig{Disabled: true}}))
 		RegisterService(i)
 
 		svc, err := do.Invoke[*signin.Service](i)
@@ -153,7 +153,7 @@ func TestRegisterService(T *testing.T) {
 
 		// No identity service registered, and registration closed: the doors
 		// refuse as the wiring failure that is.
-		i := withAuthenticator(base(t, &Config{Registration: RegistrationConfig{Disabled: true}}))
+		i := withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, Registration: RegistrationConfig{Disabled: true}}))
 		RegisterService(i)
 
 		off, err := do.Invoke[*signin.Service](i)
@@ -165,7 +165,7 @@ func TestRegisterService(T *testing.T) {
 		// Registered, it is attached whether or not registration is open: the
 		// refusal is now the empty subject, which is past the wiring check.
 		for _, disabled := range []bool{false, true} {
-			i = withRegistrar(withAuthenticator(base(t, &Config{Registration: RegistrationConfig{Disabled: disabled}})))
+			i = withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, Registration: RegistrationConfig{Disabled: disabled}})))
 			RegisterService(i)
 
 			on, invokeErr := do.Invoke[*signin.Service](i)
@@ -179,7 +179,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a magic links block needs a mailer", func(t *testing.T) {
 		t.Parallel()
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}})))
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -190,7 +190,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a magic links block uses the registered mailer", func(t *testing.T) {
 		t.Parallel()
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{MagicLinks: &MagicLinksConfig{
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{
 			TablePrefix:   "ddb",
 			SweepInterval: pointer.To(time.Duration(0)),
 			RequestFloor:  time.Millisecond,
@@ -207,6 +207,7 @@ func TestRegisterService(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{
+			DefaultOwnerRoles:   ownerRoles,
 			RefreshTokens:       RefreshTokensConfig{SweepInterval: pointer.To(time.Duration(0))},
 			HandleReminderFloor: time.Millisecond,
 		}
@@ -231,7 +232,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("no verification mailer leaves the resend door refusing", func(t *testing.T) {
 		t.Parallel()
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles})))
 		RegisterService(i)
 
 		svc, err := do.Invoke[*signin.Service](i)
@@ -256,7 +257,7 @@ func TestRegisterService(T *testing.T) {
 			},
 		})
 		do.ProvideValue[tokens.Issuer](i, stubTokenIssuer{})
-		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, &Config{DefaultOwnerRoles: ownerRoles})
 		withRegistrar(withAuthenticator(i))
 		do.ProvideValue[signin.VerificationMailer](i,
 			signin.VerificationMailerFunc(func(context.Context, *signin.VerificationMail) error { return nil }))
@@ -274,7 +275,7 @@ func TestRegisterService(T *testing.T) {
 
 		refused := errors.New("too short")
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{Registration: RegistrationConfig{VerificationLinkTTL: time.Hour}})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, Registration: RegistrationConfig{VerificationLinkTTL: time.Hour}})))
 		do.ProvideValue(i, signin.PasswordPolicy(func(context.Context, string) error { return refused }))
 		RegisterService(i)
 
@@ -306,7 +307,7 @@ func TestRegisterService(T *testing.T) {
 			},
 		})
 		do.ProvideValue[tokens.Issuer](i, stubTokenIssuer{})
-		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, &Config{DefaultOwnerRoles: ownerRoles})
 		withRegistrar(withAuthenticator(i))
 		do.ProvideValue(i, signin.AccountPasswordPolicy(func(context.Context, *signin.PasswordChange) error { return refused }))
 		RegisterService(i)
@@ -327,7 +328,7 @@ func TestRegisterService(T *testing.T) {
 
 		refused := errors.New("accept the terms")
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{Registration: RegistrationConfig{VerificationLinkTTL: time.Hour}})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, Registration: RegistrationConfig{VerificationLinkTTL: time.Hour}})))
 		do.ProvideValue(i, signin.RegistrationPolicy(func(context.Context, *signin.Registration) error { return refused }))
 		RegisterService(i)
 
@@ -345,7 +346,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("no impersonation policy leaves the door shut", func(t *testing.T) {
 		t.Parallel()
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles})))
 		RegisterService(i)
 
 		svc, err := do.Invoke[*signin.Service](i)
@@ -362,7 +363,7 @@ func TestRegisterService(T *testing.T) {
 		// carrying its own error is the proof it was the one registered.
 		refused := errors.New("operators may not act as this customer")
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles})))
 		do.OverrideValue[identity.Store](i, &identitymock.StoreMock{
 			GetUserFunc: func(_ context.Context, _ database.SQLQueryExecutor, _ tenancy.Scope, id string) (*identity.User, error) {
 				return &identity.User{ID: id, AccountStatus: identity.StatusGood}, nil
@@ -384,7 +385,7 @@ func TestRegisterService(T *testing.T) {
 
 		broken := errors.New("hooks could not be built")
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles})))
 		do.Provide(i, func(do.Injector) (signin.Hooks, error) { return nil, broken })
 		RegisterService(i)
 
@@ -395,7 +396,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("surfaces a bad config", func(t *testing.T) {
 		t.Parallel()
 
-		i := withAuthenticator(base(t, &Config{SecondFactor: "sometimes"}))
+		i := withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, SecondFactor: "sometimes"}))
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -408,7 +409,7 @@ func TestAPillarsProviderThatFailsToBuildFailsTheRegistration(T *testing.T) {
 
 	broken := errors.New("exporter unreachable")
 
-	i := withAuthenticator(base(T, &Config{}))
+	i := withAuthenticator(base(T, &Config{DefaultOwnerRoles: ownerRoles}))
 	do.Provide(i, func(do.Injector) (*observability.Pillars, error) { return nil, broken })
 	RegisterService(i)
 

@@ -209,7 +209,7 @@ func TestRequestHandleReminder_refusals(T *testing.T) {
 
 		e := newEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithHandleReminderMailer(nil),
 			signin.WithHandleReminderFloor(-time.Second),
 		)

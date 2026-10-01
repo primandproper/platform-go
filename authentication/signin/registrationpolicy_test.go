@@ -183,7 +183,7 @@ func TestRegistrationPolicy_refusal(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer,
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
 			signin.WithRegistrar(e.directory),
 			signin.WithTOTPIssuer("Example"),
 			signin.WithRegistrationPolicy(p.policy),
@@ -362,7 +362,7 @@ func TestService_Register_agreements(T *testing.T) {
 		directory, err := identity.NewService(e.client, e.store, identity.WithHooks(hooks))
 		must.NoError(t, err)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithRegistrar(directory),
 		)
 		must.NoError(t, err)
@@ -453,7 +453,7 @@ func TestService_Register_enrollTOTP(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer,
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
 			signin.WithRegistrar(e.directory),
 		)
 		must.NoError(t, err)
@@ -479,4 +479,111 @@ func TestWithRegistrationPolicy_nilIsIgnored(T *testing.T) {
 	registered, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.NoPassword()))
 	must.NoError(T, err)
 	test.EqOp(T, "ada", registered.User.Username)
+}
+
+// TestService_Register_defaultOwnerRoles is the deployment's half of every
+// registration that mints an account: a registrant who named no roles starts
+// with the ones the service was built with, a policy may replace them, and a
+// policy that leaves none is the deployment's bug rather than the registrant's.
+func TestService_Register_defaultOwnerRoles(T *testing.T) {
+	T.Parallel()
+
+	build := func(t *testing.T, opts ...signin.ServiceOption) (*env, *signin.Service) {
+		t.Helper()
+
+		e := newEnv(t)
+
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"founder"},
+			append([]signin.ServiceOption{signin.WithRegistrar(e.directory)}, opts...)...)
+		must.NoError(t, err)
+
+		return e, svc
+	}
+
+	unnamed := func(username string) *signin.Registration {
+		registration := newRegistration(username, signin.NoPassword())
+		registration.OwnerRoles = nil
+
+		return registration
+	}
+
+	T.Run("a registration naming none starts with the defaults", func(t *testing.T) {
+		t.Parallel()
+
+		_, svc := build(t)
+
+		registration := unnamed("ada")
+
+		registered, err := svc.Register(t.Context(), testScope, registration)
+		must.NoError(t, err)
+		test.Eq(t, []string{"founder"}, registered.Membership.Roles)
+
+		// The caller's value is left alone, as everything else Register reads is.
+		test.Nil(t, registration.OwnerRoles)
+	})
+
+	T.Run("the policy sees the defaults and may replace them", func(t *testing.T) {
+		t.Parallel()
+
+		var seen []string
+
+		_, svc := build(t, signin.WithRegistrationPolicy(func(_ context.Context, registration *signin.Registration) error {
+			seen = slices.Clone(registration.OwnerRoles)
+			registration.OwnerRoles = []string{"operator_made"}
+
+			return nil
+		}))
+
+		registered, err := svc.Register(t.Context(), testScope, unnamed("ada"))
+		must.NoError(t, err)
+		test.Eq(t, []string{"founder"}, seen)
+		test.Eq(t, []string{"operator_made"}, registered.Membership.Roles)
+	})
+
+	T.Run("a policy that empties them is refused before anything is written", func(t *testing.T) {
+		t.Parallel()
+
+		e, svc := build(t, signin.WithRegistrationPolicy(func(_ context.Context, registration *signin.Registration) error {
+			registration.OwnerRoles = nil
+
+			return nil
+		}))
+
+		_, err := svc.Register(t.Context(), testScope, unnamed("ada"))
+		test.ErrorIs(t, err, signin.ErrNoOwnerRoles)
+		test.False(t, errors.Is(err, platformerrors.ErrEmptyInputParameter))
+		test.False(t, errors.Is(err, signin.ErrRegistrationRefused))
+
+		_, err = e.store.GetUserByUsername(t.Context(), e.client.Reader(), testScope, "ada")
+		test.ErrorIs(t, err, identity.ErrUserNotFound)
+	})
+
+	T.Run("an invitation takes its roles from the invitation", func(t *testing.T) {
+		t.Parallel()
+
+		e, svc := build(t, signin.WithRegistrationPolicy(func(_ context.Context, registration *signin.Registration) error {
+			registration.OwnerRoles = nil
+
+			return nil
+		}))
+
+		invitation, err := e.directory.Invite(t.Context(), testScope, &identity.Invitation{
+			Scope:            testScope,
+			FromUser:         e.user.ID,
+			BelongsToAccount: e.accountID,
+			ToEmail:          "ada@example.com",
+			Token:            "invitation-token",
+			Roles:            []string{"member"},
+			ExpiresAt:        time.Now().UTC().Add(time.Hour),
+		})
+		must.NoError(t, err)
+
+		registration := unnamed("ada")
+		registration.InvitationID = invitation.ID
+		registration.InvitationToken = "invitation-token"
+
+		registered, err := svc.Register(t.Context(), testScope, registration)
+		must.NoError(t, err)
+		test.Eq(t, []string{"member"}, registered.Membership.Roles)
+	})
 }

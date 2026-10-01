@@ -206,7 +206,7 @@ func TestService_Register_withoutARegistrar(T *testing.T) {
 
 	// A service built as one was before registration existed: a credential check
 	// over a directory something else fills.
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer)
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"})
 	must.NoError(T, err)
 
 	_, err = svc.Register(T.Context(), testScope, newRegistration("ada", signin.NoPassword()))
@@ -480,7 +480,7 @@ func TestService_verificationDoorsWithoutAVerificationsDirectory(T *testing.T) {
 
 	e := newEnv(T)
 
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer)
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"})
 	must.NoError(T, err)
 
 	test.ErrorIs(T, svc.VerifyEmailAddress(T.Context(), testScope, "a-token"), signin.ErrVerificationsNotConfigured)
@@ -608,7 +608,7 @@ func TestService_Register_passesTheDirectorysErrorBack(T *testing.T) {
 
 	sentinel := platformerrors.New("the directory would not answer")
 
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 		signin.WithRegistrar(&failingRegistrar{err: sentinel}),
 	)
 	must.NoError(T, err)
@@ -665,7 +665,7 @@ func TestRegistrationOptions_nilIsIgnored(T *testing.T) {
 
 	e := newEnv(T)
 
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 		signin.WithRegistrar(nil),
 		signin.WithVerifications(nil),
 	)
@@ -778,7 +778,7 @@ func TestService_VerifyEmailAddress_readsTheStandingInTheTransaction(T *testing.
 
 	// The resolving read answers with the standing from before the suspension,
 	// which is what a read that ran before it would have seen.
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 		signin.WithHooks(e.hooks),
 		signin.WithVerifications(&staleStandingVerifications{
 			SQLStore: e.store,

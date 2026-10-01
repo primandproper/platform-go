@@ -54,10 +54,19 @@ var (
 		why:  "service builds identity's server with re-authenticated handles, so Seams.ReauthenticatedHandlesDisabled is false",
 	}
 
+	// openRegistration is the assertion only a deployment that closed its
+	// sign-up door reaches. service builds sign-in's server with the door open,
+	// so every registration the suites make goes through it instead.
+	openRegistration = expectedSkip{
+		test: "signin/registration/a_closed_sign-up_door_is_refused_by_name",
+		why:  "the harness leaves sign-in's Registration block open, so service builds the server without WithoutOpenRegistration and Seams.RegistrationClosed is false",
+	}
+
 	// membersSkips are what the run reserving nothing may skip.
 	membersSkips = append(slices.Clone(pagedReadsWithNoPage),
 		unwiredPrincipalPermissions,
 		gatedHandles,
+		openRegistration,
 		expectedSkip{
 			test: "reservations",
 			why:  "the run reserves nothing, so there is no reservation to hold it to",
@@ -67,14 +76,16 @@ var (
 	// staffSkips are what the run reserving staff calls may skip. Its
 	// reserved calls are made by an administrator minted for them, so the
 	// reservation itself costs no assertion here.
-	staffSkips = append(slices.Clone(pagedReadsWithNoPage), unwiredPrincipalPermissions, gatedHandles)
+	staffSkips = append(slices.Clone(pagedReadsWithNoPage), unwiredPrincipalPermissions, gatedHandles, openRegistration)
 
 	// rosterSkips are what the empty-requests run may skip: nothing.
 	rosterSkips []expectedSkip
 
 	// admittingSkips are what the run whose registrations issue a second
-	// factor may skip.
+	// factor may skip. Its door is open too, so the closed-door assertion
+	// skips there as it does everywhere.
 	admittingSkips = []expectedSkip{
+		openRegistration,
 		{
 			test: "signin/self/proving_a_second_factor_nobody_issued_is_refused_as_a_precondition",
 			why:  "the run's registration policy issues every registrant a secret, so Seams.RegistrationIssuesSecondFactor is true and nobody holds none",

@@ -121,6 +121,28 @@ type SignInAnnotator func(
 	familyIDs []string,
 ) (map[string]map[string]string, error)
 
+// WithoutOpenRegistration builds the server with its sign-up door closed:
+// Register is refused before the service sees it, with
+// signin.ErrRegistrationClosed as codes.Unimplemented, which carries the
+// client-safe reason REGISTRATION_CLOSED once errormappers.Register has run.
+// The reason is the point: a bare Unimplemented is also what a server answers
+// for an RPC it never mounted, and a client — or the conformance suite — that
+// cannot tell a closed door from a broken one cannot say which it is looking at.
+//
+// It is for a deployment that does not want sign-up at all, and it closes the
+// door to everybody, signed in or not. A deployment that wants sign-up for
+// some people and not others keeps the door open and says who in its
+// signin.RegistrationPolicy, which reads the caller off the context. Register
+// stays in [AnonymousMethods] either way: the lists are fixed, and the server
+// is the one place that decides.
+//
+// A deployment built from signincfg does not pass it by hand: naming
+// Registration.Closed, or Registration.Disabled, puts it among the config's
+// ServerOptions, which service's mount reads.
+func WithoutOpenRegistration() Option {
+	return func(s *Server) { s.registrationClosed = true }
+}
+
 // WithSignInAnnotator sets what fills each listed login's attributes. A nil
 // annotator is ignored. Absent one, every login is listed with none.
 func WithSignInAnnotator(annotate SignInAnnotator) Option {

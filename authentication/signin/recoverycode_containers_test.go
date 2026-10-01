@@ -103,7 +103,7 @@ func runConcurrentRecoverySignIns(t *testing.T, client database.Client, d dialec
 
 	hooks := &recoveryHooks{}
 
-	svc, err := signin.NewService(client, store, argon2.NewArgon2Authenticator(), &fakeIssuer{},
+	svc, err := signin.NewService(client, store, argon2.NewArgon2Authenticator(), &fakeIssuer{}, []string{"owner"},
 		signin.WithHooks(hooks),
 		signin.WithRecoveryCodeStore(codes),
 	)

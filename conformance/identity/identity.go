@@ -37,7 +37,6 @@ const (
 	listMembershipsForUser         = identitypb.IdentityService_ListMembershipsForUser_FullMethodName
 	listUsers                      = identitypb.IdentityService_ListUsers_FullMethodName
 	recordAgreement                = identitypb.IdentityService_RecordAgreement_FullMethodName
-	register                       = identitypb.IdentityService_Register_FullMethodName
 	rejectInvitation               = identitypb.IdentityService_RejectInvitation_FullMethodName
 	removeMembership               = identitypb.IdentityService_RemoveMembership_FullMethodName
 	searchUsersByUsername          = identitypb.IdentityService_SearchUsersByUsername_FullMethodName

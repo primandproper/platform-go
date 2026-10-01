@@ -20,21 +20,52 @@ import (
 func registration(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
-	// The property this surface exists for: somebody registered over the wire
-	// can sign in over the wire. They cannot before their address is proven,
-	// and the refusal says why in a form a client can send them to
-	// verification on; the link they were mailed, answered with nobody signed
-	// in, is what lets them in.
+	// A deployment that closed its sign-up door is held to the refusal that
+	// tells a closed door from a broken one: Unimplemented alone is also what
+	// a server answers for a method it never mounted, so the reason is the
+	// promise. Every assertion below registers somebody, and skips here.
+	t.Run("a closed sign-up door is refused by name", func(t *testing.T) {
+		t.Parallel()
+
+		if !s.Seams().RegistrationClosed {
+			conformance.Skip(t, "conformance: this subject's sign-up door is open (Seams.RegistrationClosed is false), so there is no closed door to refuse; skipping")
+		}
+
+		anon := anonymous(t, s, registerUser)
+
+		_, err := anon.Register(t.Context(), withPassword(registrationRequest()))
+		refused(t, s, err, codes.Unimplemented, reasonRegistrationClosed)
+	})
+
+	// The property this surface exists for: somebody registered over the wire,
+	// with nobody signed in, can sign in over the wire. They cannot before
+	// their address is proven, and the refusal says why in a form a client can
+	// send them to verification on; the link they were mailed, answered with
+	// nobody signed in, is what lets them in.
 	//
 	// A deployment whose policy admits a registrant unverified says so in
 	// Seams.RegistrantsAdmittedUnverified, and is held to that instead: the
 	// door admits them at once, and the link still proves the address, which
 	// they are told when they ask.
-	t.Run("a registrant signs in once the mailed link proves their address", func(t *testing.T) {
+	t.Run("a registrant with nobody on the request signs in once the mailed link proves their address", func(t *testing.T) {
 		t.Parallel()
 
-		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
-		who, registered := register(t, s, withPassword(registrationRequest(s)))
+		if s.Seams().RegistrationClosed {
+			conformance.Skip(t, "conformance: this subject closes its sign-up door (Seams.RegistrationClosed), so nobody registers with nobody on the request; skipping")
+		}
+
+		anon := anonymous(t, s, registerUser, verifyEmailAddress, loginForToken)
+		request := withPassword(registrationRequest())
+
+		response, err := anon.Register(t.Context(), request)
+		must.NoError(t, err, must.Sprint("registering somebody with nobody on the request"))
+
+		registered := response.GetRegistration()
+		who := &registrant{
+			userID:   registered.GetUser().GetId(),
+			username: request.GetUser().GetUsername(),
+			email:    request.GetUser().GetEmailAddress(),
+		}
 
 		test.EqOp(t, who.username, registered.GetUser().GetUsername())
 		test.NotNil(t, registered.GetAccount(), test.Sprint("a registration naming an account answered with none"))
@@ -59,6 +90,19 @@ func registration(t *testing.T, s *conformance.Session) {
 		}
 	})
 
+	// A registration on the wire names no roles — the request has no field for
+	// them — so the roles a registrant owns their account with are the
+	// deployment's: its default owner roles, or what its registration policy
+	// replaced them with. Seams.Roles.Owner is the deployment saying which.
+	t.Run("a registrant owns their account with the deployment's owner role", func(t *testing.T) {
+		t.Parallel()
+
+		_, registered := register(t, s, withNoPassword(registrationRequest()))
+
+		test.Eq(t, []string{s.Roles().Owner}, registered.GetMembership().GetRoles(),
+			test.Sprint("a registrant holds other roles in their own account than the deployment's owner role"))
+	})
+
 	// The other arrival: somebody who named no password claims their account
 	// from the same mail, with nobody signed in. Attaching does not spend the
 	// link, so the one click goes on to verify.
@@ -66,7 +110,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
-		who, _ := register(t, s, withNoPassword(registrationRequest(s)))
+		who, _ := register(t, s, withNoPassword(registrationRequest()))
 		link := mailedVerification(t, s, who.email)
 
 		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{Token: link, NewPassword: password})
@@ -87,14 +131,14 @@ func registration(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, attachPassword, verifyEmailAddress, loginForToken)
 
-		without, _ := register(t, s, withNoPassword(registrationRequest(s)))
+		without, _ := register(t, s, withNoPassword(registrationRequest()))
 		_, err := anon.AttachPassword(t.Context(), &signinpb.AttachPasswordRequest{
 			Token:       mailedVerification(t, s, without.email),
 			NewPassword: password,
 		})
 		must.NoError(t, err, must.Sprint("the control: an account with no password could not be given one"))
 
-		holder, _ := register(t, s, withPassword(registrationRequest(s)))
+		holder, _ := register(t, s, withPassword(registrationRequest()))
 		link := mailedVerification(t, s, holder.email)
 
 		const chosenBySomebodyElse = "a password somebody else chose, long enough"
@@ -127,7 +171,7 @@ func registration(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, domain.ErrInvalidCredentials.Error(), status.Convert(err).Message())
 
 		// A spent link lands in the same place.
-		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 		link := mailedVerification(t, s, who.email)
 
 		_, spendErr := anon.VerifyEmailAddress(t.Context(), &signinpb.VerifyEmailAddressRequest{Token: link})
@@ -152,7 +196,7 @@ func registration(t *testing.T, s *conformance.Session) {
 			conformance.Skip(t, "conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
 		}
 
-		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 		first := mailedVerification(t, s, who.email)
 
 		_, err := operator.Surfaces.Identity.UpdateUserAccountStatus(operator.Context(t.Context()),
@@ -188,7 +232,7 @@ func registration(t *testing.T, s *conformance.Session) {
 
 		anon := anonymous(t, s, verifyEmailAddress, requestVerificationEmailByAddress)
 
-		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 		first := mailedVerification(t, s, who.email)
 
 		_, err := anon.RequestVerificationEmailByAddress(t.Context(),
@@ -243,10 +287,9 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registration naming no credential is refused and leaves nobody behind", func(t *testing.T) {
 		t.Parallel()
 
-		by := registrar(t, s)
-		request := registrationRequest(s)
+		request := registrationRequest()
 
-		_, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), request)
+		_, err := registrationDoor(t, s)(t.Context(), request)
 		refused(t, s, err, codes.InvalidArgument, reasonNoCredentialNamed)
 
 		register(t, s, withPassword(request))
@@ -257,13 +300,11 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("an empty registration is a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		by := registrar(t, s)
-
-		_, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), &signinpb.RegisterRequest{})
+		_, err := registrationDoor(t, s)(t.Context(), &signinpb.RegisterRequest{})
 		must.Error(t, err)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
-		register(t, s, withPassword(registrationRequest(s)))
+		register(t, s, withPassword(registrationRequest()))
 	})
 
 	// The secret that claims an account goes to the person the account is
@@ -272,37 +313,36 @@ func registration(t *testing.T, s *conformance.Session) {
 	t.Run("a registration's answer never carries the link that claims it", func(t *testing.T) {
 		t.Parallel()
 
-		who, registered := register(t, s, withNoPassword(registrationRequest(s)))
+		who, registered := register(t, s, withNoPassword(registrationRequest()))
 		link := mailedVerification(t, s, who.email)
 
 		test.StrNotContains(t, registered.String(), link,
 			test.Sprint("the registration's answer carried the verification link"))
 	})
 
-	// Sign-in's registration reaches the same registrar identity's does, through
-	// its own handler and mapper, and a username or address somebody holds is
-	// the same answer through either: AlreadyExists, in words the person at the
-	// form is meant to read. The holder signing in afterwards is the control
-	// that the collision overwrote nothing.
+	// A username or address somebody holds is AlreadyExists, in words the
+	// person at the form is meant to read — the refusal a sign-up page sees
+	// most. The holder signing in afterwards is the control that the collision
+	// overwrote nothing.
 	t.Run("a registration colliding with a username or an address is AlreadyExists", func(t *testing.T) {
 		t.Parallel()
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
-		holder, _ := register(t, s, withPassword(registrationRequest(s)))
-		by := registrar(t, s)
+		holder, _ := register(t, s, withPassword(registrationRequest()))
+		door := registrationDoor(t, s)
 
-		sameUsername := withPassword(registrationRequest(s))
+		sameUsername := withPassword(registrationRequest())
 		sameUsername.User.Username = holder.username
 
-		_, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), sameUsername)
+		_, err := door(t.Context(), sameUsername)
 		must.Error(t, err, must.Sprint("a second registrant was given a username somebody holds"))
 		test.EqOp(t, codes.AlreadyExists, status.Code(err))
 		test.StrContains(t, status.Convert(err).Message(), "username")
 
-		sameAddress := withPassword(registrationRequest(s))
+		sameAddress := withPassword(registrationRequest())
 		sameAddress.User.EmailAddress = holder.email
 
-		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), sameAddress)
+		_, err = door(t.Context(), sameAddress)
 		must.Error(t, err, must.Sprint("a second registrant was given an address somebody holds"))
 		test.EqOp(t, codes.AlreadyExists, status.Code(err))
 		test.StrContains(t, status.Convert(err).Message(), "email")
@@ -344,17 +384,15 @@ func registration(t *testing.T, s *conformance.Session) {
 		token, err := delivered(t.Context(), inviter.ScopeFor(identitySurface), invited.GetInvitation().GetId())
 		must.NoError(t, err, must.Sprint("reading the token the deployment delivered"))
 
-		request := withPassword(registrationRequest(s))
+		request := withPassword(registrationRequest())
 		request.User.EmailAddress = addressed
-		request.Account, request.OwnerRoles = nil, nil
+		request.Account = nil
 		request.Invitation = &signinpb.RegistrationInvitation{
 			InvitationId: invited.GetInvitation().GetId(),
 			Token:        "not the token",
 		}
 
-		by := registrar(t, s)
-
-		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), request)
+		_, err = registrationDoor(t, s)(t.Context(), request)
 		must.Error(t, err, must.Sprint("a registration naming the wrong token was honored"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
 
@@ -461,19 +499,17 @@ func registration(t *testing.T, s *conformance.Session) {
 		}
 		must.NotEqOp(t, "", link.GetToken(), must.Sprint("a subject that returns the token returned none"))
 
-		by := registrar(t, s)
-
-		stranger := withPassword(registrationRequest(s))
-		stranger.Account, stranger.OwnerRoles = nil, nil
+		stranger := withPassword(registrationRequest())
+		stranger.Account = nil
 		stranger.Invitation = link
 
-		_, err = by.Surfaces.SignIn.Register(by.Context(t.Context()), stranger)
+		_, err = registrationDoor(t, s)(t.Context(), stranger)
 		must.Error(t, err, must.Sprint("a copied link registered somebody it was not addressed to"))
 		test.EqOp(t, codes.NotFound, status.Code(err))
 
-		request := withPassword(registrationRequest(s))
+		request := withPassword(registrationRequest())
 		request.User.EmailAddress = addressed
-		request.Account, request.OwnerRoles = nil, nil
+		request.Account = nil
 		request.Invitation = link
 
 		_, registered := register(t, s, request)

@@ -17,7 +17,11 @@ every deployment wants and leaves opt-in only what has a reason to be:
     field is set, and while it is on the service registers through identity's
     Service. Disabled is a field rather than an absent block, because the
     decision it records is to keep strangers from creating accounts, and that
-    decision should be written down.
+    decision should be written down. Its Closed field is the narrower one: it
+    closes the sign-up door on the wire and leaves registration in process
+    alone, for a deployment whose own code provisions people. Either one is
+    read by ServerOptions, so a closed door answers REGISTRATION_CLOSED rather
+    than a refusal a client cannot tell from a broken server.
   - MagicLinks is the passwordless door, and it is the one opt-in block. It is
     on when the block is present, and then the service mints and redeems
     sign-in links over the magiclinks table. It cannot work until the
@@ -74,6 +78,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
 	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
@@ -127,6 +132,13 @@ type Config struct {
 	// RecoveryCodes is the recovery code store's settings. Recovery codes are
 	// always on.
 	RecoveryCodes RecoveryCodesConfig `envPrefix:"RECOVERY_CODES_" json:"recoveryCodes" yaml:"recoveryCodes"`
+
+	// DefaultOwnerRoles are the roles a registrant holds in the account their
+	// registration mints, unless the service's RegistrationPolicy replaces
+	// them. They are the deployment's own role names and are required: the
+	// library never picks one, and a deployment that names none fails at
+	// startup rather than on its first sign-up. See signin.NewService.
+	DefaultOwnerRoles []string `env:"DEFAULT_OWNER_ROLES" json:"defaultOwnerRoles,omitempty" yaml:"defaultOwnerRoles,omitempty"`
 
 	// AdminServiceRoles names the identity service roles that admit an
 	// administrative sign-in. Empty means the service has no administrative
@@ -240,8 +252,20 @@ type RegistrationConfig struct {
 	_ struct{} `json:"-" yaml:"-"`
 
 	// Disabled closes the registration door, so Service.Register refuses and
-	// no *identity.Service is needed. Unset leaves it open.
+	// no *identity.Service is needed. Unset leaves it open. A disabled door is
+	// closed on the wire as well, as Closed closes it.
 	Disabled bool `env:"DISABLED" json:"disabled,omitempty" yaml:"disabled,omitempty"`
+
+	// Closed closes the sign-up door on the wire and nowhere else: the server
+	// ServerOptions configures refuses every Register with
+	// signin.ErrRegistrationClosed, carrying REGISTRATION_CLOSED, while the
+	// service still registers whoever the application's own code hands it. It
+	// is for a deployment that provisions people itself, from an operator tool
+	// or an import, and wants no stranger signing up. Unset leaves the door
+	// open, which is signin/grpc's default. A deployment that wants sign-up for
+	// some people and not others keeps it open and says who in its
+	// signin.RegistrationPolicy.
+	Closed bool `env:"CLOSED" json:"closed,omitempty" yaml:"closed,omitempty"`
 
 	// VerificationLinkTTL is how long the link minted at registration stays
 	// answerable. Unset takes signin.DefaultVerificationLinkTTL.
@@ -349,6 +373,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 
 			return nil
 		})),
+		validation.Field(&cfg.DefaultOwnerRoles, validation.Required, validation.Each(validation.Required)),
 		validation.Field(&cfg.TokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.AdminTokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.ImpersonationTokenTTL, validation.Min(time.Duration(0))),
@@ -358,6 +383,27 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.RecoveryCodes, byValue(&cfg.RecoveryCodes)),
 		validation.Field(&cfg.Registration, byValue(&cfg.Registration)),
 	)
+}
+
+// ServerOptions is the server half of the config, as the signingrpc options
+// that carry it: whether the sign-up door is closed on the wire, which it is
+// when Registration names either Closed or Disabled. A disabled door is
+// closed here too because the service behind it has no registrar, and a
+// Register that reached it would be refused as a wiring failure — a 500 a
+// client cannot tell from a broken server — where a closed door answers
+// REGISTRATION_CLOSED before the service sees anything.
+//
+// It is the one place that mapping is written, as identitycfg's ServerOptions
+// is for that surface: service's mount reads it, and so does any composition
+// root that builds signingrpc.NewServer itself from a Config it was handed.
+func (cfg *Config) ServerOptions() []signingrpc.Option {
+	var opts []signingrpc.Option
+
+	if cfg.Registration.Closed || cfg.Registration.Disabled {
+		opts = append(opts, signingrpc.WithoutOpenRegistration())
+	}
+
+	return opts
 }
 
 // byValue validates a block the Config holds by value.

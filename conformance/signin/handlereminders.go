@@ -40,7 +40,7 @@ func handleReminders(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, requestHandleReminder)
-		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 
 		requestReminder(t, anon, who.email)
 
@@ -57,7 +57,7 @@ func handleReminders(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, requestHandleReminder)
-		who, _ := register(t, s, withPassword(registrationRequest(s)))
+		who, _ := register(t, s, withPassword(registrationRequest()))
 
 		known := requestReminder(t, anon, who.email)
 

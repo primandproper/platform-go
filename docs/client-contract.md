@@ -250,11 +250,15 @@ revoking a role has no effect until the token expires."*
 Registration is sign-in's, because sign-in is what hashes a password. These RPCs matter to a
 client and their authority differs sharply:
 
-- **`Register` requires a caller**, and a client is not one. *"An open sign-up is a flow with
-  policy in it, a captcha, a rate limit, an email domain rule, and this service holds none of
-  that"* — so a public sign-up screen calls the consumer's own registrar, which calls this.
-  A registration names the credential the registrant chose as a `oneof`, and one naming neither
-  arm is refused rather than read as passwordless (`NO_CREDENTIAL_NAMED`).
+- **`Register` is anonymous**, and it is the only registration on the wire: a public sign-up
+  screen calls it directly. The deployment's policy — who may register, which agreements they
+  must accept, what standing they start in — runs on every registration and refuses with
+  `INVALID_ARGUMENT`, reason `REGISTRATION_REFUSED`. The roles a registrant owns their account
+  with are the deployment's, and the request has no field for them. A deployment may close the
+  door, and then every `Register` answers `UNIMPLEMENTED`, reason `REGISTRATION_CLOSED`: render
+  "sign-up is closed" for that reason, and treat a bare `UNIMPLEMENTED` as the broken client or
+  server it is. A registration names the credential the registrant chose as a `oneof`, and one
+  naming neither arm is refused rather than read as passwordless (`NO_CREDENTIAL_NAMED`).
 - **`VerifyEmailAddress`** and **`AttachPassword`** are anonymous and carry the token the
   mailed link carried, which is the whole of their authority. There is no verification token in
   any response — it travels to the person it is about, never back to whoever called `Register`.

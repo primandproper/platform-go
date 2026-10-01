@@ -75,13 +75,15 @@
 // interface that could also impose a forced change on any user is one that
 // could be made to.
 //
-// Registration here therefore mints the passwordless user that package already
-// treats as first-class. A registration that carries a credential is
-// SignInService.Register, in signin.proto: that service holds the authenticator,
-// hashes what arrives, and comes back through this package's own registration on
-// one transaction. Which of the two a consumer calls is the question of whether
-// the registrant is choosing a password at that moment -- a directory being
-// filled from elsewhere is this one, and somebody signing up is that one.
+// No registration either. Registering somebody is SignInService.Register, in
+// signin.proto, and it is the module's only registration on the wire: that
+// service holds the authenticator, hashes what arrives, mints the verification
+// mail, runs the deployment's registration policy and hooks, and comes back
+// through this package's own registration on one transaction. A second door
+// here could do none of that -- it would mint a user with no credential and no
+// verification mail, and let its caller name their own roles -- which made it
+// the one way around the deployment's policy. An operator provisioning users
+// calls SignInService.Register signed in.
 //
 // No avatar. The media registry is this module's, but identity has no avatar
 // column and joining one is a contract between two packages that has not been
@@ -109,7 +111,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IdentityService_Register_FullMethodName                       = "/primandproper.platform.identity.v1.IdentityService/Register"
 	IdentityService_UpdateProfile_FullMethodName                  = "/primandproper.platform.identity.v1.IdentityService/UpdateProfile"
 	IdentityService_UpdateAccount_FullMethodName                  = "/primandproper.platform.identity.v1.IdentityService/UpdateAccount"
 	IdentityService_RecordAgreement_FullMethodName                = "/primandproper.platform.identity.v1.IdentityService/RecordAgreement"
@@ -159,8 +160,7 @@ const (
 // into its own policy, and who is calling is resolved from the context by the
 // consumer's authentication interceptor.
 type IdentityServiceClient interface {
-	// The writes.
-	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	// The writes. There is no Register: see the file documentation.
 	UpdateProfile(ctx context.Context, in *UpdateProfileRequest, opts ...grpc.CallOption) (*UpdateProfileResponse, error)
 	UpdateAccount(ctx context.Context, in *UpdateAccountRequest, opts ...grpc.CallOption) (*UpdateAccountResponse, error)
 	RecordAgreement(ctx context.Context, in *RecordAgreementRequest, opts ...grpc.CallOption) (*RecordAgreementResponse, error)
@@ -200,16 +200,6 @@ type identityServiceClient struct {
 
 func NewIdentityServiceClient(cc grpc.ClientConnInterface) IdentityServiceClient {
 	return &identityServiceClient{cc}
-}
-
-func (c *identityServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RegisterResponse)
-	err := c.cc.Invoke(ctx, IdentityService_Register_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *identityServiceClient) UpdateProfile(ctx context.Context, in *UpdateProfileRequest, opts ...grpc.CallOption) (*UpdateProfileResponse, error) {
@@ -529,8 +519,7 @@ func (c *identityServiceClient) ListInvitationsForEmailAddress(ctx context.Conte
 // into its own policy, and who is calling is resolved from the context by the
 // consumer's authentication interceptor.
 type IdentityServiceServer interface {
-	// The writes.
-	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	// The writes. There is no Register: see the file documentation.
 	UpdateProfile(context.Context, *UpdateProfileRequest) (*UpdateProfileResponse, error)
 	UpdateAccount(context.Context, *UpdateAccountRequest) (*UpdateAccountResponse, error)
 	RecordAgreement(context.Context, *RecordAgreementRequest) (*RecordAgreementResponse, error)
@@ -572,9 +561,6 @@ type IdentityServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedIdentityServiceServer struct{}
 
-func (UnimplementedIdentityServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
-}
 func (UnimplementedIdentityServiceServer) UpdateProfile(context.Context, *UpdateProfileRequest) (*UpdateProfileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateProfile not implemented")
 }
@@ -684,24 +670,6 @@ func RegisterIdentityServiceServer(s grpc.ServiceRegistrar, srv IdentityServiceS
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&IdentityService_ServiceDesc, srv)
-}
-
-func _IdentityService_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IdentityServiceServer).Register(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: IdentityService_Register_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IdentityServiceServer).Register(ctx, req.(*RegisterRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _IdentityService_UpdateProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1251,10 +1219,6 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "primandproper.platform.identity.v1.IdentityService",
 	HandlerType: (*IdentityServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Register",
-			Handler:    _IdentityService_Register_Handler,
-		},
 		{
 			MethodName: "UpdateProfile",
 			Handler:    _IdentityService_UpdateProfile_Handler,

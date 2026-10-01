@@ -213,6 +213,9 @@ func TestRegisterStores(T *testing.T) {
 			// survive normalization. Rotation, recovery codes and registration
 			// are on without it.
 			"SIGN_IN_REFRESH_TOKENS_TABLE_PREFIX": storePrefix,
+			// The one sign-in setting with no default: the roles a registrant
+			// owns their account with are the deployment's to name.
+			"SIGN_IN_DEFAULT_OWNER_ROLES": "owner",
 		}}))
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))

@@ -130,6 +130,11 @@ func AuthStatusToProto(s *signin.AuthStatus) *signinpb.AuthStatus {
 // unspecified agreement refuses the whole request, for the reason
 // identitygrpc.AgreementFromProto gives: it decides which compliance column
 // gets stamped.
+//
+// The result names no owner roles, and the request has no field that could:
+// an anonymous door that let its caller choose their roles in the account they
+// mint would hand out whatever the deployment's role names can do. The service
+// starts every such registration from its default owner roles.
 func registrationFromProto(r *signinpb.RegisterRequest) (*signin.Registration, error) {
 	if r == nil {
 		return nil, signin.ErrNilRegistration
@@ -150,7 +155,6 @@ func registrationFromProto(r *signinpb.RegisterRequest) (*signin.Registration, e
 		User:       identitygrpc.UserFromRegistrationInput(r.GetUser()),
 		Account:    identitygrpc.AccountFromCreationInput(r.GetAccount()),
 		Credential: credentialFromProto(r),
-		OwnerRoles: r.GetOwnerRoles(),
 		Agreements: agreements,
 	}
 

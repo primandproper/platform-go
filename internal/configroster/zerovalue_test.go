@@ -131,10 +131,11 @@ func zeroValueCases() []zeroValueCase {
 		{name: "authentication/passkeys", cfg: &passkeyscfg.Config{}, why: "the table prefix is the only field, and the resolver and enrollment gate the service needs are the application's, resolved from the injector rather than named in environment"},
 		{name: "authentication/passwordreset", cfg: &passwordresetcfg.Config{}, why: "the prefix, the token lifetime, the request floor and the sweep interval all default"},
 		{name: "authentication/phonecodes", cfg: &phonecodescfg.Config{}, why: "the prefix, the code length, the lifetime, the attempt limit, the retention and the sweep interval all default"},
-		// The zero config is decisive for the same reason passwordreset's is:
-		// the authenticator and the token issuer are resolved from the injector
-		// when the service is invoked, not checked here.
-		{name: "authentication/signin", cfg: &signincfg.Config{}, why: "rotation, recovery codes and registration are on at their defaults, the magic link door is off until its block is present, and the lifetimes default"},
+		// Everything else defaults — rotation, recovery codes and registration
+		// on, the magic link door off until its block is present, the lifetimes
+		// — but the roles a registrant owns their account with are the
+		// deployment's role names, and the library never picks one.
+		{name: "authentication/signin", cfg: &signincfg.Config{}, needs: "defaultOwnerRoles"},
 		{name: "authentication/webauthnsessions", cfg: &webauthnsessionscfg.Config{}, needs: "rpID"},
 		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
 		{name: "billing", cfg: &billingcfg.Config{}, why: "the table prefix is the only field, and what a deployment sells is rows rather than environment"},

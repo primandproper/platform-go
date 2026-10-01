@@ -337,7 +337,7 @@ func buildHarness(
 		)
 	}
 
-	svc, err := signin.NewService(db, store, authenticator, issuer, svcOpts...)
+	svc, err := signin.NewService(db, store, authenticator, issuer, []string{"owner"}, svcOpts...)
 	must.NoError(t, err)
 
 	// The scope comes off the connection, which is the seam that exists because

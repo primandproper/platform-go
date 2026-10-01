@@ -257,7 +257,7 @@ func self(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
-		who, registered := register(t, s, withPassword(registrationRequest(s)))
+		who, registered := register(t, s, withPassword(registrationRequest()))
 		issued := registered.GetTotpEnrollment()
 
 		if !s.Seams().RegistrationIssuesSecondFactor {

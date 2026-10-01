@@ -120,7 +120,7 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	signer, err := jwt.NewSigner("extractor", "extractor", []byte("a-signing-key-for-the-extractor-suite"))
 	must.NoError(t, err)
 
-	svc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), signer,
+	svc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), signer, []string{"owner"},
 		signin.WithAdminServiceRoles(serviceAdminRole),
 		signin.WithRefreshTokenStore(refreshStore),
 		signin.WithImpersonationPolicy(func(context.Context, *identity.User, *identity.User) error { return nil }),
@@ -463,7 +463,7 @@ func TestPrincipalExtractor_WithSignInCheck(T *testing.T) {
 	T.Run("a token its login has replaced names nobody, where the service refuses them", func(t *testing.T) {
 		t.Parallel()
 
-		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer, []string{"owner"},
 			signin.WithRefreshTokenStore(h.refresh),
 			signin.WithSupersededTokenRefusal(),
 		)
@@ -757,7 +757,7 @@ func TestAuthenticationRequirements(T *testing.T) {
 		test.ErrorIs(t, err, signingrpc.ErrInvalidAuthenticationMethod)
 	})
 
-	T.Run("sign-in declares every method it has, and GetAuthStatus looks at the credential", func(t *testing.T) {
+	T.Run("sign-in declares every method it has, and GetAuthStatus and Register look at the credential", func(t *testing.T) {
 		t.Parallel()
 
 		reqs, err := signingrpc.RequireAuthentication(signingrpc.NewAuthenticationRequirements()).Build()
@@ -769,6 +769,12 @@ func TestAuthenticationRequirements(T *testing.T) {
 		}
 
 		requirement, _ := reqs.Lookup(signinpb.SignInService_GetAuthStatus_FullMethodName)
+		test.EqOp(t, signingrpc.AuthenticationOptional, requirement)
+
+		// Optional rather than anonymous: nobody is required to sign up, and
+		// an operator provisioning users is still resolved, so the
+		// deployment's registration policy can read them off the context.
+		requirement, _ = reqs.Lookup(signinpb.SignInService_Register_FullMethodName)
 		test.EqOp(t, signingrpc.AuthenticationOptional, requirement)
 
 		requirement, _ = reqs.Lookup(signinpb.SignInService_GetSelf_FullMethodName)
@@ -921,7 +927,7 @@ func TestPrincipalExtractor_interceptor(T *testing.T) {
 	T.Run("a token with no ID, under a check refusing superseded tokens, is unauthenticated, not unavailable", func(t *testing.T) {
 		t.Parallel()
 
-		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer,
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer, []string{"owner"},
 			signin.WithRefreshTokenStore(h.refresh),
 			signin.WithSupersededTokenRefusal(),
 		)

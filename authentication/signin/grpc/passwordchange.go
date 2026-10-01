@@ -124,14 +124,18 @@ func DirectoryPasswordChange(client database.Client, directory PasswordChangeDir
 //     the reason an operator forces a change is so often a credential somebody
 //     else holds, and ending that somebody's logins is exactly the remedy a
 //     gate must not stand in front of.
-//   - To sign in at all. Every anonymous door, because what they present is
-//     their own authority and not the caller the gate refuses: a flagged
-//     person has to be able to sign in, renew their token and follow a mailed
-//     link, or they could never reach the form.
+//   - To sign in at all. Every anonymous door but one, because what they
+//     present is their own authority and not the caller the gate refuses: a
+//     flagged person has to be able to sign in, renew their token and follow a
+//     mailed link, or they could never reach the form.
 //
 // What is not on it is everything else, TOTP enrollment and registration
 // included: neither discharges the obligation, and both are the kind of change
-// a person holding a stolen password would make first.
+// a person holding a stolen password would make first. Register is the one
+// anonymous method left off. Nobody is required to call it, so the gate never
+// sees a caller who arrived with no credential; what it refuses is a flagged
+// caller who arrived signed in, which is an operator provisioning users with a
+// password they were told to change.
 func PasswordChangeMethods() []string {
 	methods := []string{
 		signinpb.SignInService_GetSelf_FullMethodName,
@@ -147,7 +151,13 @@ func PasswordChangeMethods() []string {
 	}
 
 	// GetAuthStatus and SignOut are among the anonymous methods.
-	return append(methods, AnonymousMethods()...)
+	for _, method := range AnonymousMethods() {
+		if method != signinpb.SignInService_Register_FullMethodName {
+			methods = append(methods, method)
+		}
+	}
+
+	return methods
 }
 
 // PasswordChangeGate refuses every call from a caller who owes a forced

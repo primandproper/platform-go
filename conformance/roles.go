@@ -19,7 +19,10 @@ import (
 // vocabulary is open supplies nothing and changes nothing.
 type Roles struct {
 	// Owner is the account role a registrant is given over the account they
-	// register with. Empty is "owner".
+	// register with: the deployment's default owner role, or the one its
+	// signin.RegistrationPolicy gives somebody signing themselves up. A
+	// registration on the wire names no roles, so this is what the suite
+	// expects the registrant to hold. Empty is "owner".
 	Owner string
 
 	// Service is a service role an operator may grant a user. Empty is

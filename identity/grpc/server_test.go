@@ -126,7 +126,7 @@ func TestEveryRPCRefusesAnAnonymousCaller(T *testing.T) {
 func identityServiceDescriptor(t *testing.T) protoreflect.ServiceDescriptor {
 	t.Helper()
 
-	file := (&identitypb.RegisterRequest{}).ProtoReflect().Descriptor().ParentFile()
+	file := (&identitypb.UpdateProfileRequest{}).ProtoReflect().Descriptor().ParentFile()
 
 	service := file.Services().ByName("IdentityService")
 	must.NotNil(t, service, must.Sprint("the generated file describes no IdentityService"))
@@ -134,59 +134,23 @@ func identityServiceDescriptor(t *testing.T) protoreflect.ServiceDescriptor {
 	return service
 }
 
-func TestRegisterWritesTheUserTheAccountAndTheMembership(T *testing.T) {
+// TestUpdateProfileSurfacesACollisionAsAlreadyExists is the test the error
+// mappers exist for. Without them this arrives as codes.Unknown, and a client
+// cannot tell "pick another username" from "try again later".
+//
+// The server is built WithoutReauthenticatedHandles, so the rename reaches the
+// store and is refused there rather than by the gate in front of it.
+func TestUpdateProfileSurfacesACollisionAsAlreadyExists(T *testing.T) {
 	T.Parallel()
 
-	h := newHarness(T)
+	h := newHarness(T, identitygrpc.WithoutReauthenticatedHandles())
 
-	response, err := h.client.Register(h.ctx(), &identitypb.RegisterRequest{
-		User: &identitypb.UserRegistrationInput{
-			Username:     "somebody",
-			EmailAddress: "somebody@example.com",
-			FirstName:    "Some",
-			LastName:     "Body",
-		},
-		Account:    &identitypb.AccountCreationInput{Name: "Acme", TimeZone: "UTC"},
-		OwnerRoles: []string{"owner"},
-	})
-	must.NoError(T, err)
+	h.seedAccount(T, testScope, "taken")
+	registration := h.seedAccount(T, testScope, "somebody")
+	ctx := h.as(&testPrincipal{userID: registration.User.ID, scope: testScope})
 
-	registration := response.GetRegistration()
-	must.NotNil(T, registration)
-
-	test.NotEqOp(T, "", registration.GetUser().GetId())
-	test.EqOp(T, "somebody", registration.GetUser().GetUsername())
-
-	// The registrant owns the account, and the membership that makes them a
-	// member of it exists — which is the whole reason Register is one operation
-	// rather than three calls.
-	test.EqOp(T, registration.GetUser().GetId(), registration.GetAccount().GetOwnerUserId())
-	test.EqOp(T, registration.GetAccount().GetId(), registration.GetMembership().GetBelongsToAccount())
-	test.True(T, registration.GetMembership().GetDefaultAccount(),
-		test.Sprint("a registrant's only account should be where they land"))
-}
-
-// TestRegisterSurfacesACollisionAsAlreadyExists is the test the error mappers
-// exist for. Without them this arrives as codes.Unknown, and a client cannot
-// tell "pick another username" from "try again later".
-func TestRegisterSurfacesACollisionAsAlreadyExists(T *testing.T) {
-	T.Parallel()
-
-	h := newHarness(T)
-
-	request := &identitypb.RegisterRequest{
-		User:       &identitypb.UserRegistrationInput{Username: "taken", EmailAddress: "taken@example.com"},
-		Account:    &identitypb.AccountCreationInput{Name: "Acme"},
-		OwnerRoles: []string{"owner"},
-	}
-
-	_, err := h.client.Register(h.ctx(), request)
-	must.NoError(T, err)
-
-	_, err = h.client.Register(h.ctx(), &identitypb.RegisterRequest{
-		User:       &identitypb.UserRegistrationInput{Username: "taken", EmailAddress: "other@example.com"},
-		Account:    &identitypb.AccountCreationInput{Name: "Acme Two"},
-		OwnerRoles: []string{"owner"},
+	_, err := h.client.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{
+		Input: &identitypb.ProfileUpdateInput{Username: new("taken")},
 	})
 	must.Error(T, err)
 
@@ -614,33 +578,6 @@ func TestUpdateUserAccountStatusMovesTheUser(T *testing.T) {
 
 	test.EqOp(T, identitypb.AccountStatus_ACCOUNT_STATUS_BANNED, response.GetUser().GetAccountStatus())
 	test.EqOp(T, "spam", response.GetUser().GetAccountStatusExplanation())
-}
-
-// TestRegisterRefusesAnAbsentUserOrAccount is the pair of inputs a registration
-// cannot invent. Both are InvalidArgument rather than the Internal the rest of
-// the RPC defaults to, because a request that named neither is a client's
-// mistake and not a failure of anything downstream.
-func TestRegisterRefusesAnAbsentUserOrAccount(T *testing.T) {
-	T.Parallel()
-
-	h := newHarness(T)
-
-	_, err := h.client.Register(h.ctx(), &identitypb.RegisterRequest{
-		Account: &identitypb.AccountCreationInput{Name: "an account"},
-	})
-	must.Error(T, err)
-	test.EqOp(T, codes.InvalidArgument, status.Code(err))
-	test.True(T, errors.Is(err, identity.ErrNilUser))
-
-	_, err = h.client.Register(h.ctx(), &identitypb.RegisterRequest{
-		User: &identitypb.UserRegistrationInput{
-			Username:     "somebody",
-			EmailAddress: "somebody@example.com",
-		},
-	})
-	must.Error(T, err)
-	test.EqOp(T, codes.InvalidArgument, status.Code(err))
-	test.True(T, errors.Is(err, identity.ErrNilAccount))
 }
 
 // TestUpdateProfileRefusesAnAbsentInput draws the same line UpdateAccount does:

@@ -15,20 +15,16 @@ import (
 // than an omission. The anonymous RPCs are how a caller becomes somebody at all — or,
 // in SignOut's case, stops being them — so there is no grant that could gate
 // them: a permission check in front of sign-in is a check against the caller's
-// roles, and an anonymous caller has none. All but one of the rest take their
-// subject from the principal and have no field that could name anybody else —
-// the whole of their authorization is "this is the caller's own row", checked by the
-// method having no way to be about another one. EndSignIn names a login rather
-// than a person, and is among them because the caller is part of what it
-// matches: a family that is not theirs ends nothing.
-//
-// The exception is Register, which is neither: it requires a caller and is not
-// about them. It is still ungated, and that is the same conclusion identity's
-// namesake reaches — the registrar is the consumer's own service, the policy
-// that decides who may sign up is theirs and sits in front of the call, and a
-// permission here would be this module inventing a grant for a decision it does
-// not make. What it is not is anonymous, which is why it is a list of its own
-// rather than an entry in either of the two below.
+// roles, and an anonymous caller has none. Register is among them, and is the
+// door a caller becomes somebody through for the first time; who may use it is
+// the deployment's signin.RegistrationPolicy, which the service runs on every
+// registration, and a permission here would be this module inventing a grant
+// for a decision it does not make. The rest take their subject from the
+// principal and have no field that could name anybody else — the whole of their
+// authorization is "this is the caller's own row", checked by the method having
+// no way to be about another one. EndSignIn names a login rather than a person,
+// and is among them because the caller is part of what it matches: a family
+// that is not theirs ends nothing.
 //
 // So SignInService has no entry in [Permissions], unlike identity/grpc's
 // service, and a consumer looking for one is looking for something that would
@@ -74,8 +70,8 @@ const (
 // what each requires, the fragment [Require] declares.
 //
 // Every method on that service is here and no method on SignInService is:
-// those are [AnonymousMethods], [RegistrarMethods] and [SelfServiceMethods],
-// and the four together are exhaustive over what [Server] serves.
+// those are [AnonymousMethods] and [SelfServiceMethods], and the three
+// together are exhaustive over what [Server] serves.
 // permissions_test.go keeps them so.
 //
 // It is a default and not a rule, as identity/grpc's is: a consumer who wants
@@ -90,7 +86,22 @@ func Permissions() map[string][]authorization.Permission {
 
 // AnonymousMethods are the RPCs that require no caller at all.
 //
-// Two of them are the doors and a third is ExchangeRefreshToken, which is a door
+// The first is Register, the sign-up door, and it is open by default. What an
+// open sign-up has policy about — who may register, which agreements they must
+// accept, what standing and roles they start with — is the deployment's
+// signin.RegistrationPolicy, which the service runs on every registration
+// before anything is hashed, minted or written; the roles a registrant owns
+// their account with are the service's default owner roles or what that policy
+// replaced them with, never the request's. A caller who is signed in still
+// reaches it — [RequireAuthentication] declares it optional rather than
+// anonymous, so an operator provisioning users is resolved and the policy can
+// read them off the context — but nobody is required. What is left in front of
+// it is the rate it is called at, which is the consumer's to bound, as it is for
+// the sign-in doors. A deployment that does not want sign-up says so with
+// [WithoutOpenRegistration]; the method stays in this list either way, because
+// the lists are fixed and the server is the one place that decides.
+//
+// Two more are the doors and a third is ExchangeRefreshToken, which is a door
 // as well: the credential it presents is the whole of its authority, and a caller
 // holding one has not been authenticated yet. Requiring a principal there would
 // require a live access token to renew an expired one, which is the one moment a
@@ -130,6 +141,7 @@ func Permissions() map[string][]authorization.Permission {
 // long enough to want it.
 func AnonymousMethods() []string {
 	return []string{
+		signinpb.SignInService_Register_FullMethodName,
 		signinpb.SignInService_LoginForToken_FullMethodName,
 		signinpb.SignInService_AdminLoginForToken_FullMethodName,
 		signinpb.SignInService_ExchangeRefreshToken_FullMethodName,
@@ -142,21 +154,6 @@ func AnonymousMethods() []string {
 		signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName,
 		signinpb.SignInService_RequestHandleReminder_FullMethodName,
 		signinpb.SignInService_SignOut_FullMethodName,
-	}
-}
-
-// RegistrarMethods are the RPCs that require a caller and are not about that
-// caller.
-//
-// There is one, and the list exists rather than the method being folded into
-// SelfServiceMethods because the difference is the thing a reader of this file
-// most needs to see: every other authenticated RPC here is safe by having no way
-// to name anybody but the caller, and this one is safe because the consumer's
-// own registration policy stands in front of it. Collapsing the two would make
-// the first sentence of that pair untrue of the list that states it.
-func RegistrarMethods() []string {
-	return []string{
-		signinpb.SignInService_Register_FullMethodName,
 	}
 }
 
@@ -193,8 +190,8 @@ func SelfServiceMethods() []string {
 //
 // Public there means "no authorization check", not "no authentication": the
 // consumer's authentication interceptor still runs, and the self-service
-// methods and Register refuse a request with no principal on them. The
-// anonymous ones are the service working as intended.
+// methods refuse a request with no principal on them. The anonymous ones are
+// the service working as intended.
 //
 // It takes and returns the builder rather than building it, so a consumer
 // composes several domains and their own methods into one table:
@@ -207,7 +204,7 @@ func SelfServiceMethods() []string {
 // A method declared twice is ErrDuplicateMethod, so a consumer who wants one of
 // these gated after all declares the whole set themselves rather than calling
 // this and amending it. That is the same bargain identity/grpc's Require makes,
-// and it is why this exists at all: the three lists and the map above are
+// and it is why this exists at all: the two lists and the map above are
 // exhaustive over both services, permissions_test.go keeps them that way, and an RPC added later
 // and decided about in none of them fails there rather than being denied in
 // somebody's production.
@@ -219,10 +216,6 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	b.RequireAll(Permissions())
 
 	for _, method := range AnonymousMethods() {
-		b.Public(method)
-	}
-
-	for _, method := range RegistrarMethods() {
 		b.Public(method)
 	}
 

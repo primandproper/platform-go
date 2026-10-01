@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -29,8 +30,7 @@ func registrationInput(username string) *signinpb.RegisterRequest {
 			EmailAddress: username + "@example.com",
 			FirstName:    "New",
 		},
-		Account:    &identitypb.AccountCreationInput{Name: username + "'s"},
-		OwnerRoles: []string{"owner"},
+		Account: &identitypb.AccountCreationInput{Name: username + "'s"},
 	}
 }
 
@@ -48,13 +48,12 @@ func TestRegisterThenVerifyThenSignIn(T *testing.T) {
 	secrets := &mailedSecrets{secret: "the-token-in-their-inbox"}
 	h := newHarness(T, []signin.ServiceOption{signin.WithSecretGenerator(secrets)})
 
-	registered, err := h.client.Register(asUser(h.rootCtx, h.user.ID), &signinpb.RegisterRequest{
+	registered, err := h.client.Register(h.rootCtx, &signinpb.RegisterRequest{
 		User: &identitypb.UserRegistrationInput{
 			Username:     "ada",
 			EmailAddress: "ada@example.com",
 		},
 		Account:    &identitypb.AccountCreationInput{Name: "Ada's"},
-		OwnerRoles: []string{"owner"},
 		Credential: &signinpb.RegisterRequest_Password{Password: "hunter2 hunter2"},
 	})
 	must.NoError(T, err)
@@ -94,7 +93,7 @@ func TestRegisterWithoutAPasswordThenAttachOne(T *testing.T) {
 	request := registrationInput("ada")
 	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
 
-	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	_, err := h.client.Register(h.rootCtx, request)
 	must.NoError(T, err)
 
 	// Attaching does not spend the link, so the same click goes on to verify.
@@ -122,7 +121,7 @@ func TestRegisterNamingNoCredential(T *testing.T) {
 
 	h := newHarness(T, nil)
 
-	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), registrationInput("ada"))
+	_, err := h.client.Register(h.rootCtx, registrationInput("ada"))
 	test.ErrorIs(T, err, signin.ErrNoCredentialNamed)
 	test.EqOp(T, codes.InvalidArgument, status.Code(err))
 
@@ -132,11 +131,10 @@ func TestRegisterNamingNoCredential(T *testing.T) {
 	test.ErrorIs(T, err, identity.ErrUserNotFound)
 }
 
-// TestRegisterRequiresACaller is the one authenticated RPC here whose subject is
-// not the caller. It is the registrar's own principal, for the reason identity's
-// namesake requires one: an open sign-up is a flow with policy in it, and this
-// service holds none of that.
-func TestRegisterRequiresACaller(T *testing.T) {
+// TestRegisterIsAnonymous is the sign-up door open by default: a request with
+// nobody on it registers somebody, and the roles they own their account with
+// are the service's defaults, since the request has no field for any.
+func TestRegisterIsAnonymous(T *testing.T) {
 	T.Parallel()
 
 	h := newHarness(T, nil)
@@ -144,8 +142,103 @@ func TestRegisterRequiresACaller(T *testing.T) {
 	request := registrationInput("ada")
 	request.Credential = &signinpb.RegisterRequest_Password{Password: "hunter2 hunter2"}
 
+	registered, err := h.client.Register(h.rootCtx, request)
+	must.NoError(T, err)
+	test.Eq(T, []string{"owner"}, registered.GetRegistration().GetMembership().GetRoles())
+
+	// Owner roles are no longer on the wire at all, so a client cannot name its
+	// own: the schema reserves the field rather than ignoring it.
+	test.Nil(T, request.ProtoReflect().Descriptor().Fields().ByName("owner_roles"))
+}
+
+// TestRegisterBySomebodySignedIn is the operator's way in: the same door, with a
+// principal the deployment's policy reads off the context to give the people an
+// operator makes different roles from the people who sign themselves up.
+func TestRegisterBySomebodySignedIn(T *testing.T) {
+	T.Parallel()
+
+	policy := func(ctx context.Context, registration *signin.Registration) error {
+		if _, ok := extractPrincipal(ctx); ok {
+			registration.OwnerRoles = []string{"operator_made"}
+		}
+
+		return nil
+	}
+
+	h := newHarness(T, []signin.ServiceOption{signin.WithRegistrationPolicy(policy)})
+
+	request := registrationInput("ada")
+	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
+
+	registered, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	must.NoError(T, err)
+	test.Eq(T, []string{"operator_made"}, registered.GetRegistration().GetMembership().GetRoles())
+
+	request = registrationInput("grace")
+	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
+
+	registered, err = h.client.Register(h.rootCtx, request)
+	must.NoError(T, err)
+	test.Eq(T, []string{"owner"}, registered.GetRegistration().GetMembership().GetRoles())
+}
+
+// TestRegisterWithoutOpenRegistration is the deployment's named opt-out. The
+// door refuses everybody, signed in or not, before anything is written, and the
+// refusal carries a reason — so a client can tell a closed door from a method
+// nobody mounted, which a bare Unimplemented cannot.
+func TestRegisterWithoutOpenRegistration(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, nil, signingrpc.WithoutOpenRegistration())
+
+	for name, ctx := range map[string]context.Context{
+		"anonymous":          h.rootCtx,
+		"somebody signed in": asUser(h.rootCtx, h.user.ID),
+	} {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			request := registrationInput("ada")
+			request.Credential = &signinpb.RegisterRequest_Password{Password: "hunter2 hunter2"}
+
+			_, err := h.client.Register(ctx, request)
+			test.ErrorIs(t, err, signin.ErrRegistrationClosed)
+			test.EqOp(t, codes.Unimplemented, status.Code(err))
+			test.EqOp(t, signin.ErrRegistrationClosed.Error(), status.Convert(err).Message())
+
+			info, ok := grpcerrors.ClientReasonFromStatus(err)
+			must.True(t, ok)
+			test.EqOp(t, "REGISTRATION_CLOSED", info.GetReason())
+			test.EqOp(t, signin.ClientReasonDomain, info.GetDomain())
+
+			_, err = h.store.GetUserByUsername(t.Context(), h.db.Reader(), testScope, "ada")
+			test.ErrorIs(t, err, identity.ErrUserNotFound)
+		})
+	}
+}
+
+// TestRegisterSurfacesACollisionAsAlreadyExists is the refusal a sign-up page
+// sees most: a handle somebody already holds. Without the mappers it arrives as
+// codes.Unknown, and a client cannot tell "pick another username" from "try
+// again later".
+func TestRegisterSurfacesACollisionAsAlreadyExists(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, nil)
+
+	request := registrationInput("ada")
+	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
+
 	_, err := h.client.Register(h.rootCtx, request)
-	test.EqOp(T, codes.Unauthenticated, status.Code(err))
+	must.NoError(T, err)
+
+	request = registrationInput("ada")
+	request.User.EmailAddress = "somebody-else@example.com"
+	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
+
+	_, err = h.client.Register(h.rootCtx, request)
+	test.ErrorIs(T, err, identity.ErrUsernameTaken)
+	test.EqOp(T, codes.AlreadyExists, status.Code(err))
 }
 
 // TestAttachPasswordAndVerifyAreAnonymous is the other half of that decision,
@@ -161,7 +254,7 @@ func TestAttachPasswordAndVerifyAreAnonymous(T *testing.T) {
 	request := registrationInput("ada")
 	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
 
-	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	_, err := h.client.Register(h.rootCtx, request)
 	must.NoError(T, err)
 
 	// No caller on either request, and neither is refused for it.
@@ -187,7 +280,7 @@ func TestAttachPasswordRefusesAnAccountThatHasOne(T *testing.T) {
 	request := registrationInput("ada")
 	request.Credential = &signinpb.RegisterRequest_Password{Password: "hunter2 hunter2"}
 
-	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	_, err := h.client.Register(h.rootCtx, request)
 	must.NoError(T, err)
 
 	_, err = h.client.AttachPassword(h.rootCtx, &signinpb.AttachPasswordRequest{
@@ -227,7 +320,7 @@ func TestRegisteredCarriesNoVerificationToken(T *testing.T) {
 	request := registrationInput("ada")
 	request.Credential = &signinpb.RegisterRequest_Password{Password: "hunter2 hunter2"}
 
-	registered, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	registered, err := h.client.Register(h.rootCtx, request)
 	must.NoError(T, err)
 
 	// Nothing on the response says it, and there is no field that could: the
@@ -298,7 +391,7 @@ func TestRegisterWithAnEmptyRequest(T *testing.T) {
 
 	h := newHarness(T, nil)
 
-	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), &signinpb.RegisterRequest{})
+	_, err := h.client.Register(h.rootCtx, &signinpb.RegisterRequest{})
 	test.ErrorIs(T, err, identity.ErrNilUser)
 }
 
@@ -334,7 +427,7 @@ func TestRegisterUnderARegistrationPolicy(T *testing.T) {
 			identitypb.Agreement_AGREEMENT_PRIVACY_POLICY,
 		}
 
-		registered, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+		registered, err := h.client.Register(h.rootCtx, request)
 		must.NoError(t, err)
 
 		enrollment := registered.GetRegistration().GetTotpEnrollment()
@@ -365,7 +458,7 @@ func TestRegisterUnderARegistrationPolicy(T *testing.T) {
 		request := registrationInput("ada")
 		request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
 
-		_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+		_, err := h.client.Register(h.rootCtx, request)
 		test.ErrorIs(t, err, signin.ErrRegistrationRefused)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 
@@ -385,7 +478,7 @@ func TestRegisterWithAnUnspecifiedAgreement(T *testing.T) {
 	request.Credential = &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}}
 	request.Agreements = []identitypb.Agreement{identitypb.Agreement_AGREEMENT_UNSPECIFIED}
 
-	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), request)
+	_, err := h.client.Register(h.rootCtx, request)
 	test.EqOp(T, codes.InvalidArgument, status.Code(err))
 
 	_, err = h.store.GetUserByUsername(T.Context(), h.db.Reader(), testScope, "ada")

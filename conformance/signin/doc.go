@@ -2,8 +2,8 @@
 Package signin is the credential surface's promises, assertable against any
 subject that mounts it.
 
-Most of this surface answers somebody who is not signed in: the doors
-a person signs in through, the links that finish a registration, the exchange
+Most of this surface answers somebody who is not signed in: the sign-up door,
+the doors a person signs in through, the links that finish a registration, the exchange
 that keeps a login alive and the button that ends one. What a consumer is owed
 about them is two things that pull against each other. The first is that the
 right credential gets in — a registrant can sign in once their address is
@@ -45,8 +45,8 @@ suite that fails on a detail it does not send.
 Every request to the anonymous doors arrives with nobody on it, so whose
 directory it is against comes off the connection rather than a caller, and
 service.New leaves that at the global directory. The people these assertions
-register and sign in are therefore placed in tenancy.Global through a
-registrar asked for there, which is where a single-tenant deployment keeps
+register and sign in are therefore placed in tenancy.Global by the sign-up
+door with nobody on it, which is where a single-tenant deployment keeps
 everybody — the reading the passwordreset suite takes of the same question.
 
 Two secrets reach a person through mail rather than a response, and each
@@ -130,15 +130,23 @@ the suite makes those as an operator and every other call as a member, as the
 conformance package documentation describes. Each caller declares the calls it
 makes and is held to them: a call it did not declare fails the test.
 
-Register requires a caller and registers somebody else, which is the
-directory's administered door by another name, so a deployment whose public
-sign-up is a door of its own may keep it to its staff; every registration here
-is made by a caller in the global directory declaring it. The doors reached
-with nobody on the call — signing in, the links that finish a registration,
-the exchange and the sign-out — are this module's declaration of what is
-reachable without a caller, and a deployment may keep any of them to its staff
-as well: an assertion that knocks on one skips, with the reservation named,
-where the subject reserves it.
+The doors reached with nobody on the call — signing up, signing in, the links
+that finish a registration, the exchange and the sign-out — are this module's
+declaration of what is reachable without a caller, and a deployment may keep
+any of them to its staff: an assertion that knocks on one skips, with the
+reservation named, where the subject reserves it. Register is the one the
+suite still needs where it is kept, since nearly every assertion begins by
+registering somebody, so a subject that reserves it has those registrations
+made by an operator in the global directory instead; the assertion that
+somebody signs up with nobody on the request is the one that skips.
+
+A registration names no roles, because the request has no field for them: the
+registrant owns their account with the deployment's default owner role, or the
+one its registration policy gave them, and Seams.Roles.Owner is the
+deployment saying which. A deployment that closed its sign-up door says so in
+Seams.RegistrationClosed, and is then held to the refusal that tells a closed
+door from a broken one — Unimplemented, carrying REGISTRATION_CLOSED — while
+every assertion that registers somebody over the wire skips.
 
 # What is here and what stayed behind
 

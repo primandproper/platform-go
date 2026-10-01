@@ -30,7 +30,8 @@ happened one layer down, where the transaction is.
 Every other resource surface in this module reads who is calling off one seam,
 because every request to it arrives with somebody on it. This one has RPCs that
 by definition do not: a caller signing in has not signed in yet, neither has
-the registrant answering the link that was mailed to them, and a caller signing
+somebody signing up or the registrant answering the link that was mailed to
+them, and a caller signing
 out is holding the credential that names the login rather than a live token.
 
 So the scope — whose directory this is — comes off a [ScopeResolver] the
@@ -116,7 +117,14 @@ nothing here can.
 
 A rate limit. This package counts sign-in attempts and refuses none of them:
 lockout, backoff and captchas are decisions in front of this service, and
-signin.Hooks.AfterFailedSignIn is what informs them.
+signin.Hooks.AfterFailedSignIn is what informs them. Sign-up is the same
+posture as sign-in rather than a more dangerous one: Register is anonymous and
+open by default, the deployment's signin.RegistrationPolicy decides who it
+admits, and how often it may be called is a decision in front of it like the
+rest. A deployment that wants no sign-up at all closes the door with
+[WithoutOpenRegistration], which a deployment built from signincfg sets by
+naming Registration.Closed (SIGN_IN_REGISTRATION_CLOSED, under service) rather
+than by writing it.
 */
 package grpc
 

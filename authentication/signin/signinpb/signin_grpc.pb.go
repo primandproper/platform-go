@@ -101,7 +101,8 @@
 // No verification token in any response. The secret a registration mints
 // travels to the person it is about, in mail the consumer sends from inside the
 // transaction that wrote the row -- it is never handed back to whoever called
-// Register, who is a client rather than the subject. It arrives back here only
+// Register, since calling it proves nothing about who holds the address. It
+// arrives back here only
 // as a request field on the RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
@@ -182,20 +183,29 @@ const (
 //
 // Some of its RPCs are anonymous by definition and the rest require a caller.
 // What none of them requires is a permission: there is no grant that would make
-// "sign in" safer, and every authenticated one but Register takes its subject
-// from the caller and has no field that could name anybody else. See
+// "sign in" safer, and every authenticated one takes its subject from the
+// caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 // What an operator does to somebody else's logins is
 // SignInAdministrationService, which is permissioned, and which is a service of
 // its own so that this statement stays true of this one.
 type SignInServiceClient interface {
-	// Arriving, and the two ways a registration is finished. Register requires a
-	// caller -- the consumer's own registrar, for the reason identity's Register
-	// requires one: an open sign-up is a flow with policy in it, a captcha, a rate
-	// limit, an email domain rule, and this service holds none of that. The other
-	// two are anonymous and carry their own authority, which is the token that was
-	// mailed to the person they are about.
+	// Arriving, and the two ways a registration is finished. All three are
+	// anonymous. Register is the sign-up door, and it is open by default: the
+	// policy an open sign-up has in it -- who may register, which agreements
+	// they must accept, what standing and roles they start with -- is the
+	// deployment's registration policy, which the service runs on every
+	// registration before anything is hashed, minted or written, and the roles
+	// a registrant owns their account with are the deployment's, never the
+	// request's. A caller who is signed in still reaches it, and an operator
+	// provisioning users calls it that way. A deployment that does not want
+	// sign-up closes the door by name, and is then answered with
+	// UNIMPLEMENTED carrying REGISTRATION_CLOSED, so a client can tell a closed
+	// door from a broken one. Rate limiting it is the consumer's, in front of
+	// it, as it is for the sign-in doors. The other two carry their own
+	// authority, which is the token that was mailed to the person they are
+	// about.
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	AttachPassword(ctx context.Context, in *AttachPasswordRequest, opts ...grpc.CallOption) (*AttachPasswordResponse, error)
 	VerifyEmailAddress(ctx context.Context, in *VerifyEmailAddressRequest, opts ...grpc.CallOption) (*VerifyEmailAddressResponse, error)
@@ -509,20 +519,29 @@ func (c *signInServiceClient) UpdateUsername(ctx context.Context, in *UpdateUser
 //
 // Some of its RPCs are anonymous by definition and the rest require a caller.
 // What none of them requires is a permission: there is no grant that would make
-// "sign in" safer, and every authenticated one but Register takes its subject
-// from the caller and has no field that could name anybody else. See
+// "sign in" safer, and every authenticated one takes its subject from the
+// caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 // What an operator does to somebody else's logins is
 // SignInAdministrationService, which is permissioned, and which is a service of
 // its own so that this statement stays true of this one.
 type SignInServiceServer interface {
-	// Arriving, and the two ways a registration is finished. Register requires a
-	// caller -- the consumer's own registrar, for the reason identity's Register
-	// requires one: an open sign-up is a flow with policy in it, a captcha, a rate
-	// limit, an email domain rule, and this service holds none of that. The other
-	// two are anonymous and carry their own authority, which is the token that was
-	// mailed to the person they are about.
+	// Arriving, and the two ways a registration is finished. All three are
+	// anonymous. Register is the sign-up door, and it is open by default: the
+	// policy an open sign-up has in it -- who may register, which agreements
+	// they must accept, what standing and roles they start with -- is the
+	// deployment's registration policy, which the service runs on every
+	// registration before anything is hashed, minted or written, and the roles
+	// a registrant owns their account with are the deployment's, never the
+	// request's. A caller who is signed in still reaches it, and an operator
+	// provisioning users calls it that way. A deployment that does not want
+	// sign-up closes the door by name, and is then answered with
+	// UNIMPLEMENTED carrying REGISTRATION_CLOSED, so a client can tell a closed
+	// door from a broken one. Rate limiting it is the consumer's, in front of
+	// it, as it is for the sign-in doors. The other two carry their own
+	// authority, which is the token that was mailed to the person they are
+	// about.
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	AttachPassword(context.Context, *AttachPasswordRequest) (*AttachPasswordResponse, error)
 	VerifyEmailAddress(context.Context, *VerifyEmailAddressRequest) (*VerifyEmailAddressResponse, error)

@@ -40,6 +40,7 @@ const (
 	loginForToken                     = signinpb.SignInService_LoginForToken_FullMethodName
 	redeemMagicLink                   = signinpb.SignInService_RedeemMagicLink_FullMethodName
 	refreshTOTPSecret                 = signinpb.SignInService_RefreshTOTPSecret_FullMethodName
+	registerUser                      = signinpb.SignInService_Register_FullMethodName
 	requestHandleReminder             = signinpb.SignInService_RequestHandleReminder_FullMethodName
 	requestMagicLink                  = signinpb.SignInService_RequestMagicLink_FullMethodName
 	requestVerificationEmail          = signinpb.SignInService_RequestVerificationEmail_FullMethodName
@@ -122,6 +123,7 @@ const (
 	reasonNoCredentialNamed       = "NO_CREDENTIAL_NAMED" //nolint:gosec // G101: a refusal's name, not a credential.
 	reasonPasswordChangeRequired  = "PASSWORD_CHANGE_REQUIRED"
 	reasonSignInNotIdentified     = "SIGN_IN_NOT_IDENTIFIED"
+	reasonRegistrationClosed      = "REGISTRATION_CLOSED"
 )
 
 // password is what the registrations here choose, and newPassword is what a
@@ -231,13 +233,35 @@ func member(t *testing.T, s *conformance.Session, methods ...string) *conformanc
 	return s.Subject(t, conformance.Making(methods...), conformance.InTenant(surface, tenancy.Global()))
 }
 
-// registrar is who registers somebody for the anonymous doors to sign in: a
-// caller in that same directory, and an operator there where the subject
-// reserves Register to one.
-func registrar(t *testing.T, s *conformance.Session) *conformance.Subject {
+// registrationDoor is how somebody is registered for the anonymous doors to
+// sign in: the sign-up door with nobody on it, which places them in the
+// directory those doors are against. Where the subject reserves Register to an
+// operator it is an operator in that same directory instead, and where the
+// subject closed the door there is no way to register anybody over the wire,
+// so the assertion skips.
+func registrationDoor(
+	t *testing.T,
+	s *conformance.Session,
+) func(context.Context, *signinpb.RegisterRequest) (*signinpb.RegisterResponse, error) {
 	t.Helper()
 
-	return s.Subject(t, conformance.Making(signinpb.SignInService_Register_FullMethodName), conformance.InTenant(surface, tenancy.Global()))
+	if s.Seams().RegistrationClosed {
+		conformance.Skip(t, "conformance: this subject closes its sign-up door (Seams.RegistrationClosed), so nobody is registered over the wire; skipping")
+	}
+
+	if s.Reserves(registerUser) {
+		by := s.Subject(t, conformance.Making(registerUser), conformance.InTenant(surface, tenancy.Global()))
+
+		return func(ctx context.Context, request *signinpb.RegisterRequest) (*signinpb.RegisterResponse, error) {
+			return by.Surfaces.SignIn.Register(by.Context(ctx), request)
+		}
+	}
+
+	anon := anonymous(t, s, registerUser)
+
+	return func(ctx context.Context, request *signinpb.RegisterRequest) (*signinpb.RegisterResponse, error) {
+		return anon.Register(ctx, request)
+	}
 }
 
 // registrant is somebody registered over the wire: what they would type to sign
@@ -263,7 +287,7 @@ func freshEmail() string { return identifiers.New() + "@conformance.invalid" }
 // naming none would be refused before the suite asserted anything. Agreements
 // are a closed set, so naming every one satisfies any such policy, and a
 // deployment requiring none only stamps them, which no assertion reads.
-func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
+func registrationRequest() *signinpb.RegisterRequest {
 	username := "conf_" + identifiers.New()
 
 	return &signinpb.RegisterRequest{
@@ -273,7 +297,6 @@ func registrationRequest(s *conformance.Session) *signinpb.RegisterRequest {
 			FirstName:    "Some",
 		},
 		Account:    &identitypb.AccountCreationInput{Name: username + "'s"},
-		OwnerRoles: []string{s.Roles().Owner},
 		Agreements: everyAgreement(),
 	}
 }
@@ -308,14 +331,12 @@ func withNoPassword(request *signinpb.RegisterRequest) *signinpb.RegisterRequest
 	return request
 }
 
-// register registers somebody through sign-in's own door, as a registrar in the
-// global directory, and fails the test if the registration is refused.
+// register registers somebody through sign-in's own door — see
+// registrationDoor — and fails the test if the registration is refused.
 func register(t *testing.T, s *conformance.Session, request *signinpb.RegisterRequest) (*registrant, *signinpb.Registered) {
 	t.Helper()
 
-	by := registrar(t, s)
-
-	response, err := by.Surfaces.SignIn.Register(by.Context(t.Context()), request)
+	response, err := registrationDoor(t, s)(t.Context(), request)
 	must.NoError(t, err, must.Sprint("registering somebody through sign-in"))
 
 	registered := response.GetRegistration()
@@ -360,7 +381,7 @@ func verify(t *testing.T, s *conformance.Session, anon signinpb.SignInServiceCli
 func signInAs(t *testing.T, s *conformance.Session, anon signinpb.SignInServiceClient) *registrant {
 	t.Helper()
 
-	who, _ := register(t, s, withPassword(registrationRequest(s)))
+	who, _ := register(t, s, withPassword(registrationRequest()))
 	verify(t, s, anon, who)
 
 	return who

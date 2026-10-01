@@ -107,6 +107,7 @@ var ClientSafeSentinels = []error{
 	ErrNoCredentialNamed,
 	ErrPasswordRefused,
 	ErrRegistrationRefused,
+	ErrRegistrationClosed,
 	ErrPasswordChangeRequired,
 	ErrSignInNotIdentified,
 	ErrReauthenticationRequired,
@@ -204,6 +205,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrNoCredentialNamed, Reason: "NO_CREDENTIAL_NAMED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordRefused, Reason: "PASSWORD_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
+	{Err: ErrRegistrationClosed, Reason: "REGISTRATION_CLOSED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordChangeRequired, Reason: "PASSWORD_CHANGE_REQUIRED", Domain: ClientReasonDomain},
 	{Err: ErrSignInNotIdentified, Reason: "SIGN_IN_NOT_IDENTIFIED", Domain: ClientReasonDomain},
 	{Err: ErrReauthenticationRequired, Reason: "REAUTHENTICATION_REQUIRED", Domain: ClientReasonDomain},
@@ -244,6 +246,12 @@ func (httpMapper) refusal(err error) (code httperrors.ErrorCode, msg string, ok 
 		return httperrors.ErrValidatingRequestInput, "password does not meet this service's requirements", true
 	case errors.Is(err, ErrRegistrationRefused):
 		return httperrors.ErrValidatingRequestInput, "registration does not meet this service's requirements", true
+
+	// A sign-up door the deployment closed. Nothing the caller could send
+	// opens it, so it is a refusal of the act rather than a request to
+	// correct, and HTTP has no closer word for a door that exists and is shut.
+	case errors.Is(err, ErrRegistrationClosed):
+		return httperrors.ErrUserIsNotAuthorized, "registration is closed", true
 
 	// The two refusals a caller gets before they hold anything. They share a
 	// code and differ in the message, which is the whole distinction a client
@@ -348,6 +356,12 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// mapper gives, and a registration the consumer's policy refused with it.
 	case errors.Is(err, ErrPasswordRefused), errors.Is(err, ErrRegistrationRefused):
 		return codes.InvalidArgument, true
+
+	// A sign-up door the deployment closed is a method this server does not
+	// offer, which is what Unimplemented says. The client-safe reason is what
+	// tells it apart from a method nobody mounted.
+	case errors.Is(err, ErrRegistrationClosed):
+		return codes.Unimplemented, true
 
 	// Proven by a token that is good, and asked to prove it again before this
 	// act: a wrong password or a missing code at a door the caller is already
