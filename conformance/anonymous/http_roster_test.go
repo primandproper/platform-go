@@ -2,6 +2,7 @@ package anonymous
 
 import (
 	"context"
+	nethttp "net/http"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/dataprivacy"
@@ -13,6 +14,8 @@ import (
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	oauth2memory "github.com/primandproper/primitives-go/v2/authentication/oauth2server/memory"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
@@ -41,6 +44,7 @@ func TestHTTPRosterMatchesWhatEachSurfaceMounts(t *testing.T) {
 	mounted := map[string][]*routing.Route{
 		"dataprivacy":   mountDataPrivacy(t),
 		"mediaregistry": {mountMediaRegistry(t)},
+		"oauth2server":  mountOAuth2Server(t),
 		"operations":    mountOperations(t),
 	}
 
@@ -70,6 +74,44 @@ func TestHTTPRosterMatchesWhatEachSurfaceMounts(t *testing.T) {
 			test.MapContainsKey(t, got, r, test.Sprintf("the roster lists %s %s for %s, which does not mount it", r.method, r.path, surf.name))
 		}
 	}
+}
+
+// recordingBackend is a routing.Backend that keeps what was registered on it,
+// for the one surface whose Mount returns nothing to read the routes back from.
+type recordingBackend struct {
+	routes []*routing.Route
+}
+
+func (b *recordingBackend) Handle(method, pattern string, _ nethttp.Handler) {
+	b.routes = append(b.routes, &routing.Route{Method: method, Path: pattern})
+}
+
+func (*recordingBackend) Use(...routing.Middleware) {}
+
+func (*recordingBackend) PathValue(*nethttp.Request, string) string { return "" }
+
+func (*recordingBackend) Handler() nethttp.Handler { return nethttp.NotFoundHandler() }
+
+// mountOAuth2Server mounts the authorization server the way a deployment whose
+// clients come from the registry builds it: without /register, which
+// oauth2clients/authserver's documentation says such a deployment does not
+// serve. A server built with open registration mounts one route more, and it is
+// anonymous by RFC 7591's design; that arrangement is not one this module's
+// registry is used in, so the roster does not describe it.
+func mountOAuth2Server(t *testing.T) []*routing.Route {
+	t.Helper()
+
+	srv, err := oauth2server.NewServer("https://example.com", oauth2memory.NewStore(),
+		oauth2server.SubjectAuthenticatorFunc(func(context.Context, *nethttp.Request) (*oauth2server.Subject, error) {
+			return nil, oauth2server.ErrLoginFailed
+		}),
+		oauth2server.WithDynamicRegistration(false))
+	must.NoError(t, err)
+
+	backend := &recordingBackend{}
+	srv.Mount(routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON)))
+
+	return backend.routes
 }
 
 func newRouter() *routing.Router {

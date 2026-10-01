@@ -134,8 +134,8 @@ what a client talks to:
 The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
 billing, comments, identity, issuereports, mediaregistry, notifications,
 settings, waitlists and webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built
-from. The HTTP ones — dataprivacy, mediaregistry and operations — put their
-routes on the router the HTTP server serves.
+from. The HTTP ones — dataprivacy, mediaregistry, the OAuth 2.1 authorization
+server and operations — put their routes on the router the HTTP server serves.
 
 That router is checked, which routing.Router leaves to whoever holds it: it
 accumulates registration failures rather than returning them, and nothing
@@ -164,6 +164,17 @@ config, the WebAuthn and SignIn blocks beside it, and the user resolver and
 enrollment gate only the application can supply. A passkeys block with no
 sign-in service to mint its tokens is ErrPasskeysNeedSignIn rather than an
 absence, because the block is the deployment asking for the surface.
+
+The authorization server is the same reading on the HTTP lane. Config.OAuth2Server
+registers the server, built over the application's
+oauth2server.SubjectAuthenticator, and the surface mounts its discovery
+document, /authorize, /token and /revoke at the paths oauth2server fixes. A
+block with no authenticator beside it fails the startup rather than staying
+absent, because a server nobody can sign in to is not one the block asked for.
+It takes none of the seams below: the server authenticates its own callers — a
+client by its secret, a person through the authenticator — and declares no
+route permissions. An application that mounted the server itself before this
+surface existed names SurfaceOAuth2Server in Skip rather than mounting it twice.
 
 # The seams
 
@@ -223,7 +234,8 @@ arms it — without one its methods answer Unimplemented.
 
 The HTTP enforcer is the optional fifth, and the HTTP counterpart of that interceptor:
 an authorization/http Enforcer the consumer builds over the same grants, which
-the three HTTP surfaces check each route's permission with before they read
+the three HTTP surfaces that declare route permissions check each route's
+permission with before they read
 anything. It is a field of its own rather than something built from Grants,
 because the two absences mean opposite things. Left nil, the HTTP surfaces do
 not mount open: each refuses every route its Permissions map names, as 403, and

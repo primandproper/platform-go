@@ -40,6 +40,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	"github.com/primandproper/primitives-go/v2/config/injection"
@@ -198,6 +199,7 @@ const (
 
 	SurfaceDataPrivacy   Surface = "data privacy"
 	SurfaceMediaRegistry Surface = "media registry"
+	SurfaceOAuth2Server  Surface = "oauth2 server"
 	SurfaceOperations    Surface = "operations"
 )
 
@@ -219,6 +221,7 @@ var surfaces = map[Surface]bool{
 	SurfaceWebhooks:      true,
 	SurfaceDataPrivacy:   true,
 	SurfaceMediaRegistry: true,
+	SurfaceOAuth2Server:  true,
 	SurfaceOperations:    true,
 }
 
@@ -294,8 +297,9 @@ type SurfaceOptions struct {
 //
 // HTTPEnforcer is the one field added since, and it is not one surface's seam:
 // it is the HTTP half of the authorization every surface answers to, shared by
-// the three HTTP surfaces the way Grants is shared by the gRPC ones, so a
-// consumer names it once rather than three times in Options.
+// the three HTTP surfaces that declare route permissions the way Grants is
+// shared by the gRPC ones, so a consumer names it once rather than three times
+// in Options.
 type Transports struct {
 	// Extractor is how every mounted surface tells who is calling.
 	//
@@ -377,9 +381,11 @@ type Transports struct {
 	// authorizer is: the absence rule is theirs.
 	Grants authorization.GrantsExtractor
 
-	// HTTPEnforcer checks the permission each route of the three HTTP surfaces
-	// requires — dataprivacy, mediaregistry and operations, each of which
-	// declares its routes' permissions in a Permissions map beside them. It is
+	// HTTPEnforcer checks the permission each route of three of the HTTP
+	// surfaces requires — dataprivacy, mediaregistry and operations, each of
+	// which declares its routes' permissions in a Permissions map beside them.
+	// The authorization server declares none: it authenticates its own
+	// callers, a client by its secret and a person at /authorize. It is
 	// the HTTP counterpart of the authorization interceptor a consumer installs
 	// on the gRPC server, and is built the same way: over the same grants
 	// extractor, by the consumer, with primitives-go's authorization/http.
@@ -482,7 +488,8 @@ type Authorizers struct {
 //
 // The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
 // billing, comments, identity, issuereports, mediaregistry, notifications,
-// settings, waitlists and webhooks — and three HTTP ones — dataprivacy, mediaregistry and operations.
+// settings, waitlists and webhooks — and four HTTP ones — dataprivacy,
+// mediaregistry, the OAuth 2.1 authorization server and operations.
 // sessions/http is not among them; see the package documentation for why.
 //
 // A surface mounts when everything it is built from resolves, and the reading
@@ -778,7 +785,7 @@ func (m *mount) mountedHTTP(surface Surface) {
 	m.names = append(m.names, string(surface)+" HTTP")
 }
 
-// httpLane mounts the three HTTP surfaces, having first established that the
+// httpLane mounts the HTTP surfaces, having first established that the
 // router they share is not already carrying somebody else's failure.
 //
 // The check is the lane's rather than each surface's because it is answerable
@@ -794,6 +801,7 @@ func (m *mount) httpLane() {
 
 	m.dataPrivacy()
 	m.mediaRegistry()
+	m.oauth2Server()
 	m.operations()
 }
 
@@ -1747,6 +1755,53 @@ func (m *mount) mediaRegistry() {
 	}
 
 	m.mountedHTTP(SurfaceMediaRegistry)
+}
+
+// oauth2Server mounts the OAuth 2.1 authorization server: its discovery
+// document, /authorize, /token and /revoke, at the paths oauth2server fixes.
+//
+// It mounts when a *oauth2server.Server resolves, which Config.OAuth2Server
+// registers. Building one needs the application's
+// oauth2server.SubjectAuthenticator — how a deployment identifies a human is
+// not something an environment variable says — and a block with none beside it
+// fails the startup on the server that could not be built rather than staying
+// absent, for the reason a passkeys block with no sign-in service does: the
+// block is the deployment asking for the surface. An application that builds the server
+// itself, over the registry's authserver.NewStore say, registers it under the
+// same key and is mounted the same way.
+//
+// It takes no seam from Transports. The server authenticates its own callers —
+// a client by its secret at /token and /revoke, a person through the
+// authenticator and resolver it was built with at /authorize — so there is no
+// extractor to derive anything from, and it declares no route permissions for
+// HTTPEnforcer to check. Nor does it take options: everything the server is
+// configured with is an option to oauth2server.NewServer, which is the
+// registration's to pass, and Mount takes only middleware.
+//
+// An application that mounts the server itself names SurfaceOAuth2Server in
+// Skip rather than putting the same routes on the router a second time.
+func (m *mount) oauth2Server() {
+	if !m.mounting(SurfaceOAuth2Server) {
+		return
+	}
+
+	srv, ok := need[*oauth2server.Server](m)
+	if !ok {
+		return
+	}
+
+	router, ok := need[*routing.Router](m)
+	if !ok {
+		return
+	}
+
+	srv.Mount(router)
+
+	if !m.routesLanded(SurfaceOAuth2Server, router) {
+		return
+	}
+
+	m.mountedHTTP(SurfaceOAuth2Server)
 }
 
 // operations mounts the long-running operation surface.

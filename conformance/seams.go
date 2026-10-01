@@ -432,11 +432,11 @@ func (s *Subject) ScopeFor(surface string) tenancy.Scope {
 	return s.Scope
 }
 
-// HTTPSurfaces are the three surfaces this module serves over HTTP, as one
-// caller reaches them.
+// HTTPSurfaces are the surfaces this module serves over HTTP, as one caller
+// reaches them.
 //
 // A client and a base URL rather than a client per surface, because there is
-// no generated client for these and the three share one router: what differs
+// no generated client for these and they share one router: what differs
 // between them is the path, and each is mounted at its own package's default
 // base path under BaseURL. A deployment that mounted one elsewhere is not
 // describable here yet, and says so by leaving that surface's flag false.
@@ -452,6 +452,18 @@ type HTTPSurfaces struct {
 	DataPrivacy   bool
 	MediaRegistry bool
 	Operations    bool
+
+	// OAuth2Server is the authorization server, mounted by
+	// oauth2server.Server.Mount at the paths that package fixes — its
+	// discovery document, /authorize, /token and /revoke — directly under
+	// BaseURL. It is a statement of where the routes are rather than of what
+	// the server does, and the oauth2server suite skips without it.
+	//
+	// Its /token and /revoke are reached as a client rather than as this
+	// caller, so the suite makes them through Seams.AnonymousHTTP; Client is
+	// for nothing here, since how a person approves a request at /authorize
+	// is Actions.Authorized's to say.
+	OAuth2Server bool
 
 	// OperationEvents is the operations surface's event stream, which is
 	// mounted only where the deployment runs an operations.Watcher to serve it:
@@ -767,6 +779,27 @@ type Actions struct {
 	// operation is the one the owners fan-out admits a colleague to, and the
 	// suite asserts that it does.
 	Operated func(ctx context.Context, scope tenancy.Scope) (operationID string, err error)
+
+	// Authorized has a person, signed in, approve the authorization request at
+	// authorizeURL, and reports the Location the authorization server answered
+	// with — the client's redirect URI, carrying the code, the state and the
+	// issuer. The person is userID, in scope as the oauth2clients surface reads
+	// it, a caller this run minted. The redirect must not be followed: it names
+	// a host that does not resolve.
+	//
+	// An action because how a human proves who they are at /authorize is the
+	// one thing the authorization server refuses to decide. Its
+	// SubjectAuthenticator has no default, and a SubjectResolver may answer on
+	// a session cookie, a bearer token or a form that wants a password and a
+	// code: one deployment POSTs the request with the caller's bearer token and
+	// no body, another follows it with a cookie. The suite builds the URL
+	// itself — PKCE, state and the exact redirect URI are all in its hands — so
+	// whatever the action does, it cannot weaken what is asserted about the
+	// codes it is given.
+	//
+	// Nil skips the oauth2server suite's assertions, every one of which starts
+	// from a code, with the reason printed.
+	Authorized func(ctx context.Context, scope tenancy.Scope, userID, authorizeURL string) (redirect string, err error)
 }
 
 // WaitlistLinks are the two secrets a confirming deployment mails to an address

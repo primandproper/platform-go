@@ -45,18 +45,26 @@ who was asking.
 
 # The HTTP half
 
-dataprivacy, mediaregistry and operations are served over HTTP, and the same
-sentence is asserted of their routes: a request with nobody on it is refused as
-401. None of the three has an anonymous route — dataprivacy's confirm is a link
-in a mail, and a browser following it still arrives with its session — so this
-half has one direction.
+dataprivacy, mediaregistry, operations and the OAuth 2.1 authorization server
+are served over HTTP, and the same sentence is asserted of their routes: a
+request with nobody on it is refused as 401. dataprivacy's confirm is not an
+exception — it is a link in a mail, and a browser following it still arrives
+with its session.
+
+The authorization server is the one surface with exceptions, and it has them by
+design: its discovery document and /authorize are where a client and a person
+arrive before anybody is signed in, so a request with nobody on it must reach
+them. The roster marks those routes public, one at a time, and they are
+asserted the other way. /token and /revoke are not among them. They are reached
+by a client authenticating as itself, so a request carrying no credential is
+refused there as 401 like anywhere else.
 
 The routes are listed rather than enumerated, because there is no registry an
 HTTP surface's routes can be read out of: routing.Route is what registration
 returns, not something a package can declare without a router. The list is kept
 honest the way the gRPC roster is, from the other side:
 TestHTTPRosterMatchesWhatEachSurfaceMounts mounts each surface's real handlers
-and compares what Mount returned with the list, in both directions.
+and compares what they registered with the list, in both directions.
 
 A POST carries a well-formed empty body, so a refusal cannot be about a body the
 router failed to decode; and a path parameter names nothing, because a request

@@ -20,6 +20,7 @@ import (
 	oauth2clientsclient "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc/client"
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	oauth2servermigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
 	passkeysclient "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc/client"
 	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
@@ -326,6 +327,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	httpEnforcer, err := authzhttp.NewEnforcer(httpGrants(extractor))
 	must.NoError(t, err)
 
+	// And the authorization server, which a person reaches signed in the way
+	// the extractor above reads them. service mounts it once it resolves.
+	registerAuthorizationServer(i, prefix, extractor)
+	approved := &approvals{}
+
 	service.RegisterTransports(i, &service.Transports{
 		Extractor:    extractor.Extract,
 		TenantOf:     service.DirectoryTenant,
@@ -445,6 +451,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 					return nil, issueErr
 				}
 
+				approved.remember(reg.User.ID, issued.Token)
+
 				return &conformance.Subject{
 					Scope:     scope,
 					UserID:    reg.User.ID,
@@ -457,6 +465,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 						DataPrivacy:   true,
 						MediaRegistry: true,
 						Operations:    true,
+						OAuth2Server:  true,
 						// service registers a watcher wherever it builds
 						// operations, so the stream is mounted.
 						OperationEvents: true,
@@ -487,7 +496,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				CommentTarget: commentable.bring,
 				ArtifactExpired: expireArtifact(client,
 					do.MustInvoke[dataprivacy.Store](i), do.MustInvoke[uploads.UploadManager](i)),
-				Operated: operate(do.MustInvoke[operations.Service](i)),
+				Operated:   operate(do.MustInvoke[operations.Service](i)),
+				Authorized: approved.authorize,
 
 				// The recorder the composition root built, inside a transaction on
 				// the client it built — the end of the path a consumer's handler
@@ -742,6 +752,7 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string,
 		"recovery codes": recoverycodemigrations.Statements,
 		"data privacy":   dataprivacymigrations.Statements,
 		"operations":     operationsmigrations.Statements,
+		"oauth2 server":  oauth2servermigrations.Statements,
 		"work queue":     workqueuemigrations.Statements,
 	}
 

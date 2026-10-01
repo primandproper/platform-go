@@ -8,10 +8,10 @@ consumers depend on, and a change to it should land in the pull request that
 makes the change rather than be discovered afterwards.
 
 **Status:** in progress. All three subjects exist, and there is a suite for
-each of the gRPC surfaces, one each for the dataprivacy and mediaregistry
-HTTP surfaces, and the ones that cut across every surface. The assembled subject
-mounts every gRPC surface and all three HTTP surfaces over all three
-dialects. [What is left](#what-is-left) is the honest list, and nothing below
+each of the gRPC surfaces, one each for the dataprivacy, mediaregistry,
+operations and authorization server HTTP surfaces, and the ones that cut across
+every surface. The assembled subject mounts every gRPC surface and every HTTP
+surface over all three dialects. [What is left](#what-is-left) is the honest list, and nothing below
 describes something that has not been written.
 
 ## The problem it exists to solve
@@ -186,7 +186,7 @@ all three files say so and point at each other.
 
 | suite | covers |
 | --- | --- |
-| `conformance/anonymous` | every RPC on every gRPC surface and every route on the three HTTP ones |
+| `conformance/anonymous` | every RPC on every gRPC surface and every route on the HTTP ones |
 | `conformance/filters` | every paged read refuses a malformed filter, behind a positive control |
 | `conformance/pagination` | every paged read reports the filter it applied |
 | `conformance/reservations` | every reserved call on this module's gRPC surfaces refuses a member, behind a positive control |
@@ -205,6 +205,7 @@ all three files say so and point at each other.
 | `conformance/passkeys` | enrolling a passkey and signing in with one to sign-in's token; replays, clones and a never-issued challenge refused; confinement; the last passkey |
 | `conformance/dataprivacy` | privacy requests over HTTP, and the operations that fulfill them |
 | `conformance/mediaregistry` | the guarded object read: its owner, another tenant, a colleague |
+| `conformance/oauth2server` | the authorization server's storage over `/token` and `/revoke`: a code redeemed once, a replayed code or refresh token ending its family, a revocation reaching only its own client's token |
 
 The assembled subject serves every surface on Postgres, SQLite and MySQL 8
 alike, and runs every suite on each. Every assertion passes on all three, and
@@ -213,7 +214,7 @@ every skip prints its reason.
 | subject | where | mounts |
 | --- | --- | --- |
 | direct | `conformance/audit`, `conformance/identity` | one surface each |
-| assembled | `conformance/assembled` | every gRPC surface and all three HTTP surfaces, on all three dialects |
+| assembled | `conformance/assembled` | every gRPC surface and every HTTP surface, on all three dialects |
 
 **142 was what was enumerated, not what had run.** The anonymous suite reads all
 twelve descriptors, but an RPC is only called on a surface the subject mounted,
@@ -224,11 +225,14 @@ With every surface mounted all of them run, on three dialects. The other ten
 surfaces passed on first mounting: what they refuse without a caller was already
 right, and the value of running them is that it now stays right.
 
-The HTTP half adds every route dataprivacy, mediaregistry and operations serve,
-each refusing a request with nobody on it as 401. They are
-listed rather than enumerated, since no registry holds an HTTP route, and the
-list is checked against what each package's Mount actually returns, and every
-one is asserted on all three dialects.
+The HTTP half adds every route dataprivacy, mediaregistry, operations and the
+authorization server serve, each refusing a request with nobody on it as 401 —
+except the authorization server's discovery document and `/authorize`, which
+are where a client and a person arrive before anybody is signed in, and are
+asserted reachable instead. They are listed rather than enumerated, since no
+registry holds an HTTP route, and the list is checked against what each
+package's Mount actually registers, and every one is asserted on all three
+dialects.
 
 `conformance/filters` and `conformance/pagination` are the other two
 cross-cutting suites, and both find their reads the way `anonymous` does: every

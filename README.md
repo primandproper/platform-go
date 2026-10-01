@@ -668,7 +668,7 @@ reason given above: `dataprivacy`'s flow was on HTTP before there was a
 handler in it.
 
 **Who may use a route.** Every gRPC surface declares a namespaced permission
-per method in its `permissions.go`, and the three HTTP ones do too, per route:
+per method in its `permissions.go`, and three of the HTTP ones do too, per route:
 `dataprivacy/http`, `mediaregistry/http` and `operations/http` each export a
 `Permissions` map keyed by route (`POST /operations/{operationID}/cancel`), the
 `Route…` constants those keys are spelled with, and `OwnStandingRoutes` — the
@@ -686,7 +686,10 @@ named exists. A surface given no enforcer refuses every route its `Permissions`
 names rather than serving it, which is what a fail-closed gRPC enforcer does
 with a method nobody declared. `authorization/http` cannot fail closed on a
 route nobody guarded, so each surface's own tests mount its real handlers and
-check that every route is in exactly one of the two lists.
+check that every route is in exactly one of the two lists. The fourth HTTP
+surface, the OAuth 2.1 authorization server `service` mounts from
+`Config.OAuth2Server`, declares none: it authenticates its own callers, a
+client by its secret at `/token` and `/revoke` and a person at `/authorize`.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
