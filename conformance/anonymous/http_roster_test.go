@@ -77,7 +77,7 @@ func newRouter() *routing.Router {
 		encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
 }
 
-func mountDataPrivacy(t *testing.T) []*routing.Route {
+func newDataPrivacyHandlers(t *testing.T) *dataprivacyhttp.Handlers {
 	t.Helper()
 
 	h, err := dataprivacyhttp.New(&dataprivacymock.ServiceMock{},
@@ -86,7 +86,13 @@ func mountDataPrivacy(t *testing.T) []*routing.Route {
 		}))
 	must.NoError(t, err)
 
-	return h.Mount(newRouter())
+	return h
+}
+
+func mountDataPrivacy(t *testing.T) []*routing.Route {
+	t.Helper()
+
+	return newDataPrivacyHandlers(t).Mount(newRouter())
 }
 
 func mountMediaRegistry(t *testing.T) *routing.Route {

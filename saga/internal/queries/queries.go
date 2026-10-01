@@ -102,6 +102,15 @@ const (
 	// out of. It is the caller's, unlike the guard above: an operator resuming
 	// a saga names which statuses that applies to.
 	FromStatusesArg = "from_statuses"
+
+	// RetiredStatusArg is the one terminal status a retention pass removes. It
+	// is a single value rather than a set because each status has a window of
+	// its own — a completed saga is kept a week, a compensated one a month — so
+	// one pass is one status against one horizon.
+	RetiredStatusArg = "retired_status"
+	// RetiredBeforeArg is the horizon a retention pass removes instances at or
+	// before, measured against when each last changed.
+	RetiredBeforeArg = "retired_before"
 )
 
 // StatusFilterArity is how many status arguments a listing binds, and it is the
@@ -151,6 +160,8 @@ const (
 	RescheduleQuery           = "RescheduleSagaInstance"
 	ReleaseQuery              = "ReleaseSagaInstance"
 	RequeueQuery              = "RequeueSagaInstance"
+	PruneQuery                = "PruneSagaInstances"
+	PruneBacklogQuery         = "CountPrunableSagaInstances"
 )
 
 // InsertColumns is what the create supplies values for.
@@ -205,6 +216,7 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, claimReads(g)...)
 	rendered = append(rendered, g.InsertQuery(InsertInstanceQuery, InstancesTable, InsertColumns, NullableColumns))
 	rendered = append(rendered, transitions(g)...)
+	rendered = append(rendered, retention(g)...)
 
 	return querygen.RenderFile(rendered)
 }
@@ -449,6 +461,53 @@ func transitions(g *querygen.Generator) []*querygen.Query {
 			idPredicate(),
 			g.SetCondition(querygen.Qualify(InstancesTable, StatusColumn), FromStatusesArg),
 		}),
+	}
+}
+
+// retention renders the two statements a retention pass runs: the bounded
+// delete, and the saturating count its backlog gauge reads.
+//
+// What dooms an instance is three predicates, and the first is the one that
+// matters: its status is the one terminal status the pass was handed. That is
+// what keeps a running, compensating or stuck instance out of reach — the store
+// binds only completed or compensated there, and every other status is a row
+// no horizon can select. The horizon is measured against last_updated_at,
+// which the transition into a terminal status stamps, so an instance's age is
+// how long it has been finished rather than how long ago it started. A NULL
+// there is an instance no worker ever advanced, which is never a finished one,
+// and the IS NOT NULL says so out loud rather than leaning on how NULL
+// compares.
+//
+// The delete takes the instances finished longest ago first, so a table that
+// was never swept drains in the order it filled.
+func retention(g *querygen.Generator) []*querygen.Query {
+	return []*querygen.Query{
+		g.PruneQuery(PruneQuery, InstancesTable, querygen.Prune{
+			Key:   []string{querygen.IDColumn},
+			Order: []querygen.Order{{Column: querygen.LastUpdatedAtColumn}, {Column: querygen.IDColumn}},
+		}, retiredMatches()...),
+
+		// Written out, like audit's, because a count saturating at a bound is
+		// a limit inside a subquery rather than any shape querygen renders.
+		{
+			Annotation: querygen.QueryAnnotation{Name: PruneBacklogQuery, Type: querygen.OneType},
+			Content: fmt.Sprintf("SELECT COUNT(*)\nFROM (\n\tSELECT 1\n\tFROM %s\n\tWHERE %s\n\t%s\n) AS saga_prune_backlog;",
+				InstancesTable,
+				strings.Join(g.MatchConditions(InstancesTable, retiredMatches()...), "\n\t\tAND "),
+				g.LimitClause(),
+			),
+		},
+	}
+}
+
+// retiredMatches is what dooms an instance. It is one function because the
+// delete and the count have to agree about it exactly: a backlog that counted
+// rows the delete would not take is a gauge that never reaches zero.
+func retiredMatches() []querygen.Match {
+	return []querygen.Match{
+		{Column: StatusColumn, Arg: RetiredStatusArg},
+		{Column: querygen.LastUpdatedAtColumn, Against: querygen.NoValue, Exclude: true},
+		{Column: querygen.LastUpdatedAtColumn, Arg: RetiredBeforeArg, Against: querygen.AtMostArgument},
 	}
 }
 

@@ -70,6 +70,8 @@ func TestRender(T *testing.T) {
 			queries.RescheduleQuery,
 			queries.ReleaseQuery,
 			queries.RequeueQuery,
+			queries.PruneQuery,
+			queries.PruneBacklogQuery,
 		}
 
 		rendered := statementNames(queries.Render(dialect.Postgres))

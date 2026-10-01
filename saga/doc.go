@@ -258,20 +258,20 @@ the state has the instance ID and a Runner to read it with.
 
 # Retention
 
-This package does not delete terminal instances, and that is a deliberate gap
-rather than an oversight. A completed saga is the record that a multi-step
-business process ran and what it did, and how long that is worth keeping is a
-question about the application's obligations, not about this table. The rows are
-small and there is one per process, not one per step.
+Finished instances are removed on a clock, and only finished ones. A completed
+saga is kept DefaultCompletedRetention — a week — and a compensated one
+DefaultCompensatedRetention — a month, since a saga that unwound is the one
+somebody debugs. A running, compensating or stuck instance is never removed at
+any age: the first two are work in flight, and a stuck row is the only record
+that something is half-done.
 
-When the answer is "not forever", it is one statement against the schema
-saga/migrations renders:
-
-	DELETE FROM saga_instances
-	WHERE status IN ('completed', 'compensated') AND created_at < $1;
-
-Note what it does not delete: a stuck instance, at any age. That row is the only
-record that something is half-done.
+RetentionTarget is the table expressed as a retention.Target, one terminal
+status per target, and sagacfg.NewRetentionPolicies is the pair of policies over
+it. sagacfg.NewJobs runs them on a retention.Sweeper of their own as a
+scheduled job, on by default and switched off only by name, and a service built
+from a service.Config schedules it without being asked. The age is measured from
+last_updated_at, which the transition into the terminal status stamps, so it is
+how long an instance has been finished rather than how long ago it started.
 
 # Storage
 

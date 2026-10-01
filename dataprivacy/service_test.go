@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads/objectstorage"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -340,6 +341,23 @@ func TestService_Artifacts(T *testing.T) {
 		svc, req := completedExport(t, uploader)
 
 		_, err := svc.Download(t.Context(), testScopePtr, req.ID)
+		test.ErrorIs(t, err, ErrNoURLSigner)
+	})
+
+	T.Run("download refuses a provider that implements signing and cannot do it", func(t *testing.T) {
+		t.Parallel()
+
+		// objectstorage's memory provider, which is the shape of its filesystem
+		// one too: it satisfies uploads.URLSigner and refuses at the call.
+		uploader, err := objectstorage.NewUploadManager(t.Context(), &objectstorage.Config{
+			Provider:   objectstorage.MemoryProvider,
+			BucketName: "exports",
+		})
+		must.NoError(t, err)
+
+		svc, req := completedExport(t, newMemoryUploader(), WithServiceUploadManager(uploader))
+
+		_, err = svc.Download(t.Context(), testScopePtr, req.ID)
 		test.ErrorIs(t, err, ErrNoURLSigner)
 	})
 

@@ -81,11 +81,52 @@ func WithPillars(p *observability.Pillars) Option {
 // is handed and the user is not in that one — so the failure is a read that finds
 // nobody. That is the safe direction and it is still a confusing one, which is
 // why the scope belongs in the token's claims: signin.DefaultClaims puts it
-// there.
+// there. The administrative RPCs, whose subject is named by the request rather
+// than being the caller, do not read the resolver at all: they act in the
+// operator's own directory, the principal's Scope.
 func WithScopeResolver(resolve ScopeResolver) Option {
 	return func(s *Server) {
 		if resolve != nil {
 			s.scopes = resolve
+		}
+	}
+}
+
+// SignInAnnotator answers what the consumer recorded about the devices behind
+// a person's logins: for each family it has something for, a map of whatever it
+// chose to record — a device name, a user agent, the address a sign-in came
+// from. ListSignIns and ListSignInsForUser call it once per answer, with the
+// scope the listing ran in, the person whose logins they are, and every family
+// the listing is about to return, and each entry's attributes are what it
+// answered for that family.
+//
+// It is the other half of signin's refusal to store any of it. The platform
+// lists the logins and records how each one happened; whether a device is
+// recorded at all, under which keys and for how long, is the consumer's, and
+// signin.Hooks.AfterIssueToken is where they record it, keyed on the family.
+// This is how what they recorded reaches the listing RPCs' answer, so a
+// consumer showing it needs no list RPC of their own.
+//
+// A family it has nothing for gets no attributes, and a family it answers for
+// that the listing did not return is ignored. An error fails the listing: an
+// answer with the logins and none of their devices would be a "where you're
+// signed in" screen that silently stopped saying where, which is the half-answer
+// this surface does not give. The error is handed back the way the service's
+// are — see the package documentation — so a sentinel the consumer mapped
+// keeps its code.
+type SignInAnnotator func(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	familyIDs []string,
+) (map[string]map[string]string, error)
+
+// WithSignInAnnotator sets what fills each listed login's attributes. A nil
+// annotator is ignored. Absent one, every login is listed with none.
+func WithSignInAnnotator(annotate SignInAnnotator) Option {
+	return func(s *Server) {
+		if annotate != nil {
+			s.annotate = annotate
 		}
 	}
 }

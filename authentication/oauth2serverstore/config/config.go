@@ -4,12 +4,14 @@ import (
 	"context"
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore"
+	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/errors"
+	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -44,7 +46,16 @@ type Config struct {
 
 	// Database configures the store when Provider is database. The dialect
 	// comes from the database.Client rather than from here.
-	Database               oauth2serverstore.Config `env:",init"    envPrefix:"DATABASE_" json:"database,omitzero" yaml:"database,omitempty"`
+	Database oauth2serverstore.Config `env:",init" envPrefix:"DATABASE_" json:"database,omitzero" yaml:"database,omitempty"`
+
+	// SweepJob is the scheduled sweep NewJobs renders under the database
+	// provider: the store's Sweep, run once across a fleet under the
+	// scheduler's lock rather than once per replica. It runs unless Disabled,
+	// every oauth2server.DefaultSweepInterval unless it names its own
+	// schedule. It is independent of SweepInterval's in-process loop, which is
+	// the sweep a deployment with no scheduler still gets; a fleet that
+	// schedules this job can set SWEEP_INTERVAL=0 and leave the one.
+	SweepJob               jobscfg.JobConfig `env:",init"    envPrefix:"SWEEP_JOB_" json:"sweepJob,omitzero" yaml:"sweepJob,omitempty"`
 	oauth2servercfg.Config `yaml:",inline"`
 }
 
@@ -57,6 +68,8 @@ func (cfg *Config) EnsureDefaults() {
 	}
 
 	cfg.Config.EnsureDefaults()
+
+	scheduledjob.EnsureDefaults(&cfg.SweepJob, oauth2server.DefaultSweepInterval, DefaultSweepJobLeaseTTL)
 }
 
 // ValidateWithContext validates a Config struct.
@@ -86,6 +99,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.Database,
 			validation.Skip.When(cfg.provider() != ProviderDatabase),
 			validation.By(func(any) error { return cfg.Database.ValidateWithContext(ctx) })),
+		validation.Field(&cfg.SweepJob, validation.By(func(any) error {
+			return scheduledjob.Validate(ctx, &cfg.SweepJob)
+		})),
 	)
 }
 

@@ -2,12 +2,14 @@ package grpc
 
 import (
 	"context"
+	"maps"
 	"math"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -34,9 +36,8 @@ type FamilyIdentifier interface {
 //
 // It takes its subject from the caller and has no field that could name
 // anybody else — the SignOutEverywhere arrangement, for the same reason. An
-// operator's view of somebody else's logins is signin.Service.ListSignIns,
-// reached through the consumer's own administrative surface with its own
-// authorization in front of it.
+// operator's view of somebody else's logins is [Server.ListSignInsForUser], on
+// SignInAdministrationService behind a permission.
 //
 // Which entry is current comes off the principal, through [FamilyIdentifier].
 // A principal that does not implement it marks nothing, which is the honest
@@ -52,9 +53,16 @@ func (s *Server) ListSignIns(
 
 	defer func() { done(err) }()
 
-	signIns, err := s.svc.ListSignIns(ctx, req.scope, req.principal.UserID(), listLimit(request.GetLimit()))
+	userID := req.principal.UserID()
+
+	signIns, err := s.svc.ListSignIns(ctx, req.scope, userID, listLimit(request.GetLimit()))
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "listing sign-ins")
+	}
+
+	converted, err := s.annotated(ctx, req.scope, userID, signIns)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "annotating sign-ins")
 	}
 
 	var current string
@@ -62,16 +70,11 @@ func (s *Server) ListSignIns(
 		current = identified.FamilyID()
 	}
 
-	response := &signinpb.ListSignInsResponse{SignIns: make([]*signinpb.ActiveSignIn, 0, len(signIns))}
-
-	for _, signIn := range signIns {
-		converted := ActiveSignInToProto(signIn)
-		converted.Current = current != "" && signIn.FamilyID == current
-
-		response.SignIns = append(response.SignIns, converted)
+	for _, signIn := range converted {
+		signIn.Current = current != "" && signIn.GetFamilyId() == current
 	}
 
-	return response, nil
+	return &signinpb.ListSignInsResponse{SignIns: converted}, nil
 }
 
 // EndSignIn ends one of the calling user's logins, named by its family.
@@ -132,9 +135,51 @@ func (s *Server) EndOtherSignIns(
 	return &signinpb.EndOtherSignInsResponse{}, nil
 }
 
+// annotated renders a listing with what the consumer's [SignInAnnotator]
+// recorded about each login, or with no attributes on a server built without
+// one. The annotator is asked once, for every family at once, and not at all
+// for an empty listing: there is nothing it could say about no logins.
+//
+// Its error is the listing's — see [SignInAnnotator] for why there is no
+// answer without it.
+func (s *Server) annotated(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	signIns []*signin.ActiveSignIn,
+) ([]*signinpb.ActiveSignIn, error) {
+	converted := make([]*signinpb.ActiveSignIn, 0, len(signIns))
+	for _, signIn := range signIns {
+		converted = append(converted, ActiveSignInToProto(signIn))
+	}
+
+	if s.annotate == nil || len(signIns) == 0 {
+		return converted, nil
+	}
+
+	familyIDs := make([]string, 0, len(signIns))
+	for _, signIn := range signIns {
+		familyIDs = append(familyIDs, signIn.FamilyID)
+	}
+
+	attributes, err := s.annotate(ctx, scope, userID, familyIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, signIn := range converted {
+		if recorded := attributes[signIn.GetFamilyId()]; len(recorded) > 0 {
+			signIn.Attributes = maps.Clone(recorded)
+		}
+	}
+
+	return converted, nil
+}
+
 // ActiveSignInToProto renders one live login. It leaves current false, since
 // whether a login is the caller's own is a fact about the request rather than
-// about the login.
+// about the login, and attributes empty, since what the consumer recorded about
+// a login's device is the [SignInAnnotator]'s to say.
 func ActiveSignInToProto(s *signin.ActiveSignIn) *signinpb.ActiveSignIn {
 	if s == nil {
 		return nil
@@ -148,6 +193,7 @@ func ActiveSignInToProto(s *signin.ActiveSignIn) *signinpb.ActiveSignIn {
 		ActiveAccountId: s.ActiveAccountID,
 		Administrative:  s.Administrative,
 		ActorId:         s.ActorID,
+		CredentialKind:  string(s.CredentialKind),
 	}
 }
 

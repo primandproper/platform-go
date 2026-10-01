@@ -27,6 +27,7 @@ import (
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	"github.com/primandproper/platform-go/v14/notifications"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
@@ -73,8 +74,8 @@ var (
 		"nil principal extractor for the mounted transport surfaces",
 	)
 
-	// ErrNilTenantOf is a Transports mounting one of the three surfaces that
-	// mean the tenant — audit, operations and the media registry — with no
+	// ErrNilTenantOf is a Transports mounting one of the surfaces that mean
+	// the tenant — audit, operations and the media registry's two — with no
 	// Transports.TenantOf to read the tenant with.
 	//
 	// It is refused rather than read as Principal.Scope(), because that reading
@@ -185,6 +186,7 @@ const (
 	SurfaceComments      Surface = "comments"
 	SurfaceIdentity      Surface = "identity"
 	SurfaceIssueReports  Surface = "issue reports"
+	SurfaceMediaUploads  Surface = "media uploads"
 	SurfaceNotifications Surface = "notifications"
 	SurfaceOAuth2Clients Surface = "oauth2 clients"
 	SurfacePasskeys      Surface = "passkeys"
@@ -206,6 +208,7 @@ var surfaces = map[Surface]bool{
 	SurfaceComments:      true,
 	SurfaceIdentity:      true,
 	SurfaceIssueReports:  true,
+	SurfaceMediaUploads:  true,
 	SurfaceNotifications: true,
 	SurfaceOAuth2Clients: true,
 	SurfacePasskeys:      true,
@@ -235,8 +238,8 @@ var surfaces = map[Surface]bool{
 // so an option here overrides the platform's for the same setting, which is
 // the reading every surface's Options already take of a later option.
 //
-// The three surfaces that read the tenant, and dataprivacy, derive a resolver
-// from Transports.Extractor and, for the three, Transports.TenantOf. A surface
+// The surfaces that read the tenant, and dataprivacy, derive a resolver from
+// Transports.Extractor and, for the former, Transports.TenantOf. A surface
 // given options here is not refused for lacking either: the derivation is
 // skipped, and the surface is built from what the application passed. If that
 // names no resolver either, the surface refuses in its own words, so leaving
@@ -247,6 +250,7 @@ type SurfaceOptions struct {
 	Comments      []commentsgrpc.Option
 	Identity      []identitygrpc.Option
 	IssueReports  []issuereportsgrpc.Option
+	MediaUploads  []mediaregistrygrpc.Option
 	Notifications []notificationsgrpc.Option
 	OAuth2Clients []oauth2clientsgrpc.Option
 	Passkeys      []passkeysgrpc.Option
@@ -290,7 +294,7 @@ type SurfaceOptions struct {
 //
 // HTTPEnforcer is the one field added since, and it is not one surface's seam:
 // it is the HTTP half of the authorization every surface answers to, shared by
-// the three HTTP surfaces the way Grants is shared by seven gRPC ones, so a
+// the three HTTP surfaces the way Grants is shared by eight gRPC ones, so a
 // consumer names it once rather than three times in Options.
 type Transports struct {
 	// Extractor is how every mounted surface tells who is calling.
@@ -306,9 +310,9 @@ type Transports struct {
 	Extractor callers.PrincipalExtractor
 
 	// TenantOf reads the tenant a caller's rows belong to off the caller, for
-	// the three surfaces that mean the tenant rather than the directory:
-	// audit's ScopeResolver, operations' OwnerResolver and mediaregistry's
-	// caller scope. A Transports mounting any of the three without one is
+	// the surfaces that mean the tenant rather than the directory: audit's
+	// ScopeResolver, operations' OwnerResolver and the caller scope of
+	// mediaregistry's two surfaces. A Transports mounting any of them without one is
 	// ErrNilTenantOf at startup, and a deployment whose tenant is its directory
 	// names DirectoryTenant here.
 	//
@@ -322,7 +326,7 @@ type Transports struct {
 	// the account instead would break identity.
 	//
 	// It is handed the principal Extractor already found, and not the request
-	// context, and that is the point of its shape. For these three surfaces
+	// context, and that is the point of its shape. For these surfaces
 	// the resolved scope is the authorization — no comparison follows it — so
 	// a resolver that could read the context could read a header, and a
 	// tenant named by the client is a cross-tenant read. Taking the principal
@@ -346,15 +350,20 @@ type Transports struct {
 	// make this call may make it against.
 	Authorizers Authorizers
 
-	// Grants is what the caller may do, for the seven surfaces that ask it
-	// inside a handler rather than at the method: billing, comments,
+	// Grants is what the caller may do, for the eight surfaces that ask it
+	// inside a handler rather than at the method: billing, comments, identity,
 	// issuereports, notifications, settings, waitlists and webhooks.
 	//
-	// Each of them decides two things off it that no method grant can reach,
-	// because both depend on the request rather than on the RPC — whether a
-	// read that sent include_archived receives the archived rows, and, on
+	// Each of them decides something off it that no method grant can reach,
+	// because it depends on the request rather than on the RPC — whether a
+	// read that sent include_archived receives the archived rows; on
 	// settings, whether a write names a setting the catalog reserved to
-	// administrators. It is the same authorization.GrantsExtractor a consumer
+	// administrators; and on identity, whether a caller the row check
+	// refused holds the operator permission that lets them past it. That
+	// last is armed only where an audit.Recorder resolves as well, since
+	// every operator admission is recorded and one nobody can see is none.
+	// Audit's operator read is not among them: it is a service of its own,
+	// AuditAdministrationService, gated at the method like any other. It is the same authorization.GrantsExtractor a consumer
 	// hands primitives-go's authorization/grpc enforcer, so the interceptor
 	// that decides whether a method may be called and the handler that decides
 	// which rows the answer may hold read one authority and cannot disagree.
@@ -443,8 +452,10 @@ type Authorizers struct {
 	// on. Required wherever issuereports.Store is registered.
 	IssueReports issuereportsgrpc.ReportAuthorizer
 
-	// MediaObjects decides which stored objects a caller may fetch. Optional;
-	// mediaregistry/http defaults it to OwnerOnly.
+	// MediaObjects decides which stored objects a caller may read, on both
+	// media registry surfaces: the bytes from mediaregistry/http's serve route,
+	// and the rows from mediaregistry/grpc's reads. Optional; both default it
+	// to OwnerOnly.
 	MediaObjects mediaregistryhttp.Entitlement
 
 	// SettingsSubjects decides which subjects a caller may resolve and set
@@ -470,8 +481,8 @@ type Authorizers struct {
 // # What mounts
 //
 // The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
-// billing, comments, identity, issuereports, notifications, settings,
-// waitlists and webhooks — and three HTTP ones — dataprivacy, mediaregistry and operations.
+// billing, comments, identity, issuereports, mediaregistry, notifications,
+// settings, waitlists and webhooks — and three HTTP ones — dataprivacy, mediaregistry and operations.
 // sessions/http is not among them; see the package documentation for why.
 //
 // A surface mounts when everything it is built from resolves, and the reading
@@ -599,6 +610,7 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 	m.comments()
 	m.identity()
 	m.issueReports()
+	m.mediaUploads()
 	m.notifications()
 	m.oauth2Clients()
 	m.passkeys()
@@ -696,7 +708,7 @@ func (m *mount) caller(surface Surface) (callers.PrincipalExtractor, bool) {
 // tenant and has no reader for it.
 //
 // Like caller, the check is made where a surface needs it, so that only a
-// service that mounts one of the three surfaces is asked for one.
+// service that mounts one of those surfaces is asked for one.
 func (m *mount) tenantOf(surface Surface) (func(callers.Principal) (tenancy.Scope, error), bool) {
 	if m.t.TenantOf == nil {
 		m.err = platformerrors.Wrapf(ErrNilTenantOf, "mounting the %s surface", surface)
@@ -991,6 +1003,20 @@ func (m *mount) audit() {
 		opts = append(opts, auditgrpc.WithScopeResolver(deriveScope(extract, tenantOf)))
 	}
 
+	// AuditAdministrationService, the operator's read of every tenant's log,
+	// is armed by the recorder each such read is filed through. Who may call
+	// it is the authorization interceptor's question, asked of the method
+	// against audit/grpc's Permissions; without a recorder the server answers
+	// those methods Unimplemented.
+	recorder, found := need[audit.Recorder](m)
+	if m.err != nil {
+		return
+	}
+
+	if found && extract != nil {
+		opts = append(opts, auditgrpc.WithOperatorRecorder(recorder, extract))
+	}
+
 	srv, err := auditgrpc.NewServer(reader, client, append(opts, m.t.Options.Audit...)...)
 	if err != nil {
 		m.fail(SurfaceAudit, err)
@@ -1127,6 +1153,23 @@ func (m *mount) identity() {
 		opts = append(opts, identitygrpc.WithTargetAuthorizer(m.t.Authorizers.IdentityTargets))
 	}
 
+	// The operator bypass past the row check: the grants that say who holds
+	// an operator permission, and the recorder every admission is filed
+	// through, which is what arms it. Either absent, the row check's refusals
+	// stand.
+	if m.t.Grants != nil {
+		opts = append(opts, identitygrpc.WithGrantsExtractor(m.t.Grants))
+
+		recorder, found := need[audit.Recorder](m)
+		if m.err != nil {
+			return
+		}
+
+		if found {
+			opts = append(opts, identitygrpc.WithOperatorRecorder(recorder))
+		}
+	}
+
 	srv, err := identitygrpc.NewServer(svc, store, client, extract, append(opts, m.t.Options.Identity...)...)
 	if err != nil {
 		m.fail(SurfaceIdentity, err)
@@ -1171,6 +1214,60 @@ func (m *mount) issueReports() {
 	}
 
 	m.mountedGRPC(SurfaceIssueReports, srv.RegisterOn)
+}
+
+// mediaUploads mounts the media registry's resource surface, over the store and
+// the upload manager the serve route is built from.
+//
+// It joins the automatic mount because every seam it has carries a default but
+// one, and that one is derived here: its caller is mediaregistry/http's Caller,
+// read off the principal and Transports.TenantOf exactly as the serve route's
+// is, so an object uploaded here is found by the route that serves it. Its
+// entitlement is Authorizers.MediaObjects, the serve route's, so the two
+// surfaces cannot disagree about who may read an object.
+func (m *mount) mediaUploads() {
+	if !m.mounting(SurfaceMediaUploads) {
+		return
+	}
+
+	store, ok := need[mediaregistry.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	manager, ok := need[uploads.UploadManager](m)
+	if !ok {
+		return
+	}
+
+	opts := []mediaregistrygrpc.Option{mediaregistrygrpc.WithPillars(m.pillars)}
+
+	extract, tenantOf, derive := m.derivation(SurfaceMediaUploads, len(m.t.Options.MediaUploads) > 0, true)
+	if m.err != nil {
+		return
+	}
+
+	if derive {
+		opts = append(opts, mediaregistrygrpc.WithCallerResolver(deriveMediaCaller(extract, tenantOf)))
+	}
+
+	if m.t.Authorizers.MediaObjects != nil {
+		opts = append(opts, mediaregistrygrpc.WithEntitlement(m.t.Authorizers.MediaObjects))
+	}
+
+	srv, err := mediaregistrygrpc.NewServer(store, client, manager, append(opts, m.t.Options.MediaUploads...)...)
+	if err != nil {
+		m.fail(SurfaceMediaUploads, err)
+
+		return
+	}
+
+	m.mountedGRPC(SurfaceMediaUploads, srv.RegisterOn)
 }
 
 // notifications mounts the inbox and device surface. It takes two seams, and
@@ -1576,6 +1673,8 @@ func (m *mount) dataPrivacy() {
 		return
 	}
 
+	// Mount includes the artifact route, so a subject can collect the export
+	// they asked for; see dataprivacy/http's package documentation.
 	handlers.Mount(router)
 
 	if !m.routesLanded(SurfaceDataPrivacy, router) {

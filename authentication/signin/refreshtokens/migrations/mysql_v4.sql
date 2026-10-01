@@ -15,3 +15,8 @@ ALTER TABLE {{PREFIX}}signin_refresh_tokens
 -- is an identifier, projected on a listing.
 ALTER TABLE {{PREFIX}}signin_refresh_tokens
     ADD COLUMN actor_id VARCHAR(255);
+
+-- credential_kind: see postgres_v4.sql. VARCHAR for the reason actor_id is:
+-- it is projected on a listing, and a kind is a short name.
+ALTER TABLE {{PREFIX}}signin_refresh_tokens
+    ADD COLUMN credential_kind VARCHAR(255);

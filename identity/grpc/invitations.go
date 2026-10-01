@@ -59,7 +59,7 @@ func (s *Server) Invite(
 
 	op.Set(accountIDKey, request.GetAccountId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, acting, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -205,7 +205,7 @@ func (s *Server) CancelInvitation(
 
 	op.Set(invitationIDKey, request.GetInvitationId())
 
-	if err = s.authorizeInvitation(ctx, op, principal, request.GetInvitationId()); err != nil {
+	if err = s.authorizeInvitation(ctx, op, principal, acting, request.GetInvitationId()); err != nil {
 		return nil, err
 	}
 

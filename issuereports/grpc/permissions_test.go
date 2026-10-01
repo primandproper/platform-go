@@ -8,6 +8,7 @@ import (
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
 	"github.com/shoenig/test"
@@ -116,6 +117,37 @@ func TestTheTwoAudiencesDoNotShareAGrant(T *testing.T) {
 					reporterMethod, queueMethod, granted))
 			}
 		}
+	}
+}
+
+// TestReadingEveryTenantIsItsOwnGrant keeps the operator's reads across tenants
+// behind a permission nothing else here requires.
+//
+// A grant shared with a tenant's own queue would make every triager an operator
+// over every tenant, and the reason the reads are separate methods is that
+// nobody should be one of those without a deployment deciding so.
+func TestReadingEveryTenantIsItsOwnGrant(T *testing.T) {
+	T.Parallel()
+
+	permissions := issuereportsgrpc.Permissions()
+
+	acrossScopes := []string{
+		issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName,
+		issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
+	}
+
+	for _, method := range acrossScopes {
+		test.Eq(T, []authorization.Permission{issuereportsgrpc.PermissionReadAnyReports}, permissions[method],
+			test.Sprintf("%s does not require exactly the read-any grant", method))
+	}
+
+	for method, required := range permissions {
+		if slices.Contains(acrossScopes, method) {
+			continue
+		}
+
+		test.SliceNotContains(T, required, issuereportsgrpc.PermissionReadAnyReports, test.Sprintf(
+			"%s requires the read-any grant, which covers only the reads across tenants", method))
 	}
 }
 

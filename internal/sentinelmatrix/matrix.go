@@ -1159,9 +1159,10 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	mediaRegistryPkg: {
-		// The ones a consumer's own upload handler can be told, which is the
-		// endpoint these are for — mediaregistry/http is the guarded serve and
-		// answers its own 404 before any encoding happens. The two key
+		// The ones mediaregistry/grpc and a consumer's own upload handler can
+		// be told, which are the endpoints these are for — mediaregistry/http
+		// is the guarded serve and answers its own 404 before any encoding
+		// happens. The two key
 		// collisions are both here and both AlreadyExists: one is a row in the
 		// scope, the other is bytes in the bucket, and a caller told only the
 		// first would be told nothing at all about the overwrite the second

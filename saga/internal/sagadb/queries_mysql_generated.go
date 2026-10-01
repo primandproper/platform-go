@@ -52,6 +52,16 @@ ORDER BY {{prefix}}saga_instances.next_attempt, {{prefix}}saga_instances.created
 LIMIT ?
 FOR UPDATE SKIP LOCKED`
 
+const countPrunableSagaInstancesMySQL = `SELECT COUNT(*)
+FROM (
+	SELECT 1
+	FROM {{prefix}}saga_instances
+	WHERE {{prefix}}saga_instances.status = ?
+		AND {{prefix}}saga_instances.last_updated_at IS NOT NULL
+		AND {{prefix}}saga_instances.last_updated_at <= ?
+	LIMIT ?
+) AS saga_prune_backlog`
+
 const getSagaInstanceMySQL = `
 SELECT
 	{{prefix}}saga_instances.id,
@@ -340,6 +350,13 @@ WHERE {{prefix}}saga_instances.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAM
 ORDER BY {{prefix}}saga_instances.id DESC
 LIMIT ?`
 
+const pruneSagaInstancesMySQL = `DELETE FROM {{prefix}}saga_instances
+WHERE status = ?
+	AND last_updated_at IS NOT NULL
+	AND last_updated_at <= ?
+ORDER BY last_updated_at ASC, id ASC
+LIMIT ?`
+
 const releaseSagaInstanceMySQL = `UPDATE {{prefix}}saga_instances SET
 	claimed_until = NULL,
 	last_updated_at = ?
@@ -370,6 +387,7 @@ type mysqlQueries struct {
 	advanceSagaInstanceAndClearLease        string
 	claimSagaInstances                      string
 	claimableSagaInstanceIDs                string
+	countPrunableSagaInstances              string
 	getSagaInstance                         string
 	insertSagaInstance                      string
 	listSagaInstances                       string
@@ -377,6 +395,7 @@ type mysqlQueries struct {
 	listSagaInstancesByDefinitionDescending string
 	listSagaInstancesByIDs                  string
 	listSagaInstancesDescending             string
+	pruneSagaInstances                      string
 	releaseSagaInstance                     string
 	requeueSagaInstance                     string
 	rescheduleSagaInstance                  string
@@ -390,6 +409,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		advanceSagaInstanceAndClearLease:        strings.ReplaceAll(advanceSagaInstanceAndClearLeaseMySQL, prefixMarker, prefix),
 		claimSagaInstances:                      strings.ReplaceAll(claimSagaInstancesMySQL, prefixMarker, prefix),
 		claimableSagaInstanceIDs:                strings.ReplaceAll(claimableSagaInstanceIDsMySQL, prefixMarker, prefix),
+		countPrunableSagaInstances:              strings.ReplaceAll(countPrunableSagaInstancesMySQL, prefixMarker, prefix),
 		getSagaInstance:                         strings.ReplaceAll(getSagaInstanceMySQL, prefixMarker, prefix),
 		insertSagaInstance:                      strings.ReplaceAll(insertSagaInstanceMySQL, prefixMarker, prefix),
 		listSagaInstances:                       strings.ReplaceAll(listSagaInstancesMySQL, prefixMarker, prefix),
@@ -397,6 +417,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		listSagaInstancesByDefinitionDescending: strings.ReplaceAll(listSagaInstancesByDefinitionDescendingMySQL, prefixMarker, prefix),
 		listSagaInstancesByIDs:                  strings.ReplaceAll(listSagaInstancesByIDsMySQL, prefixMarker, prefix),
 		listSagaInstancesDescending:             strings.ReplaceAll(listSagaInstancesDescendingMySQL, prefixMarker, prefix),
+		pruneSagaInstances:                      strings.ReplaceAll(pruneSagaInstancesMySQL, prefixMarker, prefix),
 		releaseSagaInstance:                     strings.ReplaceAll(releaseSagaInstanceMySQL, prefixMarker, prefix),
 		requeueSagaInstance:                     strings.ReplaceAll(requeueSagaInstanceMySQL, prefixMarker, prefix),
 		rescheduleSagaInstance:                  strings.ReplaceAll(rescheduleSagaInstanceMySQL, prefixMarker, prefix),
@@ -507,6 +528,23 @@ func (q *mysqlQueries) ClaimableSagaInstanceIDs(ctx context.Context, db DBTX, ar
 	}
 
 	return items, nil
+}
+
+// CountPrunableSagaInstances runs the :one query against mysql.
+func (q *mysqlQueries) CountPrunableSagaInstances(ctx context.Context, db DBTX, arg CountPrunableSagaInstancesParams) (CountPrunableSagaInstancesRow, error) {
+	row := db.QueryRowContext(ctx, q.countPrunableSagaInstances,
+		arg.RetiredStatus,
+		arg.RetiredBefore,
+		arg.ResultLimit,
+	)
+
+	var i CountPrunableSagaInstancesRow
+
+	err := row.Scan(
+		&i.Count,
+	)
+
+	return i, err
 }
 
 // GetSagaInstance runs the :one query against mysql.
@@ -917,6 +955,20 @@ func (q *mysqlQueries) ListSagaInstancesDescending(ctx context.Context, db DBTX,
 	return items, nil
 }
 
+// PruneSagaInstances runs the :execrows query against mysql.
+func (q *mysqlQueries) PruneSagaInstances(ctx context.Context, db DBTX, arg PruneSagaInstancesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.pruneSagaInstances,
+		arg.RetiredStatus,
+		arg.RetiredBefore,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // ReleaseSagaInstance runs the :execrows query against mysql.
 func (q *mysqlQueries) ReleaseSagaInstance(ctx context.Context, db DBTX, arg ReleaseSagaInstanceParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.releaseSagaInstance,
@@ -1024,6 +1076,14 @@ var (
 	_ = struct {
 		ID string
 	}(ClaimableSagaInstanceIDsRow{})
+	_ = struct {
+		RetiredStatus string
+		RetiredBefore *time.Time
+		ResultLimit   int64
+	}(CountPrunableSagaInstancesParams{})
+	_ = struct {
+		Count int64
+	}(CountPrunableSagaInstancesRow{})
 	_ = struct {
 		ID string
 	}(GetSagaInstanceParams{})
@@ -1207,6 +1267,11 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListSagaInstancesDescendingRow{})
+	_ = struct {
+		RetiredStatus string
+		RetiredBefore *time.Time
+		ResultLimit   int64
+	}(PruneSagaInstancesParams{})
 	_ = struct {
 		LastUpdatedAt *time.Time
 		ID            string

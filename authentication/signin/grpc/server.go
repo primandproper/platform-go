@@ -68,7 +68,7 @@ var (
 	ErrNilCredentials = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil credentials on a sign-in request")
 )
 
-// Server is SignInService over signin.Service.
+// Server is SignInService and SignInAdministrationService over signin.Service.
 //
 // # What it is
 //
@@ -89,9 +89,16 @@ var (
 // interceptor put on the context, and whose directory the request is against is
 // a [ScopeResolver] the consumer supplies. None of the three is here.
 //
-// It permissions nothing, and [Require] says so to an authorization policy
-// explicitly rather than by omission — see that function for why the difference
-// matters.
+// SignInService permissions nothing, and [Require] says so to an
+// authorization policy explicitly rather than by omission — see that function
+// for why the difference matters. SignInAdministrationService, which it also
+// serves, is an operator's view of somebody else's logins, and each of its
+// methods requires a permission from [Permissions].
+//
+// Server serves both, embedding each service's Unimplemented type. The two
+// services share no method name, which is what keeps that embedding
+// unambiguous; a method added to either that collided with the other would
+// fail to compile here rather than shadow one.
 //
 // # Errors
 //
@@ -100,10 +107,12 @@ var (
 // deliberately does not register it.
 type Server struct {
 	signinpb.UnimplementedSignInServiceServer
+	signinpb.UnimplementedSignInAdministrationServiceServer
 
 	svc        *signin.Service
 	principals callers.PrincipalExtractor
 	scopes     ScopeResolver
+	annotate   SignInAnnotator
 
 	o11y observability.Observer
 
@@ -159,14 +168,22 @@ func NewServer(svc *signin.Service, principals callers.PrincipalExtractor, opts 
 	return s, nil
 }
 
-// RegisterOn mounts this service on a gRPC server.
+// RegisterOn mounts SignInService and SignInAdministrationService on a gRPC
+// server.
 //
 // Its signature is server/grpc's RegistrationFunc, so mounting sign-in beside
 // the directory is two entries in the slice that constructor already takes:
 //
 //	[]grpcserver.RegistrationFunc{identitySrv.RegisterOn, signInSrv.RegisterOn}
+//
+// The administrative service mounts with the other because it is the same
+// service's operator half, and mounting it grants nothing: every one of its
+// methods requires a permission [Permissions] declares and no role holds by
+// default, so a deployment whose policy grants none of them has mounted three
+// methods that refuse everybody.
 func (s *Server) RegisterOn(srv *grpc.Server) {
 	signinpb.RegisterSignInServiceServer(srv, s)
+	signinpb.RegisterSignInAdministrationServiceServer(srv, s)
 }
 
 // request is what every RPC here resolves before it does anything: the
@@ -230,7 +247,8 @@ func (s *Server) anonymous(ctx context.Context, method string) (
 // caller is anonymous plus the principal the authenticated RPCs need.
 //
 // The scope comes off the resolver rather than off the principal, so one wiring
-// decision governs the whole service — see [ScopeResolver].
+// decision governs the whole service — see [ScopeResolver]. The administrative
+// RPCs are the exception, and administrator says why.
 func (s *Server) caller(ctx context.Context, method string) (
 	context.Context, *request, func(err error), error,
 ) {

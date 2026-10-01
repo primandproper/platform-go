@@ -48,7 +48,14 @@ An expiry is an action, Actions.ArtifactExpired, rather than a clock the suite
 moves: the window is days long and stamped onto the row by the worker that
 completed the export, and the sweep is a job the deployment schedules. No client
 can bring either about, and the suite does not need to know how the subject
-did. The artifact's own download route is the deployment's rather than this
-module's, so nothing here fetches it.
+did.
+
+A completed export is also fetched, through dataprivacy/http's artifact route,
+by its subject and by a neighbor: the subject is handed it — as a redirect to
+storage, or as the artifact itself, with the headers that keep it an attachment
+nothing caches — and the neighbor is told it is not there. The route is part of
+that package's Mount, so a subject serving privacy requests serves it, and a
+deployment that left it off fails here: an export its subject cannot collect is
+one they were not given.
 */
 package dataprivacy

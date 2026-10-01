@@ -25,10 +25,10 @@ can commit while the change it describes rolls back — or the reverse — is no
 record of what happened, and no amount of retrying fixes it after the fact. See
 identity/grpc, where that rule is stated once for every surface that follows it.
 
-The scope is not settable. Both of the reads that may decline to narrow take a
-*tenancy.Scope in which nil means every tenant's events, and those fields' own
-comments say getting that backwards is a cross-tenant disclosure rather than a
-wrong answer. Held in a process the unnarrowed read is a capability an operator
+The scope is not settable. The reader's reads across every tenant's events are
+methods of their own — audit.Reader.GetAcrossScopes and ListAcrossScopes — and
+their documentation says reaching one by mistake is a cross-tenant disclosure
+rather than a wrong answer. AuditService calls neither. Held in a process the unnarrowed read is a capability an operator
 built deliberately; in a request field it would be one any caller has. So the
 scope binds off the connection through a [ScopeResolver] —
 authentication/signin/grpc is the precedent — and the schema reserves the field
@@ -82,11 +82,21 @@ would reach them is the actor, and the caller asking is an operator.
 The answer for those is the reading that does not go through a connection's
 scope: audit/privacy's collector, which is handed the subject a request names
 and reads the repository directly, and is what a subject access request already
-fans out over. A deployment wanting an operator-facing read of another actor's
-chain builds it over audit.Reader in their own process, where the scope is an
-argument rather than a property of who is calling.
+fans out over.
 
-What this service will not grow is a scope field on the request. The chain
+An operator's read is the other answer, and it is a service rather than a
+field: AuditAdministrationService, whose GetAnyEntry and ListAnyEntries are the
+reader's two reads across every tenant. It is gated at the method by
+[PermissionReadAnyEntries], which nothing grants by default, so holding it
+changes nothing about what AuditService answers the same person reading their
+own log. Every call is recorded in the caller's own chain before it is answered,
+and a server built without [WithOperatorRecorder] has nowhere to record one and
+answers those methods Unimplemented. Its requests name a tenant as owner_id,
+optionally, because there the method is the capability; its answers name the
+tenant each entry belongs to, because an answer spanning tenants cannot leave
+that implied.
+
+What AuditService will not grow is a scope field on the request. The chain
 partition being unnameable from the wire is what makes "no caller can read
 another tenant's log" a property of the schema rather than of a check somebody
 has to keep passing — see the reserved names in audit.proto, and the same

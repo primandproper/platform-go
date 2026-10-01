@@ -17,9 +17,11 @@ import (
 //
 // Three rules run through all of them. The nullable times stay unset rather than
 // becoming the zero timestamp, because a client rendering "closed" wants to know
-// there was no closing and 1970 is not that answer. No message carries a scope,
-// so no converter reads or writes one — the scope is bound off the caller, and a
-// Scope on a value handed to a write is the argument's. And no request carries a
+// there was no closing and 1970 is not that answer. No request carries a scope,
+// so no converter reads one — the scope is bound off the caller, and a Scope on
+// a value handed to a write is the argument's. The one converter that writes a
+// scope is [ScopedReportToProto], for the operator's reads across tenants,
+// whose rows are not the caller's. And no request carries a
 // reporter into a write: the one that reads a report out of a request takes the
 // name separately, from the principal, which is why it is a parameter here
 // rather than a field there.
@@ -62,6 +64,30 @@ func ReportsToProto(reports []*issuereports.Report) []*issuereportspb.IssueRepor
 	out := make([]*issuereportspb.IssueReport, 0, len(reports))
 	for _, r := range reports {
 		out = append(out, ReportToProto(r))
+	}
+
+	return out
+}
+
+// ScopedReportToProto renders a report read across tenants, with the tenant it
+// belongs to. It is what the operator's reads answer with; every other read's
+// rows are in the caller's own scope and carry none.
+func ScopedReportToProto(r *issuereports.Report) *issuereportspb.ScopedIssueReport {
+	if r == nil {
+		return nil
+	}
+
+	return &issuereportspb.ScopedIssueReport{
+		Scope:  r.Scope.Owner(),
+		Report: ReportToProto(r),
+	}
+}
+
+// ScopedReportsToProto renders a page of reports read across tenants.
+func ScopedReportsToProto(reports []*issuereports.Report) []*issuereportspb.ScopedIssueReport {
+	out := make([]*issuereportspb.ScopedIssueReport, 0, len(reports))
+	for _, r := range reports {
+		out = append(out, ScopedReportToProto(r))
 	}
 
 	return out

@@ -139,6 +139,106 @@ WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAM
 ORDER BY {{prefix}}issue_reports.id ASC
 LIMIT COALESCE($8, 50)`
 
+const listReportsAcrossScopesPostgreSQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			)
+			AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	)
+	AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.id > COALESCE($6, '')
+ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT COALESCE($7, 50)`
+
+const listReportsAcrossScopesDescendingPostgreSQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			)
+			AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	)
+	AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND ({{prefix}}issue_reports.id <= COALESCE($6, {{prefix}}issue_reports.id) AND {{prefix}}issue_reports.id <> COALESCE($6, ''))
+ORDER BY {{prefix}}issue_reports.id DESC
+LIMIT COALESCE($7, 50)`
+
 const listReportsByReporterPostgreSQL = `SELECT
 	{{prefix}}issue_reports.id,
 	{{prefix}}issue_reports.scope,
@@ -306,6 +406,112 @@ WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAM
 	AND {{prefix}}issue_reports.id > COALESCE($8, '')
 ORDER BY {{prefix}}issue_reports.id ASC
 LIMIT COALESCE($9, 50)`
+
+const listReportsByStatusAcrossScopesPostgreSQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			)
+			AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = $6
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = $6
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	)
+	AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.status = $6
+	AND {{prefix}}issue_reports.id > COALESCE($7, '')
+ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT COALESCE($8, 50)`
+
+const listReportsByStatusAcrossScopesDescendingPostgreSQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+			)
+			AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = $6
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = $6
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	AND {{prefix}}issue_reports.created_at < COALESCE($2, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE($3, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
+	)
+	AND (COALESCE($5, false)::boolean OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.status = $6
+	AND ({{prefix}}issue_reports.id <= COALESCE($7, {{prefix}}issue_reports.id) AND {{prefix}}issue_reports.id <> COALESCE($7, ''))
+ORDER BY {{prefix}}issue_reports.id DESC
+LIMIT COALESCE($8, 50)`
 
 const listReportsByStatusDescendingPostgreSQL = `SELECT
 	{{prefix}}issue_reports.id,
@@ -668,46 +874,54 @@ WHERE archived_at IS NULL
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
-	archiveReport                      string
-	createReport                       string
-	deleteReportsByReporter            string
-	getArchivedReport                  string
-	getReport                          string
-	listReports                        string
-	listReportsByReporter              string
-	listReportsByReporterDescending    string
-	listReportsByStatus                string
-	listReportsByStatusDescending      string
-	listReportsBySubjectType           string
-	listReportsBySubjectTypeDescending string
-	listReportsDescending              string
-	listReportsForSubject              string
-	listReportsForSubjectDescending    string
-	transitionReport                   string
-	updateReport                       string
+	archiveReport                             string
+	createReport                              string
+	deleteReportsByReporter                   string
+	getArchivedReport                         string
+	getReport                                 string
+	listReports                               string
+	listReportsAcrossScopes                   string
+	listReportsAcrossScopesDescending         string
+	listReportsByReporter                     string
+	listReportsByReporterDescending           string
+	listReportsByStatus                       string
+	listReportsByStatusAcrossScopes           string
+	listReportsByStatusAcrossScopesDescending string
+	listReportsByStatusDescending             string
+	listReportsBySubjectType                  string
+	listReportsBySubjectTypeDescending        string
+	listReportsDescending                     string
+	listReportsForSubject                     string
+	listReportsForSubjectDescending           string
+	transitionReport                          string
+	updateReport                              string
 }
 
 // newPostgreSQL returns the postgresql querier with prefix substituted into every
 // table name the analyzer identified.
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
-		archiveReport:                      strings.ReplaceAll(archiveReportPostgreSQL, prefixMarker, prefix),
-		createReport:                       strings.ReplaceAll(createReportPostgreSQL, prefixMarker, prefix),
-		deleteReportsByReporter:            strings.ReplaceAll(deleteReportsByReporterPostgreSQL, prefixMarker, prefix),
-		getArchivedReport:                  strings.ReplaceAll(getArchivedReportPostgreSQL, prefixMarker, prefix),
-		getReport:                          strings.ReplaceAll(getReportPostgreSQL, prefixMarker, prefix),
-		listReports:                        strings.ReplaceAll(listReportsPostgreSQL, prefixMarker, prefix),
-		listReportsByReporter:              strings.ReplaceAll(listReportsByReporterPostgreSQL, prefixMarker, prefix),
-		listReportsByReporterDescending:    strings.ReplaceAll(listReportsByReporterDescendingPostgreSQL, prefixMarker, prefix),
-		listReportsByStatus:                strings.ReplaceAll(listReportsByStatusPostgreSQL, prefixMarker, prefix),
-		listReportsByStatusDescending:      strings.ReplaceAll(listReportsByStatusDescendingPostgreSQL, prefixMarker, prefix),
-		listReportsBySubjectType:           strings.ReplaceAll(listReportsBySubjectTypePostgreSQL, prefixMarker, prefix),
-		listReportsBySubjectTypeDescending: strings.ReplaceAll(listReportsBySubjectTypeDescendingPostgreSQL, prefixMarker, prefix),
-		listReportsDescending:              strings.ReplaceAll(listReportsDescendingPostgreSQL, prefixMarker, prefix),
-		listReportsForSubject:              strings.ReplaceAll(listReportsForSubjectPostgreSQL, prefixMarker, prefix),
-		listReportsForSubjectDescending:    strings.ReplaceAll(listReportsForSubjectDescendingPostgreSQL, prefixMarker, prefix),
-		transitionReport:                   strings.ReplaceAll(transitionReportPostgreSQL, prefixMarker, prefix),
-		updateReport:                       strings.ReplaceAll(updateReportPostgreSQL, prefixMarker, prefix),
+		archiveReport:                             strings.ReplaceAll(archiveReportPostgreSQL, prefixMarker, prefix),
+		createReport:                              strings.ReplaceAll(createReportPostgreSQL, prefixMarker, prefix),
+		deleteReportsByReporter:                   strings.ReplaceAll(deleteReportsByReporterPostgreSQL, prefixMarker, prefix),
+		getArchivedReport:                         strings.ReplaceAll(getArchivedReportPostgreSQL, prefixMarker, prefix),
+		getReport:                                 strings.ReplaceAll(getReportPostgreSQL, prefixMarker, prefix),
+		listReports:                               strings.ReplaceAll(listReportsPostgreSQL, prefixMarker, prefix),
+		listReportsAcrossScopes:                   strings.ReplaceAll(listReportsAcrossScopesPostgreSQL, prefixMarker, prefix),
+		listReportsAcrossScopesDescending:         strings.ReplaceAll(listReportsAcrossScopesDescendingPostgreSQL, prefixMarker, prefix),
+		listReportsByReporter:                     strings.ReplaceAll(listReportsByReporterPostgreSQL, prefixMarker, prefix),
+		listReportsByReporterDescending:           strings.ReplaceAll(listReportsByReporterDescendingPostgreSQL, prefixMarker, prefix),
+		listReportsByStatus:                       strings.ReplaceAll(listReportsByStatusPostgreSQL, prefixMarker, prefix),
+		listReportsByStatusAcrossScopes:           strings.ReplaceAll(listReportsByStatusAcrossScopesPostgreSQL, prefixMarker, prefix),
+		listReportsByStatusAcrossScopesDescending: strings.ReplaceAll(listReportsByStatusAcrossScopesDescendingPostgreSQL, prefixMarker, prefix),
+		listReportsByStatusDescending:             strings.ReplaceAll(listReportsByStatusDescendingPostgreSQL, prefixMarker, prefix),
+		listReportsBySubjectType:                  strings.ReplaceAll(listReportsBySubjectTypePostgreSQL, prefixMarker, prefix),
+		listReportsBySubjectTypeDescending:        strings.ReplaceAll(listReportsBySubjectTypeDescendingPostgreSQL, prefixMarker, prefix),
+		listReportsDescending:                     strings.ReplaceAll(listReportsDescendingPostgreSQL, prefixMarker, prefix),
+		listReportsForSubject:                     strings.ReplaceAll(listReportsForSubjectPostgreSQL, prefixMarker, prefix),
+		listReportsForSubjectDescending:           strings.ReplaceAll(listReportsForSubjectDescendingPostgreSQL, prefixMarker, prefix),
+		transitionReport:                          strings.ReplaceAll(transitionReportPostgreSQL, prefixMarker, prefix),
+		updateReport:                              strings.ReplaceAll(updateReportPostgreSQL, prefixMarker, prefix),
 	}
 }
 
@@ -833,6 +1047,110 @@ func (q *postgresqlQueries) ListReports(ctx context.Context, db DBTX, arg ListRe
 
 	for rows.Next() {
 		var i ListReportsRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsAcrossScopes runs the :many query against postgresql.
+func (q *postgresqlQueries) ListReportsAcrossScopes(ctx context.Context, db DBTX, arg ListReportsAcrossScopesParams) ([]ListReportsAcrossScopesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsAcrossScopes,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsAcrossScopesRow
+
+	for rows.Next() {
+		var i ListReportsAcrossScopesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsAcrossScopesDescending runs the :many query against postgresql.
+func (q *postgresqlQueries) ListReportsAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsAcrossScopesDescendingParams) ([]ListReportsAcrossScopesDescendingRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsAcrossScopesDescending,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsAcrossScopesDescendingRow
+
+	for rows.Next() {
+		var i ListReportsAcrossScopesDescendingRow
 
 		if err := rows.Scan(
 			&i.ID,
@@ -995,6 +1313,112 @@ func (q *postgresqlQueries) ListReportsByStatus(ctx context.Context, db DBTX, ar
 
 	for rows.Next() {
 		var i ListReportsByStatusRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsByStatusAcrossScopes runs the :many query against postgresql.
+func (q *postgresqlQueries) ListReportsByStatusAcrossScopes(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesParams) ([]ListReportsByStatusAcrossScopesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsByStatusAcrossScopes,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsByStatusAcrossScopesRow
+
+	for rows.Next() {
+		var i ListReportsByStatusAcrossScopesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsByStatusAcrossScopesDescending runs the :many query against postgresql.
+func (q *postgresqlQueries) ListReportsByStatusAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesDescendingParams) ([]ListReportsByStatusAcrossScopesDescendingRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsByStatusAcrossScopesDescending,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsByStatusAcrossScopesDescendingRow
+
+	for rows.Next() {
+		var i ListReportsByStatusAcrossScopesDescendingRow
 
 		if err := rows.Scan(
 			&i.ID,
@@ -1483,6 +1907,58 @@ var (
 		UpdatedAfter    *time.Time
 		UpdatedBefore   *time.Time
 		IncludeArchived bool
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsAcrossScopesRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsAcrossScopesDescendingParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsAcrossScopesDescendingRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
 		Scope           tenancy.Scope
 		Reporter        string
 		PageCursor      *string
@@ -1561,6 +2037,60 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListReportsByStatusRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		Status          string
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsByStatusAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsByStatusAcrossScopesRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		Status          string
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsByStatusAcrossScopesDescendingParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsByStatusAcrossScopesDescendingRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

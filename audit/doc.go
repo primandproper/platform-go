@@ -121,9 +121,10 @@ because the scope was read off each entry. A transaction spans one tenant's
 work, so a caller with entries for two makes two calls, into one transaction
 and two chains.
 
-The reading is a *tenancy.Scope wherever a read may legitimately decline to
-narrow — Query.Scope and Reader.Get — because there a third answer exists that a
-Scope cannot hold: "do not narrow at all". See Reading it.
+A read takes a tenancy.Scope as well, and the operator's read that declines to
+narrow is a method of its own — Reader.GetAcrossScopes and
+Reader.ListAcrossScopes — rather than a nil the scoped read accepts. See Reading
+it.
 
 Append-only enforcement is available but optional, because it is separately
 privileged: migrations.AppendOnlyStatements renders triggers that make the
@@ -232,18 +233,25 @@ so a caller could not read back what they had just written.
 
 Reader.List pages with filtering.QueryFilter, so the cursor, limit, and time
 window an HTTP caller already knows how to send work here unchanged — the window
-maps onto recorded_at, which is when the event happened. Query selects by scope,
-actor, resource, and event type, one value each.
+maps onto recorded_at, which is when the event happened. Query selects by
+actor, resource, and event type, one value each; the scope is the read's own
+argument.
 
-Reader.Get takes a *tenancy.Scope, and so does Query.Scope, where an Entry's is
-a tenancy.Scope. A narrowing has a third reading a scope does not: nil is "do
-not narrow at all", which is what an operator console asks for and what nothing
-a tenant can reach should. A scope confines the read to one chain — tenancy.Global
-included, which reads the platform's own events and nobody else's — and a
-non-nil pointer at the zero Scope is a caller whose lookup came back empty,
-refused with tenancy.ErrNoScope rather than widened. In a multi-tenant read path
-telling the first of those from the second is a disclosure rather than a wrong
-answer, which is why the distinction is a type rather than a convention.
+Reader.Get and Reader.List take a tenancy.Scope. A scope confines the read to
+one chain — tenancy.Global included, which reads the platform's own events and
+nobody else's — and the zero Scope is a caller whose lookup came back empty,
+refused with tenancy.ErrNoScope rather than widened. "Do not narrow at all" is
+what an operator console asks for and what nothing a tenant can reach should, so
+it is not a value either of those accepts: it is Reader.GetAcrossScopes and
+Reader.ListAcrossScopes, a stated exception to the rule that no read path omits
+the scope. In a multi-tenant read path telling the scoped read from the
+unscoped one is a disclosure rather than a wrong answer, which is why the
+distinction is a method name rather than a nil a caller can arrive at by losing
+a value. The one transport that calls them is audit/grpc's
+AuditAdministrationService, a service of its own behind a permission nothing
+grants by default, which records every call before answering it;
+audit/privacy's collector calls ListAcrossScopes for what an operator did while
+impersonating people, confined by the operator's own id.
 
 An entry that exists but sits outside a named scope reads as ErrEntryNotFound,
 the same answer an id that was never written gets. Telling them apart would make

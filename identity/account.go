@@ -212,10 +212,19 @@ func (a *Account) ValidateWithContext(ctx context.Context) error {
 		return platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue, "billing status %q", a.BillingStatus)
 	}
 
+	// Ahead of the struct validation rather than inside it, because ozzo's
+	// validation.Errors has no Unwrap and both are refusals a client caused
+	// and has to be told about as such. See checkTimeZone.
+	if a.Name == "" {
+		return platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "account has no name")
+	}
+
+	if err := checkTimeZone(a.TimeZone); err != nil {
+		return err
+	}
+
 	return validation.ValidateStructWithContext(ctx, a,
-		validation.Field(&a.Name, validation.Required),
 		validation.Field(&a.OwnerUserID, validation.Required),
-		validation.Field(&a.TimeZone, timeZoneRule),
 	)
 }
 

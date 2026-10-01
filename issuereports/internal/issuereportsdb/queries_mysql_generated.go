@@ -139,6 +139,106 @@ WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP
 ORDER BY {{prefix}}issue_reports.id ASC
 LIMIT ?`
 
+const listReportsAcrossScopesMySQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			)
+			AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	)
+	AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.id > COALESCE(?, '')
+ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT ?`
+
+const listReportsAcrossScopesDescendingMySQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			)
+			AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	)
+	AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND ({{prefix}}issue_reports.id <= COALESCE(?, {{prefix}}issue_reports.id) AND {{prefix}}issue_reports.id <> COALESCE(?, ''))
+ORDER BY {{prefix}}issue_reports.id DESC
+LIMIT ?`
+
 const listReportsByReporterMySQL = `SELECT
 	{{prefix}}issue_reports.id,
 	{{prefix}}issue_reports.scope,
@@ -305,6 +405,112 @@ WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP
 	AND {{prefix}}issue_reports.status = ?
 	AND {{prefix}}issue_reports.id > COALESCE(?, '')
 ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT ?`
+
+const listReportsByStatusAcrossScopesMySQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			)
+			AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	)
+	AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.status = ?
+	AND {{prefix}}issue_reports.id > COALESCE(?, '')
+ORDER BY {{prefix}}issue_reports.id ASC
+LIMIT ?`
+
+const listReportsByStatusAcrossScopesDescendingMySQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+			)
+			AND (
+				{{prefix}}issue_reports.last_updated_at IS NULL
+				OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+			)
+			AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?
+	) AS filtered_count,
+	(
+		SELECT COUNT({{prefix}}issue_reports.id)
+		FROM {{prefix}}issue_reports
+		WHERE (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+			AND {{prefix}}issue_reports.status = ?
+	) AS total_count
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.created_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	AND {{prefix}}issue_reports.created_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
+	)
+	AND (
+		{{prefix}}issue_reports.last_updated_at IS NULL
+		OR {{prefix}}issue_reports.last_updated_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
+	)
+	AND (COALESCE(?, false) = true OR {{prefix}}issue_reports.archived_at IS NULL)
+	AND {{prefix}}issue_reports.status = ?
+	AND ({{prefix}}issue_reports.id <= COALESCE(?, {{prefix}}issue_reports.id) AND {{prefix}}issue_reports.id <> COALESCE(?, ''))
+ORDER BY {{prefix}}issue_reports.id DESC
 LIMIT ?`
 
 const listReportsByStatusDescendingMySQL = `SELECT
@@ -668,46 +874,54 @@ WHERE archived_at IS NULL
 
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
-	archiveReport                      string
-	createReport                       string
-	deleteReportsByReporter            string
-	getArchivedReport                  string
-	getReport                          string
-	listReports                        string
-	listReportsByReporter              string
-	listReportsByReporterDescending    string
-	listReportsByStatus                string
-	listReportsByStatusDescending      string
-	listReportsBySubjectType           string
-	listReportsBySubjectTypeDescending string
-	listReportsDescending              string
-	listReportsForSubject              string
-	listReportsForSubjectDescending    string
-	transitionReport                   string
-	updateReport                       string
+	archiveReport                             string
+	createReport                              string
+	deleteReportsByReporter                   string
+	getArchivedReport                         string
+	getReport                                 string
+	listReports                               string
+	listReportsAcrossScopes                   string
+	listReportsAcrossScopesDescending         string
+	listReportsByReporter                     string
+	listReportsByReporterDescending           string
+	listReportsByStatus                       string
+	listReportsByStatusAcrossScopes           string
+	listReportsByStatusAcrossScopesDescending string
+	listReportsByStatusDescending             string
+	listReportsBySubjectType                  string
+	listReportsBySubjectTypeDescending        string
+	listReportsDescending                     string
+	listReportsForSubject                     string
+	listReportsForSubjectDescending           string
+	transitionReport                          string
+	updateReport                              string
 }
 
 // newMySQL returns the mysql querier with prefix substituted into every
 // table name the analyzer identified.
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
-		archiveReport:                      strings.ReplaceAll(archiveReportMySQL, prefixMarker, prefix),
-		createReport:                       strings.ReplaceAll(createReportMySQL, prefixMarker, prefix),
-		deleteReportsByReporter:            strings.ReplaceAll(deleteReportsByReporterMySQL, prefixMarker, prefix),
-		getArchivedReport:                  strings.ReplaceAll(getArchivedReportMySQL, prefixMarker, prefix),
-		getReport:                          strings.ReplaceAll(getReportMySQL, prefixMarker, prefix),
-		listReports:                        strings.ReplaceAll(listReportsMySQL, prefixMarker, prefix),
-		listReportsByReporter:              strings.ReplaceAll(listReportsByReporterMySQL, prefixMarker, prefix),
-		listReportsByReporterDescending:    strings.ReplaceAll(listReportsByReporterDescendingMySQL, prefixMarker, prefix),
-		listReportsByStatus:                strings.ReplaceAll(listReportsByStatusMySQL, prefixMarker, prefix),
-		listReportsByStatusDescending:      strings.ReplaceAll(listReportsByStatusDescendingMySQL, prefixMarker, prefix),
-		listReportsBySubjectType:           strings.ReplaceAll(listReportsBySubjectTypeMySQL, prefixMarker, prefix),
-		listReportsBySubjectTypeDescending: strings.ReplaceAll(listReportsBySubjectTypeDescendingMySQL, prefixMarker, prefix),
-		listReportsDescending:              strings.ReplaceAll(listReportsDescendingMySQL, prefixMarker, prefix),
-		listReportsForSubject:              strings.ReplaceAll(listReportsForSubjectMySQL, prefixMarker, prefix),
-		listReportsForSubjectDescending:    strings.ReplaceAll(listReportsForSubjectDescendingMySQL, prefixMarker, prefix),
-		transitionReport:                   strings.ReplaceAll(transitionReportMySQL, prefixMarker, prefix),
-		updateReport:                       strings.ReplaceAll(updateReportMySQL, prefixMarker, prefix),
+		archiveReport:                             strings.ReplaceAll(archiveReportMySQL, prefixMarker, prefix),
+		createReport:                              strings.ReplaceAll(createReportMySQL, prefixMarker, prefix),
+		deleteReportsByReporter:                   strings.ReplaceAll(deleteReportsByReporterMySQL, prefixMarker, prefix),
+		getArchivedReport:                         strings.ReplaceAll(getArchivedReportMySQL, prefixMarker, prefix),
+		getReport:                                 strings.ReplaceAll(getReportMySQL, prefixMarker, prefix),
+		listReports:                               strings.ReplaceAll(listReportsMySQL, prefixMarker, prefix),
+		listReportsAcrossScopes:                   strings.ReplaceAll(listReportsAcrossScopesMySQL, prefixMarker, prefix),
+		listReportsAcrossScopesDescending:         strings.ReplaceAll(listReportsAcrossScopesDescendingMySQL, prefixMarker, prefix),
+		listReportsByReporter:                     strings.ReplaceAll(listReportsByReporterMySQL, prefixMarker, prefix),
+		listReportsByReporterDescending:           strings.ReplaceAll(listReportsByReporterDescendingMySQL, prefixMarker, prefix),
+		listReportsByStatus:                       strings.ReplaceAll(listReportsByStatusMySQL, prefixMarker, prefix),
+		listReportsByStatusAcrossScopes:           strings.ReplaceAll(listReportsByStatusAcrossScopesMySQL, prefixMarker, prefix),
+		listReportsByStatusAcrossScopesDescending: strings.ReplaceAll(listReportsByStatusAcrossScopesDescendingMySQL, prefixMarker, prefix),
+		listReportsByStatusDescending:             strings.ReplaceAll(listReportsByStatusDescendingMySQL, prefixMarker, prefix),
+		listReportsBySubjectType:                  strings.ReplaceAll(listReportsBySubjectTypeMySQL, prefixMarker, prefix),
+		listReportsBySubjectTypeDescending:        strings.ReplaceAll(listReportsBySubjectTypeDescendingMySQL, prefixMarker, prefix),
+		listReportsDescending:                     strings.ReplaceAll(listReportsDescendingMySQL, prefixMarker, prefix),
+		listReportsForSubject:                     strings.ReplaceAll(listReportsForSubjectMySQL, prefixMarker, prefix),
+		listReportsForSubjectDescending:           strings.ReplaceAll(listReportsForSubjectDescendingMySQL, prefixMarker, prefix),
+		transitionReport:                          strings.ReplaceAll(transitionReportMySQL, prefixMarker, prefix),
+		updateReport:                              strings.ReplaceAll(updateReportMySQL, prefixMarker, prefix),
 	}
 }
 
@@ -841,6 +1055,123 @@ func (q *mysqlQueries) ListReports(ctx context.Context, db DBTX, arg ListReports
 
 	for rows.Next() {
 		var i ListReportsRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsAcrossScopes runs the :many query against mysql.
+func (q *mysqlQueries) ListReportsAcrossScopes(ctx context.Context, db DBTX, arg ListReportsAcrossScopesParams) ([]ListReportsAcrossScopesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsAcrossScopes,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.IncludeArchived,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsAcrossScopesRow
+
+	for rows.Next() {
+		var i ListReportsAcrossScopesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsAcrossScopesDescending runs the :many query against mysql.
+func (q *mysqlQueries) ListReportsAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsAcrossScopesDescendingParams) ([]ListReportsAcrossScopesDescendingRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsAcrossScopesDescending,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.IncludeArchived,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.PageCursor,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsAcrossScopesDescendingRow
+
+	for rows.Next() {
+		var i ListReportsAcrossScopesDescendingRow
 
 		if err := rows.Scan(
 			&i.ID,
@@ -1034,6 +1365,129 @@ func (q *mysqlQueries) ListReportsByStatus(ctx context.Context, db DBTX, arg Lis
 
 	for rows.Next() {
 		var i ListReportsByStatusRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsByStatusAcrossScopes runs the :many query against mysql.
+func (q *mysqlQueries) ListReportsByStatusAcrossScopes(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesParams) ([]ListReportsByStatusAcrossScopesRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsByStatusAcrossScopes,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsByStatusAcrossScopesRow
+
+	for rows.Next() {
+		var i ListReportsByStatusAcrossScopesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.Reporter,
+			&i.Kind,
+			&i.Details,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.Status,
+			&i.Resolution,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
+			&i.FilteredCount,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListReportsByStatusAcrossScopesDescending runs the :many query against mysql.
+func (q *mysqlQueries) ListReportsByStatusAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesDescendingParams) ([]ListReportsByStatusAcrossScopesDescendingRow, error) {
+	rows, err := db.QueryContext(ctx, q.listReportsByStatusAcrossScopesDescending,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.CreatedAfter,
+		arg.CreatedBefore,
+		arg.UpdatedAfter,
+		arg.UpdatedBefore,
+		arg.IncludeArchived,
+		arg.Status,
+		arg.PageCursor,
+		arg.PageCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListReportsByStatusAcrossScopesDescendingRow
+
+	for rows.Next() {
+		var i ListReportsByStatusAcrossScopesDescendingRow
 
 		if err := rows.Scan(
 			&i.ID,
@@ -1588,6 +2042,58 @@ var (
 		UpdatedAfter    *time.Time
 		UpdatedBefore   *time.Time
 		IncludeArchived bool
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsAcrossScopesRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsAcrossScopesDescendingParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsAcrossScopesDescendingRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
 		Scope           tenancy.Scope
 		Reporter        string
 		PageCursor      *string
@@ -1666,6 +2172,60 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListReportsByStatusRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		Status          string
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsByStatusAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsByStatusAcrossScopesRow{})
+	_ = struct {
+		CreatedAfter    *time.Time
+		CreatedBefore   *time.Time
+		UpdatedAfter    *time.Time
+		UpdatedBefore   *time.Time
+		IncludeArchived bool
+		Status          string
+		PageCursor      *string
+		ResultLimit     int64
+	}(ListReportsByStatusAcrossScopesDescendingParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+		FilteredCount int64
+		TotalCount    int64
+	}(ListReportsByStatusAcrossScopesDescendingRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

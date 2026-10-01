@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -24,6 +25,8 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/operations"
@@ -289,9 +292,9 @@ var administrative = []authorization.Permission{
 // hold.
 var memberRole, adminRole = roles()
 
-// roles builds the two sets from the seven surfaces' own Permissions maps, and
-// the three HTTP surfaces', so that a permission a surface adds later is a
-// member's without an edit here.
+// roles builds the two sets from the gRPC surfaces' own Permissions maps, and
+// the HTTP surfaces', so that a permission a surface adds later is a member's
+// without an edit here.
 func roles() (member, admin *authorization.PermissionSet) {
 	var every []authorization.Permission
 
@@ -302,6 +305,7 @@ func roles() (member, admin *authorization.PermissionSet) {
 		billinggrpc.Permissions(),
 		commentsgrpc.Permissions(),
 		issuereportsgrpc.Permissions(),
+		mediaregistrygrpc.Permissions(),
 		notificationsgrpc.Permissions(),
 		settingsgrpc.Permissions(),
 		waitlistsgrpc.Permissions(),
@@ -349,10 +353,12 @@ func isAdministrator(principal callers.Principal) bool {
 // staffOnly is the reservation this harness's second run makes: a deployment
 // that keeps its console to its staff, the way a product with a back office
 // does. The directory's administration, the catalog's writes, the scope-wide
-// ledgers and their corrections, the chain's verification, the moderation read,
-// the settings catalog, the client registry and the waitlist console are an
-// operator's; everything a person does to their own rows, and every door
-// reached with nobody on the call, is left to members.
+// ledgers and their corrections, the chain's verification and every tenant's
+// log, the moderation read,
+// the report queue across tenants, the settings catalog, somebody else's logins,
+// the client registry and the waitlist console are an operator's; everything a
+// person does to their own rows, and every door reached with nobody on the
+// call, is left to members.
 //
 // A list rather than a rule, and not the whole surface, because what it
 // exercises is the path a consumer's reservation takes: each call named here
@@ -360,6 +366,8 @@ func isAdministrator(principal callers.Principal) bool {
 // named by a member. Which calls a consumer names is its own to decide.
 var staffOnly = []string{
 	auditpb.AuditService_VerifyChain_FullMethodName,
+	auditpb.AuditAdministrationService_GetAnyEntry_FullMethodName,
+	auditpb.AuditAdministrationService_ListAnyEntries_FullMethodName,
 
 	billingpb.BillingService_CreateProduct_FullMethodName,
 	billingpb.BillingService_UpdateProduct_FullMethodName,
@@ -372,6 +380,9 @@ var staffOnly = []string{
 	billingpb.BillingService_ArchiveTransaction_FullMethodName,
 
 	commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
+
+	issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName,
+	issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
 
 	identitypb.IdentityService_GetUser_FullMethodName,
 	identitypb.IdentityService_ListUsers_FullMethodName,
@@ -391,6 +402,10 @@ var staffOnly = []string{
 	settingspb.SettingsService_UpdateDefinition_FullMethodName,
 	settingspb.SettingsService_ArchiveDefinition_FullMethodName,
 	settingspb.SettingsService_ListValuesForDefinition_FullMethodName,
+
+	signinpb.SignInAdministrationService_ListSignInsForUser_FullMethodName,
+	signinpb.SignInAdministrationService_EndSignInForUser_FullMethodName,
+	signinpb.SignInAdministrationService_EndAllSignInsForUser_FullMethodName,
 
 	waitlistspb.WaitlistsService_CreateList_FullMethodName,
 	waitlistspb.WaitlistsService_UpdateList_FullMethodName,

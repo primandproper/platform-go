@@ -32,7 +32,8 @@ const getLiveRefreshTokenForFamilySQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at,
 	{{prefix}}signin_refresh_tokens.access_token_id,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = ?1
 	AND {{prefix}}signin_refresh_tokens.family_id = ?2
@@ -53,7 +54,8 @@ const getRefreshTokenSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.redeemed_at,
 	{{prefix}}signin_refresh_tokens.revoked_at,
 	{{prefix}}signin_refresh_tokens.access_token_id,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.hash = ?1
 	AND {{prefix}}signin_refresh_tokens.scope = ?2`
@@ -78,7 +80,8 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	expires_at,
 	purge_after,
 	access_token_id,
-	actor_id
+	actor_id,
+	credential_kind
 ) VALUES (
 	?1,
 	?2,
@@ -91,7 +94,8 @@ INSERT INTO {{prefix}}signin_refresh_tokens (
 	?9,
 	?10,
 	?11,
-	?12
+	?12,
+	?13
 )`
 
 const listLiveRefreshTokenFamiliesSQLite = `SELECT
@@ -101,7 +105,8 @@ const listLiveRefreshTokenFamiliesSQLite = `SELECT
 	{{prefix}}signin_refresh_tokens.issued_at,
 	{{prefix}}signin_refresh_tokens.signed_in_at,
 	{{prefix}}signin_refresh_tokens.expires_at,
-	{{prefix}}signin_refresh_tokens.actor_id
+	{{prefix}}signin_refresh_tokens.actor_id,
+	{{prefix}}signin_refresh_tokens.credential_kind
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = ?1
 	AND {{prefix}}signin_refresh_tokens.subject_id = ?2
@@ -310,6 +315,7 @@ func (q *sqliteQueries) GetLiveRefreshTokenForFamily(ctx context.Context, db DBT
 		&i.RevokedAt,
 		&i.AccessTokenID,
 		&i.ActorID,
+		&i.CredentialKind,
 	)
 
 	return i, err
@@ -338,6 +344,7 @@ func (q *sqliteQueries) GetRefreshToken(ctx context.Context, db DBTX, arg GetRef
 		&i.RevokedAt,
 		&i.AccessTokenID,
 		&i.ActorID,
+		&i.CredentialKind,
 	)
 
 	return i, err
@@ -375,6 +382,7 @@ func (q *sqliteQueries) InsertRefreshToken(ctx context.Context, db DBTX, arg Ins
 		timeText(arg.PurgeAfter),
 		arg.AccessTokenID,
 		arg.ActorID,
+		arg.CredentialKind,
 	)
 
 	return err
@@ -407,6 +415,7 @@ func (q *sqliteQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db DBT
 			&i.SignedInAt,
 			&i.ExpiresAt,
 			&i.ActorID,
+			&i.CredentialKind,
 		); err != nil {
 			return nil, err
 		}
@@ -684,6 +693,7 @@ var (
 		RevokedAt       *time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(GetLiveRefreshTokenForFamilyRow{})
 	_ = struct {
 		Hash  string
@@ -703,6 +713,7 @@ var (
 		RevokedAt       *time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(GetRefreshTokenRow{})
 	_ = struct {
 		Hash  string
@@ -725,6 +736,7 @@ var (
 		PurgeAfter      time.Time
 		AccessTokenID   *string
 		ActorID         *string
+		CredentialKind  *string
 	}(InsertRefreshTokenParams{})
 	_ = struct {
 		Scope       tenancy.Scope
@@ -740,6 +752,7 @@ var (
 		SignedInAt      time.Time
 		ExpiresAt       time.Time
 		ActorID         *string
+		CredentialKind  *string
 	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
 		Scope       tenancy.Scope

@@ -87,6 +87,38 @@ func TestService_ListSignIns(T *testing.T) {
 			test.Sprintf("began %v, then %v", before[0].SignedInAt, after[0].SignedInAt))
 	})
 
+	// How a login happened is the kind its door stamped, recorded on the login
+	// and carried across a refresh, which proves nothing new about it.
+	T.Run("reports how each login happened, however often it has refreshed", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t)
+
+		byPassword, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.ExchangeRefreshToken(t.Context(), testScope, byPassword.RefreshToken)
+		must.NoError(t, err)
+
+		byPasskey, err := e.svc.IssueForPrincipal(t.Context(), testScope, e.user.ID, "",
+			signin.WithCredentialKind("passkey"))
+		must.NoError(t, err)
+
+		signIns, err := e.svc.ListSignIns(t.Context(), testScope, e.user.ID, 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 2, signIns)
+
+		kinds := map[string]signin.CredentialKind{}
+		for _, s := range signIns {
+			kinds[s.FamilyID] = s.CredentialKind
+		}
+
+		test.Eq(t, map[string]signin.CredentialKind{
+			byPassword.FamilyID: signin.CredentialKindPassword,
+			byPasskey.FamilyID:  signin.CredentialKind("passkey"),
+		}, kinds)
+	})
+
 	T.Run("leaves out a login that signed out", func(t *testing.T) {
 		t.Parallel()
 

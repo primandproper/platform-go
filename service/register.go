@@ -411,6 +411,7 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		do.ProvideValue(i, cfg.PasswordReset)
 		passwordresetcfg.RegisterStore(i)
 		passwordresetcfg.RegisterService(i)
+		passwordresetcfg.RegisterJobs(i)
 	}
 
 	// The store only. issuereports/privacy's collector and eraser need a mapping
@@ -533,6 +534,7 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		do.ProvideValue(i, cfg.OAuth2Server)
 		do.ProvideValue(i, &cfg.OAuth2Server.Config)
 		oauth2serverstorecfg.RegisterStore(i)
+		oauth2serverstorecfg.RegisterJobs(i)
 		oauth2servercfg.RegisterServer(i)
 	}
 
@@ -566,6 +568,7 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	if cfg.SignIn != nil {
 		do.ProvideValue(i, cfg.SignIn)
 		signincfg.RegisterService(i)
+		signincfg.RegisterJobs(i)
 	}
 
 	// The ceremony store from this module's half and the relying party from
@@ -625,8 +628,8 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 	// two belong next to each other for the same reason they are validated
 	// together in Config.
 	//
-	// All five bridges, on the same reading of presence the rest of this walk
-	// makes: the config names one operations tier, not five independently
+	// Every bridge, on the same reading of presence the rest of this walk
+	// makes: the config names one operations tier, not independently
 	// switchable pieces of one, so a deployment that set OPERATIONS_WATCHER_POLL
 	// gets a watcher rather than a knob nothing reads. The alternative was a
 	// switch here saying which of the loops to start, and there is nothing for
@@ -650,11 +653,13 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 		operationscfg.RegisterService(i)
 		operationscfg.RegisterWorker(i)
 		operationscfg.RegisterWatcher(i)
+		operationscfg.RegisterJobs(i)
 	}
 
 	if cfg.DataPrivacy != nil {
 		do.ProvideValue(i, cfg.DataPrivacy)
 		dataprivacycfg.RegisterStore(i)
+		dataprivacycfg.RegisterArtifactStorage(i)
 		dataprivacycfg.RegisterFulfiller(i)
 		dataprivacycfg.RegisterService(i)
 		dataprivacycfg.RegisterSweeper(i)
@@ -700,6 +705,7 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 		do.ProvideValue(i, cfg.Saga)
 		sagacfg.RegisterStore(i)
 		sagacfg.RegisterWorker(i)
+		sagacfg.RegisterJobs(i)
 
 		// The outbox publisher is the seam between the two packages, so it is
 		// registered only when both ends were configured. Without an outbox,

@@ -4,10 +4,12 @@ import (
 	"context"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -150,13 +152,23 @@ type Server struct {
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
-	svc             *identity.Service
-	principals      callers.PrincipalExtractor
-	mintToken       TokenMinter
 	targets         TargetAuthorizer
 	permissions     PermissionResolver
 
+	operatorRecorder audit.Recorder
+	svc              *identity.Service
+	principals       callers.PrincipalExtractor
+	mintToken        TokenMinter
+
+	// The operator bypass: whose grants to read, which permissions let a
+	// refused caller through, and where each admission is recorded. See
+	// operator.go.
+	grants authorization.GrantsExtractor
+
 	instruments *metrics.OperationSet
+
+	operatorRead authorization.Permission
+	operatorAct  authorization.Permission
 
 	invitationTTL    time.Duration
 	maxInvitationTTL time.Duration
@@ -218,6 +230,8 @@ func NewServer(
 		mintToken:        defaultTokenMinter,
 		invitationTTL:    DefaultInvitationTTL,
 		maxInvitationTTL: DefaultMaxInvitationTTL,
+		operatorRead:     PermissionOperatorRead,
+		operatorAct:      PermissionOperatorAct,
 	}
 
 	for _, opt := range opts {

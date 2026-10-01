@@ -53,6 +53,7 @@ const (
 	invite                            = identitypb.IdentityService_Invite_FullMethodName
 	setUserRequiresPasswordChange     = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
 	setUserServiceRoles               = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
+	updateProfile                     = identitypb.IdentityService_UpdateProfile_FullMethodName
 	updateUserAccountStatus           = identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName
 )
 
@@ -97,6 +98,11 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 		handleReminders(t, s)
 	})
+
+	t.Run("administration", func(t *testing.T) {
+		t.Parallel()
+		administration(t, s)
+	})
 }
 
 // The reasons docs/client-contract.md lists for the refusals asserted here,
@@ -125,6 +131,10 @@ const (
 	newPassword   = "a whole new password, long enough for anybody"
 	wrongPassword = "not the password"
 )
+
+// inviteeName is who the invitations here are addressed to. Nothing reads it
+// back; an invitation just has to be addressed to somebody.
+const inviteeName = "Some Body"
 
 // reason is the client-safe reason a refusal carried in signin's domain, or
 // empty where it carried none.

@@ -181,13 +181,13 @@ func TestServer_GetEntry(T *testing.T) {
 	T.Run("passes the connection's scope into the read", func(t *testing.T) {
 		t.Parallel()
 
-		var got *tenancy.Scope
+		var got tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
 			GetFunc: func(
 				_ context.Context,
 				_ database.SQLQueryExecutor,
-				scope *tenancy.Scope,
+				scope tenancy.Scope,
 				id string,
 			) (*audit.Entry, error) {
 				got = scope
@@ -203,10 +203,12 @@ func TestServer_GetEntry(T *testing.T) {
 		_, err = srv.GetEntry(t.Context(), &auditpb.GetEntryRequest{EntryId: "audit_1"})
 		must.NoError(t, err)
 
-		// Never nil, which is the reading that answers across every tenant.
-		// This surface has no operator and no way for a client to ask for one.
-		must.NotNil(t, got)
-		test.EqOp(t, ours, *got)
+		// Never the read across every tenant, which is GetAcrossScopes: this
+		// surface has no operator and no way for a client to ask for one, and
+		// the double would have panicked on a call to a method it was not
+		// given.
+		test.EqOp(t, ours, got)
+		test.SliceEmpty(t, reader.GetAcrossScopesCalls())
 	})
 
 	T.Run("refuses an empty id", func(t *testing.T) {

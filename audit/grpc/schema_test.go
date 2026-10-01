@@ -19,8 +19,8 @@ import (
 // The server-side half is asserted in server_test.go, against a real chain in
 // two tenants. This is the half no request can reach: the schema has no field
 // for a scope, in any message, so there is nothing for a handler to read one
-// from and nothing for a converter to be asked to honor. audit.Query.Scope is a
-// *string in which nil means every tenant's events, and a field here is the
+// from and nothing for a converter to be asked to honor. audit.Reader's read
+// across every tenant's events is a method of its own, and a field here is the
 // exact shape that would put that choice in a client's hands.
 //
 // It reads the file descriptor rather than the generated structs, so it is a

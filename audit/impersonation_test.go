@@ -36,7 +36,7 @@ func TestRecorder_RecordsTheImpersonator(T *testing.T) {
 		entry := impersonatedEntry(scope, "recipe_1")
 		record(t, client, newTestRecorder(t, newStubClock()), entry)
 
-		got, err := reader.Get(t.Context(), client.Reader(), &scope, entry.ID)
+		got, err := reader.Get(t.Context(), client.Reader(), scope, entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, "customer", got.Actor.ID)
 		test.EqOp(t, "operator", got.Actor.Impersonator)
@@ -141,7 +141,7 @@ func TestReader_ListByImpersonator(T *testing.T) {
 	list := func(t *testing.T, query *Query) []string {
 		t.Helper()
 
-		page, err := reader.List(t.Context(), client.Reader(), query, filtering.DefaultQueryFilter())
+		page, err := reader.List(t.Context(), client.Reader(), scope, query, filtering.DefaultQueryFilter())
 		must.NoError(t, err)
 
 		ids := make([]string, 0, len(page.Data))
@@ -155,19 +155,19 @@ func TestReader_ListByImpersonator(T *testing.T) {
 	T.Run("finds what an operator did as somebody else", func(t *testing.T) {
 		t.Parallel()
 
-		test.Eq(t, []string{impersonated.ID}, list(t, &Query{Scope: &scope, ImpersonatorID: "operator"}))
+		test.Eq(t, []string{impersonated.ID}, list(t, &Query{ImpersonatorID: "operator"}))
 	})
 
 	T.Run("files an impersonated act under the subject", func(t *testing.T) {
 		t.Parallel()
 
-		test.Eq(t, []string{impersonated.ID}, list(t, &Query{Scope: &scope, ActorID: "customer"}))
+		test.Eq(t, []string{impersonated.ID}, list(t, &Query{ActorID: "customer"}))
 	})
 
 	T.Run("keeps the operator's own acts under their own id", func(t *testing.T) {
 		t.Parallel()
 
-		test.Eq(t, []string{own.ID}, list(t, &Query{Scope: &scope, ActorID: "operator"}))
+		test.Eq(t, []string{own.ID}, list(t, &Query{ActorID: "operator"}))
 	})
 }
 

@@ -95,6 +95,23 @@ All three are optional. A process that provides none of them is the service it
 was before; one that provides the jobs without configuring a scheduler is the
 one combination refused, because those jobs would never run.
 
+# Reapers the platform schedules for itself
+
+A store that owns a reaper registers it beside the store, and New schedules it
+with the application's jobs: operations' recovery and reap, saga's retention,
+and the password reset, OAuth2 server, refresh token and session sweeps. Each is
+on unless its config's job says Disabled — OPERATIONS_REAP_DISABLED,
+SAGA_RETENTION_JOB_DISABLED and so on — because a reaper that has to be
+remembered is a reaper that is forgotten.
+
+They differ in one way, and it is what happens without a scheduler. The token
+sweeps each have an in-process loop of their own, SWEEP_INTERVAL, so a service
+with no scheduler skips their jobs and the tables are still swept, once per
+replica rather than once per fleet. Operations and saga have no such loop, so a
+service that configures either one and no scheduler is refused by New with
+ErrScheduledJobsWithoutScheduler until it either configures JOBS_SCHEDULER_* or
+switches the job off by name.
+
 # Transport surfaces
 
 Register wires the stores, the services and the loops. RegisterTransports wires
@@ -115,8 +132,8 @@ what a client talks to:
 	svc, err := service.New(i)
 
 The gRPC surfaces — audit, oauth2clients, passkeys, passwordreset, signin,
-billing, comments, identity, issuereports, notifications, settings, waitlists
-and webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built
+billing, comments, identity, issuereports, mediaregistry, notifications,
+settings, waitlists and webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built
 from. The HTTP ones — dataprivacy, mediaregistry and operations — put their
 routes on the router the HTTP server serves.
 
@@ -159,8 +176,8 @@ every RPC on it is for somebody who cannot sign in — which is the argument the
 callers package already makes: a deployment has one authentication interceptor
 and one notion of a caller. Four surfaces
 declare something narrower than a principal — audit and operations want a scope,
-dataprivacy wants a subject, mediaregistry wants a caller identifier and a scope
-— and each of those is derived from the one extractor rather than asked for
+dataprivacy wants a subject, mediaregistry's two surfaces want a caller
+identifier and a scope — and each of those is derived from the one extractor rather than asked for
 again.
 
 The tenant scope is the one derivation an extractor cannot always make. A
@@ -170,8 +187,8 @@ files its audit entries, its operations and its media under the account instead.
 Those two readings cannot both be Principal.Scope() — identity reads it as the
 directory — so a deployment where they differ supplies Transports.TenantOf,
 which reads the tenant off a principal this package has already found, and the
-three surfaces that mean the tenant are mounted with it. It has no default: a
-deployment mounting any of the three without one fails at startup with
+surfaces that mean the tenant are mounted with it. It has no default: a
+deployment mounting any of them without one fails at startup with
 ErrNilTenantOf, and a deployment whose directory is its tenant names
 DirectoryTenant.
 
@@ -183,16 +200,27 @@ have a default their own package chose, and leaving the field nil leaves that ch
 alone.
 
 The grants extractor is the optional fourth, and it answers what the caller may
-do for the seven surfaces that ask inside a handler — billing, comments,
-issuereports, notifications, settings, waitlists and webhooks — whether a read
-that sent include_archived receives the archived rows, and whether a settings
-write may name a setting the catalog reserved to administrators. Neither is a
-question a method grant can answer, because both turn on the request. Left nil,
-each surface keeps its own fail-closed answer: include_archived is cleared and
-every reserved write is refused, for administrators too. That is a server that
-withholds rather than one that mounts open, so nil stays legal, and a service
-that means to serve either feature supplies the same
+do for the eight surfaces that ask inside a handler — billing, comments,
+identity, issuereports, notifications, settings, waitlists and webhooks —
+whether a read that sent include_archived receives the archived rows, whether a
+settings write may name a setting the catalog reserved to administrators, and
+whether a caller identity's row check refused holds the operator permission
+that lets them past it. None is a question a method grant
+can answer, because each turns on the request. Left nil, each surface keeps its
+own fail-closed answer: include_archived is cleared, every reserved write is
+refused, for administrators too, and nobody is an operator. That is a server
+that withholds rather than one that mounts open, so nil stays legal, and a
+service that means to serve any of it supplies the same
 authorization.GrantsExtractor its authorization interceptor reads.
+
+The operator permissions are armed only where an audit.Recorder resolves too —
+Config.Audit registers one — because every operator admission is recorded and
+an admission nobody can see is not one this module makes. Nothing grants those
+permissions by default; see identity/grpc's PermissionOperatorRead and
+PermissionOperatorAct. Audit's operator read asks nothing of the grants
+extractor: it is AuditAdministrationService, a service of its own gated at the
+method by audit/grpc's PermissionReadAnyEntries, and the same recorder is what
+arms it — without one its methods answer Unimplemented.
 
 The HTTP enforcer is the optional fifth, and the HTTP counterpart of that interceptor:
 an authorization/http Enforcer the consumer builds over the same grants, which

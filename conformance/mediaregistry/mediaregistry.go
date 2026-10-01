@@ -24,8 +24,9 @@ func Suite() conformance.Suite {
 	return conformance.Suite{
 		Name: surface,
 
-		// The HTTP surfaces are not in Surfaces; whether this one is served is
-		// read off the probe caller's HTTP inside, and skipped with the reason.
+		// The serve route is not in Surfaces, so whether it is served is read
+		// off the probe caller's HTTP inside, and skipped with the reason; the
+		// resource surface is, and is skipped the same way where it is absent.
 		Mounted: func(conformance.Surfaces) bool { return true },
 		Run:     run,
 	}
@@ -39,6 +40,21 @@ type answer struct {
 }
 
 func run(t *testing.T, s *conformance.Session) {
+	t.Helper()
+
+	t.Run("the serve route", func(t *testing.T) {
+		t.Parallel()
+		serveRoute(t, s)
+	})
+	t.Run("the resource surface", func(t *testing.T) {
+		t.Parallel()
+		resourceSurface(t, s)
+	})
+}
+
+// serveRoute is mediaregistry/http's promises: an object's bytes reach the
+// caller entitled to them and nobody else.
+func serveRoute(t *testing.T, s *conformance.Session) {
 	t.Helper()
 
 	probe := s.Subject(t)

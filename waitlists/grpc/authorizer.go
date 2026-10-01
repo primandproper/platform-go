@@ -68,6 +68,37 @@ import (
 // [callers.Principal], or a deployment that minted links of its own and redeems
 // them in an interceptor before this is asked.
 //
+// # The owner, or an operator
+//
+// An operator withdrawing somebody's signup, or reading the signups of a
+// subject who is not them, is this seam's to admit, and it is admitted on a
+// permission rather than on a role's name. The implementation already has what
+// it needs: the same authorization.GrantsExtractor the consumer hands the
+// enforcer, and [WithGrantsExtractor] hands this server, is callable from
+// inside the closure:
+//
+//	const readAnySignups authorization.Permission = "waitlists.signups.read_any"
+//
+//	authorizer := waitlistsgrpc.SignupAuthorizerFuncs{
+//		SubjectRead: func(ctx context.Context, caller callers.Principal,
+//			scope tenancy.Scope, subject waitlists.Subject) error {
+//			if grants, ok := grantsFor(ctx); ok && grants.Has(readAnySignups) {
+//				return nil
+//			}
+//
+//			return ownSubject(caller, subject)
+//		},
+//		// Withdrawal likewise, against a permission of its own.
+//	}
+//
+// The permissions are the deployment's to name and grant; this package
+// declares none, since it ships no rule for one to bypass. Checking a role's
+// name — "service_admin" — in their place is the policy the permission
+// fragment exists to keep out of code. identity/grpc, which does ship a rule,
+// records every admission its operator permissions make as
+// audit.OperatorBypassEntry, and a deployment that wants the same trail here
+// records one from the closure.
+//
 // # What implementations owe
 //
 // A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.

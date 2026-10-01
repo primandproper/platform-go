@@ -259,3 +259,44 @@ func ownedBy(listed []*identitypb.Account, userID string) []string {
 
 	return out
 }
+
+// landing reads userID's memberships through caller, and answers the accounts
+// userID holds and the ones marked as where they land.
+//
+// Through ListMembershipsForUser rather than the principal read, because the
+// principal resolves its active account off the caller's credential, and a
+// credential minted before a default moved may still name where it was.
+func landing(t *testing.T, caller *conformance.Subject, userID string) (held, defaults []string) {
+	t.Helper()
+
+	memberships, err := caller.Surfaces.Identity.ListMembershipsForUser(caller.Context(t.Context()),
+		&identitypb.ListMembershipsForUserRequest{UserId: userID})
+	must.NoError(t, err)
+
+	for _, m := range memberships.GetResults() {
+		held = append(held, m.GetBelongsToAccount())
+
+		if m.GetDefaultAccount() {
+			defaults = append(defaults, m.GetBelongsToAccount())
+		}
+	}
+
+	return held, defaults
+}
+
+// openAccount opens a second account for caller, owned by them, which is what
+// an assertion that archives or rewrites an account acts on: never the account
+// the caller was minted with, which a subject whose operator is one shared
+// person would be taking from everybody else in the run.
+func openAccount(t *testing.T, s *conformance.Session, caller *conformance.Subject) *identitypb.Account {
+	t.Helper()
+
+	response, err := caller.Surfaces.Identity.CreateAccount(caller.Context(t.Context()), &identitypb.CreateAccountRequest{
+		Name:       "conf_" + identifiers.New(),
+		OwnerRoles: []string{s.Roles().Owner},
+	})
+	must.NoError(t, err, must.Sprint("opening a second account"))
+	must.NotNil(t, response.GetAccount())
+
+	return response.GetAccount()
+}

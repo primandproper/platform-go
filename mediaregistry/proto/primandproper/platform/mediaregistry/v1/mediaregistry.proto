@@ -1,0 +1,298 @@
+// Package primandproper.platform.mediaregistry.v1 is the wire schema for the
+// objects an application's users put in its bucket: sending one, registering
+// one that arrived some other way, and reading back what is theirs.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/mediaregistry/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/mediaregistry/v1/mediaregistry.proto=github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # Nothing here is the consumer's noun
+//
+// An object is bytes in a bucket and the row that says whose they are. Every
+// rule an application has about them is a value rather than a shape -- which
+// types it accepts, how large, where in the bucket they go, what it meters --
+// and mediaregistry/grpc takes each of those as an option with a default. What
+// an object is *for* is the consumer's, and it stays theirs: an avatar, a
+// receipt, a recipe's photo. The one place this file touches that vocabulary is
+// [Subject], and it touches it only as an opaque pair of strings.
+//
+// # What a caller may attach an object to
+//
+// Upload and record may attach an object to the caller's own user subject, or
+// to nothing. This service cannot know whether recipe 123 is the caller's, so it
+// does not let a caller say so: an attachment to one of the consumer's nouns
+// goes through the consumer's own RPC, which authorizes the subject and calls
+// mediaregistry.StoreAndRecord with it.
+//
+// # Refusals say nothing
+//
+// An object that does not exist, one in another tenant, and one the caller is
+// not entitled to are one answer: NOT_FOUND. The same answer goes to a caller
+// who tries to attach an object to somebody else, or to register a key outside
+// the part of the bucket that is theirs. Separating them would be an oracle,
+// and it is the answer mediaregistry/http's serve route already gives.
+//
+// # What is not here
+//
+// No scope field, anywhere, and the reservation is what makes that a schema
+// protoc enforces rather than a comment somebody can add a field beneath. The
+// tenant comes off the caller the consumer's authentication resolved.
+//
+// No owner on any write. An object belongs to whoever sent it, and an owner a
+// client could name is an upload filed under somebody else's quota.
+//
+// No key and no bucket on an upload. Where the bytes go is the deployment's key
+// layout, applied to the caller; a key a client could name is a client choosing
+// whose objects it overwrites.
+//
+// No byte read. mediaregistry/http's guarded serve is where an object's bytes
+// come back, because a range is what an image tag and a video player send and
+// an RPC does not have one.
+
+syntax = "proto3";
+
+package primandproper.platform.mediaregistry.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb;mediaregistrypb";
+
+// Subject is what an object hangs off, in the consumer's own words: a type and
+// an id, both or neither.
+message Subject {
+  reserved "scope";
+
+  // type is the kind of thing the object hangs off. Nothing in this module
+  // validates the vocabulary.
+  string type = 1;
+
+  // id identifies the thing, within its type.
+  string id = 2;
+}
+
+// Object is one registered object: what the bytes in the bucket are, and whose.
+message Object {
+  // No scope field, on this message or on any other in this file. See the
+  // file comment.
+  reserved "scope";
+
+  // created_at is when the object was registered, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the row last changed, unset for one nobody has
+  // touched since it was registered -- which today is every one.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when the row was archived, unset while it is live. Only the
+  // answer to ArchiveObject carries one: no read returns an archived object.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // belongs_to is what the object hangs off, unset for a standalone upload.
+  Subject belongs_to = 4;
+
+  // id is the row, and what every other RPC here and mediaregistry/http's
+  // serve route name an object by.
+  string id = 5;
+
+  // key is where the bytes live in the bucket. It is not an address: nothing
+  // here or on the serve route reads an object by its key.
+  string key = 6;
+
+  // content_type is what the object is, as it was stored.
+  string content_type = 7;
+
+  // owner_id is who sent it. Output only.
+  string owner_id = 8 [json_name = "ownerID"];
+
+  // size is how many bytes were stored, counted as they went past rather than
+  // taken from anything a client claimed.
+  int64 size = 9;
+}
+
+// UploadObjectHeader is the first message of an upload: what the bytes about to
+// follow are.
+message UploadObjectHeader {
+  reserved "scope";
+
+  // Where the bytes go and whose they are are the service's to decide. See the
+  // file comment.
+  reserved "key";
+  reserved "owner_id";
+  reserved "bucket";
+
+  // name is the object's own name, as the client knows it -- "avatar.png". It is
+  // the last segment of the key the deployment's layout builds, so it may not
+  // contain a path separator.
+  string name = 1;
+
+  // content_type is what the object is. The deployment's policy decides which
+  // types it accepts; the default refuses the ones a browser executes, and one
+  // left empty.
+  string content_type = 2;
+
+  // belongs_to is what the object hangs off: the caller's own user subject, or
+  // nothing. See the file comment.
+  Subject belongs_to = 3;
+}
+
+// UploadObjectRequest is one message of an upload's stream: the header first,
+// then the bytes, in as many chunks as the client likes.
+message UploadObjectRequest {
+  reserved "scope";
+
+  oneof part {
+    // header is the first message, and only the first.
+    UploadObjectHeader header = 1;
+
+    // chunk is the next run of the object's bytes.
+    bytes chunk = 2;
+  }
+}
+
+message UploadObjectResponse {
+  reserved "scope";
+
+  // result is the object as registered, with the size that was counted.
+  Object result = 1;
+}
+
+// RecordObjectRequest registers bytes that are already in the bucket -- written
+// through a signed URL, or by some other process -- as the caller's.
+message RecordObjectRequest {
+  reserved "scope";
+  reserved "owner_id";
+
+  // The size is the bucket's to report, not the client's to claim.
+  reserved "size";
+
+  // key is where the bytes already are. The deployment's policy decides which
+  // keys a caller may register; the default is the part of the bucket the
+  // deployment's key layout gives this caller.
+  string key = 1;
+
+  // content_type is what the object is, under the same policy an upload's is.
+  string content_type = 2;
+
+  // belongs_to is what the object hangs off: the caller's own user subject, or
+  // nothing.
+  Subject belongs_to = 3;
+}
+
+message RecordObjectResponse {
+  reserved "scope";
+
+  Object result = 1;
+}
+
+message GetObjectRequest {
+  reserved "scope";
+
+  string object_id = 1 [json_name = "objectID"];
+}
+
+message GetObjectResponse {
+  reserved "scope";
+
+  Object result = 1;
+}
+
+// ListObjectsByIDsRequest reads a bounded set of objects in one call -- the read
+// a page of rows that each name an upload wants.
+message ListObjectsByIDsRequest {
+  reserved "scope";
+
+  // object_ids is the set to read. An id that names nothing this caller may
+  // have is absent from the answer rather than an error.
+  repeated string object_ids = 1 [json_name = "objectIDs"];
+}
+
+message ListObjectsByIDsResponse {
+  reserved "scope";
+
+  repeated Object results = 1;
+}
+
+// ListMyObjectsRequest pages the caller's own objects. There is no owner field:
+// whose objects these are is who is asking.
+message ListMyObjectsRequest {
+  reserved "scope";
+  reserved "owner_id";
+
+  // filter pages the result. Its include_archived is cleared: no read here
+  // returns an archived object.
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListMyObjectsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Object results = 2;
+}
+
+// ListObjectsBySubjectRequest pages the objects attached to one thing that the
+// caller may read.
+message ListObjectsBySubjectRequest {
+  reserved "scope";
+
+  // subject is required, both halves: listing the objects attached to nothing
+  // is not the question this answers.
+  Subject subject = 1;
+
+  // filter pages the result. Its include_archived is cleared.
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListObjectsBySubjectResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Object results = 2;
+}
+
+message ArchiveObjectRequest {
+  reserved "scope";
+
+  string object_id = 1 [json_name = "objectID"];
+}
+
+message ArchiveObjectResponse {
+  reserved "scope";
+
+  // result is the row as archived. Archiving is metadata-only: the bytes stay
+  // in the bucket, and this is the last read that will name the key they are
+  // at.
+  Object result = 1;
+}
+
+// MediaRegistryService is the registry's resource surface: putting an object in
+// the bucket as the caller's, and reading back what is theirs.
+//
+// Every method requires a grant -- see mediaregistry/grpc's Permissions -- and
+// platform grants none of them to anybody. The tenant is not among any method's
+// arguments.
+service MediaRegistryService {
+  // UploadObject streams an object into the bucket and registers it. The first
+  // message is the header; every one after it is a chunk.
+  rpc UploadObject(stream UploadObjectRequest) returns (UploadObjectResponse);
+  rpc RecordObject(RecordObjectRequest) returns (RecordObjectResponse);
+  rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
+  rpc ListObjectsByIDs(ListObjectsByIDsRequest) returns (ListObjectsByIDsResponse);
+  rpc ListMyObjects(ListMyObjectsRequest) returns (ListMyObjectsResponse);
+  rpc ListObjectsBySubject(ListObjectsBySubjectRequest) returns (ListObjectsBySubjectResponse);
+  rpc ArchiveObject(ArchiveObjectRequest) returns (ArchiveObjectResponse);
+}

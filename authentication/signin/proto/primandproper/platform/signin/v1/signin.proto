@@ -113,6 +113,18 @@
 // token from a clicked link rather than from a password -- is not here either:
 // it is a sibling of LoginForToken rather than a branch inside it, and it is
 // the one thing a registrant who named no password still needs.
+//
+// # Two services, and why the second exists
+//
+// SignInService permissions nothing: every RPC on it is a door, a finish of a
+// registration, or about the caller and nobody else. An operator's view of
+// somebody else's logins is a different act, and it is SignInAdministrationService
+// rather than a field on those RPCs naming a user -- a field that would turn every
+// "about the caller" guarantee on SignInService into a question about the
+// caller's grants. The second service is the one that is permissioned, one
+// declared permission per RPC and no default grant for any of them, so which
+// callers are operators stays the deployment's policy. See
+// authentication/signin/grpc's Permissions.
 
 syntax = "proto3";
 
@@ -345,8 +357,8 @@ message SignOutResponse {}
 // for GetAuthStatusRequest's reason: the subject is whoever is calling, and a
 // field naming somebody else would be an administrator's revocation wearing a
 // sign-out's clothes. An operator ending somebody else's sessions is a different
-// act with a different permission, and it is signin.Service's method rather than
-// this RPC.
+// act with a different permission, and it is
+// SignInAdministrationService.EndAllSignInsForUser rather than this RPC.
 //
 // It is the door for a password a person thinks somebody else has seen, so it
 // takes no credential and re-proves nothing: a user who is told "your password
@@ -366,11 +378,13 @@ message SignOutEverywhereResponse {}
 // ActiveSignIn is one live login, as a "where you're signed in" screen shows
 // it.
 //
-// It carries no device, no browser and no address, and that is a decision
-// rather than a gap. Whether any of those is recorded at all is the consumer's,
-// and a consumer that does record them keys them on family_id -- signin's
-// AfterIssueToken hook runs inside every mint with the family on it -- and joins
-// them to this.
+// The platform lists the logins and records how each one happened; the device
+// is the consumer's. The server stores no device, no browser and no address,
+// and that is a decision rather than a gap. Whether any of those is recorded at
+// all is the consumer's, and a consumer that does record them keys them on
+// family_id -- signin's AfterIssueToken hook runs inside every mint with the
+// family on it -- and hands them back through the server's sign-in annotator,
+// which fills attributes.
 message ActiveSignIn {
   reserved "scope";
 
@@ -406,6 +420,20 @@ message ActiveSignIn {
   // person's own. A client shows it, because "somebody else is signed in as
   // you" is a thing a person is owed the chance to see and end.
   string actor_id = 8 [json_name = "actorID"];
+
+  // credential_kind is how the login happened: what proved the sign-in that
+  // began it -- "password", "recovery_code", "magic_link", "principal",
+  // "impersonation", or a kind the consumer named when it proved the principal
+  // itself. A refresh does not change it. It is empty only for a login whose
+  // store recorded none.
+  string credential_kind = 9;
+
+  // attributes is what the consumer recorded about the login's device -- a
+  // device name, a user agent, an address -- as the server's sign-in annotator
+  // answered for this family. The platform stores none of it and names none of
+  // its keys. It is empty on a server built without an annotator, and for a
+  // login the annotator had nothing for.
+  map<string, string> attributes = 10;
 }
 
 // ListSignInsRequest asks for the calling user's live logins, most recently
@@ -414,7 +442,7 @@ message ActiveSignIn {
 // It requires a caller and names nobody, which is SignOutEverywhereRequest's
 // rule for SignOutEverywhereRequest's reason: an operator listing somebody
 // else's logins is a different act with a different permission, and it is
-// signin.Service's method rather than this RPC.
+// SignInAdministrationService.ListSignInsForUser rather than this RPC.
 message ListSignInsRequest {
   reserved "scope";
 
@@ -875,6 +903,9 @@ message RequestHandleReminderResponse {}
 // from the caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
+// What an operator does to somebody else's logins is
+// SignInAdministrationService, which is permissioned, and which is a service of
+// its own so that this statement stays true of this one.
 service SignInService {
   // Arriving, and the two ways a registration is finished. Register requires a
   // caller -- the consumer's own registrar, for the reason identity's Register
@@ -919,16 +950,14 @@ service SignInService {
   // needs no caller, so an application whose access token expired while it was
   // closed can still sign out; ending every login needs a caller and names
   // nobody. Both are a client's to call and neither is an operator's tool --
-  // revoking somebody else's sessions is signin.Service's method, reached
-  // through a consumer's own administrative surface.
+  // revoking somebody else's sessions is SignInAdministrationService's.
   rpc SignOut(SignOutRequest) returns (SignOutResponse);
   rpc SignOutEverywhere(SignOutEverywhereRequest) returns (SignOutEverywhereResponse);
 
   // The screen between those two sizes: the calling user's live logins, ending
   // one of them by name, and ending all of them but the one asking. All three
   // need a caller and name nobody else; an operator doing any of them for
-  // somebody else calls signin.Service's methods through their own
-  // administrative surface.
+  // somebody else calls SignInAdministrationService.
   rpc ListSignIns(ListSignInsRequest) returns (ListSignInsResponse);
   rpc EndSignIn(EndSignInRequest) returns (EndSignInResponse);
   rpc EndOtherSignIns(EndOtherSignInsRequest) returns (EndOtherSignInsResponse);
@@ -941,4 +970,78 @@ service SignInService {
   rpc UpdatePassword(UpdatePasswordRequest) returns (UpdatePasswordResponse);
   rpc RefreshTOTPSecret(RefreshTOTPSecretRequest) returns (RefreshTOTPSecretResponse);
   rpc VerifyTOTPSecret(VerifyTOTPSecretRequest) returns (VerifyTOTPSecretResponse);
+}
+
+// ListSignInsForUserRequest asks for the live logins of the user it names, most
+// recently refreshed first: an operator's view of somebody else's "where you're
+// signed in" screen.
+message ListSignInsForUserRequest {
+  reserved "scope";
+
+  // user_id is whose logins to list. Empty is INVALID_ARGUMENT.
+  string user_id = 1 [json_name = "userID"];
+
+  // limit is ListSignInsRequest.limit, read the same way.
+  uint32 limit = 2;
+}
+
+// ListSignInsForUserResponse carries ActiveSignIn exactly as ListSignIns does,
+// except that current is false on every entry: the request was made through the
+// operator's login, which is never one of these.
+message ListSignInsForUserResponse {
+  repeated ActiveSignIn sign_ins = 1;
+}
+
+// EndSignInForUserRequest ends one of the named user's logins, named by its
+// family.
+//
+// Both fields are the key, as the caller and the family are for EndSignIn: a
+// family that is not user_id's ends nothing, so an operator who pasted the
+// wrong identifier ends nobody's login rather than a stranger's. The answer
+// does not say whether anything ended; ListSignInsForUser does.
+message EndSignInForUserRequest {
+  reserved "scope";
+
+  // user_id is whose login to end. Empty is INVALID_ARGUMENT.
+  string user_id = 1 [json_name = "userID"];
+
+  // family_id is the login, as ListSignInsForUser answered it. Empty is
+  // INVALID_ARGUMENT.
+  string family_id = 2 [json_name = "familyID"];
+}
+
+// EndSignInForUserResponse is empty -- see SignOutResponse.
+message EndSignInForUserResponse {}
+
+// EndAllSignInsForUserRequest ends every login the named user holds: what an
+// operator runs for an account they think is compromised, and
+// SignOutEverywhere done to somebody rather than by them.
+message EndAllSignInsForUserRequest {
+  reserved "scope";
+
+  // user_id is whose logins to end. Empty is INVALID_ARGUMENT.
+  string user_id = 1 [json_name = "userID"];
+}
+
+// EndAllSignInsForUserResponse is empty -- see SignOutEverywhereResponse.
+message EndAllSignInsForUserResponse {}
+
+// SignInAdministrationService is what an operator does to somebody else's
+// logins: read them, end one, end all of them.
+//
+// Every RPC requires a caller and names a user, and each is gated by a
+// permission authentication/signin/grpc declares -- signin.sign_ins.read_any
+// for the read, signin.sign_ins.end_any for the two ends -- which no role holds
+// by default. Who holds them is the deployment's policy; this schema codifies
+// nothing about who an operator is.
+//
+// An end is reported to the sign-in service's revocation hook as an
+// operator's, with the caller as the actor, so an audit trail tells "an
+// operator signed me out" from "I signed out". Like every end, it stops the
+// login's access tokens being replaced rather than stopping the one already
+// issued, unless the deployment checks each token's login on every request.
+service SignInAdministrationService {
+  rpc ListSignInsForUser(ListSignInsForUserRequest) returns (ListSignInsForUserResponse);
+  rpc EndSignInForUser(EndSignInForUserRequest) returns (EndSignInForUserResponse);
+  rpc EndAllSignInsForUser(EndAllSignInsForUserRequest) returns (EndAllSignInsForUserResponse);
 }

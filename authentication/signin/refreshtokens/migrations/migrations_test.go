@@ -348,8 +348,8 @@ func TestStatementsSince(T *testing.T) {
 		}
 	})
 
-	// A database at version 3 has signed_in_at and owes only the access token
-	// column: one ALTER, no backfill and no rebuild on any dialect.
+	// A database at version 3 has signed_in_at and owes only version 4's three
+	// columns: one ALTER each, no backfill and no rebuild on any dialect.
 	T.Run("renders only what a database at version 3 owes", func(t *testing.T) {
 		t.Parallel()
 
@@ -361,11 +361,13 @@ func TestStatementsSince(T *testing.T) {
 			must.NoError(t, versionErr)
 			test.Eq(t, want, stmts, test.Sprintf("dialect %q", d))
 
-			must.SliceLen(t, 2, stmts, must.Sprintf("dialect %q", d))
+			must.SliceLen(t, 3, stmts, must.Sprintf("dialect %q", d))
 			test.StrContains(t, stmts[0], "ADD COLUMN", test.Sprintf("dialect %q", d))
 			test.StrContains(t, stmts[0], "access_token_id", test.Sprintf("dialect %q", d))
 			test.StrContains(t, stmts[1], "ADD COLUMN", test.Sprintf("dialect %q", d))
 			test.StrContains(t, stmts[1], "actor_id", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[2], "ADD COLUMN", test.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[2], "credential_kind", test.Sprintf("dialect %q", d))
 		}
 	})
 

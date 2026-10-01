@@ -120,6 +120,7 @@ var roster = map[string]entry{
 	"internal/directrequires":   {tier: root, why: "a convention test over go.mod's account of what the module imports"},
 	"internal/protoconvention":  {tier: root, why: "a convention test over every .proto the module ships"},
 	"internal/routeguard":       {tier: domain, why: "the permission check the domain HTTP surfaces put in front of their guarded routes"},
+	"internal/scheduledjob":     {tier: domain, why: "the defaulting and rendering every self-scheduling store's job config shares"},
 	"internal/schemaconvention": {tier: root, why: "a convention test over every package that ships DDL"},
 	"internal/scopeddl":         {tier: root, why: "a convention test over every scoped table in the module"},
 	"internal/sentinelmatrix":   {tier: root, why: "the roster of every domain sentinel and the mappers that answer for it"},

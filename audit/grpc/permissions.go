@@ -34,6 +34,17 @@ const (
 	// of the audit log, which is the account most likely to be long-lived and
 	// least likely to be reviewed.
 	PermissionVerifyChain authorization.Permission = "audit.chain.verify"
+
+	// PermissionReadAnyEntries covers AuditAdministrationService: reading an
+	// entry in any tenant's chain, and paging every tenant's log.
+	//
+	// No role holds it by default, and nothing here says who should. Whether
+	// somebody may audit the whole deployment is the deployment's policy to
+	// decide, and this is the name that policy grants — on a method of its own,
+	// so that holding it changes nothing about what AuditService answers the
+	// same person reading their own log. Every call it admits is recorded; see
+	// WithOperatorRecorder.
+	PermissionReadAnyEntries authorization.Permission = "audit.entries.read_any"
 )
 
 // Permissions is the default map from this service's methods to what each
@@ -43,12 +54,14 @@ const (
 // member of an account overrides the entry — the map is theirs once they have
 // it, and authorization/grpc's builder takes whatever they hand it.
 //
-// Unlike identity/grpc's, it is the whole of what gates this service, and
-// nothing here is a second question about a row. Every RPC is against the one
-// scope the connection resolved: there is no target on a request that a
-// permission cannot speak about, because the only id a request carries is an
-// entry's, and an entry outside the caller's scope is answered as absent before
-// anything is read out of it.
+// Unlike identity/grpc's, it is the whole of what gates this surface, and
+// nothing here is a second question about a row. Every AuditService RPC is
+// against the one scope the connection resolved: there is no target on a
+// request that a permission cannot speak about, because the only id a request
+// carries is an entry's, and an entry outside the caller's scope is answered as
+// absent before anything is read out of it. AuditAdministrationService's RPCs
+// name any tenant, and that is what [PermissionReadAnyEntries] on the method is
+// for: the reach is granted by the method, so there is no row left to ask about.
 //
 // The keys are the generated full method names, which is the form
 // grpc.UnaryServerInfo.FullMethod carries and the form RequirementsBuilder
@@ -56,7 +69,7 @@ const (
 // literals is what makes a renamed RPC a compile error here instead of a method
 // that silently stops being checked.
 //
-// The map is exhaustive over the service — there are no public methods and no
+// The map is exhaustive over both services — there are no public methods and no
 // self-service ones, since a log has no notion of a caller's own row — and
 // permissions_test.go is what keeps it that way. An RPC added later and decided
 // about nowhere fails there rather than being denied in somebody's production by
@@ -66,6 +79,9 @@ func Permissions() map[string][]authorization.Permission {
 		auditpb.AuditService_GetEntry_FullMethodName:    {PermissionReadEntries},
 		auditpb.AuditService_ListEntries_FullMethodName: {PermissionReadEntries},
 		auditpb.AuditService_VerifyChain_FullMethodName: {PermissionVerifyChain},
+
+		auditpb.AuditAdministrationService_GetAnyEntry_FullMethodName:    {PermissionReadAnyEntries},
+		auditpb.AuditAdministrationService_ListAnyEntries_FullMethodName: {PermissionReadAnyEntries},
 	}
 }
 

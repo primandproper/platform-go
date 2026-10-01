@@ -60,6 +60,7 @@ func httpRoster() []httpSurface {
 				{http.MethodGet, privacy + "/{requestID}"},
 				{http.MethodGet, privacy + "/{requestID}/confirm"},
 				{http.MethodPost, privacy + "/{requestID}/cancel"},
+				{http.MethodGet, privacy + "/{requestID}/artifact"},
 			},
 		},
 		{

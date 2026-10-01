@@ -99,10 +99,20 @@ the lifecycle writes are the triager's, and their target is the queue
 rather than a person — a grant to page every report in the tenant is the answer
 to "whose", spelled where a consumer's policy can audit it.
 
+ListReportsAcrossScopes and ListReportsByStatusAcrossScopes are the operator's,
+and their target is every tenant's queue. They require [PermissionReadAnyReports]
+and nothing else does; this package declares it and grants it to nobody, so a
+deployment that wants cross-tenant triage gives it to its staff in its own
+policy, and one that does not has nothing to revoke. They are not row-gated
+either: an operator's standing is the grant.
+
 # What comes off the principal, and what a request may say
 
 The tenant, always, and it is never read off a request field: a scope a client
-could name is a cross-tenant read hiding behind one. The reporter on a write,
+could name is a cross-tenant read hiding behind one. The operator's two reads do
+not narrow to it, and they are separate RPCs so that no request field is what
+widens a read; each row they answer with is a ScopedIssueReport, the one message
+in the schema that says whose a report is. The reporter on a write,
 likewise — one a client could name is a report filed in somebody else's words —
 so the creation input reserves the field, and the only request in the schema that
 carries a reporter is the one that names whose list to page. That one takes the

@@ -258,6 +258,13 @@ func TestRedeemMagicLink_signsSomebodyIn(t *testing.T) {
 
 	must.SliceNotEmpty(t, e.hooks.authentications)
 	test.EqOp(t, signin.CredentialKindMagicLink, e.hooks.authentications[len(e.hooks.authentications)-1].CredentialKind)
+
+	// The login records the kind the hook was told, so a person's list of
+	// where they are signed in says this one came through a link.
+	signIns, err := e.svc.ListSignIns(t.Context(), testScope, e.user.ID, 0)
+	must.NoError(t, err)
+	must.SliceLen(t, 1, signIns)
+	test.EqOp(t, signin.CredentialKindMagicLink, signIns[0].CredentialKind)
 }
 
 // TestRedeemMagicLink_isSingleUse is the guarantee the store's guarded write

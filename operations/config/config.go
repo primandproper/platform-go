@@ -3,11 +3,13 @@ package operationscfg
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -17,6 +19,16 @@ type Config struct {
 	// Operations configures the store and the service over it: the table, the
 	// queue name, and the retention and recovery policy.
 	Operations operations.Config `env:",init" json:"operations,omitzero" yaml:"operations,omitempty"`
+
+	// Recover is the job that runs Service.Recover, re-offering operations
+	// stranded between Start's two writes. It runs unless Disabled, every
+	// DefaultRecoverInterval unless it names its own schedule — see NewJobs.
+	Recover jobscfg.JobConfig `env:",init" envPrefix:"RECOVER_" json:"recover,omitzero" yaml:"recover,omitempty"`
+
+	// Reap is the job that runs Service.Reap, removing terminal operations past
+	// Operations.Retention. It runs unless Disabled, every DefaultReapInterval
+	// unless it names its own schedule.
+	Reap jobscfg.JobConfig `env:",init" envPrefix:"REAP_" json:"reap,omitzero" yaml:"reap,omitempty"`
 
 	// Queue configures the work queue operations are dispatched through.
 	//
@@ -49,6 +61,9 @@ func (cfg *Config) EnsureDefaults() {
 	cfg.Queue.Name = cfg.Operations.QueueName
 
 	cfg.Queue.EnsureDefaults()
+
+	scheduledjob.EnsureDefaults(&cfg.Recover, DefaultRecoverInterval, DefaultRecoverLeaseTTL)
+	scheduledjob.EnsureDefaults(&cfg.Reap, DefaultReapInterval, DefaultReapLeaseTTL)
 }
 
 // ValidateWithContext validates every half.
@@ -69,6 +84,12 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		})),
 		validation.Field(&cfg.Queue, validation.By(func(any) error {
 			return cfg.Queue.ValidateWithContext(ctx)
+		})),
+		validation.Field(&cfg.Recover, validation.By(func(any) error {
+			return scheduledjob.Validate(ctx, &cfg.Recover)
+		})),
+		validation.Field(&cfg.Reap, validation.By(func(any) error {
+			return scheduledjob.Validate(ctx, &cfg.Reap)
 		})),
 	)
 }

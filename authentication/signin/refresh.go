@@ -89,6 +89,11 @@ type RefreshToken struct {
 	// [Service.IssueImpersonationToken] began, and empty on every other row.
 	ActorID string `json:"actorID,omitempty"`
 
+	// CredentialKind is what proved the sign-in that began this row's login,
+	// carried onto every successor an exchange mints, and empty for a row whose
+	// store recorded none.
+	CredentialKind CredentialKind `json:"credentialKind,omitempty"`
+
 	// Scope is the directory the sign-in was made in.
 	Scope tenancy.Scope `json:"scope"`
 
@@ -158,6 +163,14 @@ type RefreshTokenRequest struct {
 	// person's logins is somebody else acting as them. Empty on every other
 	// mint.
 	ActorID string `json:"actorID,omitempty"`
+
+	// CredentialKind is what proved the sign-in this login began with, which
+	// the store records so that [RefreshTokenStore.ListActiveSignIns] can say
+	// how each of a person's logins happened. A mint that begins a login passes
+	// the kind its door stamped on [Authentication.CredentialKind]; an exchange
+	// passes the spent token's, as it does SignedInAt, because a refresh proves
+	// nothing new about how the login began.
+	CredentialKind CredentialKind `json:"credentialKind,omitempty"`
 
 	// TTL is how long the minted token may be exchanged for. It is the service's
 	// WithRefreshTokenTTL, resolved before the call, rather than something a
@@ -698,7 +711,7 @@ func (s *Service) ExchangeRefreshToken(
 			return txErr
 		}
 
-		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID, spent.SignedInAt); txErr != nil {
+		if txErr = s.mintRefreshToken(ctx, tx, scope, signIn, spent.FamilyID, spent.SignedInAt, spent.CredentialKind); txErr != nil {
 			return txErr
 		}
 
@@ -856,6 +869,12 @@ type RevocationOption func(*revocationRequest)
 // resolve to.
 type revocationRequest struct {
 	actorID string
+
+	// holderID is the person HeldBy confined the revocation to, and heldBy
+	// whether it was asked for at all — so that HeldBy("") is a mistake the
+	// door refuses rather than a confinement that confines nothing.
+	holderID string
+	heldBy   bool
 }
 
 // RevokedBy names who asked for an operator's revocation, and is what
@@ -868,6 +887,28 @@ type revocationRequest struct {
 // Without it the revocation is reported with no actor.
 func RevokedBy(actorID string) RevocationOption {
 	return func(r *revocationRequest) { r.actorID = actorID }
+}
+
+// HeldBy confines [Service.RevokeRefreshTokenFamily] to a login userID holds.
+//
+// A family identifier alone names a login and nobody in particular, so an
+// operator who ends one by identifier ends whoever's it is. An operator surface
+// that was asked to end one of a named person's logins passes the person too,
+// and then a family that is somebody else's — mistyped, pasted from the wrong
+// row — ends nothing and is zero, as a family that never existed is. That is
+// [Service.EndSignIn]'s confinement, kept on the operator's door so the
+// revocation is still reported as [RevocationOperator] with the operator as
+// its actor rather than as the person's own act.
+//
+// An empty userID is [ErrEmptyUserID]: a confinement to nobody is a caller who
+// meant to name somebody and did not, and reading it as no confinement would
+// fail open. [Service.RevokeRefreshTokensForSubject] names its person already
+// and reads nothing from it.
+func HeldBy(userID string) RevocationOption {
+	return func(r *revocationRequest) {
+		r.holderID = userID
+		r.heldBy = true
+	}
 }
 
 // RevokeRefreshTokenFamily ends one login: every refresh token that sign-in ever
@@ -886,7 +927,8 @@ func RevokedBy(actorID string) RevocationOption {
 // trade to make.
 //
 // A family nobody holds a live token for — never issued, already ended, or
-// lapsed — is zero and no error, and runs no hook.
+// lapsed — is zero and no error, and runs no hook. So is one [HeldBy] names
+// somebody else as holding.
 func (s *Service) RevokeRefreshTokenFamily(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -913,8 +955,12 @@ func (s *Service) RevokeRefreshTokenFamily(
 
 	request := resolveRevocation(opts)
 
-	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{FamilyID: familyID}, RevocationOperator,
-		request.actorID); err != nil {
+	if request.heldBy && request.holderID == "" {
+		return 0, op.Error(ErrEmptyUserID, "reading the subject a refresh token family is confined to")
+	}
+
+	if revoked, err = s.endSignIns(ctx, scope, SignInSelector{SubjectID: request.holderID, FamilyID: familyID},
+		RevocationOperator, request.actorID); err != nil {
 		return 0, op.Error(err, "revoking a refresh token family")
 	}
 
@@ -1190,7 +1236,8 @@ func (s *Service) spend(
 // exchange hands back, onto the SignIn the caller is about to receive.
 //
 // signedInAt is when the login began, and zero for the mint that begins one —
-// see RefreshTokenRequest.SignedInAt.
+// see RefreshTokenRequest.SignedInAt — and kind is what proved it, which an
+// exchange carries forward the same way.
 //
 // It is a no-op for a service built without a store, which is what makes
 // rotation optional without a branch at every call site. What it is not is a
@@ -1204,6 +1251,7 @@ func (s *Service) mintRefreshToken(
 	signIn *SignIn,
 	familyID string,
 	signedInAt time.Time,
+	kind CredentialKind,
 ) error {
 	if s.refreshTokens == nil {
 		return nil
@@ -1222,6 +1270,7 @@ func (s *Service) mintRefreshToken(
 		ActiveAccountID: signIn.Principal.ActiveAccountID,
 		Administrative:  signIn.Administrative,
 		AccessTokenID:   signIn.TokenID,
+		CredentialKind:  kind,
 	})
 	if err != nil {
 		return platformerrors.Wrap(err, "minting a refresh token")
