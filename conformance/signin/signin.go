@@ -425,6 +425,47 @@ func loggedIn(t *testing.T, client signinpb.SignInServiceClient, username, secre
 	return issued
 }
 
+// unproven is the password door's answer to a registrant whose address no link
+// has proven yet: refused with USER_UNVERIFIED, which is what a registration
+// with no policy writes, or admitted where the subject declares
+// Seams.RegistrantsAdmittedUnverified. It returns the token it admitted them
+// with, and nil where it refused them.
+func unproven(t *testing.T, s *conformance.Session, anon signinpb.SignInServiceClient, who *registrant) *signinpb.IssuedToken {
+	t.Helper()
+
+	issued, err := login(t.Context(), anon, who.username, password, "")
+	if !s.Seams().RegistrantsAdmittedUnverified {
+		refused(t, s, err, codes.FailedPrecondition, reasonUserUnverified)
+
+		return nil
+	}
+
+	must.NoError(t, err, must.Sprint("this subject says its registrants are admitted before their address is proven (Seams.RegistrantsAdmittedUnverified), and one was refused"))
+	must.NotNil(t, issued, must.Sprint("a sign-in answered with no token"))
+
+	return issued
+}
+
+// addressProven reports whether the holder of issued is told their address is
+// proven, asked as them. Where the door admitted them unverified that is the
+// only way to observe that a link moved their standing, since the door's
+// answer does not change. ok is false where the subject supplies no SignedIn
+// seam to ask through.
+func addressProven(t *testing.T, s *conformance.Session, issued *signinpb.IssuedToken) (proven, ok bool) {
+	t.Helper()
+
+	if s.Seams().SignedIn == nil {
+		return false, false
+	}
+
+	sub := caller(t, s, issued, getAuthStatus)
+
+	response, err := sub.Surfaces.SignIn.GetAuthStatus(sub.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
+	must.NoError(t, err, must.Sprint("reading a registrant's own standing"))
+
+	return response.GetStatus().GetEmailAddressVerified(), true
+}
+
 // caller is who a token the suite signed in for calls as, making methods: the
 // seam that turns an issued token back into a caller, over a connection held to
 // the calls it declares. It skips where the subject supplies no such seam.

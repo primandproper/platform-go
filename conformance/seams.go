@@ -233,6 +233,34 @@ type Seams struct {
 	// deployment knows which it meant.
 	PasswordChangeGateDisabled bool
 
+	// RegistrantsAdmittedUnverified says the deployment's
+	// signin.RegistrationPolicy registers somebody in good standing — it sets
+	// identity.StatusGood — so the password door admits a registrant before the
+	// mailed link has proven their address. True asserts that it does, and that
+	// the link still proves the address; false, the zero value, asserts the
+	// door refuses them with USER_UNVERIFIED until it has, because that is
+	// what a registration with no policy writes.
+	//
+	// A fact about the deployment rather than something a suite could find
+	// out: a registrant who signs in unverified is either a policy that admits
+	// them or a door that has stopped checking, and only the deployment knows
+	// which it meant.
+	RegistrantsAdmittedUnverified bool
+
+	// RegistrationIssuesSecondFactor says the deployment's
+	// signin.RegistrationPolicy sets EnrollTOTP, so every registrant holds a
+	// second-factor secret from the moment they register — issued, and unproven
+	// until they answer it. True asserts that secret is in the registration's
+	// answer and that a wrong code against it is refused as a wrong code, and
+	// skips the assertion about proving a factor nobody issued, since no
+	// registrant here is without one; false, the zero value, asserts that
+	// refusal, because a registration with no policy issues nothing.
+	//
+	// A declaration for RegistrantsAdmittedUnverified's reason: a registrant
+	// answered INVALID_CREDENTIALS where SECOND_FACTOR_NOT_ENROLLED was owed is
+	// either a policy that issued a secret or a door that misreads its state.
+	RegistrationIssuesSecondFactor bool
+
 	// ReauthenticatedHandlesDisabled says the deployment's identity surface
 	// lets UpdateProfile move a username or an email address on nothing but a
 	// session — it built identity/grpc's server WithoutReauthenticatedHandles.

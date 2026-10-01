@@ -25,6 +25,11 @@ func registration(t *testing.T, s *conformance.Session) {
 	// and the refusal says why in a form a client can send them to
 	// verification on; the link they were mailed, answered with nobody signed
 	// in, is what lets them in.
+	//
+	// A deployment whose policy admits a registrant unverified says so in
+	// Seams.RegistrantsAdmittedUnverified, and is held to that instead: the
+	// door admits them at once, and the link still proves the address, which
+	// they are told when they ask.
 	t.Run("a registrant signs in once the mailed link proves their address", func(t *testing.T) {
 		t.Parallel()
 
@@ -35,13 +40,23 @@ func registration(t *testing.T, s *conformance.Session) {
 		test.NotNil(t, registered.GetAccount(), test.Sprint("a registration naming an account answered with none"))
 		test.NotNil(t, registered.GetMembership(), test.Sprint("a registration answered with no membership"))
 
-		_, err := login(t.Context(), anon, who.username, password, "")
-		refused(t, s, err, codes.FailedPrecondition, reasonUserUnverified)
+		admitted := unproven(t, s, anon, who)
+		if admitted != nil {
+			if proven, ok := addressProven(t, s, admitted); ok {
+				test.False(t, proven, test.Sprint("a registrant nobody verified was told their address is proven"))
+			}
+		}
 
 		verify(t, s, anon, who)
 
 		issued := loggedIn(t, anon, who.username, password)
 		test.NotEqOp(t, "", issued.GetToken())
+
+		if admitted != nil {
+			if proven, ok := addressProven(t, s, issued); ok {
+				test.True(t, proven, test.Sprint("the mailed link admitted nobody new, and proved nothing either"))
+			}
+		}
 	})
 
 	// The other arrival: somebody who named no password claims their account
