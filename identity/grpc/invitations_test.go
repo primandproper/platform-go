@@ -502,10 +502,18 @@ func invitationAddresses(invitations []*identitypb.Invitation) []string {
 // address could list anybody's by typing it in first. The refusal is a status
 // of its own rather than an empty page, because an empty page says "nobody has
 // invited you" and that is not what the server knows.
+//
+// It is built WithoutReauthenticatedHandles, which is the server that lets the
+// claim through at all: the default refuses it at UpdateProfile, and this
+// refusal is what still stands for a deployment that re-authenticates
+// somewhere of its own.
 func TestListInvitationsForEmailAddressRefusesAnUnverifiedCaller(T *testing.T) {
 	T.Parallel()
 
-	h := newHarness(T, identitygrpc.WithTokenMinter(fixedMinter(testInvitationToken)))
+	h := newHarness(T,
+		identitygrpc.WithTokenMinter(fixedMinter(testInvitationToken)),
+		identitygrpc.WithoutReauthenticatedHandles(),
+	)
 
 	sender := h.seedAccount(T, testScope, "sender")
 	victim := h.seedUser(T, testScope, "victim")

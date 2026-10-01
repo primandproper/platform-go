@@ -454,6 +454,12 @@ message AccountCreationInput {
 message ProfileUpdateInput {
   reserved "scope";
 
+  // username and email_address are refused by this module's server with
+  // INVALID_ARGUMENT unless it was built WithoutReauthenticatedHandles. Both are
+  // credentials in all but name -- the address is where a password reset is
+  // mailed -- and a session is not proof enough to move either, so they change
+  // through SignInService's UpdateUsername and UpdateEmailAddress, which ask
+  // for the password or a recent sign-in first.
   optional string username = 1;
 
   optional string email_address = 2;

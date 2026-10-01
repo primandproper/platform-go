@@ -15,7 +15,8 @@ import (
 // mappedSentinels is every sentinel both mappers are expected to have an answer
 // for: the four absences, the two collisions, the three states an act is
 // refused from, the expired invitation, the three writes the directory will not store
-// as written and the one refusal on authority.
+// as written, the one refusal on authority and the handle a profile save may not
+// move.
 //
 // One list rather than one per transport, deliberately. A service exposing both
 // would otherwise answer a taken username with a considered 409 on one and
@@ -36,6 +37,7 @@ var mappedSentinels = []error{
 	ErrDisplayNameTooLong,
 	ErrUsernameWhitespace,
 	ErrSignInNotAdmitted,
+	ErrHandleChangeRequiresReauthentication,
 }
 
 func TestMappers_coverTheSameSentinels(T *testing.T) {

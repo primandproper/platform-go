@@ -171,6 +171,8 @@ func SelfServiceMethods() []string {
 		signinpb.SignInService_UpdatePassword_FullMethodName,
 		signinpb.SignInService_RefreshTOTPSecret_FullMethodName,
 		signinpb.SignInService_VerifyTOTPSecret_FullMethodName,
+		signinpb.SignInService_UpdateEmailAddress_FullMethodName,
+		signinpb.SignInService_UpdateUsername_FullMethodName,
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
 		signinpb.SignInService_ListSignIns_FullMethodName,
 		signinpb.SignInService_EndSignIn_FullMethodName,

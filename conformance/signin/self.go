@@ -7,6 +7,8 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
+	"github.com/primandproper/primitives-go/v2/identifiers"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
@@ -121,6 +123,80 @@ func self(t *testing.T, s *conformance.Session) {
 
 		_, err = login(t.Context(), anon, who.username, password, "")
 		test.Error(t, err, test.Sprint("the password that was replaced still signs in"))
+	})
+
+	// An address is where a password reset goes, so moving it is guarded as a
+	// password change is: a wrong password is refused and moves nothing, and
+	// the right one moves it.
+	t.Run("an address change needs the current password and then takes effect", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, who := signedIn(t, s, anon, updateEmailAddress, getSelf)
+		ctx := sub.Context(t.Context())
+
+		before, err := sub.Surfaces.SignIn.GetSelf(ctx, &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+
+		moved := freshEmail()
+
+		_, err = sub.Surfaces.SignIn.UpdateEmailAddress(ctx, &signinpb.UpdateEmailAddressRequest{
+			CurrentPassword: wrongPassword,
+			NewEmailAddress: moved,
+		})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		unmoved, err := sub.Surfaces.SignIn.GetSelf(ctx, &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		test.EqOp(t, before.GetUser().GetEmailAddress(), unmoved.GetUser().GetEmailAddress(),
+			test.Sprint("a refused address change moved the address anyway"))
+
+		changed, err := sub.Surfaces.SignIn.UpdateEmailAddress(ctx, &signinpb.UpdateEmailAddressRequest{
+			CurrentPassword: password,
+			NewEmailAddress: moved,
+		})
+		must.NoError(t, err, must.Sprint("the right current password could not move the address"))
+		test.EqOp(t, moved, changed.GetUser().GetEmailAddress())
+		test.Nil(t, changed.GetUser().GetEmailAddressVerifiedAt(), test.Sprint("a moved address kept the old one's proof"))
+
+		after, err := sub.Surfaces.SignIn.GetSelf(ctx, &signinpb.GetSelfRequest{})
+		must.NoError(t, err)
+		test.EqOp(t, moved, after.GetUser().GetEmailAddress())
+		test.EqOp(t, who.userID, after.GetUser().GetId())
+	})
+
+	// A username is what somebody signs in with, so it is guarded the same
+	// way, and what lands is observable at the door: the new name signs in.
+	t.Run("a username change needs the current password and then takes effect", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		sub, who := signedIn(t, s, anon, updateUsername)
+		ctx := sub.Context(t.Context())
+
+		renamed := "conf_" + identifiers.New()
+
+		_, err := sub.Surfaces.SignIn.UpdateUsername(ctx, &signinpb.UpdateUsernameRequest{
+			CurrentPassword: wrongPassword,
+			NewUsername:     renamed,
+		})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		// Before the success below, so nothing but the refusal could have
+		// moved it.
+		loggedIn(t, anon, who.username, password)
+
+		changed, err := sub.Surfaces.SignIn.UpdateUsername(ctx, &signinpb.UpdateUsernameRequest{
+			CurrentPassword: password,
+			NewUsername:     renamed,
+		})
+		must.NoError(t, err, must.Sprint("the right current password could not rename"))
+		test.EqOp(t, renamed, changed.GetUser().GetUsername())
+
+		loggedIn(t, anon, renamed, password)
+
+		_, err = login(t.Context(), anon, who.username, password, "")
+		test.Error(t, err, test.Sprint("the username that was replaced still signs in"))
 	})
 
 	// Enrollment is two calls, and between them the caller holds no second

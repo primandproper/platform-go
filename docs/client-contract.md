@@ -619,6 +619,7 @@ error details. Everything outside sign-in is [R13](#errors): the code, and nothi
 | `NO_CREDENTIAL_NAMED` | `INVALID_ARGUMENT` | a registration that did not say how the user will sign in; fix the request |
 | `PASSWORD_CHANGE_REQUIRED` | `FAILED_PRECONDITION` | an operator forced a password change and this call is not one that makes it; send them to the form, then retry. From v14.2.0; over HTTP it is a `403` |
 | `SIGN_IN_NOT_IDENTIFIED` | `FAILED_PRECONDITION` | `EndOtherSignIns` from a token naming no login; nothing was ended, and `SignOutEverywhere` is the door that needs no `sid` |
+| `REAUTHENTICATION_REQUIRED` | `UNAUTHENTICATED` | `UpdateEmailAddress` or `UpdateUsername` with no password and no sign-in recent enough to stand in for one; prompt for the password, or — for somebody who holds none — sign them in again and retry. Nothing was changed. From v14.2.0 |
 
 That is the whole set, and its edges are both load-bearing. A sign-in refusal absent from it
 carries no reason at all, which is how **R7 survives this**: a reused, expired or revoked

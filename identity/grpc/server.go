@@ -174,6 +174,10 @@ type Server struct {
 	maxInvitationTTL time.Duration
 
 	returnInvitationToken bool
+
+	// handlesUngated is WithoutReauthenticatedHandles, and false is what
+	// "UpdateProfile refuses a username or an email address" means.
+	handlesUngated bool
 }
 
 var _ identitypb.IdentityServiceServer = (*Server)(nil)

@@ -349,6 +349,13 @@ func invitations(t *testing.T, s *conformance.Session) {
 	t.Run("a caller who has not verified their address is refused its invitations", func(t *testing.T) {
 		t.Parallel()
 
+		// By default the claim below is refused at UpdateProfile, which the
+		// users assertions hold the deployment to; this refusal is what still
+		// stands for one that lets a session move an address.
+		if !s.Seams().ReauthenticatedHandlesDisabled {
+			conformance.Skip(t, "conformance: this subject refuses an address claimed through UpdateProfile, so nobody can hold an unverified one to read by; skipping")
+		}
+
 		verified := s.Seams().Actions.EmailVerified
 		s.NeedsAction(t, verified != nil, "email verified")
 

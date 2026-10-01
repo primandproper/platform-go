@@ -46,14 +46,15 @@ const (
 	requestVerificationEmailByAddress = signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName
 	signOut                           = signinpb.SignInService_SignOut_FullMethodName
 	signOutEverywhere                 = signinpb.SignInService_SignOutEverywhere_FullMethodName
+	updateEmailAddress                = signinpb.SignInService_UpdateEmailAddress_FullMethodName
 	updatePassword                    = signinpb.SignInService_UpdatePassword_FullMethodName
+	updateUsername                    = signinpb.SignInService_UpdateUsername_FullMethodName
 	verifyEmailAddress                = signinpb.SignInService_VerifyEmailAddress_FullMethodName
 	verifyTOTPSecret                  = signinpb.SignInService_VerifyTOTPSecret_FullMethodName
 	acceptInvitation                  = identitypb.IdentityService_AcceptInvitation_FullMethodName
 	invite                            = identitypb.IdentityService_Invite_FullMethodName
 	setUserRequiresPasswordChange     = identitypb.IdentityService_SetUserRequiresPasswordChange_FullMethodName
 	setUserServiceRoles               = identitypb.IdentityService_SetUserServiceRoles_FullMethodName
-	updateProfile                     = identitypb.IdentityService_UpdateProfile_FullMethodName
 	updateUserAccountStatus           = identitypb.IdentityService_UpdateUserAccountStatus_FullMethodName
 )
 

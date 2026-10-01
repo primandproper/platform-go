@@ -103,6 +103,12 @@ that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
 made. The second is the gate signin/grpc's extractor runs by default, and
 skips where the subject says Seams.PasswordChangeGateDisabled.
 
+A handle change is asserted as a password change is: an address or a username
+moved with the wrong current password is refused and moves nothing, and the
+right one moves it. That identity's UpdateProfile refuses the same two fields
+is the identity suite's to assert, and it skips where the subject says
+Seams.ReauthenticatedHandlesDisabled.
+
 # Who a call is made as
 
 The consumer declares its operator-only calls in Seams.OperatorMethods, and

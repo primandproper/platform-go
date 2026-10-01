@@ -109,6 +109,7 @@ var ClientSafeSentinels = []error{
 	ErrRegistrationRefused,
 	ErrPasswordChangeRequired,
 	ErrSignInNotIdentified,
+	ErrReauthenticationRequired,
 }
 
 // ClientReasonDomain is the google.rpc.ErrorInfo domain every reason this
@@ -205,6 +206,7 @@ var ClientSafeReasons = []grpcerrors.ClientReason{
 	{Err: ErrRegistrationRefused, Reason: "REGISTRATION_REFUSED", Domain: ClientReasonDomain},
 	{Err: ErrPasswordChangeRequired, Reason: "PASSWORD_CHANGE_REQUIRED", Domain: ClientReasonDomain},
 	{Err: ErrSignInNotIdentified, Reason: "SIGN_IN_NOT_IDENTIFIED", Domain: ClientReasonDomain},
+	{Err: ErrReauthenticationRequired, Reason: "REAUTHENTICATION_REQUIRED", Domain: ClientReasonDomain},
 }
 
 type (
@@ -235,6 +237,10 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// into two codes would hand a client a branch that is also an oracle.
 	case errors.Is(err, ErrSecondFactorRequired):
 		return httperrors.ErrAuthenticationFailed, "a second-factor code is required", true
+	// Its sibling for a handle change: the caller is signed in and has to prove
+	// it again, and the message names both ways to.
+	case errors.Is(err, ErrReauthenticationRequired):
+		return httperrors.ErrAuthenticationFailed, "re-authentication is required: send the current password, or sign in again", true
 	// A replayed refresh token answers exactly as a wrong password does, message
 	// included. It is mapped rather than left to the default because a 500 for a
 	// detected token reuse would be an outage's status code for a caller's
@@ -334,6 +340,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// treats the two differently, and a sign-in answering PermissionDenied
 	// would send a retry-with-credentials path down the give-up branch.
 	case errors.Is(err, ErrSecondFactorRequired),
+		errors.Is(err, ErrReauthenticationRequired),
 		errors.Is(err, ErrInvalidCredentials),
 		errors.Is(err, ErrInvalidVerificationToken),
 		errors.Is(err, ErrRefreshTokenReused),
