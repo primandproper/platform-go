@@ -62,11 +62,21 @@ var (
 		why:  "the harness leaves sign-in's Registration block open, so service builds the server without WithoutOpenRegistration and Seams.RegistrationClosed is false",
 	}
 
+	// passwordlessAdmitted is the assertion only a deployment whose policy
+	// refuses a registrant with no password reaches. Every run but the one
+	// that switches that policy on admits them, so the refusal is not there to
+	// assert.
+	passwordlessAdmitted = expectedSkip{
+		test: "signin/registration/a_deployment_refusing_passwordless_registration_refuses_it_by_its_policy_and_leaves_nobody_behind",
+		why:  "the harness's registration policy admits a registrant who names no password outside the run that declares Seams.PasswordlessRegistrationRefused",
+	}
+
 	// membersSkips are what the run reserving nothing may skip.
 	membersSkips = append(slices.Clone(pagedReadsWithNoPage),
 		unwiredPrincipalPermissions,
 		gatedHandles,
 		openRegistration,
+		passwordlessAdmitted,
 		expectedSkip{
 			test: "reservations",
 			why:  "the run reserves nothing, so there is no reservation to hold it to",
@@ -76,16 +86,40 @@ var (
 	// staffSkips are what the run reserving staff calls may skip. Its
 	// reserved calls are made by an administrator minted for them, so the
 	// reservation itself costs no assertion here.
-	staffSkips = append(slices.Clone(pagedReadsWithNoPage), unwiredPrincipalPermissions, gatedHandles, openRegistration)
+	staffSkips = append(slices.Clone(pagedReadsWithNoPage), unwiredPrincipalPermissions, gatedHandles, openRegistration, passwordlessAdmitted)
 
 	// rosterSkips are what the empty-requests run may skip: nothing.
 	rosterSkips []expectedSkip
+
+	// passwordRequiredSkips are what the run whose policy refuses a registrant
+	// with no password may skip: the closed-door assertion, as everywhere, and
+	// every assertion whose subject is somebody with no password.
+	passwordRequiredSkips = []expectedSkip{
+		openRegistration,
+		{
+			test: "signin/registration/a_registrant_with_no_password_attaches_one_through_the_mailed_link",
+			why:  "the run's registration policy refuses a registrant who names no password, so Seams.PasswordlessRegistrationRefused is true and there is nobody to attach one",
+		},
+		{
+			test: "signin/registration/a_mailed_link_cannot_replace_a_password_somebody_already_holds",
+			why:  "its control is an account with no password, which the run's registration policy refuses to register",
+		},
+		{
+			test: "signin/magic_links/somebody_with_no_password_signs_in_on_one_mailed_link",
+			why:  "the run's registration policy refuses a registrant who names no password",
+		},
+		{
+			test: "passkeys/last_passkey/the_last_passkey_of_somebody_with_no_password_stays",
+			why:  "the run's registration policy refuses a registrant who names no password, so nobody holds passkeys alone",
+		},
+	}
 
 	// admittingSkips are what the run whose registrations issue a second
 	// factor may skip. Its door is open too, so the closed-door assertion
 	// skips there as it does everywhere.
 	admittingSkips = []expectedSkip{
 		openRegistration,
+		passwordlessAdmitted,
 		{
 			test: "signin/self/proving_a_second_factor_nobody_issued_is_refused_as_a_precondition",
 			why:  "the run's registration policy issues every registrant a secret, so Seams.RegistrationIssuesSecondFactor is true and nobody holds none",

@@ -11,6 +11,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/identity"
+
+	"github.com/cockroachdb/errors"
 )
 
 // requireAgreements is this harness's signin.RegistrationPolicy: a consumer who
@@ -30,20 +32,28 @@ func requireAgreements(_ context.Context, registration *signin.Registration) err
 
 var _ signin.RegistrationPolicy = requireAgreements
 
-// admittingRegistrations is requireAgreements, and while admitting reports true
-// also the policy of a consumer whose product gates nothing on a proven
-// address: a registrant is written in good standing, and issued a
-// second-factor secret with the registration. Those are the two policies
-// Seams.RegistrantsAdmittedUnverified and Seams.RegistrationIssuesSecondFactor
-// declare, and the run that declares them is the one that turns this on.
+// switchedRegistrations is requireAgreements, and while a switch reports true
+// also another consumer's policy. With admitting on, it is the policy of a
+// consumer whose product gates nothing on a proven address: a registrant is
+// written in good standing, and issued a second-factor secret with the
+// registration — the two policies Seams.RegistrantsAdmittedUnverified and
+// Seams.RegistrationIssuesSecondFactor declare. With passwordRequired on, it is
+// the policy of a consumer with no passwordless arrival, which refuses a
+// registrant who names no password — what
+// Seams.PasswordlessRegistrationRefused declares. The run that declares each
+// is the one that turns it on.
 //
-// A switch on one policy rather than a second server, because the runs against
-// a server are sequential and the policy is the only thing the declaring run
-// changes about it.
-func admittingRegistrations(admitting *atomic.Bool) signin.RegistrationPolicy {
+// Switches on one policy rather than a second server, because the runs against
+// a server are sequential and the policy is the only thing the declaring runs
+// change about it.
+func switchedRegistrations(admitting, passwordRequired *atomic.Bool) signin.RegistrationPolicy {
 	return func(ctx context.Context, registration *signin.Registration) error {
 		if err := requireAgreements(ctx, registration); err != nil {
 			return err
+		}
+
+		if passwordRequired.Load() && registration.Credential == signin.NoPassword() {
+			return errors.New("this service has no passwordless registration")
 		}
 
 		if admitting.Load() {

@@ -49,6 +49,7 @@ import (
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
+	conformancepasskeys "github.com/primandproper/platform-go/v14/conformance/passkeys"
 	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
 	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
 	conformancesignin "github.com/primandproper/platform-go/v14/conformance/signin"
@@ -280,10 +281,11 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	// And the consumer's registration policy, which refuses a registrant who
 	// has not accepted every agreement — so the sign-in suite runs against a
-	// deployment that requires them — and which the last run below switches to
-	// admitting registrants unverified with a second factor issued.
-	var admitting atomic.Bool
-	do.ProvideValue(i, admittingRegistrations(&admitting))
+	// deployment that requires them — and which the last two runs below switch
+	// to refusing a registrant with no password, and to admitting registrants
+	// unverified with a second factor issued.
+	var admitting, passwordRequired atomic.Bool
+	do.ProvideValue(i, switchedRegistrations(&admitting, &passwordRequired))
 
 	// And, on a run that confirms, the consumer's waitlist confirmation mailer,
 	// whose presence is what mounts the loop — over the minter the Links block
@@ -624,6 +626,23 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		expectSkips(t, rosterSkips)
 
 		conformance.Run(t, seams(nil, nil), conformancereservations.RosterSuite())
+	})
+
+	// And the registration policy of a consumer with no passwordless arrival,
+	// which refuses a registrant who names no password. Only the suites with
+	// somebody with no password in them: the policy's refusal is asserted, the
+	// assertions about such a person skip, and every other assertion there
+	// registers somebody with a password and holds as it does above.
+	t.Run("passwordless registrations refused", func(t *testing.T) {
+		expectSkips(t, passwordRequiredSkips)
+
+		passwordRequired.Store(true)
+		t.Cleanup(func() { passwordRequired.Store(false) })
+
+		refusing := seams(nil, nil)
+		refusing.PasswordlessRegistrationRefused = true
+
+		conformance.Run(t, refusing, conformancesignin.Suite(), conformancepasskeys.Suite())
 	})
 
 	// And the registration policy a consumer may legitimately write instead of
