@@ -3,6 +3,7 @@ package timers
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -836,19 +837,27 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		test.EqOp(t, int64(1), stats.Due)
 	})
 
+	// Two handles on the one set, because retention is the handle's and the
+	// cutoff is the database's clock: "not yet" is asked of one whose retention
+	// no runner is slow enough to outlast, and "now" of one whose retention the
+	// sleep has outlasted. Time only moves forward, so neither answer can be
+	// changed by how long the steps between them took.
 	t.Run("reap removes fired timers past their retention", func(t *testing.T) {
 		t.Parallel()
 
 		set := newSet(t, client, func(cfg *Config) { cfg.Retention = time.Second })
+		retained, err := New[string](t.Context(), &Config{Name: set.Name(), Retention: time.Hour}, client)
+		must.NoError(t, err)
+
 		must.NoError(t, commitScheduleAt(t.Context(), set, "old", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
 		must.NoError(t, set.Complete(t.Context(), fired...))
 
-		reaped, err := set.Reap(t.Context())
+		reaped, err := retained.Reap(t.Context())
 		must.NoError(t, err)
-		test.EqOp(t, int64(0), reaped)
+		test.EqOp(t, int64(0), reaped, test.Sprint("a timer fired moments ago was reaped under an hour's retention"))
 
 		time.Sleep(1100 * time.Millisecond)
 
@@ -1407,9 +1416,13 @@ func runWorkerSuite(t *testing.T, client database.Client) {
 
 		var lastError string
 
-		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
+		err = client.Reader().QueryRowContext(t.Context(),
 			"SELECT COALESCE(last_error, '') FROM scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1),
-			set.Name()).Scan(&lastError))
+			set.Name()).Scan(&lastError)
+		if err != nil {
+			describeMissingTable(t, client)
+		}
+		must.NoError(t, err)
 		test.True(t, strings.Contains(lastError, "downstream is down"))
 
 		stats, err := set.Stats(t.Context())
@@ -1813,4 +1826,50 @@ func runTheSessionTimeZoneNeverEnters(t *testing.T, client database.Client) {
 		test.Less(t, time.Minute, now.Sub(stamped).Abs(),
 			test.Sprintf("%s was stamped %s, %s from now", column, stamped.Format(time.RFC3339Nano), now.Sub(stamped)))
 	}
+}
+
+// describeMissingTable logs what each side of a SQLite client can see, for a
+// read that failed on a table every suite here was handed already created.
+// That failure has been seen once in CI (#1072) and never reproduced, so this
+// records the evidence that tells the explanations apart rather than guessing
+// between them: missing on both sides is the file, missing on the reader alone
+// is the reader pool's connection, and a reader attached to another path is
+// the DSN. Other engines have one view and no file, so it says nothing there.
+func describeMissingTable(t *testing.T, client database.Client) {
+	t.Helper()
+
+	sq, ok := client.(*sqlite.Client)
+	if !ok {
+		return
+	}
+
+	for side, db := range map[string]*sql.DB{"reader": sq.ReadDB(), "writer": sq.WriteDB()} {
+		tables, err := tableNames(t.Context(), db)
+		t.Logf("#1072 %s sees tables %v (err %v)", side, tables, err)
+
+		var seq int
+		var name, file string
+		err = db.QueryRowContext(t.Context(), "PRAGMA database_list").Scan(&seq, &name, &file)
+		t.Logf("#1072 %s is attached to %q (err %v), pool %+v", side, file, err, db.Stats())
+	}
+}
+
+// tableNames lists the tables one pool's next connection can see.
+func tableNames(ctx context.Context, db *sql.DB) ([]string, error) {
+	rows, err := db.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+
+	return names, rows.Err()
 }
