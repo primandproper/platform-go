@@ -114,6 +114,7 @@ var roster = map[string]entry{
 	// internal/ is not in the README's table, because a consumer cannot import
 	// any of it. It is classified here anyway, so that the completeness check
 	// covers the whole tree rather than the part of it a consumer can see.
+	"internal/archivegate":      {tier: domain, why: "the archive grant the domain gRPC surfaces narrow include_archived by"},
 	"internal/cmd":              {tier: root, why: "generators run by make, over the whole tree"},
 	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
 	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},

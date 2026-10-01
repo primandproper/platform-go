@@ -6,6 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/conformance"
 
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
@@ -55,6 +57,46 @@ func registrations(t *testing.T, s *conformance.Session) {
 			&oauth2clientspb.ListOAuth2ClientsRequest{})
 		must.NoError(t, err)
 		test.StrNotContains(t, page.String(), secret, test.Sprint("a listing rendered a registration's secret"))
+	})
+
+	// The granted half of include_archived. An administrator holds the grant
+	// that withdraws a registration, which is the grant a deployment reads the
+	// archive off, so the registry asked for with the archive in it answers
+	// with the withdrawn registration. The refused half is
+	// oauth2clients/grpc's own: whether an ordinary caller receives it turns on
+	// grants no subject is asked to describe.
+	t.Run("an administrator asking for withdrawn registrations receives them", func(t *testing.T) {
+		t.Parallel()
+
+		admin := s.Subject(t, conformance.AsAdmin(),
+			conformance.Making(createOAuth2Client, archiveOAuth2Client, listOAuth2Clients))
+		live := register(t, admin)
+		withdrawn := register(t, admin)
+
+		ctx := admin.Context(t.Context())
+
+		_, err := admin.Surfaces.OAuth2Clients.ArchiveOAuth2Client(ctx,
+			&oauth2clientspb.ArchiveOAuth2ClientRequest{Oauth2ClientId: withdrawn.GetClient().GetId()})
+		must.NoError(t, err)
+
+		// The control: without asking, the withdrawn registration is not in
+		// the registry.
+		test.SliceNotContains(t, registry(t, admin), withdrawn.GetClient().GetId())
+
+		include := true
+
+		page, err := admin.Surfaces.OAuth2Clients.ListOAuth2Clients(ctx,
+			&oauth2clientspb.ListOAuth2ClientsRequest{Filter: &filteringpb.QueryFilter{IncludeArchived: &include}})
+		must.NoError(t, err)
+
+		ids := make([]string, 0, len(page.GetResults()))
+		for _, c := range page.GetResults() {
+			ids = append(ids, c.GetId())
+		}
+
+		test.SliceContains(t, ids, live.GetClient().GetId())
+		test.SliceContains(t, ids, withdrawn.GetClient().GetId(),
+			test.Sprint("an administrator asked for withdrawn registrations and was answered without them"))
 	})
 
 	// A nil input message is a malformed request rather than a registration

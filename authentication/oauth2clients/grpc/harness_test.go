@@ -142,8 +142,9 @@ type harness struct {
 	server *oauth2clientsgrpc.Server
 }
 
-// newHarness migrates a uniquely prefixed table and builds the surface over it.
-func newHarness(tb testing.TB) *harness {
+// newHarness migrates a uniquely prefixed table and builds the surface over it,
+// with opts.
+func newHarness(tb testing.TB, opts ...oauth2clientsgrpc.Option) *harness {
 	tb.Helper()
 
 	db, err := sqlite.NewDatabaseClient(tb.Context(),
@@ -168,7 +169,7 @@ func newHarness(tb testing.TB) *harness {
 	svc, err := oauth2clients.NewService(db, store)
 	must.NoError(tb, err)
 
-	server, err := oauth2clientsgrpc.NewServer(svc, store, db, extractPrincipal)
+	server, err := oauth2clientsgrpc.NewServer(svc, store, db, extractPrincipal, opts...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, svc: svc, server: server}

@@ -75,15 +75,10 @@ func (s *Server) ListTransactions(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveTransactions, "reading the filter of a transaction page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a transaction page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveTransactions)
 
 	page, err := s.store.ListTransactions(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
@@ -115,15 +110,10 @@ func (s *Server) ListTransactionsForAccount(
 	accountID := request.GetAccountId()
 	req.op.Set(accountKey, accountID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveTransactions, "reading the filter of a transaction page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a transaction page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveTransactions)
 
 	if err = s.requireAccount(req, accountID, "listing an account's ledger"); err != nil {
 		return nil, err

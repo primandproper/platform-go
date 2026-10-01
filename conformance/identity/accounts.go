@@ -203,6 +203,32 @@ func accounts(t *testing.T, s *conformance.Session) {
 		}
 	})
 
+	// The granted half of include_archived. An administrator holds the grant
+	// that closes an account, which is the grant a deployment reads the archive
+	// off, so the directory asked for with the archive in it answers with the
+	// closed account. The refused half is identity/grpc's own: whether an
+	// ordinary caller receives it turns on grants no subject is asked to
+	// describe.
+	t.Run("an administrator asking for closed accounts receives them", func(t *testing.T) {
+		t.Parallel()
+
+		owner := s.Subject(t, conformance.Making(archiveAccount))
+		needsAccount(t, owner)
+		admin := s.Subject(t, conformance.AsAdmin(), conformance.Making(listAccounts),
+			conformance.InTenant(surface, owner.ScopeFor(surface)))
+
+		_, err := owner.Surfaces.Identity.ArchiveAccount(owner.Context(t.Context()),
+			&identitypb.ArchiveAccountRequest{AccountId: owner.AccountID})
+		must.NoError(t, err)
+
+		// The control: without asking, the closed account is not in the
+		// directory.
+		test.SliceNotContains(t, accountIDs(directoryAccounts(t, admin)), owner.AccountID)
+
+		test.SliceContains(t, accountIDs(closedAccountsToo(t, admin)), owner.AccountID,
+			test.Sprint("an administrator asked for closed accounts and was answered without them"))
+	})
+
 	t.Run("archiving an account the caller is not in is refused and changes nothing", func(t *testing.T) {
 		t.Parallel()
 

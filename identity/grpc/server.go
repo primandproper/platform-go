@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -34,6 +35,11 @@ const (
 	userIDKey       = "identity.user_id"
 	accountIDKey    = "identity.account_id"
 	invitationIDKey = "identity.invitation_id"
+
+	// archivedClearedKey records that a read asked for archived rows and did
+	// not receive them, because the caller does not hold the grant that
+	// archives what the read pages.
+	archivedClearedKey = "identity.include_archived_cleared"
 )
 
 // The errors this package returns for its own failures, as opposed to the
@@ -155,6 +161,7 @@ type Server struct {
 	mintToken       TokenMinter
 	targets         TargetAuthorizer
 	permissions     PermissionResolver
+	grants          authorization.GrantsExtractor
 
 	instruments *metrics.OperationSet
 

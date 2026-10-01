@@ -183,16 +183,16 @@ have a default their own package chose, and leaving the field nil leaves that ch
 alone.
 
 The grants extractor is the optional fourth, and it answers what the caller may
-do for the seven surfaces that ask inside a handler — billing, comments,
-issuereports, notifications, settings, waitlists and webhooks — whether a read
-that sent include_archived receives the archived rows, and whether a settings
-write may name a setting the catalog reserved to administrators. Neither is a
-question a method grant can answer, because both turn on the request. Left nil,
-each surface keeps its own fail-closed answer: include_archived is cleared and
-every reserved write is refused, for administrators too. That is a server that
-withholds rather than one that mounts open, so nil stays legal, and a service
-that means to serve either feature supplies the same
-authorization.GrantsExtractor its authorization interceptor reads.
+do for every gRPC surface whose paged reads have archived rows to withhold —
+whether a read that sent include_archived receives them — and for settings,
+whether a write may name a setting the catalog reserved to administrators.
+Neither is a question a method grant can answer, because both turn on the
+request. Left nil, each surface keeps its own fail-closed answer:
+include_archived is cleared and every reserved write is refused, for
+administrators too. That is a server that withholds rather than one that mounts
+open, so nil stays legal, and a service that means to serve either feature
+supplies the same authorization.GrantsExtractor its authorization interceptor
+reads.
 
 The HTTP enforcer is the optional fifth, and the HTTP counterpart of that interceptor:
 an authorization/http Enforcer the consumer builds over the same grants, which

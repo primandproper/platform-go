@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
@@ -109,11 +110,8 @@ func (s *Server) ListDevices(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), archivegate.NothingArchived, "reading the filter of a device page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a device page")
-
 		return nil, err
 	}
 

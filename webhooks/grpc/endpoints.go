@@ -163,15 +163,10 @@ func (s *Server) ListEndpoints(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveEndpoints, "reading the filter of a webhook endpoint page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a webhook endpoint page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveEndpoints)
 
 	page, err := s.store.ListEndpoints(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {

@@ -7,8 +7,6 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
-	"github.com/primandproper/primitives-go/v2/filtering"
-	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
 
 	"google.golang.org/grpc/codes"
@@ -95,7 +93,7 @@ func (s *Server) ListRootComments(
 
 	req.op.Set(targetTypeKey, target.Type.String()).Set(targetIDKey, target.ID)
 
-	filter, err := s.readFilter(ctx, req, request.GetFilter(), "a target's root comments")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a page of a target's root comments")
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +143,7 @@ func (s *Server) ListReplies(
 		Set(targetIDKey, target.ID).
 		Set(parentIDKey, parentID)
 
-	filter, err := s.readFilter(ctx, req, request.GetFilter(), "a comment's replies")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a page of a comment's replies")
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +188,7 @@ func (s *Server) ListCommentsByTargetType(
 	targetType := comments.TargetType(request.GetTargetType())
 	req.op.Set(targetTypeKey, targetType.String())
 
-	filter, err := s.readFilter(ctx, req, request.GetFilter(), "a target type's comments")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a page of a target type's comments")
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +243,7 @@ func (s *Server) ListCommentsByAuthor(
 		return nil, err
 	}
 
-	filter, err := s.readFilter(ctx, req, request.GetFilter(), "an author's comments")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a page of an author's comments")
 	if err != nil {
 		return nil, err
 	}
@@ -262,33 +260,4 @@ func (s *Server) ListCommentsByAuthor(
 		Pagination: filteringgrpc.PaginationToProto(page.Pagination),
 		Results:    CommentsToProto(page.Data),
 	}, nil
-}
-
-// readFilter reads the page a request asked for, and confines it to what the
-// caller may be shown.
-//
-// It is a helper because a malformed filter is the one failure all four paged
-// reads share, and because the code it answers with is a decision rather than a
-// default: a sort direction nothing recognizes is the client's to fix, so it is
-// InvalidArgument and not the Internal every other call site passes.
-//
-// It is also the one place a request for archived comments is answered, which is
-// why it is a method now. A read that parsed its own filter would be a read that
-// could forget the question, and the four of them are written in four places.
-// See archived.go for what is being decided.
-func (s *Server) readFilter(
-	ctx context.Context,
-	req *request,
-	in *filteringpb.QueryFilter,
-	what string,
-) (*filtering.QueryFilter, error) {
-	filter, err := filteringgrpc.FromProto(in)
-	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a page of %s", what)
-	}
-
-	s.confineToLive(ctx, req, filter)
-
-	return filter, nil
 }

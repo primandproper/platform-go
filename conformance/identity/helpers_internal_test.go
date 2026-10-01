@@ -74,6 +74,29 @@ func TestDirectoryAccounts(t *testing.T) {
 		test.True(t, directory.requests[0].GetFilter() == nil)
 	})
 
+	t.Run("a walk that asks for closed accounts asks on every page", func(t *testing.T) {
+		t.Parallel()
+
+		directory := &pagedDirectory{accounts: []*identitypb.Account{
+			{Id: "a", OwnerUserId: "someone"},
+			{Id: "b", OwnerUserId: "someone"},
+			{Id: "c", OwnerUserId: "somebody"},
+			{Id: "d", OwnerUserId: "somebody"},
+			{Id: "mine", OwnerUserId: "owner"},
+		}}
+		operator := &conformance.Subject{Surfaces: conformance.Surfaces{Identity: directory}}
+
+		test.Eq(t, []string{"a", "b", "c", "d", "mine"}, accountIDs(closedAccountsToo(t, operator)))
+		test.SliceLen(t, 3, directory.requests)
+
+		// A cursor that dropped the question would page the archive on the
+		// first page and the live directory on every page after it.
+		for i, request := range directory.requests {
+			test.True(t, request.GetFilter().GetIncludeArchived(),
+				test.Sprintf("page %d did not ask for closed accounts", i))
+		}
+	})
+
 	t.Run("a directory that fits one page is read once", func(t *testing.T) {
 		t.Parallel()
 

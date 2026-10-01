@@ -69,15 +69,10 @@ func (s *Server) ListPurchases(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchivePurchases, "reading the filter of a purchase page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a purchase page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchivePurchases)
 
 	page, err := s.store.ListPurchases(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
@@ -108,15 +103,10 @@ func (s *Server) ListPurchasesForAccount(
 	accountID := request.GetAccountId()
 	req.op.Set(accountKey, accountID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchivePurchases, "reading the filter of a purchase page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a purchase page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchivePurchases)
 
 	if err = s.requireAccount(req, accountID, "listing an account's purchases"); err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/settings"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
@@ -96,4 +97,24 @@ func (s *Server) confineToAdmin(ctx context.Context, req *request, definition *s
 	}
 
 	return platformerrors.Wrapf(ErrAdminOnlySetting, "setting %q", name)
+}
+
+// callerGrants reads the caller's authority, reporting whether it could be
+// determined at all.
+//
+// A server built with no [WithGrantsExtractor] answers false, which is the
+// fail-closed half of the default: a surface that cannot see what the caller may
+// do cannot tell an administrator from anybody else, and the expensive way to be
+// wrong about that is to guess "administrator". A consumer who wants reserved
+// writes on the wire supplies the same authorization.GrantsExtractor they
+// already hand primitives-go's authorization/grpc enforcer.
+//
+// The paged reads' archive grant is read through internal/archivegate instead,
+// which applies the same default.
+func (s *Server) callerGrants(ctx context.Context) (authorization.Grants, bool) {
+	if s.grants == nil {
+		return authorization.DenyAll(), false
+	}
+
+	return s.grants(ctx)
 }
