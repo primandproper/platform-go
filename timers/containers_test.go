@@ -1844,7 +1844,8 @@ func describeMissingTable(t *testing.T, client database.Client) {
 	}
 
 	for side, db := range map[string]*sql.DB{"reader": sq.ReadDB(), "writer": sq.WriteDB()} {
-		tables, err := tableNames(t.Context(), db)
+		tables, err := database.ScanStrings(t.Context(), db, "sqlite_master",
+			"SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name", nil)
 		t.Logf("#1072 %s sees tables %v (err %v)", side, tables, err)
 
 		var seq int
@@ -1852,24 +1853,4 @@ func describeMissingTable(t *testing.T, client database.Client) {
 		err = db.QueryRowContext(t.Context(), "PRAGMA database_list").Scan(&seq, &name, &file)
 		t.Logf("#1072 %s is attached to %q (err %v), pool %+v", side, file, err, db.Stats())
 	}
-}
-
-// tableNames lists the tables one pool's next connection can see.
-func tableNames(ctx context.Context, db *sql.DB) ([]string, error) {
-	rows, err := db.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var names []string
-	for rows.Next() {
-		var name string
-		if err = rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		names = append(names, name)
-	}
-
-	return names, rows.Err()
 }
