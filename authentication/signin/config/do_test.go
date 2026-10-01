@@ -146,6 +146,36 @@ func TestRegisterService(T *testing.T) {
 		test.ErrorIs(t, err, signin.ErrRegistrationNotConfigured)
 	})
 
+	T.Run("the handle doors write through identity's service", func(t *testing.T) {
+		t.Parallel()
+
+		update := &signin.UsernameUpdate{NewUsername: "renamed"}
+
+		// No identity service registered, and registration closed: the doors
+		// refuse as the wiring failure that is.
+		i := withAuthenticator(base(t, &Config{Registration: RegistrationConfig{Disabled: true}}))
+		RegisterService(i)
+
+		off, err := do.Invoke[*signin.Service](i)
+		must.NoError(t, err)
+
+		_, err = off.UpdateUsername(t.Context(), tenancy.Of("tenant"), "", update)
+		test.ErrorIs(t, err, signin.ErrProfileUpdaterNotConfigured)
+
+		// Registered, it is attached whether or not registration is open: the
+		// refusal is now the empty subject, which is past the wiring check.
+		for _, disabled := range []bool{false, true} {
+			i = withRegistrar(withAuthenticator(base(t, &Config{Registration: RegistrationConfig{Disabled: disabled}})))
+			RegisterService(i)
+
+			on, invokeErr := do.Invoke[*signin.Service](i)
+			must.NoError(t, invokeErr)
+
+			_, err = on.UpdateUsername(t.Context(), tenancy.Of("tenant"), "", update)
+			test.ErrorIs(t, err, signin.ErrEmptyUserID, test.Sprintf("registration disabled: %t", disabled))
+		}
+	})
+
 	T.Run("a magic links block needs a mailer", func(t *testing.T) {
 		t.Parallel()
 

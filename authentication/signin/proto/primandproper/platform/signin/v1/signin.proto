@@ -555,6 +555,60 @@ message UpdatePasswordRequest {
 // breaking change.
 message UpdatePasswordResponse {}
 
+// UpdateEmailAddressRequest moves the calling user's own address. There is no
+// field naming a user, for UpdatePasswordRequest's reason.
+//
+// An address is where a password reset is mailed, so moving it is guarded as a
+// password change is, by one of two proofs. current_password, with totp_code
+// from a user who holds a proven second factor. Or, with no password sent, the
+// sign-in this request came through, if it began recently enough -- read off
+// the caller's token rather than off this message, so there is no field for
+// it. A user who holds no password has only the second, and a stale sign-in is
+// refused with REAUTHENTICATION_REQUIRED: sign in again, then ask.
+//
+// The address's proof goes with the old address, and a deployment that mails
+// verification links mails the new address one.
+message UpdateEmailAddressRequest {
+  reserved "scope";
+
+  // current_password is checked when it is sent. Empty offers the recent
+  // sign-in instead.
+  string current_password = 1;
+
+  // totp_code is required alongside current_password from a user who holds a
+  // proven second factor.
+  string totp_code = 2;
+
+  // new_email_address is the address that replaces the current one.
+  string new_email_address = 3;
+}
+
+// UpdateEmailAddressResponse carries the user as they stand after the change.
+message UpdateEmailAddressResponse {
+  primandproper.platform.identity.v1.User user = 1;
+}
+
+// UpdateUsernameRequest renames the calling user, guarded exactly as
+// UpdateEmailAddressRequest is: a username is what somebody signs in with.
+message UpdateUsernameRequest {
+  reserved "scope";
+
+  // current_password is UpdateEmailAddressRequest.current_password.
+  string current_password = 1;
+
+  // totp_code is UpdateEmailAddressRequest.totp_code.
+  string totp_code = 2;
+
+  // new_username is the handle that replaces the current one, as the person
+  // spelled it.
+  string new_username = 3;
+}
+
+// UpdateUsernameResponse carries the user as they stand after the change.
+message UpdateUsernameResponse {
+  primandproper.platform.identity.v1.User user = 1;
+}
+
 // RefreshTOTPSecretRequest asks for a new second-factor secret for the calling
 // user, replacing whatever they hold.
 message RefreshTOTPSecretRequest {
@@ -966,10 +1020,14 @@ service SignInService {
   rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);
   rpc GetSelf(GetSelfRequest) returns (GetSelfResponse);
 
-  // The three writes a signed-in person makes about their own credentials.
+  // The writes a signed-in person makes about their own credentials, and the
+  // two handles that are credentials in all but name. identity's UpdateProfile
+  // refuses both handles; these are where they change.
   rpc UpdatePassword(UpdatePasswordRequest) returns (UpdatePasswordResponse);
   rpc RefreshTOTPSecret(RefreshTOTPSecretRequest) returns (RefreshTOTPSecretResponse);
   rpc VerifyTOTPSecret(VerifyTOTPSecretRequest) returns (VerifyTOTPSecretResponse);
+  rpc UpdateEmailAddress(UpdateEmailAddressRequest) returns (UpdateEmailAddressResponse);
+  rpc UpdateUsername(UpdateUsernameRequest) returns (UpdateUsernameResponse);
 }
 
 // ListSignInsForUserRequest asks for the live logins of the user it names, most

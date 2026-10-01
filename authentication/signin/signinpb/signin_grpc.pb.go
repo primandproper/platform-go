@@ -169,6 +169,8 @@ const (
 	SignInService_UpdatePassword_FullMethodName                    = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
 	SignInService_RefreshTOTPSecret_FullMethodName                 = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
 	SignInService_VerifyTOTPSecret_FullMethodName                  = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
+	SignInService_UpdateEmailAddress_FullMethodName                = "/primandproper.platform.signin.v1.SignInService/UpdateEmailAddress"
+	SignInService_UpdateUsername_FullMethodName                    = "/primandproper.platform.signin.v1.SignInService/UpdateUsername"
 )
 
 // SignInServiceClient is the client API for SignInService service.
@@ -238,10 +240,14 @@ type SignInServiceClient interface {
 	// The two reads a client makes on load.
 	GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error)
 	GetSelf(ctx context.Context, in *GetSelfRequest, opts ...grpc.CallOption) (*GetSelfResponse, error)
-	// The three writes a signed-in person makes about their own credentials.
+	// The writes a signed-in person makes about their own credentials, and the
+	// two handles that are credentials in all but name. identity's UpdateProfile
+	// refuses both handles; these are where they change.
 	UpdatePassword(ctx context.Context, in *UpdatePasswordRequest, opts ...grpc.CallOption) (*UpdatePasswordResponse, error)
 	RefreshTOTPSecret(ctx context.Context, in *RefreshTOTPSecretRequest, opts ...grpc.CallOption) (*RefreshTOTPSecretResponse, error)
 	VerifyTOTPSecret(ctx context.Context, in *VerifyTOTPSecretRequest, opts ...grpc.CallOption) (*VerifyTOTPSecretResponse, error)
+	UpdateEmailAddress(ctx context.Context, in *UpdateEmailAddressRequest, opts ...grpc.CallOption) (*UpdateEmailAddressResponse, error)
+	UpdateUsername(ctx context.Context, in *UpdateUsernameRequest, opts ...grpc.CallOption) (*UpdateUsernameResponse, error)
 }
 
 type signInServiceClient struct {
@@ -462,6 +468,26 @@ func (c *signInServiceClient) VerifyTOTPSecret(ctx context.Context, in *VerifyTO
 	return out, nil
 }
 
+func (c *signInServiceClient) UpdateEmailAddress(ctx context.Context, in *UpdateEmailAddressRequest, opts ...grpc.CallOption) (*UpdateEmailAddressResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateEmailAddressResponse)
+	err := c.cc.Invoke(ctx, SignInService_UpdateEmailAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) UpdateUsername(ctx context.Context, in *UpdateUsernameRequest, opts ...grpc.CallOption) (*UpdateUsernameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateUsernameResponse)
+	err := c.cc.Invoke(ctx, SignInService_UpdateUsername_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SignInServiceServer is the server API for SignInService service.
 // All implementations must embed UnimplementedSignInServiceServer
 // for forward compatibility.
@@ -529,10 +555,14 @@ type SignInServiceServer interface {
 	// The two reads a client makes on load.
 	GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error)
 	GetSelf(context.Context, *GetSelfRequest) (*GetSelfResponse, error)
-	// The three writes a signed-in person makes about their own credentials.
+	// The writes a signed-in person makes about their own credentials, and the
+	// two handles that are credentials in all but name. identity's UpdateProfile
+	// refuses both handles; these are where they change.
 	UpdatePassword(context.Context, *UpdatePasswordRequest) (*UpdatePasswordResponse, error)
 	RefreshTOTPSecret(context.Context, *RefreshTOTPSecretRequest) (*RefreshTOTPSecretResponse, error)
 	VerifyTOTPSecret(context.Context, *VerifyTOTPSecretRequest) (*VerifyTOTPSecretResponse, error)
+	UpdateEmailAddress(context.Context, *UpdateEmailAddressRequest) (*UpdateEmailAddressResponse, error)
+	UpdateUsername(context.Context, *UpdateUsernameRequest) (*UpdateUsernameResponse, error)
 	mustEmbedUnimplementedSignInServiceServer()
 }
 
@@ -605,6 +635,12 @@ func (UnimplementedSignInServiceServer) RefreshTOTPSecret(context.Context, *Refr
 }
 func (UnimplementedSignInServiceServer) VerifyTOTPSecret(context.Context, *VerifyTOTPSecretRequest) (*VerifyTOTPSecretResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VerifyTOTPSecret not implemented")
+}
+func (UnimplementedSignInServiceServer) UpdateEmailAddress(context.Context, *UpdateEmailAddressRequest) (*UpdateEmailAddressResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateEmailAddress not implemented")
+}
+func (UnimplementedSignInServiceServer) UpdateUsername(context.Context, *UpdateUsernameRequest) (*UpdateUsernameResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateUsername not implemented")
 }
 func (UnimplementedSignInServiceServer) mustEmbedUnimplementedSignInServiceServer() {}
 func (UnimplementedSignInServiceServer) testEmbeddedByValue()                       {}
@@ -1005,6 +1041,42 @@ func _SignInService_VerifyTOTPSecret_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SignInService_UpdateEmailAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateEmailAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).UpdateEmailAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_UpdateEmailAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).UpdateEmailAddress(ctx, req.(*UpdateEmailAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_UpdateUsername_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateUsernameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).UpdateUsername(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_UpdateUsername_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).UpdateUsername(ctx, req.(*UpdateUsernameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SignInService_ServiceDesc is the grpc.ServiceDesc for SignInService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1095,6 +1167,14 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VerifyTOTPSecret",
 			Handler:    _SignInService_VerifyTOTPSecret_Handler,
+		},
+		{
+			MethodName: "UpdateEmailAddress",
+			Handler:    _SignInService_UpdateEmailAddress_Handler,
+		},
+		{
+			MethodName: "UpdateUsername",
+			Handler:    _SignInService_UpdateUsername_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

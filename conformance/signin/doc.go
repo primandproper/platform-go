@@ -12,7 +12,11 @@ for somebody with no password. The second is that every wrong credential gets
 one answer: a wrong password, an unknown handle, a replayed refresh token, a
 dead verification link and a dead sign-in link are all Unauthenticated with the
 same message and the same reason, because an answer that differed would tell
-whoever is guessing which half of the guess was right.
+whoever is guessing which half of the guess was right. The doors a person is
+already signed in to — a password, a second factor or a handle changed — ask for
+the password again and refuse it with the same message and reason under
+PermissionDenied instead, because the token they came with is good and
+Unauthenticated would tell a client to refresh it.
 
 So every refusal here is asserted beside the success it is the other half of.
 A surface that refused everybody would pass "a wrong password is refused" and
@@ -102,6 +106,12 @@ A forced change is asserted twice: that it is reported and still signs in, and
 that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
 made. The second is the gate signin/grpc's extractor runs by default, and
 skips where the subject says Seams.PasswordChangeGateDisabled.
+
+A handle change is asserted as a password change is: an address or a username
+moved with the wrong current password is refused and moves nothing, and the
+right one moves it. That identity's UpdateProfile refuses the same two fields
+is the identity suite's to assert, and it skips where the subject says
+Seams.ReauthenticatedHandlesDisabled.
 
 # Who a call is made as
 

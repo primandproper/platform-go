@@ -84,6 +84,20 @@ var (
 	// and zero-width characters, and this is not an answer to it.
 	ErrUsernameWhitespace = platformerrors.New("username may not begin or end with whitespace")
 
+	// ErrHandleChangeRequiresReauthentication indicates a profile save over a
+	// transport that named a username or an email address, on a server that
+	// sends those through the sign-in service instead.
+	//
+	// A handle is a credential in all but name — the address is where a
+	// password reset goes — so a profile save that could move one is a stolen
+	// session's way to own the account. identity/grpc refuses both fields on
+	// UpdateProfile unless its server was built WithoutReauthenticatedHandles,
+	// and authentication/signin's UpdateEmailAddress and UpdateUsername are
+	// where they change, behind a password or a recent sign-in. Its words name
+	// that door, because sending the client there is the whole remedy.
+	ErrHandleChangeRequiresReauthentication = platformerrors.New(
+		"a username or email address is changed through the sign-in service's UpdateUsername or UpdateEmailAddress, which re-authenticate")
+
 	// ErrUsernameTaken indicates a username already registered in this scope.
 	//
 	// It is a distinct error rather than a raw constraint violation because

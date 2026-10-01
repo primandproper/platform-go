@@ -367,6 +367,23 @@ var (
 	// recovery codes existed.
 	ErrRecoveryCodesNotConfigured = platformerrors.New("no recovery code store is configured")
 
+	// ErrReauthenticationRequired indicates a handle change that offered
+	// neither proof Service.UpdateEmailAddress and Service.UpdateUsername take:
+	// no password, and no login recent enough to stand in for one.
+	//
+	// It is client-safe, and so is its reason, because a client acts on it and
+	// the caller is the subject: the remedy is a password prompt for somebody
+	// who holds one, and signing in again for somebody who does not, and
+	// neither discloses anything about anybody else. Which of the ways a login
+	// failed to count — too old, ended, an impersonation, somebody else's — is
+	// wrapped around it for the log and does not reach the wire.
+	ErrReauthenticationRequired = platformerrors.New("re-authentication is required: send the current password, or sign in again")
+
+	// ErrProfileUpdaterNotConfigured indicates one of the two handle doors on a
+	// service built without WithProfileUpdater. It is a wiring failure, and is
+	// a 500 for the reason the other doors' are.
+	ErrProfileUpdaterNotConfigured = platformerrors.New("no profile updater is configured")
+
 	// ErrRefreshTokenTTLTooShort indicates a service whose refresh tokens would
 	// die before the access tokens they mint.
 	//
@@ -407,6 +424,18 @@ var (
 
 	// ErrNilRecoveryCodeReplacement indicates a nil *RecoveryCodeReplacement.
 	ErrNilRecoveryCodeReplacement = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil recovery code replacement")
+
+	// ErrNilEmailAddressUpdate indicates a nil *EmailAddressUpdate.
+	ErrNilEmailAddressUpdate = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil email address update")
+
+	// ErrNilUsernameUpdate indicates a nil *UsernameUpdate.
+	ErrNilUsernameUpdate = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil username update")
+
+	// ErrEmptyNewEmailAddress indicates an address change to no address.
+	ErrEmptyNewEmailAddress = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty new email address")
+
+	// ErrEmptyNewUsername indicates a username change to no username.
+	ErrEmptyNewUsername = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty new username")
 
 	// ErrEmptyUserID indicates an operation on nobody.
 	ErrEmptyUserID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID")

@@ -87,6 +87,7 @@ var ClientSafeSentinels = []error{
 	ErrDisplayNameTooLong,
 	ErrUsernameWhitespace,
 	ErrSignInNotAdmitted,
+	ErrHandleChangeRequiresReauthentication,
 }
 
 type (
@@ -186,6 +187,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// to send instead rather than why, which is the part a form can act on.
 	case errors.Is(err, ErrUsernameWhitespace):
 		return httperrors.ErrValidatingRequestInput, "username may not begin or end with whitespace", true
+
+	// A profile save naming a handle, on a server that changes handles only
+	// behind re-authentication. A bad request rather than a refusal on
+	// authority: the same save without those fields goes through, and the
+	// message names the door that takes them.
+	case errors.Is(err, ErrHandleChangeRequiresReauthentication):
+		return httperrors.ErrValidatingRequestInput,
+			"a username or email address is changed through the sign-in service, which re-authenticates", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -234,7 +243,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 
 	case errors.Is(err, ErrScopeMismatch),
 		errors.Is(err, ErrDisplayNameTooLong),
-		errors.Is(err, ErrUsernameWhitespace):
+		errors.Is(err, ErrUsernameWhitespace),
+		errors.Is(err, ErrHandleChangeRequiresReauthentication):
 		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false

@@ -329,6 +329,28 @@ func TestServer_CredentialWrites(T *testing.T) {
 		test.NoError(t, err)
 	})
 
+	// The sign-in door's refusal, with its reason and its words, under the
+	// code a signed-in caller can act on: Unauthenticated would send a client
+	// to refresh a token that is good. See TestServer_UpdateEmailAddress.
+	T.Run("a wrong current password is PermissionDenied, not Unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, nil)
+
+		_, err := h.client.UpdatePassword(h.asJane(), &signinpb.UpdatePasswordRequest{
+			CurrentPassword: "not it",
+			NewPassword:     "a whole new password",
+		})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.EqOp(t, "INVALID_CREDENTIALS", reasonOf(err))
+		test.EqOp(t, signin.ErrInvalidCredentials.Error(), status.Convert(err).Message())
+
+		_, err = h.client.RefreshTOTPSecret(h.asJane(), &signinpb.RefreshTOTPSecretRequest{CurrentPassword: "not it"})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+	})
+
 	T.Run("enrollment is the two calls together", func(t *testing.T) {
 		t.Parallel()
 

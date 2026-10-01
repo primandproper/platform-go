@@ -210,6 +210,33 @@ The credential writes are the same shape in reverse: read, verify and
 hash outside, and a transaction that holds the write and the hook together.
 Nothing here holds a write transaction open across a password hash.
 
+# A handle is a credential in all but name
+
+An email address is where a password reset is mailed, so a stolen session that
+could move it would follow with a reset and own the account. A username is what
+somebody signs in with. So neither is changed by identity's profile write over a
+transport — identity/grpc refuses both fields on UpdateProfile unless its server
+was built WithoutReauthenticatedHandles — and both are changed here instead, by
+[Service.UpdateEmailAddress] and [Service.UpdateUsername], which ask what
+[Service.UpdatePassword] asks before making the write identity would have made.
+
+What they ask is one of two proofs. The password, with a code from a proven
+second factor. Or a login that began within [WithRecentSignInWindow], which
+proves what re-typing the password would have, a few minutes earlier: it is the
+"auth_time" of the sign-in the request came through, read off the login's
+refresh token as [RefreshToken.SignedInAt], which a refresh does not move. A
+password holder may offer either; somebody who holds no password — a passkey, a
+sign-in link — has only the second, and is asked to sign in again when it is
+stale. An impersonation's login is never one. [WithoutRecentSignIn] removes the
+second proof and with it any way for a passwordless person to change either
+handle.
+
+The write is identity's, through [ProfileUpdater], so identity's
+AfterUpdateProfile is the hook that records it whichever door made the change,
+and this package adds none. An address change withdraws the old address's proof
+in that write, and a service that can mail a verification link mails the new
+address one once the change has committed.
+
 # Which credential it was
 
 Every door stamps what proved the sign-in on [Authentication.CredentialKind],

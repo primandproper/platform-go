@@ -373,16 +373,14 @@ func registration(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
-		sub, _ := signedIn(t, s, anon, updateProfile, requestVerificationEmail)
-		if sub.Surfaces.Identity == nil {
-			conformance.Skip(t, "conformance: this subject mounts no identity surface, so nobody can move their address; skipping")
-		}
+		sub, _ := signedIn(t, s, anon, updateEmailAddress, requestVerificationEmail)
 
 		move := func(to string) {
 			t.Helper()
 
-			_, err := sub.Surfaces.Identity.UpdateProfile(sub.Context(t.Context()), &identitypb.UpdateProfileRequest{
-				Input: &identitypb.ProfileUpdateInput{EmailAddress: &to},
+			_, err := sub.Surfaces.SignIn.UpdateEmailAddress(sub.Context(t.Context()), &signinpb.UpdateEmailAddressRequest{
+				CurrentPassword: password,
+				NewEmailAddress: to,
 			})
 			must.NoError(t, err, must.Sprint("moving the signed-in person's address"))
 		}

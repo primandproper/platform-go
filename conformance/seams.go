@@ -233,6 +233,19 @@ type Seams struct {
 	// deployment knows which it meant.
 	PasswordChangeGateDisabled bool
 
+	// ReauthenticatedHandlesDisabled says the deployment's identity surface
+	// lets UpdateProfile move a username or an email address on nothing but a
+	// session — it built identity/grpc's server WithoutReauthenticatedHandles.
+	// True skips the assertion that such a save is refused, and runs instead
+	// the ones that move an address through UpdateProfile; false, the zero
+	// value, asserts the refusal, because the gate is on by default.
+	//
+	// A fact about the deployment rather than an action, for
+	// PasswordChangeGateDisabled's reason: a save that goes through is either
+	// a gate that is off or a gate that is broken, and only the deployment
+	// knows which it meant.
+	ReauthenticatedHandlesDisabled bool
+
 	// ErrorReasonsStripped says the deployment's edge drops a refusal's
 	// client-safe reason before it reaches a client. True skips the reason half
 	// of each assertion that reads one, with that printed; the code half runs
