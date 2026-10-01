@@ -122,7 +122,9 @@ posture as sign-in rather than a more dangerous one: Register is anonymous and
 open by default, the deployment's signin.RegistrationPolicy decides who it
 admits, and how often it may be called is a decision in front of it like the
 rest. A deployment that wants no sign-up at all closes the door with
-[WithoutOpenRegistration].
+[WithoutOpenRegistration], which a deployment built from signincfg sets by
+naming Registration.Closed (SIGN_IN_REGISTRATION_CLOSED, under service) rather
+than by writing it.
 */
 package grpc
 

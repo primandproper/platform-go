@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
 
@@ -22,6 +25,8 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // testDBClient is a SQLite database nothing has migrated. The doors these
@@ -240,6 +245,65 @@ func TestConfig_FromTheEnvironment(T *testing.T) {
 		cfg := parse(t, map[string]string{"REGISTRATION_DISABLED": "true"})
 		test.True(t, cfg.Registration.Disabled)
 	})
+
+	T.Run("the sign-up door is closed on the wire by name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := parse(t, map[string]string{"REGISTRATION_CLOSED": "true"})
+		test.True(t, cfg.Registration.Closed)
+		test.False(t, cfg.Registration.Disabled)
+	})
+}
+
+// TestConfig_ServerOptions pins what the registration block does to the wire:
+// open unless the block says otherwise, and closed — with the refusal a client
+// can tell from a broken server — by either Closed or Disabled.
+func TestConfig_ServerOptions(T *testing.T) {
+	T.Parallel()
+
+	nobody := func(context.Context) (callers.Principal, bool) { return nil, false }
+
+	register := func(t *testing.T, registration RegistrationConfig) error {
+		t.Helper()
+
+		cfg := &Config{
+			DefaultOwnerRoles: ownerRoles,
+			RefreshTokens:     RefreshTokensConfig{SweepInterval: pointer.To(time.Duration(0))},
+			Registration:      registration,
+		}
+
+		svc, err := NewService(t.Context(), cfg, testDBClient(t), &identitymock.StoreMock{},
+			argon2.NewArgon2Authenticator(), stubIssuer{}, WithRegistrar(stubRegistrar{}))
+		must.NoError(t, err)
+
+		srv, err := signingrpc.NewServer(svc, nobody, cfg.ServerOptions()...)
+		must.NoError(t, err)
+
+		_, err = srv.Register(t.Context(), &signinpb.RegisterRequest{})
+
+		return err
+	}
+
+	T.Run("an unset block leaves the door open", func(t *testing.T) {
+		t.Parallel()
+
+		err := register(t, RegistrationConfig{})
+		must.Error(t, err)
+		test.NotEqOp(t, codes.Unimplemented, status.Code(err))
+	})
+
+	for name, registration := range map[string]RegistrationConfig{
+		"closed":   {Closed: true},
+		"disabled": {Disabled: true},
+	} {
+		T.Run("a "+name+" block closes the door", func(t *testing.T) {
+			t.Parallel()
+
+			err := register(t, registration)
+			test.ErrorIs(t, err, signin.ErrRegistrationClosed)
+			test.EqOp(t, codes.Unimplemented, status.Code(err))
+		})
+	}
 }
 
 func TestNewService(T *testing.T) {

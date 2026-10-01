@@ -59,7 +59,7 @@ var (
 	// so every registration the suites make goes through it instead.
 	openRegistration = expectedSkip{
 		test: "signin/registration/a_closed_sign-up_door_is_refused_by_name",
-		why:  "service builds sign-in's server without WithoutOpenRegistration, so Seams.RegistrationClosed is false",
+		why:  "the harness leaves sign-in's Registration block open, so service builds the server without WithoutOpenRegistration and Seams.RegistrationClosed is false",
 	}
 
 	// membersSkips are what the run reserving nothing may skip.

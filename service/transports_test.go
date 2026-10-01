@@ -84,6 +84,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -365,6 +366,15 @@ func TestRegisterTransports(T *testing.T) {
 		services := srv.GetServiceInfo()
 		test.MapContainsKey(t, services, signinpb.SignInService_ServiceDesc.ServiceName)
 		test.MapContainsKey(t, services, signinpb.SignInAdministrationService_ServiceDesc.ServiceName)
+
+		// Registration is disabled, so the mounted door is closed by name
+		// rather than reaching a service with no registrar and answering a 500
+		// a client could not tell from a broken server.
+		client := signinpb.NewSignInServiceClient(serveMounted(t, i, "sign-in gRPC", nil))
+
+		_, err = client.Register(t.Context(), &signinpb.RegisterRequest{})
+		test.EqOp(t, codes.Unimplemented, status.Code(err))
+		test.EqOp(t, signin.ErrRegistrationClosed.Error(), status.Convert(err).Message())
 	})
 
 	T.Run("the passkeys surface mounts from its config block beside sign-in's", func(t *testing.T) {

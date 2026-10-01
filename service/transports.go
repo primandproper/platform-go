@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
@@ -1516,9 +1517,19 @@ func (m *mount) signIn() {
 		return
 	}
 
-	opts := append([]signingrpc.Option{signingrpc.WithPillars(m.pillars)}, m.t.Options.SignIn...)
+	opts := []signingrpc.Option{signingrpc.WithPillars(m.pillars)}
 
-	srv, err := signingrpc.NewServer(svc, extract, opts...)
+	// The config block is what Register provided for Config.SignIn, and its
+	// server half — whether the sign-up door is closed on the wire — is read
+	// here through the ServerOptions any hand-built server reads, as
+	// identity's is.
+	if cfg, found := need[*signincfg.Config](m); found {
+		opts = append(opts, cfg.ServerOptions()...)
+	} else if m.err != nil {
+		return
+	}
+
+	srv, err := signingrpc.NewServer(svc, extract, append(opts, m.t.Options.SignIn...)...)
 	if err != nil {
 		m.fail(SurfaceSignIn, err)
 

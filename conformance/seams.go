@@ -373,7 +373,8 @@ type Seams struct {
 	RefreshTokensUnissued bool
 
 	// RegistrationClosed says the deployment's sign-in server was built with
-	// signingrpc.WithoutOpenRegistration, so its sign-up door refuses everybody.
+	// signingrpc.WithoutOpenRegistration — by hand, or by signincfg's
+	// Registration.Closed or Disabled — so its sign-up door refuses everybody.
 	// True asserts that refusal — Register with nobody on it is Unimplemented,
 	// carrying REGISTRATION_CLOSED — and skips every assertion that registers
 	// somebody over the wire, with that printed.

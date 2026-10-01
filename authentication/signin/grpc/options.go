@@ -135,6 +135,10 @@ type SignInAnnotator func(
 // signin.RegistrationPolicy, which reads the caller off the context. Register
 // stays in [AnonymousMethods] either way: the lists are fixed, and the server
 // is the one place that decides.
+//
+// A deployment built from signincfg does not pass it by hand: naming
+// Registration.Closed, or Registration.Disabled, puts it among the config's
+// ServerOptions, which service's mount reads.
 func WithoutOpenRegistration() Option {
 	return func(s *Server) { s.registrationClosed = true }
 }
