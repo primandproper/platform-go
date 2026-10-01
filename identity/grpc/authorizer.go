@@ -42,9 +42,11 @@ import (
 // it. That is the deliberate direction of the asymmetry: a wrong-open default
 // is a within-tenant privilege escalation that nothing reports, and a
 // wrong-closed one is a PermissionDenied in a consumer's test. A consumer with
-// a different rule — an operator console, a support role that reads every
-// account, a policy engine of their own — supplies it with
-// [WithTargetAuthorizer].
+// a different rule — a support role scoped some other way, a policy engine of
+// their own — supplies it with [WithTargetAuthorizer]. An operator who may read
+// or act on every row does not need one: that is [PermissionOperatorRead] and
+// [PermissionOperatorAct], asked after whichever authorizer is installed
+// refuses.
 //
 // # What implementations owe
 //
@@ -132,11 +134,14 @@ type TargetAuthorizer interface {
 // a header the client sent, and comparing a request field against another
 // request field is not a check. A live membership is a row.
 //
-// It does not know about grants, so it has no operator carve-out: a support role
-// holding identity.users.read is refused a user they share no account with,
-// because the permission is on the method and this type cannot see it. A
-// consumer whose operators need the directory implements this interface with
-// their grants in hand — that is what the seam is for.
+// It does not know about grants, so it has no operator carve-out of its own: a
+// support role holding identity.users.read is refused a user they share no
+// account with, because the permission is on the method and this type cannot
+// see it. The carve-out is the server's, asked after this type refuses: a
+// caller holding [PermissionOperatorRead] or [PermissionOperatorAct] is let
+// through and recorded — see [WithOperatorRecorder]. A consumer whose rule is
+// something other than "the member, or an operator" still implements this
+// interface with their grants in hand — that is what the seam is for.
 //
 // It checks the target and does not narrow the answer. ListAccountsForUser
 // against a permitted user returns every account that user belongs to, the ones
@@ -320,9 +325,12 @@ func (s *Server) authorizeAccount(
 	ctx context.Context,
 	op observability.Operation,
 	caller callers.Principal,
+	kind access,
 	accountID string,
 ) error {
-	return authorizeOutcome(op, s.targets.AuthorizeAccount(ctx, caller, accountID),
+	return authorizeOutcome(op,
+		s.admitOperator(ctx, caller, kind, auditResourceAccount, accountID,
+			s.targets.AuthorizeAccount(ctx, caller, accountID)),
 		"authorizing the caller against account %q", accountID)
 }
 
@@ -330,9 +338,12 @@ func (s *Server) authorizeUser(
 	ctx context.Context,
 	op observability.Operation,
 	caller callers.Principal,
+	kind access,
 	userID string,
 ) error {
-	return authorizeOutcome(op, s.targets.AuthorizeUser(ctx, caller, userID),
+	return authorizeOutcome(op,
+		s.admitOperator(ctx, caller, kind, auditResourceUser, userID,
+			s.targets.AuthorizeUser(ctx, caller, userID)),
 		"authorizing the caller against user %q", userID)
 }
 
@@ -340,15 +351,22 @@ func (s *Server) authorizeInvitation(
 	ctx context.Context,
 	op observability.Operation,
 	caller callers.Principal,
+	kind access,
 	invitationID string,
 ) error {
-	return authorizeOutcome(op, s.targets.AuthorizeInvitation(ctx, caller, invitationID),
+	return authorizeOutcome(op,
+		s.admitOperator(ctx, caller, kind, auditResourceInvitation, invitationID,
+			s.targets.AuthorizeInvitation(ctx, caller, invitationID)),
 		"authorizing the caller against invitation %q", invitationID)
 }
 
-// authorizeInvitationRead is GetInvitation's row check: the seam's answer, and
-// the invitee where the seam refused. See GetInvitation for why the invitee is
-// not the seam's question.
+// authorizeInvitationRead is GetInvitation's row check: the seam's answer, the
+// invitee where the seam refused, and an operator where neither admitted. See
+// GetInvitation for why the invitee is not the seam's question.
+//
+// The invitee is asked before the operator permission, so an operator reading
+// an invitation addressed to them is an ordinary read and is not recorded as
+// an admission.
 func (s *Server) authorizeInvitationRead(
 	ctx context.Context,
 	op observability.Operation,
@@ -371,7 +389,9 @@ func (s *Server) authorizeInvitationRead(
 		return nil
 	}
 
-	return authorizeOutcome(op, refusal, description, invitationID)
+	return authorizeOutcome(op,
+		s.admitOperator(ctx, caller, reading, auditResourceInvitation, invitationID, refusal),
+		description, invitationID)
 }
 
 // isInvitee reports whether the caller's own user row carries a verified

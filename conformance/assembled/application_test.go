@@ -351,7 +351,8 @@ func isAdministrator(principal callers.Principal) bool {
 // staffOnly is the reservation this harness's second run makes: a deployment
 // that keeps its console to its staff, the way a product with a back office
 // does. The directory's administration, the catalog's writes, the scope-wide
-// ledgers and their corrections, the chain's verification, the moderation read,
+// ledgers and their corrections, the chain's verification and every tenant's
+// log, the moderation read,
 // the report queue across tenants, the settings catalog, somebody else's logins,
 // the client registry and the waitlist console are an operator's; everything a
 // person does to their own rows, and every door reached with nobody on the
@@ -363,6 +364,8 @@ func isAdministrator(principal callers.Principal) bool {
 // named by a member. Which calls a consumer names is its own to decide.
 var staffOnly = []string{
 	auditpb.AuditService_VerifyChain_FullMethodName,
+	auditpb.AuditAdministrationService_GetAnyEntry_FullMethodName,
+	auditpb.AuditAdministrationService_ListAnyEntries_FullMethodName,
 
 	billingpb.BillingService_CreateProduct_FullMethodName,
 	billingpb.BillingService_UpdateProduct_FullMethodName,

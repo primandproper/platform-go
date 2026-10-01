@@ -1190,9 +1190,22 @@ func auditServiceOverBufconn(
 
 	RegisterTransports(i, transports)
 
+	return auditpb.NewAuditServiceClient(serveMounted(t, i, "audit gRPC", caller))
+}
+
+// serveMounted serves what RegisterTransports mounted on an in-process
+// connection, having checked that surface is among it, and returns the
+// connection.
+//
+// A non-nil caller is put on every request's server-side context by an
+// interceptor, standing in for the authentication interceptor a deployment
+// installs; nil leaves the requests with nobody on them.
+func serveMounted(t *testing.T, i do.Injector, surface string, caller callers.Principal) *grpc.ClientConn {
+	t.Helper()
+
 	mounted, err := do.Invoke[*mountedTransports](i)
 	must.NoError(t, err)
-	must.SliceContains(t, mounted.names, "audit gRPC")
+	must.SliceContains(t, mounted.names, surface)
 
 	var opts []grpc.ServerOption
 	if caller != nil {
@@ -1224,7 +1237,7 @@ func auditServiceOverBufconn(
 		_ = listener.Close()
 	})
 
-	return auditpb.NewAuditServiceClient(conn)
+	return conn
 }
 
 // TestRegisterTransports_dataPrivacyArtifactRoute pins that the privacy surface

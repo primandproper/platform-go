@@ -278,8 +278,9 @@ type Reader interface {
 	// It is a stated exception to "no read path omits the scope", and it is an
 	// exception by being a separate method rather than a nil scope — a nil that
 	// widens a read is the scopeless call the tenancy typing exists to rule
-	// out. No transport in this module calls it. A Go caller reaching for it is
-	// an operator's surface, and the name says so in review.
+	// out. The one transport that calls it is audit/grpc's
+	// AuditAdministrationService, behind a permission of its own. A Go caller
+	// reaching for it is an operator's surface, and the name says so in review.
 	GetAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, id string) (*Entry, error)
 	// List pages through one scope's entries matching query.
 	List(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, query *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)

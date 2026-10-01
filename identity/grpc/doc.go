@@ -53,6 +53,17 @@ consumer with a different rule supplies it with [WithTargetAuthorizer]; a
 consumer who says nothing gets a directory that is closed on other people's
 accounts rather than one where a grant is directory-wide.
 
+An operator is the exception the default has no way to see, since it holds no
+grants, and it is answered beside the seam rather than inside it. A caller the
+authorizer refused who holds [PermissionOperatorRead] on a read, or
+[PermissionOperatorAct] on a write, is let through — and the admission is
+recorded as audit.OperatorBypassEntry before the call proceeds. It takes
+[WithGrantsExtractor] and [WithOperatorRecorder] together, since an admission
+nobody can see is not one this surface makes; [WithOperatorPermission] renames
+the two permissions, and nothing in this module grants either. It holds
+whichever authorizer is installed, the default or a consumer's own, so a rule
+of their own need not re-derive the operator carve-out.
+
 [github.com/primandproper/platform-go/v14/identity/config] assembles all three
 layers from environment configuration and registers them with an injector, which
 is the shorter of the two mounts below.

@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
@@ -301,5 +302,45 @@ func accountKeyedReads() map[string]func(*harness, context.Context, string) (any
 			return h.server.ListTransactionsForAccount(ctx,
 				&billingpb.ListTransactionsForAccountRequest{AccountId: accountID})
 		},
+	}
+}
+
+// TestAnAuthorizerCanAdmitAnOperatorOnAPermission pins the composition the
+// seam's documentation shows: the consumer's authorizer reads the request's
+// grants through the same extractor the server holds, and admits a holder of a
+// permission the deployment named to an account that is not theirs. This
+// package declares no such permission, so the test names one of its own.
+func TestAnAuthorizerCanAdmitAnOperatorOnAPermission(T *testing.T) {
+	T.Parallel()
+
+	const readAnyLedger authorization.Permission = "billing.accounts.read_any"
+
+	own := ownAccountAuthorizer()
+	operatorOrOwner := billinggrpc.AccountAuthorizerFunc(
+		func(ctx context.Context, caller callers.Principal, accountID string) error {
+			if grants, ok := extractGrants(ctx); ok && grants.Has(readAnyLedger) {
+				return nil
+			}
+
+			return own.AuthorizeAccount(ctx, caller, accountID)
+		})
+
+	for name, call := range accountKeyedReads() {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarnessWithAuthorizer(t, operatorOrOwner)
+
+			// A caller active on another account, holding the permission.
+			operator := withGrants(h.ctx(t, testUser, otherAccount), readAnyLedger)
+			_, err := call(h, operator, testAccount)
+			must.NoError(t, err)
+
+			// The same caller without it gets the refusal a stranger gets.
+			member := withGrants(h.ctx(t, testUser, otherAccount), billinggrpc.PermissionReadSubscriptions)
+			_, err = call(h, member, testAccount)
+			must.Error(t, err)
+			test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		})
 	}
 }

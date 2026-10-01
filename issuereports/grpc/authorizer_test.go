@@ -7,10 +7,15 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
+	"github.com/shoenig/test/must"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestReporterAuthorizer covers the narrow half of every rule a deployment
@@ -167,5 +172,69 @@ func TestTheNarrowHalfIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
 		test.NoError(t, rule.AuthorizeReporter(t.Context(), caller, testReporter))
 		test.ErrorIs(t, rule.AuthorizeReporter(t.Context(), caller, otherReporter),
 			callers.ErrTargetNotPermitted)
+	})
+}
+
+// operatorOrReporter is the composition the seam's documentation shows: a
+// person reaches their own reports, and a holder of a permission the
+// deployment named reaches everybody's. This package declares no such
+// permission, so the test names one of its own.
+type operatorOrReporter struct {
+	issuereportsgrpc.ReporterAuthorizer
+}
+
+const readAnyReport authorization.Permission = "issues.reports.read_any"
+
+func triages(ctx context.Context) bool {
+	grants, ok := extractGrants(ctx)
+
+	return ok && grants.Has(readAnyReport)
+}
+
+func (a operatorOrReporter) AuthorizeReport(ctx context.Context, caller callers.Principal, report *issuereports.Report) error {
+	if triages(ctx) {
+		return nil
+	}
+
+	return a.ReporterAuthorizer.AuthorizeReport(ctx, caller, report)
+}
+
+func (a operatorOrReporter) AuthorizeReporter(ctx context.Context, caller callers.Principal, reporter string) error {
+	if triages(ctx) {
+		return nil
+	}
+
+	return a.ReporterAuthorizer.AuthorizeReporter(ctx, caller, reporter)
+}
+
+// TestAnAuthorizerCanAdmitAnOperatorOnAPermission pins that the grants the
+// server holds are reachable from inside the consumer's rule: a holder reads a
+// report somebody else filed, and a caller without the permission is refused
+// exactly as a stranger is.
+func TestAnAuthorizerCanAdmitAnOperatorOnAPermission(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a holder reads somebody else's report", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithAuthorizer(t, operatorOrReporter{})
+		report := h.seedReport(t, testScope, testReporter)
+
+		read, err := h.server.GetReport(withGrants(h.ctx(t, otherReporter), readAnyReport),
+			&issuereportspb.GetReportRequest{ReportId: report.ID})
+		must.NoError(t, err)
+		test.EqOp(t, report.ID, read.GetResult().GetId())
+	})
+
+	T.Run("a caller without it gets the usual refusal", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithAuthorizer(t, operatorOrReporter{})
+		report := h.seedReport(t, testScope, testReporter)
+
+		_, err := h.server.GetReport(withGrants(h.ctx(t, otherReporter), issuereportsgrpc.PermissionReadReports),
+			&issuereportspb.GetReportRequest{ReportId: report.ID})
+		must.Error(t, err)
+		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 }

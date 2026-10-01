@@ -190,6 +190,11 @@ const (
 	// consider giving it its own table via WithRecorderTablePrefix, so the
 	// retention window and the index set can differ from the mutation log's.
 	EventAccessed EventType = "accessed"
+	// EventOperatorBypass records a caller admitted to a row a surface's own
+	// rule refused them, on the strength of an operator permission rather than
+	// of standing in the row. See [OperatorBypassEntry], which is how every
+	// surface that admits one files it.
+	EventOperatorBypass EventType = "operator_bypass"
 	// EventOther records an event outside the vocabulary above.
 	EventOther EventType = "other"
 )

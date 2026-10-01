@@ -43,6 +43,20 @@
 // client something it supplied, and its absence is what makes a converter
 // unable to read one back out of a request.
 //
+// AuditAdministrationService is the one place a request names a tenant, and it
+// is a service of its own for exactly the reason above. There the capability
+// is the method: a caller reaches GetAnyEntry or ListAnyEntries only by holding
+// the permission audit/grpc's Permissions puts on them, which nothing grants
+// by default, and every call is recorded in the caller's own chain before it is
+// answered. A field on AuditService's messages would hand the same reach to
+// everybody who may read their own log; a method of its own hands it to the
+// operators a deployment named, and a policy that leaves them out is refused
+// by the enforcer's fail-closed rule rather than widened. Its messages still
+// reserve "scope" -- the tenant it names is owner_id, which is what a
+// tenancy.Scope stores -- and its entries carry the owner they belong to,
+// because an answer spanning tenants is the one answer that cannot leave it
+// implied.
+//
 // # There is no recording RPC
 //
 // audit.Recorder is absent from this service on purpose, and the reason is on
@@ -1068,6 +1082,271 @@ func (x *VerifyChainResponse) GetResult() *VerificationResult {
 	return nil
 }
 
+// OwnedEntry is an entry together with the tenant whose chain it is in, as
+// AuditAdministrationService answers it.
+//
+// Entry carries no scope because every entry AuditService returns belongs to
+// the connection's. An operator's read spans tenants, so the owner is
+// carried beside the entry rather than added to it: Entry stays the one shape
+// both services describe an entry with.
+type OwnedEntry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Entry *Entry                 `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	// owner_id is the tenant whose chain holds the entry: the identifier a
+	// tenancy.Scope stores. Empty is the global scope, the chain of events that
+	// belong to no tenant.
+	OwnerId       string `protobuf:"bytes,2,opt,name=owner_id,json=ownerID,proto3" json:"owner_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OwnedEntry) Reset() {
+	*x = OwnedEntry{}
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OwnedEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OwnedEntry) ProtoMessage() {}
+
+func (x *OwnedEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OwnedEntry.ProtoReflect.Descriptor instead.
+func (*OwnedEntry) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_audit_v1_audit_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *OwnedEntry) GetEntry() *Entry {
+	if x != nil {
+		return x.Entry
+	}
+	return nil
+}
+
+func (x *OwnedEntry) GetOwnerId() string {
+	if x != nil {
+		return x.OwnerId
+	}
+	return ""
+}
+
+type GetAnyEntryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EntryId       string                 `protobuf:"bytes,1,opt,name=entry_id,json=entryID,proto3" json:"entry_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAnyEntryRequest) Reset() {
+	*x = GetAnyEntryRequest{}
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAnyEntryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAnyEntryRequest) ProtoMessage() {}
+
+func (x *GetAnyEntryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAnyEntryRequest.ProtoReflect.Descriptor instead.
+func (*GetAnyEntryRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_audit_v1_audit_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetAnyEntryRequest) GetEntryId() string {
+	if x != nil {
+		return x.EntryId
+	}
+	return ""
+}
+
+type GetAnyEntryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entry         *OwnedEntry            `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAnyEntryResponse) Reset() {
+	*x = GetAnyEntryResponse{}
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAnyEntryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAnyEntryResponse) ProtoMessage() {}
+
+func (x *GetAnyEntryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAnyEntryResponse.ProtoReflect.Descriptor instead.
+func (*GetAnyEntryResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_audit_v1_audit_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetAnyEntryResponse) GetEntry() *OwnedEntry {
+	if x != nil {
+		return x.Entry
+	}
+	return nil
+}
+
+type ListAnyEntriesRequest struct {
+	state  protoimpl.MessageState   `protogen:"open.v1"`
+	Query  *EntryQuery              `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Filter *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	// owner_id narrows the page to one tenant's chain, where it is set. Unset
+	// pages every tenant's. Set and empty is the global chain, which is a
+	// tenant's worth of events as well: the ones that belong to no tenant.
+	OwnerId       *string `protobuf:"bytes,3,opt,name=owner_id,json=ownerID,proto3,oneof" json:"owner_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAnyEntriesRequest) Reset() {
+	*x = ListAnyEntriesRequest{}
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAnyEntriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAnyEntriesRequest) ProtoMessage() {}
+
+func (x *ListAnyEntriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAnyEntriesRequest.ProtoReflect.Descriptor instead.
+func (*ListAnyEntriesRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_audit_v1_audit_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListAnyEntriesRequest) GetQuery() *EntryQuery {
+	if x != nil {
+		return x.Query
+	}
+	return nil
+}
+
+func (x *ListAnyEntriesRequest) GetFilter() *filteringpb.QueryFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+func (x *ListAnyEntriesRequest) GetOwnerId() string {
+	if x != nil && x.OwnerId != nil {
+		return *x.OwnerId
+	}
+	return ""
+}
+
+type ListAnyEntriesResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Pagination    *filteringpb.Pagination `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Results       []*OwnedEntry           `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAnyEntriesResponse) Reset() {
+	*x = ListAnyEntriesResponse{}
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAnyEntriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAnyEntriesResponse) ProtoMessage() {}
+
+func (x *ListAnyEntriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_audit_v1_audit_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAnyEntriesResponse.ProtoReflect.Descriptor instead.
+func (*ListAnyEntriesResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_audit_v1_audit_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListAnyEntriesResponse) GetPagination() *filteringpb.Pagination {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListAnyEntriesResponse) GetResults() []*OwnedEntry {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 var File_primandproper_platform_audit_v1_audit_proto protoreflect.FileDescriptor
 
 const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
@@ -1147,7 +1426,25 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\n" +
 	"_after_seqR\x05scope\"b\n" +
 	"\x13VerifyChainResponse\x12K\n" +
-	"\x06result\x18\x01 \x01(\v23.primandproper.platform.audit.v1.VerificationResultR\x06result*\x8d\x01\n" +
+	"\x06result\x18\x01 \x01(\v23.primandproper.platform.audit.v1.VerificationResultR\x06result\"e\n" +
+	"\n" +
+	"OwnedEntry\x12<\n" +
+	"\x05entry\x18\x01 \x01(\v2&.primandproper.platform.audit.v1.EntryR\x05entry\x12\x19\n" +
+	"\bowner_id\x18\x02 \x01(\tR\aownerID\"6\n" +
+	"\x12GetAnyEntryRequest\x12\x19\n" +
+	"\bentry_id\x18\x01 \x01(\tR\aentryIDR\x05scope\"X\n" +
+	"\x13GetAnyEntryResponse\x12A\n" +
+	"\x05entry\x18\x01 \x01(\v2+.primandproper.platform.audit.v1.OwnedEntryR\x05entry\"\xd8\x01\n" +
+	"\x15ListAnyEntriesRequest\x12A\n" +
+	"\x05query\x18\x01 \x01(\v2+.primandproper.platform.audit.v1.EntryQueryR\x05query\x12H\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\x12\x1e\n" +
+	"\bowner_id\x18\x03 \x01(\tH\x00R\aownerID\x88\x01\x01B\v\n" +
+	"\t_owner_idR\x05scope\"\xb0\x01\n" +
+	"\x16ListAnyEntriesResponse\x12O\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
+	"pagination\x12E\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.audit.v1.OwnedEntryR\aresults*\x8d\x01\n" +
 	"\vBreakReason\x12\x1c\n" +
 	"\x18BREAK_REASON_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cBREAK_REASON_CONTENT_ALTERED\x10\x01\x12\x1e\n" +
@@ -1156,7 +1453,10 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\fAuditService\x12o\n" +
 	"\bGetEntry\x120.primandproper.platform.audit.v1.GetEntryRequest\x1a1.primandproper.platform.audit.v1.GetEntryResponse\x12x\n" +
 	"\vListEntries\x123.primandproper.platform.audit.v1.ListEntriesRequest\x1a4.primandproper.platform.audit.v1.ListEntriesResponse\x12x\n" +
-	"\vVerifyChain\x123.primandproper.platform.audit.v1.VerifyChainRequest\x1a4.primandproper.platform.audit.v1.VerifyChainResponseB@Z>github.com/primandproper/platform-go/v14/audit/auditpb;auditpbb\x06proto3"
+	"\vVerifyChain\x123.primandproper.platform.audit.v1.VerifyChainRequest\x1a4.primandproper.platform.audit.v1.VerifyChainResponse2\x9a\x02\n" +
+	"\x1aAuditAdministrationService\x12x\n" +
+	"\vGetAnyEntry\x123.primandproper.platform.audit.v1.GetAnyEntryRequest\x1a4.primandproper.platform.audit.v1.GetAnyEntryResponse\x12\x81\x01\n" +
+	"\x0eListAnyEntries\x126.primandproper.platform.audit.v1.ListAnyEntriesRequest\x1a7.primandproper.platform.audit.v1.ListAnyEntriesResponseB@Z>github.com/primandproper/platform-go/v14/audit/auditpb;auditpbb\x06proto3"
 
 var (
 	file_primandproper_platform_audit_v1_audit_proto_rawDescOnce sync.Once
@@ -1171,7 +1471,7 @@ func file_primandproper_platform_audit_v1_audit_proto_rawDescGZIP() []byte {
 }
 
 var file_primandproper_platform_audit_v1_audit_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_primandproper_platform_audit_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_primandproper_platform_audit_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_primandproper_platform_audit_v1_audit_proto_goTypes = []any{
 	(BreakReason)(0),                // 0: primandproper.platform.audit.v1.BreakReason
 	(*Actor)(nil),                   // 1: primandproper.platform.audit.v1.Actor
@@ -1186,44 +1486,59 @@ var file_primandproper_platform_audit_v1_audit_proto_goTypes = []any{
 	(*ListEntriesResponse)(nil),     // 10: primandproper.platform.audit.v1.ListEntriesResponse
 	(*VerifyChainRequest)(nil),      // 11: primandproper.platform.audit.v1.VerifyChainRequest
 	(*VerifyChainResponse)(nil),     // 12: primandproper.platform.audit.v1.VerifyChainResponse
-	nil,                             // 13: primandproper.platform.audit.v1.Entry.ChangesEntry
-	nil,                             // 14: primandproper.platform.audit.v1.Entry.MetadataEntry
-	(*structpb.Value)(nil),          // 15: google.protobuf.Value
-	(*timestamppb.Timestamp)(nil),   // 16: google.protobuf.Timestamp
-	(*filteringpb.QueryFilter)(nil), // 17: primandproper.platform.filtering.v1.QueryFilter
-	(*filteringpb.Pagination)(nil),  // 18: primandproper.platform.filtering.v1.Pagination
+	(*OwnedEntry)(nil),              // 13: primandproper.platform.audit.v1.OwnedEntry
+	(*GetAnyEntryRequest)(nil),      // 14: primandproper.platform.audit.v1.GetAnyEntryRequest
+	(*GetAnyEntryResponse)(nil),     // 15: primandproper.platform.audit.v1.GetAnyEntryResponse
+	(*ListAnyEntriesRequest)(nil),   // 16: primandproper.platform.audit.v1.ListAnyEntriesRequest
+	(*ListAnyEntriesResponse)(nil),  // 17: primandproper.platform.audit.v1.ListAnyEntriesResponse
+	nil,                             // 18: primandproper.platform.audit.v1.Entry.ChangesEntry
+	nil,                             // 19: primandproper.platform.audit.v1.Entry.MetadataEntry
+	(*structpb.Value)(nil),          // 20: google.protobuf.Value
+	(*timestamppb.Timestamp)(nil),   // 21: google.protobuf.Timestamp
+	(*filteringpb.QueryFilter)(nil), // 22: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),  // 23: primandproper.platform.filtering.v1.Pagination
 }
 var file_primandproper_platform_audit_v1_audit_proto_depIdxs = []int32{
-	15, // 0: primandproper.platform.audit.v1.Change.old_value:type_name -> google.protobuf.Value
-	15, // 1: primandproper.platform.audit.v1.Change.new_value:type_name -> google.protobuf.Value
-	16, // 2: primandproper.platform.audit.v1.Entry.recorded_at:type_name -> google.protobuf.Timestamp
+	20, // 0: primandproper.platform.audit.v1.Change.old_value:type_name -> google.protobuf.Value
+	20, // 1: primandproper.platform.audit.v1.Change.new_value:type_name -> google.protobuf.Value
+	21, // 2: primandproper.platform.audit.v1.Entry.recorded_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: primandproper.platform.audit.v1.Entry.actor:type_name -> primandproper.platform.audit.v1.Actor
-	13, // 4: primandproper.platform.audit.v1.Entry.changes:type_name -> primandproper.platform.audit.v1.Entry.ChangesEntry
-	14, // 5: primandproper.platform.audit.v1.Entry.metadata:type_name -> primandproper.platform.audit.v1.Entry.MetadataEntry
+	18, // 4: primandproper.platform.audit.v1.Entry.changes:type_name -> primandproper.platform.audit.v1.Entry.ChangesEntry
+	19, // 5: primandproper.platform.audit.v1.Entry.metadata:type_name -> primandproper.platform.audit.v1.Entry.MetadataEntry
 	0,  // 6: primandproper.platform.audit.v1.Break.reason:type_name -> primandproper.platform.audit.v1.BreakReason
-	16, // 7: primandproper.platform.audit.v1.VerificationResult.from:type_name -> google.protobuf.Timestamp
-	16, // 8: primandproper.platform.audit.v1.VerificationResult.to:type_name -> google.protobuf.Timestamp
+	21, // 7: primandproper.platform.audit.v1.VerificationResult.from:type_name -> google.protobuf.Timestamp
+	21, // 8: primandproper.platform.audit.v1.VerificationResult.to:type_name -> google.protobuf.Timestamp
 	5,  // 9: primandproper.platform.audit.v1.VerificationResult.first_break:type_name -> primandproper.platform.audit.v1.Break
 	3,  // 10: primandproper.platform.audit.v1.GetEntryResponse.entry:type_name -> primandproper.platform.audit.v1.Entry
 	4,  // 11: primandproper.platform.audit.v1.ListEntriesRequest.query:type_name -> primandproper.platform.audit.v1.EntryQuery
-	17, // 12: primandproper.platform.audit.v1.ListEntriesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	18, // 13: primandproper.platform.audit.v1.ListEntriesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	22, // 12: primandproper.platform.audit.v1.ListEntriesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	23, // 13: primandproper.platform.audit.v1.ListEntriesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	3,  // 14: primandproper.platform.audit.v1.ListEntriesResponse.results:type_name -> primandproper.platform.audit.v1.Entry
-	16, // 15: primandproper.platform.audit.v1.VerifyChainRequest.from:type_name -> google.protobuf.Timestamp
-	16, // 16: primandproper.platform.audit.v1.VerifyChainRequest.to:type_name -> google.protobuf.Timestamp
+	21, // 15: primandproper.platform.audit.v1.VerifyChainRequest.from:type_name -> google.protobuf.Timestamp
+	21, // 16: primandproper.platform.audit.v1.VerifyChainRequest.to:type_name -> google.protobuf.Timestamp
 	6,  // 17: primandproper.platform.audit.v1.VerifyChainResponse.result:type_name -> primandproper.platform.audit.v1.VerificationResult
-	2,  // 18: primandproper.platform.audit.v1.Entry.ChangesEntry.value:type_name -> primandproper.platform.audit.v1.Change
-	7,  // 19: primandproper.platform.audit.v1.AuditService.GetEntry:input_type -> primandproper.platform.audit.v1.GetEntryRequest
-	9,  // 20: primandproper.platform.audit.v1.AuditService.ListEntries:input_type -> primandproper.platform.audit.v1.ListEntriesRequest
-	11, // 21: primandproper.platform.audit.v1.AuditService.VerifyChain:input_type -> primandproper.platform.audit.v1.VerifyChainRequest
-	8,  // 22: primandproper.platform.audit.v1.AuditService.GetEntry:output_type -> primandproper.platform.audit.v1.GetEntryResponse
-	10, // 23: primandproper.platform.audit.v1.AuditService.ListEntries:output_type -> primandproper.platform.audit.v1.ListEntriesResponse
-	12, // 24: primandproper.platform.audit.v1.AuditService.VerifyChain:output_type -> primandproper.platform.audit.v1.VerifyChainResponse
-	22, // [22:25] is the sub-list for method output_type
-	19, // [19:22] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	3,  // 18: primandproper.platform.audit.v1.OwnedEntry.entry:type_name -> primandproper.platform.audit.v1.Entry
+	13, // 19: primandproper.platform.audit.v1.GetAnyEntryResponse.entry:type_name -> primandproper.platform.audit.v1.OwnedEntry
+	4,  // 20: primandproper.platform.audit.v1.ListAnyEntriesRequest.query:type_name -> primandproper.platform.audit.v1.EntryQuery
+	22, // 21: primandproper.platform.audit.v1.ListAnyEntriesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	23, // 22: primandproper.platform.audit.v1.ListAnyEntriesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	13, // 23: primandproper.platform.audit.v1.ListAnyEntriesResponse.results:type_name -> primandproper.platform.audit.v1.OwnedEntry
+	2,  // 24: primandproper.platform.audit.v1.Entry.ChangesEntry.value:type_name -> primandproper.platform.audit.v1.Change
+	7,  // 25: primandproper.platform.audit.v1.AuditService.GetEntry:input_type -> primandproper.platform.audit.v1.GetEntryRequest
+	9,  // 26: primandproper.platform.audit.v1.AuditService.ListEntries:input_type -> primandproper.platform.audit.v1.ListEntriesRequest
+	11, // 27: primandproper.platform.audit.v1.AuditService.VerifyChain:input_type -> primandproper.platform.audit.v1.VerifyChainRequest
+	14, // 28: primandproper.platform.audit.v1.AuditAdministrationService.GetAnyEntry:input_type -> primandproper.platform.audit.v1.GetAnyEntryRequest
+	16, // 29: primandproper.platform.audit.v1.AuditAdministrationService.ListAnyEntries:input_type -> primandproper.platform.audit.v1.ListAnyEntriesRequest
+	8,  // 30: primandproper.platform.audit.v1.AuditService.GetEntry:output_type -> primandproper.platform.audit.v1.GetEntryResponse
+	10, // 31: primandproper.platform.audit.v1.AuditService.ListEntries:output_type -> primandproper.platform.audit.v1.ListEntriesResponse
+	12, // 32: primandproper.platform.audit.v1.AuditService.VerifyChain:output_type -> primandproper.platform.audit.v1.VerifyChainResponse
+	15, // 33: primandproper.platform.audit.v1.AuditAdministrationService.GetAnyEntry:output_type -> primandproper.platform.audit.v1.GetAnyEntryResponse
+	17, // 34: primandproper.platform.audit.v1.AuditAdministrationService.ListAnyEntries:output_type -> primandproper.platform.audit.v1.ListAnyEntriesResponse
+	30, // [30:35] is the sub-list for method output_type
+	25, // [25:30] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_audit_v1_audit_proto_init() }
@@ -1232,15 +1547,16 @@ func file_primandproper_platform_audit_v1_audit_proto_init() {
 		return
 	}
 	file_primandproper_platform_audit_v1_audit_proto_msgTypes[10].OneofWrappers = []any{}
+	file_primandproper_platform_audit_v1_audit_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_audit_v1_audit_proto_rawDesc), len(file_primandproper_platform_audit_v1_audit_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   19,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_primandproper_platform_audit_v1_audit_proto_goTypes,
 		DependencyIndexes: file_primandproper_platform_audit_v1_audit_proto_depIdxs,

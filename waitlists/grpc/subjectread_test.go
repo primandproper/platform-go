@@ -9,6 +9,7 @@ import (
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
@@ -95,6 +96,52 @@ func TestListSignupsForSubject_Authorized(T *testing.T) {
 		_, err := h.server.ListSignupsForSubject(h.ctx(t), &waitlistspb.ListSignupsForSubjectRequest{
 			Subject: &waitlistspb.SignupSubject{Type: string(waitlists.SubjectUser), Id: testUser},
 		})
+		must.Error(t, err)
+		test.EqOp(t, codes.NotFound, status.Code(err))
+	})
+}
+
+// TestAnAuthorizerCanAdmitAnOperatorOnAPermission pins the composition the
+// seam's documentation shows: the consumer's rule reads the request's grants
+// through the same extractor the server holds, and admits a holder of a
+// permission the deployment named to somebody else's signups. This package
+// declares no such permission, so the test names one of its own.
+func TestAnAuthorizerCanAdmitAnOperatorOnAPermission(T *testing.T) {
+	T.Parallel()
+
+	const readAnySignups authorization.Permission = "waitlists.signups.read_any"
+
+	own := ownSubjectOnly()
+	operatorOrOwner := waitlistsgrpc.SignupAuthorizerFuncs{
+		Withdrawal: own.AuthorizeWithdrawal,
+		SubjectRead: func(ctx context.Context, caller callers.Principal, scope tenancy.Scope, subject waitlists.Subject) error {
+			if grants, ok := extractGrants(ctx); ok && grants.Has(readAnySignups) {
+				return nil
+			}
+
+			return own.AuthorizeSubjectRead(ctx, caller, scope, subject)
+		},
+	}
+
+	somebodyElse := &waitlistspb.ListSignupsForSubjectRequest{
+		Subject: &waitlistspb.SignupSubject{Type: string(waitlists.SubjectUser), Id: "somebody_else"},
+	}
+
+	T.Run("a holder reads somebody else's signups", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithAuthorizer(t, operatorOrOwner)
+
+		_, err := h.server.ListSignupsForSubject(withGrants(h.ctx(t), readAnySignups), somebodyElse)
+		must.NoError(t, err)
+	})
+
+	T.Run("a caller without it gets the usual refusal", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithAuthorizer(t, operatorOrOwner)
+
+		_, err := h.server.ListSignupsForSubject(withGrants(h.ctx(t), waitlistsgrpc.PermissionReadSignups), somebodyElse)
 		must.Error(t, err)
 		test.EqOp(t, codes.NotFound, status.Code(err))
 	})

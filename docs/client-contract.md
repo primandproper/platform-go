@@ -654,7 +654,10 @@ something that streams.
 
 No UI. No product protos — a product's own services generate clients in the product's
 repository; this covers `platform-go`'s. No retrying a non-idempotent call without an
-idempotency key on it (R4). No administrative surface beyond sign-in's: every other RPC this
-document covers is about the caller or about the credential the caller presented, and an operator
-acting on somebody else goes through a consumer's own service — or, for their logins,
-`SignInAdministrationService`.
+idempotency key on it (R4). No administrative surface beyond sign-in's and the audit log's: every
+other RPC this document covers is about the caller or about the credential the caller presented,
+and an operator acting on somebody else goes through a consumer's own service — or, for their
+logins, `SignInAdministrationService`, and for every tenant's audit log,
+`AuditAdministrationService`, whose `GetAnyEntry` and `ListAnyEntries` require
+`audit.entries.read_any`, held by no role by default, and are recorded in the operator's own
+chain before they answer.

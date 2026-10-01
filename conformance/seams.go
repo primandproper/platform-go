@@ -481,6 +481,14 @@ type Surfaces struct {
 	// logins skip.
 	SignInAdministration signinpb.SignInAdministrationServiceClient
 	Webhooks             webhookspb.WebhooksServiceClient
+
+	// AuditAdministration is the operator's read of every tenant's audit log,
+	// which audit/grpc's Server registers beside Audit. Setting it declares
+	// that the subject serves it — built with a recorder to file each read
+	// through — so an Unimplemented answer fails rather than skips. A subject
+	// that mounts the audit log without an operator's read leaves it nil, and
+	// the assertions that need one skip.
+	AuditAdministration auditpb.AuditAdministrationServiceClient
 }
 
 // Actions are the states no client can bring about on its own.

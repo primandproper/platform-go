@@ -367,6 +367,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Webhooks:      webhooksclient.Wrap(conn),
 
 		SignInAdministration: signinpb.NewSignInAdministrationServiceClient(conn),
+		AuditAdministration:  auditpb.NewAuditAdministrationServiceClient(conn),
 	}
 
 	// Every run against this server is one of these, differing only in what
@@ -769,6 +770,7 @@ func authenticationRequirements(t *testing.T) *signingrpc.AuthenticationRequirem
 	reqs, err := signingrpc.RequireAuthentication(signingrpc.NewAuthenticationRequirements()).
 		DeclareService(signingrpc.AuthenticationOptional,
 			auditpb.AuditService_ServiceDesc.ServiceName,
+			auditpb.AuditAdministrationService_ServiceDesc.ServiceName,
 			billingpb.BillingService_ServiceDesc.ServiceName,
 			commentspb.CommentsService_ServiceDesc.ServiceName,
 			identitypb.IdentityService_ServiceDesc.ServiceName,
