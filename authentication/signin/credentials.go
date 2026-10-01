@@ -281,15 +281,49 @@ func (s *Service) VerifyTOTPSecret(
 // of thing that can be got wrong twice — the copy that forgets the second factor
 // is the one that lets a stolen session replace the second factor.
 //
-// The refusals are the sign-in path's, unchanged. A caller who is signed in and
-// gets the current password wrong is told the same thing an anonymous one is,
-// which is one less answer to keep consistent.
+// The refusals are the sign-in path's — ErrInvalidCredentials and
+// ErrSecondFactorRequired, with the same words and the same reasons — marked
+// with errSignedInRefusal, which moves their code and nothing else. See it.
 //
 // acceptRecoveryCode says whether the door takes a recovery code in place of the
 // TOTP code, and the answer reports whether one was what proved it — verified
 // and not yet spent, which is the caller's to do in its own transaction. See
 // Service.checkSecondFactorCode.
 func (s *Service) reauthenticate(
+	ctx context.Context,
+	scope tenancy.Scope,
+	user *identity.User,
+	password, code string,
+	acceptRecoveryCode bool,
+) (bool, error) {
+	usedRecoveryCode, err := s.reprove(ctx, scope, user, password, code, acceptRecoveryCode)
+	if platformerrors.Is(err, ErrInvalidCredentials) || platformerrors.Is(err, ErrSecondFactorRequired) {
+		return false, platformerrors.Join(err, errSignedInRefusal)
+	}
+
+	return usedRecoveryCode, err
+}
+
+// errSignedInRefusal marks a refusal of the proof a signed-in door asks for
+// again, so the mappers answer it as PermissionDenied (403) rather than the
+// Unauthenticated (401) the same refusal is at a sign-in door.
+//
+// The caller's token is good, and Unauthenticated says it is not: a client
+// following the client contract refreshes on it before it ever shows the
+// password prompt, which rotates a token that never needed rotating and cannot
+// help, since a refresh does not make a wrong password right. PermissionDenied
+// is ErrMultiFactorRequired's code for the same situation — proven, and asked
+// for more before this act.
+//
+// It is joined behind the refusal rather than in front of it, and registered
+// nowhere, so the message and the reason a client reads are the refusal's own:
+// the chain walk passes over this node, as it does ErrRefreshTokenReused's.
+// Only the code moves. It is unexported because no caller branches on it — a
+// caller branches on the refusal, which errors.Is still finds.
+var errSignedInRefusal = platformerrors.New("refused at a door the caller is already signed in to")
+
+// reprove is reauthenticate's check, before its refusals are marked.
+func (s *Service) reprove(
 	ctx context.Context,
 	scope tenancy.Scope,
 	user *identity.User,

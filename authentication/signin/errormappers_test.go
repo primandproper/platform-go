@@ -120,9 +120,9 @@ func TestMappers(T *testing.T) {
 		},
 		"a handle change that proved nothing again": {
 			err:      signin.ErrReauthenticationRequired,
-			httpCode: httperrors.ErrAuthenticationFailed,
+			httpCode: httperrors.ErrUserIsNotAuthorized,
 			httpMsg:  "re-authentication is required: send the current password, or sign in again",
-			grpcCode: codes.Unauthenticated,
+			grpcCode: codes.PermissionDenied,
 		},
 	}
 

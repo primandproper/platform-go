@@ -214,11 +214,25 @@ type (
 	grpcMapper struct{}
 )
 
-func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool) {
+func (m httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool) {
 	if err == nil {
 		return httperrors.ErrNothingSpecific, "", false
 	}
 
+	// A refusal at a door the caller is already signed in to keeps the words
+	// it has at a sign-in door and is a 403 rather than a 401: the token is
+	// good, and a 401 would send a client to refresh it. See errSignedInRefusal.
+	if errors.Is(err, errSignedInRefusal) {
+		if _, msg, ok = m.refusal(err); ok {
+			return httperrors.ErrUserIsNotAuthorized, msg, true
+		}
+	}
+
+	return m.refusal(err)
+}
+
+// refusal is Map's switch, without the code errSignedInRefusal moves.
+func (httpMapper) refusal(err error) (code httperrors.ErrorCode, msg string, ok bool) {
 	switch {
 	// First, because the policy's own error comes ahead of the sentinel in the
 	// chain and is the consumer's to shape: one that happened to wrap another
@@ -237,10 +251,6 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// into two codes would hand a client a branch that is also an oracle.
 	case errors.Is(err, ErrSecondFactorRequired):
 		return httperrors.ErrAuthenticationFailed, "a second-factor code is required", true
-	// Its sibling for a handle change: the caller is signed in and has to prove
-	// it again, and the message names both ways to.
-	case errors.Is(err, ErrReauthenticationRequired):
-		return httperrors.ErrAuthenticationFailed, "re-authentication is required: send the current password, or sign in again", true
 	// A replayed refresh token answers exactly as a wrong password does, message
 	// included. It is mapped rather than left to the default because a 500 for a
 	// detected token reuse would be an outage's status code for a caller's
@@ -278,6 +288,11 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// message says so, because it is the one remedy.
 	case errors.Is(err, ErrMultiFactorRequired):
 		return httperrors.ErrUserIsNotAuthorized, "a credential that verifies the person is required", true
+	// Its sibling for a handle change: the caller is signed in, with a token
+	// that is good, and has to prove who they are again before this act. A 403
+	// for ErrMultiFactorRequired's reason, and the message names both ways to.
+	case errors.Is(err, ErrReauthenticationRequired):
+		return httperrors.ErrUserIsNotAuthorized, "re-authentication is required: send the current password, or sign in again", true
 
 	// The impersonation door, answered like the administrative one: a service
 	// with no such door is refused as its operators would be. Its caller is an
@@ -334,13 +349,22 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrPasswordRefused), errors.Is(err, ErrRegistrationRefused):
 		return codes.InvalidArgument, true
 
+	// Proven by a token that is good, and asked to prove it again before this
+	// act: a wrong password or a missing code at a door the caller is already
+	// signed in to, or no proof at all on a handle change. PermissionDenied
+	// rather than the Unauthenticated the same refusal is at a sign-in door,
+	// because a client reads Unauthenticated as a token to refresh, and no
+	// refresh makes a wrong password right. ErrMultiFactorRequired's code, for
+	// the same situation. See errSignedInRefusal.
+	case errors.Is(err, errSignedInRefusal), errors.Is(err, ErrReauthenticationRequired):
+		return codes.PermissionDenied, true
+
 	// Unauthenticated rather than PermissionDenied, and the distinction is the
 	// one gRPC actually draws: the caller has not proven who they are, as
 	// opposed to having proven it and not being allowed. Every client library
 	// treats the two differently, and a sign-in answering PermissionDenied
 	// would send a retry-with-credentials path down the give-up branch.
 	case errors.Is(err, ErrSecondFactorRequired),
-		errors.Is(err, ErrReauthenticationRequired),
 		errors.Is(err, ErrInvalidCredentials),
 		errors.Is(err, ErrInvalidVerificationToken),
 		errors.Is(err, ErrRefreshTokenReused),

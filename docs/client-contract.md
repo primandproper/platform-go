@@ -452,15 +452,22 @@ actor.
 
 Two codes carry most of the meaning:
 
-- **`UNAUTHENTICATED`** — not signed in, or no longer. Includes wrong password, second factor
-  required, expired/reused refresh token, invalid verification link.
+- **`UNAUTHENTICATED`** — not signed in, or no longer. Includes wrong password and second
+  factor required at a sign-in door, expired/reused refresh token, invalid verification link.
 - **`PERMISSION_DENIED`** — proven, and refused anyway: banned, terminated, not an
   administrator, admin sign-in disabled. The proto's mappers are explicit that these are *not*
   `UNAUTHENTICATED`, because *"a sign-in answering PermissionDenied would send a
-  retry-with-credentials path down the give-up branch."*
+  retry-with-credentials path down the give-up branch."* From v14.2.0 it is also a
+  re-authentication refused at a door the caller is already signed in to — `UpdatePassword`,
+  `RefreshTOTPSecret`, `UpdateEmailAddress` and `UpdateUsername` — whose token is good: a wrong
+  or missing password or code there carries the sign-in door's reason and message under this
+  code instead, so that it does not trip the refresh that `UNAUTHENTICATED` triggers (R3) on a
+  token that never needed one.
 
 A client must branch on the code for this distinction: `UNAUTHENTICATED` means offer
-credentials again; `PERMISSION_DENIED` means stop asking. `FAILED_PRECONDITION` and
+credentials again; `PERMISSION_DENIED` means stop asking — except on those four doors, where
+the session is fine and the reason says what to ask the person for, which is the one place a
+client cannot act on the code alone. `FAILED_PRECONDITION` and
 `INVALID_ARGUMENT` carry the rest — the state is wrong, or the request was. Which refusal
 produced any of them is [R11](#recovering-a-lost-exchange-and-telling-refusals-apart)'s table,
 where there is one.
@@ -595,7 +602,8 @@ against one that does not implement it, a keyed retry is a bare retry — reuse,
 revoked. The stores this module ships all implement it.
 
 **R11 — branch on the reason, never on the message.** `ErrSecondFactorRequired` and
-`ErrInvalidCredentials` both answer `UNAUTHENTICATED` and differ in their wording, and a
+`ErrInvalidCredentials` share a code — `UNAUTHENTICATED` at a sign-in door,
+`PERMISSION_DENIED` at a signed-in one — and differ in their wording, and a
 message is not an interface — it can be reworded or localised without warning. Every
 **sign-in** refusal a client may be told about therefore carries a `google.rpc.ErrorInfo`
 detail, at the standard type URL, with `domain` `signin.platform-go.primandproper.github.com`
@@ -605,8 +613,8 @@ error details. Everything outside sign-in is [R13](#errors): the code, and nothi
 
 | reason | code | what it means for a client |
 | --- | --- | --- |
-| `INVALID_CREDENTIALS` | `UNAUTHENTICATED` | offer credentials again |
-| `SECOND_FACTOR_REQUIRED` | `UNAUTHENTICATED` | prompt for a code, resend with `totp_code` |
+| `INVALID_CREDENTIALS` | `UNAUTHENTICATED`; `PERMISSION_DENIED` at a signed-in door | offer credentials again. At `UpdatePassword`, `RefreshTOTPSecret`, `UpdateEmailAddress` or `UpdateUsername` it is the current password or code that was wrong, the session is untouched, and it is `PERMISSION_DENIED` from v14.2.0 — `UNAUTHENTICATED` before, which a client following R3 refreshed on first |
+| `SECOND_FACTOR_REQUIRED` | `UNAUTHENTICATED`; `PERMISSION_DENIED` at a signed-in door | prompt for a code, resend with `totp_code`. The signed-in doors' code moved with `INVALID_CREDENTIALS`'s |
 | `SECOND_FACTOR_NOT_ENROLLED` | `FAILED_PRECONDITION` | this door needs a second factor and the user has none; enrolling needs a sign-in they cannot have, so the remedy is the service's, not the client's |
 | `USER_UNVERIFIED` | `FAILED_PRECONDITION` | registration is unfinished; send them to verification |
 | `USER_SUSPENDED` | `PERMISSION_DENIED` | stop asking; the message carries the explanation and is meant to be shown |
@@ -619,7 +627,7 @@ error details. Everything outside sign-in is [R13](#errors): the code, and nothi
 | `NO_CREDENTIAL_NAMED` | `INVALID_ARGUMENT` | a registration that did not say how the user will sign in; fix the request |
 | `PASSWORD_CHANGE_REQUIRED` | `FAILED_PRECONDITION` | an operator forced a password change and this call is not one that makes it; send them to the form, then retry. From v14.2.0; over HTTP it is a `403` |
 | `SIGN_IN_NOT_IDENTIFIED` | `FAILED_PRECONDITION` | `EndOtherSignIns` from a token naming no login; nothing was ended, and `SignOutEverywhere` is the door that needs no `sid` |
-| `REAUTHENTICATION_REQUIRED` | `UNAUTHENTICATED` | `UpdateEmailAddress` or `UpdateUsername` with no password and no sign-in recent enough to stand in for one; prompt for the password, or — for somebody who holds none — sign them in again and retry. Nothing was changed. From v14.2.0 |
+| `REAUTHENTICATION_REQUIRED` | `PERMISSION_DENIED` | `UpdateEmailAddress` or `UpdateUsername` with no password and no sign-in recent enough to stand in for one; prompt for the password, or — for somebody who holds none — sign them in again and retry. Nothing was changed, and the session is fine: not `UNAUTHENTICATED`, because a refresh does not make a sign-in recent. From v14.2.0; over HTTP it is a `403` |
 
 That is the whole set, and its edges are both load-bearing. A sign-in refusal absent from it
 carries no reason at all, which is how **R7 survives this**: a reused, expired or revoked

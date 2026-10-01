@@ -76,7 +76,12 @@ func TestServer_UpdateEmailAddress(T *testing.T) {
 		test.EqOp(t, "jane.new@example.com", response.GetUser().GetEmailAddress())
 	})
 
-	T.Run("a wrong password is Unauthenticated and changes nothing", func(t *testing.T) {
+	// PermissionDenied rather than the Unauthenticated a wrong password is at
+	// the sign-in door, because the caller's token is good and a client reads
+	// Unauthenticated as one to refresh. The reason and the words are the
+	// sign-in door's, so a client tells a wrong password from a missing code
+	// exactly as it does there.
+	T.Run("a wrong password is PermissionDenied, keeps its reason, and changes nothing", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHandleHarness(t)
@@ -86,7 +91,9 @@ func TestServer_UpdateEmailAddress(T *testing.T) {
 			NewEmailAddress: "thief@example.com",
 		})
 		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
-		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.EqOp(t, "INVALID_CREDENTIALS", reasonOf(err))
+		test.EqOp(t, signin.ErrInvalidCredentials.Error(), status.Convert(err).Message())
 
 		me, err := h.client.GetSelf(h.asJane(), &signinpb.GetSelfRequest{})
 		must.NoError(t, err)
@@ -114,7 +121,8 @@ func TestServer_UpdateEmailAddress(T *testing.T) {
 		_, err := h.client.UpdateEmailAddress(h.asJane(),
 			&signinpb.UpdateEmailAddressRequest{NewEmailAddress: "thief@example.com"})
 		test.ErrorIs(t, err, signin.ErrReauthenticationRequired)
-		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.EqOp(t, "REAUTHENTICATION_REQUIRED", reasonOf(err))
 	})
 
 	T.Run("an anonymous caller is refused", func(t *testing.T) {

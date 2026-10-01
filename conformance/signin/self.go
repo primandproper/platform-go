@@ -110,7 +110,7 @@ func self(t *testing.T, s *conformance.Session) {
 			CurrentPassword: wrongPassword,
 			NewPassword:     newPassword,
 		})
-		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.PermissionDenied, reasonInvalidCredentials)
 		loggedIn(t, anon, who.username, password)
 
 		_, err = sub.Surfaces.SignIn.UpdatePassword(sub.Context(t.Context()), &signinpb.UpdatePasswordRequest{
@@ -144,7 +144,7 @@ func self(t *testing.T, s *conformance.Session) {
 			CurrentPassword: wrongPassword,
 			NewEmailAddress: moved,
 		})
-		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.PermissionDenied, reasonInvalidCredentials)
 
 		unmoved, err := sub.Surfaces.SignIn.GetSelf(ctx, &signinpb.GetSelfRequest{})
 		must.NoError(t, err)
@@ -180,7 +180,7 @@ func self(t *testing.T, s *conformance.Session) {
 			CurrentPassword: wrongPassword,
 			NewUsername:     renamed,
 		})
-		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.PermissionDenied, reasonInvalidCredentials)
 
 		// Before the success below, so nothing but the refusal could have
 		// moved it.
@@ -257,19 +257,19 @@ func self(t *testing.T, s *conformance.Session) {
 		ctx := sub.Context(t.Context())
 
 		_, err := sub.Surfaces.SignIn.RefreshTOTPSecret(ctx, &signinpb.RefreshTOTPSecretRequest{CurrentPassword: wrongPassword})
-		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.PermissionDenied, reasonInvalidCredentials)
 
 		// The control, and the enrollment the rest is about.
 		secret := enroll(t, sub)
 
 		_, err = sub.Surfaces.SignIn.RefreshTOTPSecret(ctx, &signinpb.RefreshTOTPSecretRequest{CurrentPassword: password})
-		refused(t, s, err, codes.Unauthenticated, reasonSecondFactorRequired)
+		refused(t, s, err, codes.PermissionDenied, reasonSecondFactorRequired)
 
 		_, err = sub.Surfaces.SignIn.RefreshTOTPSecret(ctx, &signinpb.RefreshTOTPSecretRequest{
 			CurrentPassword: password,
 			TotpCode:        wrongCode(t, secret),
 		})
-		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+		refused(t, s, err, codes.PermissionDenied, reasonInvalidCredentials)
 
 		// Before the success below rather than after it, so that nothing but
 		// the refusals above could have replaced the secret this code is from.
