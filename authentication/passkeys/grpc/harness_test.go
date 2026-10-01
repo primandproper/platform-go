@@ -222,7 +222,7 @@ func newHarnessWith(t *testing.T, srvOpts []passkeysgrpc.Option, svcOpts ...pass
 
 	signIns := &recordingSignInHooks{}
 
-	signInSvc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), &fakeTokens{},
+	signInSvc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), &fakeTokens{}, []string{"owner"},
 		signin.WithTOTPIssuer("Example"), signin.WithHooks(signIns))
 	must.NoError(t, err)
 

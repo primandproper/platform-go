@@ -2,6 +2,7 @@ package signin
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/identity"
@@ -465,6 +466,11 @@ type Service struct {
 	// fills.
 	registrar Registrar
 
+	// defaultOwnerRoles are the roles a registration that mints an account
+	// starts with when it names none of its own. NewService refuses an empty
+	// list, so this is never empty.
+	defaultOwnerRoles []string
+
 	// verifications is nil until WithVerifications names one, and nil means the
 	// doors that finish a registration refuse with
 	// ErrVerificationsNotConfigured.
@@ -597,13 +603,19 @@ type TokenIssuer interface {
 
 // NewService builds the sign-in service.
 //
-// The four positional dependencies are the ones it genuinely cannot build. The
+// The five positional dependencies are the ones it genuinely cannot build. The
 // client, because a hook needs a transaction and the reads need a reader. The
 // directory, because whose users these are is not this package's to decide. The
 // authenticator, because which engine hashes a password is the one choice a
 // sign-in service must never make on a consumer's behalf — a default here would
-// be this package picking everybody's password hashing. And the issuer, because
-// a token's format, signing key and audience are the consumer's.
+// be this package picking everybody's password hashing. The issuer, because
+// a token's format, signing key and audience are the consumer's. And the
+// default owner roles, because a registration that mints an account has to
+// give its owner some role in it, and role names are the consumer's: this
+// package never picks one. An empty list, or one holding a blank name, is
+// [ErrNoDefaultOwnerRoles], so a deployment that forgot fails here rather
+// than on its first sign-up. See [Registration.OwnerRoles] for how a
+// registration starts from them and a [RegistrationPolicy] may replace them.
 //
 // Everything else has a default, and each default is stated on the option that
 // replaces it: NoopHooks, this module's own TOTP verifier and generator,
@@ -617,6 +629,7 @@ func NewService(
 	directory Directory,
 	authenticator authentication.Authenticator,
 	issuer TokenIssuer,
+	defaultOwnerRoles []string,
 	opts ...ServiceOption,
 ) (*Service, error) {
 	if client == nil {
@@ -635,19 +648,24 @@ func NewService(
 		return nil, ErrNilTokenIssuer
 	}
 
+	if len(defaultOwnerRoles) == 0 || slices.Contains(defaultOwnerRoles, "") {
+		return nil, ErrNoDefaultOwnerRoles
+	}
+
 	s := &Service{
-		client:        client,
-		directory:     directory,
-		authenticator: authenticator,
-		issuer:        issuer,
-		verifier:      totp.NewVerifier(),
-		secrets:       random.NewGenerator(),
-		generator:     totp.NewGenerator(),
-		hooks:         NoopHooks{},
-		clk:           clock.NewClock(),
-		claims:        DefaultClaims,
-		tokenTTL:      DefaultTokenTTL,
-		adminTokenTTL: DefaultAdminTokenTTL,
+		client:            client,
+		directory:         directory,
+		authenticator:     authenticator,
+		issuer:            issuer,
+		defaultOwnerRoles: slices.Clone(defaultOwnerRoles),
+		verifier:          totp.NewVerifier(),
+		secrets:           random.NewGenerator(),
+		generator:         totp.NewGenerator(),
+		hooks:             NoopHooks{},
+		clk:               clock.NewClock(),
+		claims:            DefaultClaims,
+		tokenTTL:          DefaultTokenTTL,
+		adminTokenTTL:     DefaultAdminTokenTTL,
 
 		impersonationTokenTTL: DefaultImpersonationTokenTTL,
 		secondFactor:          SecondFactorWhenEnrolled,

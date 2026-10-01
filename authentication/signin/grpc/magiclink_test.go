@@ -32,13 +32,12 @@ func TestRegisterWithoutAPasswordThenSignInWithALink(T *testing.T) {
 
 	h := newMagicLinkHarness(T, nil)
 
-	registered, err := h.client.Register(asUser(h.rootCtx, h.user.ID), &signinpb.RegisterRequest{
+	registered, err := h.client.Register(h.rootCtx, &signinpb.RegisterRequest{
 		User: &identitypb.UserRegistrationInput{
 			Username:     "ada",
 			EmailAddress: "ada@example.com",
 		},
 		Account:    &identitypb.AccountCreationInput{Name: "Ada's"},
-		OwnerRoles: []string{"owner"},
 		Credential: &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}},
 	})
 	must.NoError(T, err)

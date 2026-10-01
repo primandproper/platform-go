@@ -2,6 +2,7 @@ package signin
 
 import (
 	"context"
+	"slices"
 
 	"github.com/primandproper/platform-go/v14/identity"
 
@@ -152,10 +153,19 @@ type Registration struct {
 	InvitationStatusNote string `json:"invitationStatusNote"`
 
 	// OwnerRoles are the roles the registrant holds in the account they own.
-	// They are the consumer's role names and are required for a registration
-	// that mints an account: a membership with none is a member who may do
-	// nothing. They are ignored by a registration answering an invitation,
-	// which takes its roles off the invitation.
+	// They are the consumer's role names, and a registration that mints an
+	// account always has some: one that names none starts with the service's
+	// default owner roles, the ones NewService was built with, and a
+	// [RegistrationPolicy] may replace either. A policy that leaves none is
+	// refused with [ErrNoOwnerRoles], since a membership with none is a member
+	// who may do nothing.
+	//
+	// Only a caller in process can name them. A wire request has no field for
+	// them, because an anonymous door that let its caller choose their own
+	// roles in the account they mint would be handing out whatever the
+	// deployment's role names can do; over a transport every registration
+	// starts from the defaults. They are ignored by a registration answering an
+	// invitation, which takes its roles off the invitation.
 	OwnerRoles []string `json:"ownerRoles"`
 
 	// Agreements are the documents the registrant accepted in registering, and
@@ -307,6 +317,8 @@ func (s *Service) Register(
 		return nil, op.Error(ErrRegistrationNotConfigured, "registering a user")
 	}
 
+	registration = s.withDefaultOwnerRoles(registration)
+
 	// The consumer's policy goes first, so a refusal costs nothing: nothing has
 	// been hashed, minted or written, and the same request amended goes through.
 	// Everything below reads what it left rather than what the caller sent.
@@ -317,6 +329,13 @@ func (s *Service) Register(
 
 	if registration.User == nil {
 		return nil, op.Error(identity.ErrNilUser, "registering a user")
+	}
+
+	// Refused here rather than left to identity's membership write, which would
+	// answer it as an empty input — the registrant's mistake. Only a policy can
+	// have emptied them, so it is the deployment's.
+	if !answersInvitation(registration) && len(registration.OwnerRoles) == 0 {
+		return nil, op.Error(ErrNoOwnerRoles, "applying the registration policy")
 	}
 
 	accepted, err := registrationAgreements(registration.Agreements)
@@ -385,7 +404,7 @@ func (s *Service) Register(
 		}
 	}
 
-	if registration.InvitationID != "" || registration.InvitationToken != "" {
+	if answersInvitation(registration) {
 		registered, err = s.registerWithInvitation(ctx, scope, registration, &user)
 	} else {
 		registered, err = s.registerWithAccount(ctx, scope, registration, &user)
@@ -400,6 +419,27 @@ func (s *Service) Register(
 	op.Set(userIDKey, registered.User.ID)
 
 	return registered, nil
+}
+
+// answersInvitation reports whether a registration joins an account through an
+// invitation rather than minting one of its own.
+func answersInvitation(registration *Registration) bool {
+	return registration.InvitationID != "" || registration.InvitationToken != ""
+}
+
+// withDefaultOwnerRoles answers with the registration a policy is handed: the
+// one the caller sent, or, for a registration that mints an account and names
+// no owner roles, a copy starting with the service's defaults. The caller's
+// value is left alone, as Register leaves it alone everywhere else.
+func (s *Service) withDefaultOwnerRoles(registration *Registration) *Registration {
+	if answersInvitation(registration) || len(registration.OwnerRoles) > 0 {
+		return registration
+	}
+
+	defaulted := *registration
+	defaulted.OwnerRoles = slices.Clone(s.defaultOwnerRoles)
+
+	return &defaulted
 }
 
 // hashRegistrationCredential turns the credential a registration named into the

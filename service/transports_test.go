@@ -330,11 +330,12 @@ func TestRegisterTransports(T *testing.T) {
 			Tokens:        testTokens(),
 			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
 			SignIn: &signincfg.Config{
-				TOTPIssuer:    "Example",
-				RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
-				MagicLinks:    &signincfg.MagicLinksConfig{TablePrefix: storePrefix},
-				RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
-				Registration:  signincfg.RegistrationConfig{Disabled: true},
+				DefaultOwnerRoles: []string{"owner"},
+				TOTPIssuer:        "Example",
+				RefreshTokens:     signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				MagicLinks:        &signincfg.MagicLinksConfig{TablePrefix: storePrefix},
+				RecoveryCodes:     signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+				Registration:      signincfg.RegistrationConfig{Disabled: true},
 			},
 		}
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
@@ -378,10 +379,11 @@ func TestRegisterTransports(T *testing.T) {
 			Identity: &identitycfg.Config{TablePrefix: storePrefix},
 			Tokens:   testTokens(),
 			SignIn: &signincfg.Config{
-				TOTPIssuer:    "Example",
-				RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
-				RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
-				Registration:  signincfg.RegistrationConfig{Disabled: true},
+				DefaultOwnerRoles: []string{"owner"},
+				TOTPIssuer:        "Example",
+				RefreshTokens:     signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				RecoveryCodes:     signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+				Registration:      signincfg.RegistrationConfig{Disabled: true},
 			},
 			WebAuthn: &webauthnsessionscfg.Config{
 				Provider: webauthnsessionscfg.ProviderCache,
@@ -434,7 +436,7 @@ func TestRegisterTransports(T *testing.T) {
 			Database: sqliteDatabase(t),
 			Identity: &identitycfg.Config{TablePrefix: storePrefix},
 			Tokens:   testTokens(),
-			SignIn:   &signincfg.Config{TOTPIssuer: "Example"},
+			SignIn:   &signincfg.Config{DefaultOwnerRoles: []string{"owner"}, TOTPIssuer: "Example"},
 		}
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 

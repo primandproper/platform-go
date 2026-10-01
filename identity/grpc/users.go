@@ -20,51 +20,6 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// Register creates a user, the first account they own, and the membership
-// between them, in one transaction.
-//
-// It is the one RPC here whose caller is not yet in the directory, and the
-// principal it still requires is the registrar's: an unauthenticated public
-// sign-up is a flow with policy in it — a captcha, an invitation, a rate limit,
-// an email domain rule — and this service holds none of that. A consumer
-// building open registration puts that policy in front of this call and gives
-// the request a principal of its own, which is the same thing every RPC here
-// expects and the reason the seam is an interface rather than a session.
-func (s *Server) Register(
-	ctx context.Context,
-	request *identitypb.RegisterRequest,
-) (*identitypb.RegisterResponse, error) {
-	ctx, op, principal, done, err := s.caller(ctx, identitypb.IdentityService_Register_FullMethodName)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { done(err) }()
-
-	user := UserFromRegistrationInput(request.GetUser())
-	if user == nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilUser, op.Logger(), op.Span(), codes.InvalidArgument, "registering a user")
-
-		return nil, err
-	}
-
-	account := AccountFromCreationInput(request.GetAccount())
-	if account == nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilAccount, op.Logger(), op.Span(), codes.InvalidArgument, "registering a user")
-
-		return nil, err
-	}
-
-	registration, err := s.svc.Register(ctx, scopeOf(principal), user, account, request.GetOwnerRoles())
-	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "registering a user")
-	}
-
-	op.Set(userIDKey, registration.User.ID).Set(accountIDKey, registration.Account.ID)
-
-	return &identitypb.RegisterResponse{Registration: RegistrationToProto(registration)}, nil
-}
-
 // UpdateProfile saves the fields the calling user may change about themselves.
 //
 // The subject is the caller and there is no target on the request. Editing

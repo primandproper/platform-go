@@ -24,12 +24,6 @@ const (
 	// paging or searching the directory.
 	PermissionReadUsers authorization.Permission = "identity.users.read"
 
-	// PermissionCreateUsers covers Register. It is a permission rather than a
-	// public method for the reason Register's own documentation gives: open
-	// sign-up is a flow with policy in it, and a consumer that wants one puts
-	// that policy in front of this call.
-	PermissionCreateUsers authorization.Permission = "identity.users.create"
-
 	// PermissionArchiveUsers covers soft-deleting somebody.
 	PermissionArchiveUsers authorization.Permission = "identity.users.archive"
 
@@ -175,7 +169,7 @@ const (
 // requires: the fragment a consumer composes into its own policy.
 //
 // It is a default and not a rule. A consumer that wants ListAccounts open to
-// every member, or Register behind two permissions rather than one, overrides
+// every member, or CreateAccount behind two permissions rather than one, overrides
 // the entry — the map is theirs once they have it, and authorization/grpc's
 // builder takes whatever they hand it.
 //
@@ -203,9 +197,6 @@ func Permissions() map[string][]authorization.Permission {
 		identitypb.IdentityService_GetUser_FullMethodName:               {PermissionReadUsers},
 		identitypb.IdentityService_ListUsers_FullMethodName:             {PermissionReadUsers},
 		identitypb.IdentityService_SearchUsersByUsername_FullMethodName: {PermissionReadUsers},
-
-		// Registration.
-		identitypb.IdentityService_Register_FullMethodName: {PermissionCreateUsers},
 
 		// The operator writes, each with its own permission.
 		identitypb.IdentityService_ArchiveUser_FullMethodName:                   {PermissionArchiveUsers},

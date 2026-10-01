@@ -460,7 +460,7 @@ func TestService_AfterRevokeSignIns_RefusesAStoreThatCannotNameTheFamily(T *test
 
 		e = newRefreshEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithHooks(e.hooks),
 			signin.WithRefreshTokenStore(bareReuseStore{SQLStore: e.refresh}),
 		)

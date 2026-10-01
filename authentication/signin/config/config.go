@@ -128,6 +128,13 @@ type Config struct {
 	// always on.
 	RecoveryCodes RecoveryCodesConfig `envPrefix:"RECOVERY_CODES_" json:"recoveryCodes" yaml:"recoveryCodes"`
 
+	// DefaultOwnerRoles are the roles a registrant holds in the account their
+	// registration mints, unless the service's RegistrationPolicy replaces
+	// them. They are the deployment's own role names and are required: the
+	// library never picks one, and a deployment that names none fails at
+	// startup rather than on its first sign-up. See signin.NewService.
+	DefaultOwnerRoles []string `env:"DEFAULT_OWNER_ROLES" json:"defaultOwnerRoles,omitempty" yaml:"defaultOwnerRoles,omitempty"`
+
 	// AdminServiceRoles names the identity service roles that admit an
 	// administrative sign-in. Empty means the service has no administrative
 	// door, as signin.WithAdminServiceRoles documents.
@@ -349,6 +356,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 
 			return nil
 		})),
+		validation.Field(&cfg.DefaultOwnerRoles, validation.Required, validation.Each(validation.Required)),
 		validation.Field(&cfg.TokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.AdminTokenTTL, validation.Min(time.Duration(0))),
 		validation.Field(&cfg.ImpersonationTokenTTL, validation.Min(time.Duration(0))),

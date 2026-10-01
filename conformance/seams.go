@@ -343,6 +343,19 @@ type Seams struct {
 	// that read the absence off the answer would pass every rotation assertion
 	// by skipping it. False, the zero value, fails a sign-in that carries none.
 	RefreshTokensUnissued bool
+
+	// RegistrationClosed says the deployment's sign-in server was built with
+	// signingrpc.WithoutOpenRegistration, so its sign-up door refuses everybody.
+	// True asserts that refusal — Register with nobody on it is Unimplemented,
+	// carrying REGISTRATION_CLOSED — and skips every assertion that registers
+	// somebody over the wire, with that printed.
+	//
+	// It is a declaration rather than something a suite could find out: a
+	// closed door and a broken one both refuse, and the reason that tells them
+	// apart is exactly what the suite is here to hold a closed door to. False,
+	// the zero value, is the server's default, an open door, and fails a
+	// registration with nobody on it that is refused.
+	RegistrationClosed bool
 }
 
 // Subject is one caller, and the clients it calls through.

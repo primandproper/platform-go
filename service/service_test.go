@@ -306,8 +306,9 @@ func TestNew(T *testing.T) {
 			Tokens:        testTokens(),
 			PasswordReset: &passwordresetcfg.Config{TablePrefix: storePrefix},
 			SignIn: &signincfg.Config{
-				RefreshTokens: signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
-				RecoveryCodes: signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
+				DefaultOwnerRoles: []string{"owner"},
+				RefreshTokens:     signincfg.RefreshTokensConfig{TablePrefix: storePrefix},
+				RecoveryCodes:     signincfg.RecoveryCodesConfig{TablePrefix: storePrefix},
 			},
 		}
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))

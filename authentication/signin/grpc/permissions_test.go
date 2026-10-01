@@ -55,7 +55,7 @@ func permissioned() []string {
 	return slices.Collect(maps.Keys(signingrpc.Permissions()))
 }
 
-// TestMethodsAreDecidedAbout is the property the three lists exist for: an RPC
+// TestMethodsAreDecidedAbout is the property the two lists and the map exist for: an RPC
 // added to the service later and named in none of them is a method the enforcer
 // denies, in somebody's production, for a reason nothing connects to a missing
 // entry here.
@@ -64,7 +64,6 @@ func TestMethodsAreDecidedAbout(T *testing.T) {
 
 	lists := map[string][]string{
 		"AnonymousMethods":   signingrpc.AnonymousMethods(),
-		"RegistrarMethods":   signingrpc.RegistrarMethods(),
 		"SelfServiceMethods": signingrpc.SelfServiceMethods(),
 		"Permissions":        permissioned(),
 	}
@@ -94,7 +93,6 @@ func TestListsNameOnlyRealMethods(T *testing.T) {
 
 	for _, method := range slices.Concat(
 		signingrpc.AnonymousMethods(),
-		signingrpc.RegistrarMethods(),
 		signingrpc.SelfServiceMethods(),
 		permissioned(),
 	) {
@@ -150,10 +148,10 @@ func TestRequire(T *testing.T) {
 //
 // It asserts it the way it will actually be experienced: an enforcer built over
 // this fragment lets every method through for a caller who holds no grants at
-// all. Nine of these RPCs are how a caller becomes somebody — or stops being
-// them — so no grant could gate them; five take their subject from the principal
-// and have no field that could name anybody else; and the last is Register,
-// whose policy is the consumer's and sits in front of the call.
+// all. The anonymous ones are how a caller becomes somebody — signing up
+// included — or stops being them, so no grant could gate them; the rest take
+// their subject from the principal and have no field that could name anybody
+// else.
 func TestNothingIsPermissioned(T *testing.T) {
 	T.Parallel()
 

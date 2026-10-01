@@ -101,9 +101,12 @@ func TestPasswordChangeMethods(T *testing.T) {
 		test.SliceContains(T, methods, method)
 	}
 
-	// Every door, since what it presents is its own authority.
+	// Every door but the sign-up one, since what it presents is its own
+	// authority.
 	for _, method := range signingrpc.AnonymousMethods() {
-		test.SliceContains(T, methods, method)
+		if method != signinpb.SignInService_Register_FullMethodName {
+			test.SliceContains(T, methods, method)
+		}
 	}
 
 	// And not the changes a stolen password is used for first.

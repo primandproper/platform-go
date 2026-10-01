@@ -67,6 +67,10 @@ func passwordless(t *testing.T, s *conformance.Session) *conformance.Subject {
 	s.NeedsAction(t, read != nil, "magic link token")
 	s.NeedsPublic(t, requestMagicLink, redeemMagicLink)
 
+	if s.Seams().RegistrationClosed {
+		conformance.Skip(t, "conformance: this subject closes its sign-up door (Seams.RegistrationClosed), so nobody can be registered without a password")
+	}
+
 	registrar := s.Subject(t, conformance.Making(register), conformance.InTenant(signInSurface, tenancy.Global()))
 	if registrar.Surfaces.SignIn == nil {
 		conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so nobody can be registered without a password")
@@ -82,7 +86,6 @@ func passwordless(t *testing.T, s *conformance.Session) *conformance.Subject {
 			FirstName:    "Some",
 		},
 		Account:    &identitypb.AccountCreationInput{Name: username + "'s"},
-		OwnerRoles: []string{s.Roles().Owner},
 		Agreements: everyAgreement(),
 		Credential: &signinpb.RegisterRequest_NoPassword{NoPassword: &signinpb.NoPassword{}},
 	})

@@ -33,7 +33,10 @@ import (
 //     User.ServiceRoles, which a wire request has no field for and a consumer's
 //     product decides;
 //   - the account's name and the roles its owner holds, on Account and
-//     OwnerRoles;
+//     OwnerRoles — which arrive holding the service's default owner roles
+//     when the registration named none, so a policy reading the caller off
+//     the context can give an operator-made registrant different ones. A
+//     policy that leaves none is refused with [ErrNoOwnerRoles];
 //   - a second factor minted with the registration, by setting EnrollTOTP;
 //   - the agreements the registrant accepted, on Agreements, which Register
 //     stamps on the user row it writes.

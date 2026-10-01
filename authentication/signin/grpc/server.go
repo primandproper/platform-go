@@ -73,18 +73,22 @@ var (
 // # What it is
 //
 // Each RPC is one call into the service and a conversion on either side. Some
-// are anonymous — the doors, the finishes of a registration, the exchange and
-// the sign-out, and the status read that answers "no" to a caller who is not
-// signed in — and the rest require a principal. [AnonymousMethods] is the list.
+// are anonymous — the sign-up door and the two that finish a registration, the
+// sign-in doors, the exchange and the sign-out, and the status read that
+// answers "no" to a caller who is not signed in — and the rest require a
+// principal. [AnonymousMethods] is the list.
 //
 // # What it is not
 //
 // It holds no policy. Whether a user without a second factor may sign in, how
 // long a token lives, what it carries, whether the administrative door exists
-// at all, and whether a password is acceptable are the service's options, and
-// the service documents each. The last is why a consumer who refuses weak
-// passwords may mount Register, UpdatePassword and AttachPassword: the rule
-// they apply in process is applied here too — see signin.PasswordPolicy. Who
+// at all, whether a password is acceptable and who may register are the
+// service's options, and the service documents each. The last two are why a
+// consumer with rules of their own may mount Register, UpdatePassword and
+// AttachPassword: the rules they apply in process are applied here too — see
+// signin.PasswordPolicy and signin.RegistrationPolicy. What is decided here is
+// only whether the sign-up door exists at all: it is open unless the
+// deployment closes it with [WithoutOpenRegistration]. Who
 // is calling is a [callers.Principal] the consumer's own authentication
 // interceptor put on the context, and whose directory the request is against is
 // a [ScopeResolver] the consumer supplies. None of the three is here.
@@ -109,11 +113,6 @@ type Server struct {
 	signinpb.UnimplementedSignInServiceServer
 	signinpb.UnimplementedSignInAdministrationServiceServer
 
-	svc        *signin.Service
-	principals callers.PrincipalExtractor
-	scopes     ScopeResolver
-	annotate   SignInAnnotator
-
 	o11y observability.Observer
 
 	// What the options wrote, kept only until the observer is built from it.
@@ -121,7 +120,16 @@ type Server struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 
+	svc        *signin.Service
+	principals callers.PrincipalExtractor
+	scopes     ScopeResolver
+	annotate   SignInAnnotator
+
 	instruments *metrics.OperationSet
+
+	// registrationClosed is WithoutOpenRegistration, and false is what "the
+	// sign-up door is open" means.
+	registrationClosed bool
 }
 
 var _ signinpb.SignInServiceServer = (*Server)(nil)

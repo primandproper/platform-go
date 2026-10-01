@@ -24,7 +24,7 @@ func TestNewJobs(T *testing.T) {
 		t.Parallel()
 
 		calls := 0
-		built, err := NewJobs(t.Context(), &Config{Registration: RegistrationConfig{Disabled: true}},
+		built, err := NewJobs(t.Context(), &Config{DefaultOwnerRoles: ownerRoles, Registration: RegistrationConfig{Disabled: true}},
 			func(context.Context) (int64, error) {
 				calls++
 
@@ -46,7 +46,7 @@ func TestNewJobs(T *testing.T) {
 
 		boom := errors.New("boom")
 
-		built, err := NewJobs(t.Context(), &Config{}, func(context.Context) (int64, error) { return 0, boom })
+		built, err := NewJobs(t.Context(), &Config{DefaultOwnerRoles: ownerRoles}, func(context.Context) (int64, error) { return 0, boom })
 		must.NoError(t, err)
 		test.ErrorIs(t, built[0].Run(t.Context()), boom)
 	})
@@ -54,7 +54,7 @@ func TestNewJobs(T *testing.T) {
 	T.Run("renders nothing when disabled", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := &Config{RefreshTokens: RefreshTokensConfig{SweepJob: jobscfg.JobConfig{Disabled: true}}}
+		cfg := &Config{DefaultOwnerRoles: ownerRoles, RefreshTokens: RefreshTokensConfig{SweepJob: jobscfg.JobConfig{Disabled: true}}}
 
 		built, err := NewJobs(t.Context(), cfg, func(context.Context) (int64, error) { return 0, nil })
 		must.NoError(t, err)
@@ -67,7 +67,7 @@ func TestNewJobs(T *testing.T) {
 		_, err := NewJobs(t.Context(), nil, func(context.Context) (int64, error) { return 0, nil })
 		test.Error(t, err)
 
-		_, err = NewJobs(t.Context(), &Config{}, nil)
+		_, err = NewJobs(t.Context(), &Config{DefaultOwnerRoles: ownerRoles}, nil)
 		test.Error(t, err)
 	})
 }
@@ -78,7 +78,7 @@ func TestRegisterJobs(T *testing.T) {
 	T.Run("sweeps the refresh token table through a handle of its own", func(t *testing.T) {
 		t.Parallel()
 
-		i := base(t, &Config{})
+		i := base(t, &Config{DefaultOwnerRoles: ownerRoles})
 		RegisterJobs(i)
 
 		client := do.MustInvoke[database.Client](i)
@@ -104,7 +104,7 @@ func TestRegisterJobs(T *testing.T) {
 
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
-		do.ProvideValue(i, &Config{RefreshTokens: RefreshTokensConfig{SweepJob: jobscfg.JobConfig{Disabled: true}}})
+		do.ProvideValue(i, &Config{DefaultOwnerRoles: ownerRoles, RefreshTokens: RefreshTokensConfig{SweepJob: jobscfg.JobConfig{Disabled: true}}})
 		RegisterJobs(i)
 
 		built, err := do.InvokeNamed[[]jobs.Job](i, JobsKey)

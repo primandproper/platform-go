@@ -101,7 +101,8 @@
 // No verification token in any response. The secret a registration mints
 // travels to the person it is about, in mail the consumer sends from inside the
 // transaction that wrote the row -- it is never handed back to whoever called
-// Register, who is a client rather than the subject. It arrives back here only
+// Register, since calling it proves nothing about who holds the address. It
+// arrives back here only
 // as a request field on the RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
@@ -2268,12 +2269,6 @@ type RegisterRequest struct {
 	// account is the first account the registrant owns. It is ignored by a
 	// registration that answers an invitation.
 	Account *identitypb.AccountCreationInput `protobuf:"bytes,2,opt,name=account,proto3" json:"account,omitempty"`
-	// owner_roles are the roles the registrant holds in the account they own,
-	// and are the consumer's own role names. A membership with none is a member
-	// who may do nothing, so a registration that mints an account names at least
-	// one. They are ignored by a registration that answers an invitation, which
-	// takes its roles off the invitation.
-	OwnerRoles []string `protobuf:"bytes,3,rep,name=owner_roles,json=ownerRoles,proto3" json:"owner_roles,omitempty"`
 	// credential is how this person will prove who they are afterwards, and it is
 	// required: a request naming neither arm is refused rather than read as
 	// no_password. See the file documentation.
@@ -2335,13 +2330,6 @@ func (x *RegisterRequest) GetUser() *identitypb.UserRegistrationInput {
 func (x *RegisterRequest) GetAccount() *identitypb.AccountCreationInput {
 	if x != nil {
 		return x.Account
-	}
-	return nil
-}
-
-func (x *RegisterRequest) GetOwnerRoles() []string {
-	if x != nil {
-		return x.OwnerRoles
 	}
 	return nil
 }
@@ -3695,12 +3683,10 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\rinvitation_id\x18\x01 \x01(\tR\finvitationID\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1f\n" +
 	"\vstatus_note\x18\x03 \x01(\tR\n" +
-	"statusNoteR\x05scope\"\x82\x04\n" +
+	"statusNoteR\x05scope\"\xf4\x03\n" +
 	"\x0fRegisterRequest\x12M\n" +
 	"\x04user\x18\x01 \x01(\v29.primandproper.platform.identity.v1.UserRegistrationInputR\x04user\x12R\n" +
-	"\aaccount\x18\x02 \x01(\v28.primandproper.platform.identity.v1.AccountCreationInputR\aaccount\x12\x1f\n" +
-	"\vowner_roles\x18\x03 \x03(\tR\n" +
-	"ownerRoles\x12\x1c\n" +
+	"\aaccount\x18\x02 \x01(\v28.primandproper.platform.identity.v1.AccountCreationInputR\aaccount\x12\x1c\n" +
 	"\bpassword\x18\x04 \x01(\tH\x00R\bpassword\x12O\n" +
 	"\vno_password\x18\x05 \x01(\v2,.primandproper.platform.signin.v1.NoPasswordH\x00R\n" +
 	"noPassword\x12X\n" +
@@ -3711,7 +3697,7 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"agreements\x18\a \x03(\x0e2-.primandproper.platform.identity.v1.AgreementR\n" +
 	"agreementsB\f\n" +
 	"\n" +
-	"credentialR\x05scope\"Z\n" +
+	"credentialJ\x04\b\x03\x10\x04R\x05scopeR\vowner_roles\"Z\n" +
 	"\x0eTOTPEnrollment\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12)\n" +
 	"\x10provisioning_uri\x18\x02 \x01(\tR\x0fprovisioningUriR\x05scope\"\x93\x03\n" +

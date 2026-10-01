@@ -161,5 +161,5 @@ func NewService(
 		signin.WithRecoveryCodeCount(cfg.RecoveryCodes.Count),
 	)
 
-	return signin.NewService(client, directory, authenticator, issuer, append(serviceOpts, options.service...)...)
+	return signin.NewService(client, directory, authenticator, issuer, cfg.DefaultOwnerRoles, append(serviceOpts, options.service...)...)
 }

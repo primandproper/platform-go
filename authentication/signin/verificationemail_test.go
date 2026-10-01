@@ -200,7 +200,7 @@ func TestService_RequestVerificationEmail_refusals(T *testing.T) {
 
 		e := newEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithVerificationMailer(&verificationMailbox{}),
 		)
 		must.NoError(t, err)
@@ -260,7 +260,7 @@ func TestService_RequestVerificationEmail_storeRefusalIsTranslated(T *testing.T)
 	mailbox := &verificationMailbox{}
 	e := newEnv(T)
 
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 		signin.WithVerifications(&provenInTheGapVerifications{SQLStore: e.store}),
 		signin.WithVerificationMailer(mailbox),
 	)
@@ -381,7 +381,7 @@ func TestService_RequestVerificationEmail_refusalsFireNoHook(T *testing.T) {
 
 		e := newEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithHooks(e.hooks),
 			signin.WithVerifications(&provenInTheGapVerifications{SQLStore: e.store}),
 			signin.WithVerificationMailer(&verificationMailbox{}),
@@ -410,7 +410,7 @@ func TestService_RequestVerificationEmail_refusalsFireNoHook(T *testing.T) {
 
 		e := newEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithHooks(e.hooks),
 			signin.WithVerificationMailer(&verificationMailbox{}),
 		)

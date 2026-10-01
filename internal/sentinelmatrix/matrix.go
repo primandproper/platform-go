@@ -633,6 +633,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilRegistration":       {Err: signin.ErrNilRegistration, Is: Platform},
 		"ErrNilSecretRefresh":      {Err: signin.ErrNilSecretRefresh, Is: Platform},
 		"ErrNilTokenIssuer":        {Err: signin.ErrNilTokenIssuer, Is: Platform},
+		"ErrNoDefaultOwnerRoles":   {Err: signin.ErrNoDefaultOwnerRoles, Is: Platform},
 
 		// The handle doors' incomplete requests, read as the rows above are.
 		"ErrEmptyNewEmailAddress":  {Err: signin.ErrEmptyNewEmailAddress, Is: Platform},
@@ -686,6 +687,12 @@ var Matrix = map[string]map[string]Decision{
 		// registration was refused from the password being refused.
 		"ErrRegistrationRefused": {Err: signin.ErrRegistrationRefused, Is: Mapped},
 
+		// A sign-up door the deployment closed with signin/grpc's
+		// WithoutOpenRegistration. Unimplemented and a 403, and client-safe
+		// with a reason, so a client can tell a door closed on purpose from a
+		// method nobody mounted.
+		"ErrRegistrationClosed": {Err: signin.ErrRegistrationClosed, Is: Mapped},
+
 		// A consumer who never named the label an authenticator app shows. It is
 		// wiring rather than anything a caller sent, so a 500 is the honest
 		// answer and no mapper claims it.
@@ -710,8 +717,13 @@ var Matrix = map[string]map[string]Decision{
 		// register through, one that was given nothing to finish a registration
 		// with, and one that was given nothing to mail a fresh link through. None
 		// is anything a caller sent.
-		"ErrRegistrationIncomplete":          {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
-		"ErrRegistrationNotConfigured":       {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
+		"ErrRegistrationIncomplete":    {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
+		"ErrRegistrationNotConfigured": {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
+
+		// A RegistrationPolicy that left a registration minting an account with
+		// no owner roles. The deployment's bug rather than the registrant's, so
+		// a 500.
+		"ErrNoOwnerRoles":                    {Err: signin.ErrNoOwnerRoles, Is: Unhandled},
 		"ErrVerificationsNotConfigured":      {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
 		"ErrVerificationMailerNotConfigured": {Err: signin.ErrVerificationMailerNotConfigured, Is: Unhandled},
 

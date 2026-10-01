@@ -187,7 +187,7 @@ func TestRequestMagicLink_refusals(T *testing.T) {
 
 		e := newMagicLinkEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithMagicLinkStore(e.magicLinks))
 		must.NoError(t, err)
 
@@ -535,7 +535,7 @@ func TestRedeemMagicLink_refusals(T *testing.T) {
 
 		e := newMagicLinkEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 			signin.WithMagicLinkStore(e.magicLinks))
 		must.NoError(t, err)
 
@@ -610,7 +610,7 @@ func TestMagicLinkOptions_nilIsIgnored(t *testing.T) {
 
 	e := newMagicLinkEnv(t)
 
-	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
 		signin.WithMagicLinkStore(nil),
 		signin.WithMagicLinkMailer(nil),
 		signin.WithMagicLinkTTL(0),

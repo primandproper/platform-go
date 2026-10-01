@@ -101,7 +101,8 @@
 // No verification token in any response. The secret a registration mints
 // travels to the person it is about, in mail the consumer sends from inside the
 // transaction that wrote the row -- it is never handed back to whoever called
-// Register, who is a client rather than the subject. It arrives back here only
+// Register, since calling it proves nothing about who holds the address. It
+// arrives back here only
 // as a request field on the RPCs that answer a link, which is identity's
 // rule for an invitation's token and is the same rule for the same reason.
 //
@@ -690,6 +691,14 @@ message RegistrationInvitation {
 message RegisterRequest {
   reserved "scope";
 
+  // 3 was owner_roles, which let the caller choose their own roles in the
+  // account they mint. An anonymous door cannot allow that: the roles a
+  // registrant owns their account with are the deployment's default owner
+  // roles, or whatever its registration policy replaced them with, and never
+  // the wire's.
+  reserved 3;
+  reserved "owner_roles";
+
   // user is the directory half, and is identity's own input message: there is
   // one directory and one shape for a registrant, and a second message for the
   // same four fields would be a second thing to keep in step.
@@ -698,13 +707,6 @@ message RegisterRequest {
   // account is the first account the registrant owns. It is ignored by a
   // registration that answers an invitation.
   primandproper.platform.identity.v1.AccountCreationInput account = 2;
-
-  // owner_roles are the roles the registrant holds in the account they own,
-  // and are the consumer's own role names. A membership with none is a member
-  // who may do nothing, so a registration that mints an account names at least
-  // one. They are ignored by a registration that answers an invitation, which
-  // takes its roles off the invitation.
-  repeated string owner_roles = 3;
 
   // credential is how this person will prove who they are afterwards, and it is
   // required: a request naming neither arm is refused rather than read as
@@ -953,20 +955,29 @@ message RequestHandleReminderResponse {}
 //
 // Some of its RPCs are anonymous by definition and the rest require a caller.
 // What none of them requires is a permission: there is no grant that would make
-// "sign in" safer, and every authenticated one but Register takes its subject
-// from the caller and has no field that could name anybody else. See
+// "sign in" safer, and every authenticated one takes its subject from the
+// caller and has no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 // What an operator does to somebody else's logins is
 // SignInAdministrationService, which is permissioned, and which is a service of
 // its own so that this statement stays true of this one.
 service SignInService {
-  // Arriving, and the two ways a registration is finished. Register requires a
-  // caller -- the consumer's own registrar, for the reason identity's Register
-  // requires one: an open sign-up is a flow with policy in it, a captcha, a rate
-  // limit, an email domain rule, and this service holds none of that. The other
-  // two are anonymous and carry their own authority, which is the token that was
-  // mailed to the person they are about.
+  // Arriving, and the two ways a registration is finished. All three are
+  // anonymous. Register is the sign-up door, and it is open by default: the
+  // policy an open sign-up has in it -- who may register, which agreements
+  // they must accept, what standing and roles they start with -- is the
+  // deployment's registration policy, which the service runs on every
+  // registration before anything is hashed, minted or written, and the roles
+  // a registrant owns their account with are the deployment's, never the
+  // request's. A caller who is signed in still reaches it, and an operator
+  // provisioning users calls it that way. A deployment that does not want
+  // sign-up closes the door by name, and is then answered with
+  // UNIMPLEMENTED carrying REGISTRATION_CLOSED, so a client can tell a closed
+  // door from a broken one. Rate limiting it is the consumer's, in front of
+  // it, as it is for the sign-in doors. The other two carry their own
+  // authority, which is the token that was mailed to the person they are
+  // about.
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc AttachPassword(AttachPasswordRequest) returns (AttachPasswordResponse);
   rpc VerifyEmailAddress(VerifyEmailAddressRequest) returns (VerifyEmailAddressResponse);
