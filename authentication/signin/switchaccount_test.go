@@ -2,6 +2,7 @@ package signin_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 
@@ -71,6 +72,45 @@ func TestService_SwitchAccount(T *testing.T) {
 		test.False(t, change.Administrative)
 
 		test.EqOp(t, switched.TokenID, e.hooks.signIns[len(e.hooks.signIns)-1].TokenID)
+	})
+
+	// The door is the row's, and a switch carries it as an exchange does. An
+	// administrative session that came out of a switch as an ordinary one would
+	// be the hardening undone by moving tenants, in the direction that
+	// lengthens it.
+	T.Run("an administrative session stays administrative and stays short", func(t *testing.T) {
+		t.Parallel()
+
+		e := newRefreshEnv(t, signin.WithAdminServiceRoles("service_admin"))
+		e.setServiceRoles(t, "service_admin")
+		secret := e.enrollTOTP(t)
+		second := e.addAccount(t, "Second")
+
+		credentials := e.credentials()
+		credentials.TOTPCode = code(t, secret)
+
+		first, err := e.svc.AdminLoginForToken(t.Context(), testScope, credentials)
+		must.NoError(t, err)
+		must.True(t, first.Administrative)
+
+		e.hooks.switches = nil
+
+		switched, err := e.svc.SwitchAccount(t.Context(), testScope, first.RefreshToken, second)
+		must.NoError(t, err)
+
+		test.True(t, switched.Administrative)
+		test.EqOp(t, second, switched.Principal.ActiveAccountID)
+		test.EqOp(t, signin.DefaultAdminTokenTTL, e.issuer.expiry)
+		test.EqOp[any](t, true, e.issuer.claims[signin.ClaimAdministrative])
+
+		gap := switched.RefreshTokenExpiresAt.Sub(switched.ExpiresAt)
+		want := signin.DefaultAdminRefreshTokenTTL - signin.DefaultAdminTokenTTL
+
+		test.True(t, gap > want-time.Second && gap < want+time.Second,
+			test.Sprintf("refresh expiry is %s past the token's, wanted %s", gap, want))
+
+		must.SliceLen(t, 1, e.hooks.switches)
+		test.True(t, e.hooks.switches[0].Administrative)
 	})
 
 	// A switch to somewhere the subject does not belong is a bad exchange like
