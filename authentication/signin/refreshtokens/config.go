@@ -26,7 +26,7 @@ type Config struct {
 	// TablePrefix is the namespace prepended to the refresh token table's name.
 	// Empty renders the schema's own name, "signin_refresh_tokens"; set it to
 	// share a database between applications, which renders e.g.
-	// ddb_signin_refresh_tokens. It must not end in '_' — the separator is
+	// app_signin_refresh_tokens. It must not end in '_' — the separator is
 	// supplied for you.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 }

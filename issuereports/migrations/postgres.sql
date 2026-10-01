@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}issue_reports (
     -- ordinary case for a bug report filed from a menu.
     --
     -- Two columns rather than one composite key, because a key like
-    -- "recipes:1234" scopes by construction and cannot be indexed, filtered or
-    -- enumerated as the two facts it is: "every report about recipes" is a
+    -- "articles:1234" scopes by construction and cannot be indexed, filtered or
+    -- enumerated as the two facts it is: "every report about articles" is a
     -- question this shape answers and that one does not.
     subject_type    TEXT NOT NULL DEFAULT '',
     subject_id      TEXT NOT NULL DEFAULT '',
@@ -85,8 +85,8 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}issue_reports_reporter_idx
     WHERE archived_at IS NULL;
 
 -- Serves both subject reads. subject_id trails subject_type, so the same index
--- answers "every report about recipes" from its prefix and "every report about
--- this recipe" in full.
+-- answers "every report about articles" from its prefix and "every report about
+-- this article" in full.
 CREATE INDEX IF NOT EXISTS {{PREFIX}}issue_reports_subject_idx
     ON {{PREFIX}}issue_reports (scope, subject_type, subject_id, id)
     WHERE archived_at IS NULL;

@@ -28,7 +28,7 @@ func TestOptions(T *testing.T) {
 			WithLogger(logger),
 			WithTracerProvider(tracerProvider),
 			WithMetricsProvider(metricsProvider),
-			WithStoreOptions(notifications.WithTablePrefix("ddb")),
+			WithStoreOptions(notifications.WithTablePrefix("app")),
 		})
 
 		test.Eq(t, logger, o.logger)

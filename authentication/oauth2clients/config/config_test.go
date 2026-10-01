@@ -29,9 +29,9 @@ func TestConfig_EnsureDefaults(t *testing.T) {
 	cfg.EnsureDefaults()
 	test.EqOp(t, oauth2clients.DefaultTablePrefix, cfg.TablePrefix)
 
-	set := &Config{TablePrefix: "ddb"}
+	set := &Config{TablePrefix: "app"}
 	set.EnsureDefaults()
-	test.EqOp(t, "ddb", set.TablePrefix)
+	test.EqOp(t, "app", set.TablePrefix)
 }
 
 func TestConfig_ValidateWithContext(T *testing.T) {
@@ -41,7 +41,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		must.NoError(t, (&Config{}).ValidateWithContext(t.Context()))
-		must.NoError(t, (&Config{TablePrefix: "ddb"}).ValidateWithContext(t.Context()))
+		must.NoError(t, (&Config{TablePrefix: "app"}).ValidateWithContext(t.Context()))
 	})
 
 	T.Run("refuses a prefix that cannot render", func(t *testing.T) {
@@ -57,12 +57,12 @@ func TestNewStore(T *testing.T) {
 	T.Run("builds a store carrying the configured prefix", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres))
 		must.NoError(t, err)
 
 		sqlStore, ok := store.(*oauth2clients.SQLStore)
 		must.True(t, ok)
-		test.EqOp(t, "ddb", sqlStore.TablePrefix())
+		test.EqOp(t, "app", sqlStore.TablePrefix())
 	})
 
 	T.Run("refuses a nil config", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("applies explicit options after the config's", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.Postgres),
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres),
 			WithStoreOptions(oauth2clients.WithTablePrefix("override")))
 		must.NoError(t, err)
 

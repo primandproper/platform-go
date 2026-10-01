@@ -252,7 +252,7 @@ func (h *harness) otherScopeCtx(tb testing.TB, userID string) context.Context {
 func (h *harness) seedReport(tb testing.TB, scope tenancy.Scope, reporter string) *issuereports.Report {
 	tb.Helper()
 
-	return h.seedReportAbout(tb, scope, reporter, "recipe", "recipe_1")
+	return h.seedReportAbout(tb, scope, reporter, "article", "article_1")
 }
 
 // seedReportAbout is seedReport with the subject named, for the two lists that
@@ -311,8 +311,8 @@ func creationInput() *issuereportspb.IssueReportCreationInput {
 	return &issuereportspb.IssueReportCreationInput{
 		Kind:        "bug",
 		Details:     "the thing did not work",
-		SubjectType: "recipe",
-		SubjectId:   "recipe_1",
+		SubjectType: "article",
+		SubjectId:   "article_1",
 	}
 }
 

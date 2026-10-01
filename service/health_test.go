@@ -179,14 +179,14 @@ func TestWithHealthChecks(T *testing.T) {
 
 		i := newInjector(t, cfg)
 
-		_, err := New(i, WithHealthChecks(&stubChecker{name: "recipes_api"}, nil))
+		_, err := New(i, WithHealthChecks(&stubChecker{name: "articles_api"}, nil))
 		must.NoError(t, err)
 
 		registry, err := do.Invoke[healthcheck.Registry](i)
 		must.NoError(t, err)
 
 		// Alongside the auto-wired one, not instead of it.
-		test.SliceContainsAll(t, []string{databaseCheckerName, "recipes_api"}, componentNames(t, registry))
+		test.SliceContainsAll(t, []string{databaseCheckerName, "articles_api"}, componentNames(t, registry))
 	})
 
 	T.Run("checks handed to an injector with no registry are an error", func(t *testing.T) {
@@ -202,7 +202,7 @@ func TestWithHealthChecks(T *testing.T) {
 		do.ProvideValue(i, cfg)
 		do.ProvideValue(i, &cfg.Observability)
 
-		_, err := New(i, WithHealthChecks(&stubChecker{name: "recipes_api"}))
+		_, err := New(i, WithHealthChecks(&stubChecker{name: "articles_api"}))
 		test.Error(t, err)
 	})
 
@@ -225,7 +225,7 @@ func TestWithHealthChecks(T *testing.T) {
 
 		i := newInjector(t, cfg)
 
-		svc, err := New(i, WithHealthChecks(&stubChecker{name: "recipes_api"}))
+		svc, err := New(i, WithHealthChecks(&stubChecker{name: "articles_api"}))
 		must.NoError(t, err)
 		must.SliceLen(t, 1, svc.servers)
 
@@ -241,7 +241,7 @@ func TestWithHealthChecks(T *testing.T) {
 		must.NoError(t, json.Unmarshal(res.Body.Bytes(), &result))
 
 		test.EqOp(t, healthcheck.StatusUp, result.Status)
-		test.MapContainsKeys(t, result.Components, []string{databaseCheckerName, messageQueueCheckerName, "recipes_api"})
+		test.MapContainsKeys(t, result.Components, []string{databaseCheckerName, messageQueueCheckerName, "articles_api"})
 	})
 
 	T.Run("no checks needs no registry", func(t *testing.T) {

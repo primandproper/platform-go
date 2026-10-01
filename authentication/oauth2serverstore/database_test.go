@@ -161,7 +161,7 @@ func TestStore_Encoding(T *testing.T) {
 				ID: "user_1",
 				// The application-shaped half. This store must not interpret
 				// it, and must not lose it.
-				Claims: map[string]string{"account_id": "acct_9", "household": "h_2"},
+				Claims: map[string]string{"account_id": "acct_9", "workspace": "w_2"},
 			},
 			Audience: []string{"https://api.example/"},
 		}

@@ -113,9 +113,9 @@ func ExampleChecker_permissions() {
 
 	// OR'd with whatever the principal's roles grant, exactly as authorization
 	// merges service-wide and per-tenant authority.
-	grants := authorization.NewGrants(authorization.NewPermissionSet("update.recipes"), entitled)
+	grants := authorization.NewGrants(authorization.NewPermissionSet("update.articles"), entitled)
 
-	fmt.Println(grants.Has("update.recipes"), grants.Has("entitlement.advanced_search"))
+	fmt.Println(grants.Has("update.articles"), grants.Has("entitlement.advanced_search"))
 	// Quota features are absent: their answer changes between two checks in the
 	// same request, and a permission set is read without asking again.
 	fmt.Println(grants.Has("entitlement.llm_tokens"))

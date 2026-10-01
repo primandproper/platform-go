@@ -176,7 +176,7 @@ func TestPruneTarget_Describe(T *testing.T) {
 		t.Parallel()
 
 		test.EqOp(t, "audit_log_entries", PruneTarget{}.Describe())
-		test.EqOp(t, "ddb_audit_log_entries", PruneTarget{TablePrefix: "ddb"}.Describe())
+		test.EqOp(t, "app_audit_log_entries", PruneTarget{TablePrefix: "app"}.Describe())
 	})
 }
 
@@ -498,16 +498,16 @@ func TestIsAuditTable(T *testing.T) {
 		for _, name := range []string{
 			"audit_log_entries",
 			"audit_log_chains",
-			"ddb_audit_log_entries",
-			"ddb_audit_log_chains",
+			"app_audit_log_entries",
+			"app_audit_log_chains",
 			"archive.audit_log_entries",
-			"archive.ddb_audit_log_chains",
+			"archive.app_audit_log_chains",
 
 			// Folded, because the dialects disagree about whether an unquoted
 			// identifier is case-sensitive and a caller who shouted the name is
 			// still naming the log.
 			"AUDIT_LOG_ENTRIES",
-			"DDB_Audit_Log_Chains",
+			"APP_Audit_Log_Chains",
 		} {
 			test.True(t, IsAuditTable(name), test.Sprintf("table %q", name))
 		}
@@ -519,7 +519,7 @@ func TestIsAuditTable(T *testing.T) {
 		// The cross-check that keeps this function honest: whatever name the
 		// target renders for a prefix is a name this recognizes, so the two
 		// cannot drift into a refusal that misses the table it was written for.
-		for _, prefix := range []string{"", "ddb", "a_b"} {
+		for _, prefix := range []string{"", "app", "a_b"} {
 			test.True(t, IsAuditTable(PruneTarget{TablePrefix: prefix}.Describe()),
 				test.Sprintf("prefix %q", prefix))
 		}

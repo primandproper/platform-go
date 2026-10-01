@@ -28,7 +28,7 @@ import (
 // configured, which is none — rendering waitlists and waitlist_signups.
 //
 // The waitlist_ segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders ddb_waitlists,
+// which package created it. Setting a namespace of "app" renders app_waitlists,
 // for a database shared between applications. A namespace must not end in '_';
 // database/ddl supplies the separator.
 const DefaultTablePrefix = ""

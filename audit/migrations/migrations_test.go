@@ -215,7 +215,7 @@ func TestValidatePrefix(T *testing.T) {
 	T.Run("accepts a plain identifier fragment", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, ValidatePrefix("ddb"))
+		test.NoError(t, ValidatePrefix("app"))
 	})
 
 	T.Run("rejects a malformed namespace with this package's own sentinel", func(t *testing.T) {
@@ -223,13 +223,13 @@ func TestValidatePrefix(T *testing.T) {
 
 		// The local regex runs before the shared check so a malformed namespace
 		// still reports ErrInvalidPrefix rather than the dialect package's.
-		test.ErrorIs(t, ValidatePrefix("ddb-1"), ErrInvalidPrefix)
+		test.ErrorIs(t, ValidatePrefix("app-1"), ErrInvalidPrefix)
 	})
 
 	T.Run("rejects a trailing separator", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, ValidatePrefix("ddb_"), ddl.ErrPrefixTrailingSeparator)
+		test.ErrorIs(t, ValidatePrefix("app_"), ddl.ErrPrefixTrailingSeparator)
 	})
 
 	T.Run("rejects a namespace that pushes an index name past the limit", func(t *testing.T) {

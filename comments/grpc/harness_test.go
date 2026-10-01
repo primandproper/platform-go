@@ -70,21 +70,21 @@ const (
 // The catalog these tests publish, and one type deliberately outside it so the
 // write gate is visible.
 const (
-	recipeType  comments.TargetType = "recipe"
-	mealType    comments.TargetType = "meal"
-	unknownType comments.TargetType = "unregistered"
+	articleType    comments.TargetType = "article"
+	newsletterType comments.TargetType = "newsletter"
+	unknownType    comments.TargetType = "unregistered"
 )
 
 // testTargets is the catalog the harness builds stores against. Neither entry
 // carries an existence check: "no check" is the ordinary case, and the one test
 // about a registered check supplies its own.
 var testTargets = comments.Targets{
-	recipeType: {Description: "a recipe"},
-	mealType:   {Description: "a meal"},
+	articleType:    {Description: "an article"},
+	newsletterType: {Description: "a newsletter"},
 }
 
 // testTarget is the thing most of these comments are about.
-var testTarget = comments.Target{Type: recipeType, ID: "recipe_1"}
+var testTarget = comments.Target{Type: articleType, ID: "article_1"}
 
 // testClientConfig is the minimal database.ClientConfig these tests dial with.
 type testClientConfig struct {

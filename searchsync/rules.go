@@ -30,8 +30,8 @@ type Change interface {
 	// when the payload carries none.
 	//
 	// It takes a key rather than returning "the payload's ID" because one
-	// data-change message routinely names several entities — the recipe, the
-	// step that changed, the meal plan they belong to — and which of them a
+	// data-change message routinely names several entities — the article, the
+	// step that changed, the newsletter they belong to — and which of them a
 	// given index is keyed by is the rule's business rather than the payload's.
 	IndexDocumentID(key string) (string, bool)
 }
@@ -93,7 +93,7 @@ type Rule struct {
 //
 // This is the registered form the package documentation contrasts with writing
 // the event at the call site. Nothing about a repository method that writes a
-// recipe says the write owes an index event, so the next one enqueues its
+// article says the write owes an index event, so the next one enqueues its
 // data-change message alone, compiles, and passes review — and the index is
 // wrong from then until the next rebuild, with nothing in between able to
 // notice, because the event that went missing is one no consumer was waiting

@@ -90,7 +90,7 @@ module_path="$(cd "${PROJECT_ROOT}" && go list -m)"
 # every import of it is "File not found".
 #
 # It is resolved through the module cache rather than vendored or copied, which
-# is the recipe filtering.proto's own doc block gives a consumer — platform-go is
+# is the approach filtering.proto's own doc block gives a consumer — platform-go is
 # now one. Two things follow from it being a dependency rather than ours:
 #
 #   - It is added to the paths and deliberately not to the file list. Its Go

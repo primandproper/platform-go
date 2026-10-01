@@ -164,7 +164,7 @@ func TestTransferAccountOwnershipRefusesAStrangerToTheDirectory(T *testing.T) {
 
 // TestArchiveAccountClosesItAndItsRoster is the wire half of the closure: the
 // account goes, and so does every membership in it — which is what makes
-// "delete this household" one call rather than a client looping over a roster.
+// "delete this workspace" one call rather than a client looping over a roster.
 func TestArchiveAccountClosesItAndItsRoster(T *testing.T) {
 	T.Parallel()
 

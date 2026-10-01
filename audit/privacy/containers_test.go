@@ -86,7 +86,7 @@ func (e *auditEnv) record(t *testing.T, scope tenancy.Scope, actorID, resourceID
 
 	recorded := &audit.Entry{
 		EventType:    audit.EventUpdated,
-		ResourceType: "recipe",
+		ResourceType: "article",
 		ResourceID:   resourceID,
 		Actor:        audit.Actor{ID: actorID, Type: audit.ActorUser, IP: "203.0.113.7"},
 	}
@@ -132,12 +132,12 @@ func runDialectSuite(t *testing.T, client database.Client) {
 
 		env := newAuditEnv(t, client)
 
-		acted := env.record(t, firstScope, subject.ID, "recipe_1")
+		acted := env.record(t, firstScope, subject.ID, "article_1")
 		actedOn := env.record(t, firstScope, "admin_1", subject.ID)
-		env.record(t, firstScope, "admin_1", "recipe_2")
+		env.record(t, firstScope, "admin_1", "article_2")
 		self := env.record(t, firstScope, subject.ID, subject.ID)
-		elsewhere := env.record(t, secondScope, subject.ID, "recipe_3")
-		unresolved := env.record(t, third, subject.ID, "recipe_4")
+		elsewhere := env.record(t, secondScope, subject.ID, "article_3")
+		unresolved := env.record(t, third, subject.ID, "article_4")
 
 		collected := env.collect(t, firstScope, secondScope)
 
@@ -166,9 +166,9 @@ func runDialectSuite(t *testing.T, client database.Client) {
 
 		env := newAuditEnv(t, client)
 
-		env.record(t, firstScope, subject.ID, "recipe_1")
+		env.record(t, firstScope, subject.ID, "article_1")
 		env.record(t, firstScope, "admin_1", subject.ID)
-		env.record(t, secondScope, "admin_2", "recipe_2")
+		env.record(t, secondScope, "admin_2", "article_2")
 		env.record(t, third, subject.ID, subject.ID)
 
 		// The predicate is audit.Erasure.CountMentions's, so a resolver naming
@@ -196,8 +196,8 @@ func runDialectSuite(t *testing.T, client database.Client) {
 		for i := range recorded {
 			entries = append(entries, &audit.Entry{
 				EventType:    audit.EventUpdated,
-				ResourceType: "recipe",
-				ResourceID:   fmt.Sprintf("recipe_%d", i),
+				ResourceType: "article",
+				ResourceID:   fmt.Sprintf("article_%d", i),
 				Actor:        audit.Actor{ID: subject.ID, Type: audit.ActorUser},
 			})
 		}
@@ -218,7 +218,7 @@ func runDialectSuite(t *testing.T, client database.Client) {
 		t.Parallel()
 
 		env := newAuditEnv(t, client)
-		env.record(t, firstScope, "admin_1", "recipe_1")
+		env.record(t, firstScope, "admin_1", "article_1")
 
 		test.SliceEmpty(t, env.collect(t, firstScope))
 	})

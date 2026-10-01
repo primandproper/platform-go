@@ -481,9 +481,9 @@ func TestBackend_TablePrefix(T *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
-		createTable(t, client, dialect.SQLite, "ddb")
+		createTable(t, client, dialect.SQLite, "app")
 
-		backend, err := NewBackend[principal](&Config{TablePrefix: "ddb"}, client, WithClock(newFakeClock()))
+		backend, err := NewBackend[principal](&Config{TablePrefix: "app"}, client, WithClock(newFakeClock()))
 		must.NoError(t, err)
 
 		must.NoError(t, backend.Create(t.Context(), "id-1", testRecord(newFakeClock(), "u_1"), time.Hour))
@@ -494,7 +494,7 @@ func TestBackend_TablePrefix(T *testing.T) {
 		must.NoError(t, loadErr)
 		test.EqOp(t, "u_1", got.Data.UserID)
 
-		// Written to ddb_sessions and nowhere else, so an application sharing a
+		// Written to app_sessions and nowhere else, so an application sharing a
 		// database cannot read another's sessions by accident.
 		var count int
 		must.NoError(t, client.Writer().

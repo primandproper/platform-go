@@ -21,7 +21,7 @@ import (
 // comment was written.
 //
 // It is exported because a consumer composing comments into a larger response —
-// a page that renders a recipe and its discussion in one call — otherwise
+// a page that renders an article and its discussion in one call — otherwise
 // writes the same eight assignments and gets one of them wrong.
 func CommentToProto(c *comments.Comment) *commentspb.Comment {
 	if c == nil {

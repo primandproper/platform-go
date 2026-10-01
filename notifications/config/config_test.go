@@ -38,7 +38,7 @@ func TestConfig_Validate(T *testing.T) {
 		// The empty prefix is the default rather than "unset": it renders
 		// notifications_inbox and notifications_devices.
 		must.NoError(t, (&Config{}).ValidateWithContext(t.Context()))
-		must.NoError(t, (&Config{TablePrefix: "ddb"}).ValidateWithContext(t.Context()))
+		must.NoError(t, (&Config{TablePrefix: "app"}).ValidateWithContext(t.Context()))
 	})
 
 	T.Run("refuses a prefix that cannot render", func(t *testing.T) {
@@ -71,7 +71,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("carries the configured prefix into the store", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.MySQL))
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.MySQL))
 		must.NoError(t, err)
 
 		// The prefix is not on either seam, so reading it back means naming the
@@ -79,7 +79,7 @@ func TestNewStore(T *testing.T) {
 		// do and a caller holding the interface may not.
 		sqlStore, ok := store.(*notifications.SQLStore)
 		must.True(t, ok)
-		test.EqOp(t, "ddb", sqlStore.TablePrefix())
+		test.EqOp(t, "app", sqlStore.TablePrefix())
 	})
 
 	T.Run("refuses a nil config", func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestNewStore(T *testing.T) {
 
 		// A caller can override anything the config derived, the table prefix
 		// included.
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.Postgres),
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres),
 			WithStoreOptions(notifications.WithTablePrefix("override")))
 		must.NoError(t, err)
 

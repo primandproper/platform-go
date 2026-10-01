@@ -70,8 +70,8 @@ func querierFor(d dialect.Dialect, prefix string) (outboxdb.Querier, error) {
 // configured, which is none — rendering outbox_messages.
 //
 // The outbox_ segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders
-// ddb_outbox_messages, for a database shared between applications.
+// which package created it. Setting a namespace of "app" renders
+// app_outbox_messages, for a database shared between applications.
 const DefaultTablePrefix = ""
 
 // Message is one event awaiting publication.

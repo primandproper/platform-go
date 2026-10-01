@@ -222,7 +222,7 @@ func TestIsFullMethodName(t *testing.T) {
 	t.Parallel()
 
 	test.True(t, isFullMethodName(billingpb.BillingService_ListProducts_FullMethodName))
-	test.True(t, isFullMethodName("/consumer.recipes.v1.RecipesService/DeleteRecipe"),
+	test.True(t, isFullMethodName("/consumer.articles.v1.ArticlesService/DeleteArticle"),
 		test.Sprint("a method on a service no suite covers is the deployment's own to reserve"))
 
 	for _, spelled := range []string{

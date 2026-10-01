@@ -68,7 +68,7 @@ before the person who owned it is erased, and do both or neither.
 	Identity: &privacyadapters.IdentityAdapter{
 	    Store:       userStore,
 	    Resolve:     tenantsOf,
-	    BeforeErase: householdSuccession,
+	    BeforeErase: workspaceSuccession,
 	},
 
 It precedes that eraser and cannot replace it, and the asymmetry is the point

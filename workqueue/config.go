@@ -17,8 +17,8 @@ const (
 	// configured, which is none — rendering work_queue_items.
 	//
 	// The work_queue_ segment is the schema's, not the caller's: a table always
-	// says which package created it. Setting a namespace of "ddb" renders
-	// ddb_work_queue_items, for a database shared between applications.
+	// says which package created it. Setting a namespace of "app" renders
+	// app_work_queue_items, for a database shared between applications.
 	DefaultTablePrefix = ""
 
 	// DefaultMaxClaimBatch caps a single Claim. It is a guard, not a target: an
@@ -63,7 +63,7 @@ type Config struct {
 	Name string `env:"NAME" json:"name,omitempty" yaml:"name,omitempty"`
 
 	// TablePrefix is the namespace the queue table carries. Empty renders
-	// work_queue_items; "ddb" renders ddb_work_queue_items. It must match the
+	// work_queue_items; "app" renders app_work_queue_items. It must match the
 	// namespace the migrations were rendered with.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 

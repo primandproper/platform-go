@@ -315,7 +315,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 			Name:         "renamed",
 			Description:  "revised",
 			RedirectURIs: []string{"https://example.test/other"},
-			Scopes:       []string{"recipes:read"},
+			Scopes:       []string{"articles:read"},
 		})
 		must.NoError(t, err)
 
@@ -324,7 +324,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// patch had no other way to learn.
 		test.EqOp(t, "renamed", revised.Name)
 		test.Eq(t, []string{"https://example.test/other"}, revised.RedirectURIs)
-		test.Eq(t, []string{"recipes:read"}, revised.Scopes)
+		test.Eq(t, []string{"articles:read"}, revised.Scopes)
 		test.True(t, revised.LastUpdatedAt != nil,
 			test.Sprint("the update did not answer with the stamp it assigned"))
 

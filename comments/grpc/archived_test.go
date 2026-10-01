@@ -121,7 +121,7 @@ func TestIncludeArchivedIsAGrantAndNotAField(T *testing.T) {
 				tb.Helper()
 
 				res, err := h.server.ListCommentsByTargetType(ctx, &commentspb.ListCommentsByTargetTypeRequest{
-					TargetType: string(recipeType),
+					TargetType: string(articleType),
 					Filter:     includeArchived(),
 				})
 				must.NoError(tb, err)

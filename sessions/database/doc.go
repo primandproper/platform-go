@@ -6,7 +6,7 @@ sign-out has to be enforceable rather than very nearly enforceable. Otherwise
 sessions/cache is cheaper and does the same job.
 
 	backend, _ := sessionsdatabase.NewBackend[Principal](
-		&sessionsdatabase.Config{TablePrefix: "ddb"}, db,
+		&sessionsdatabase.Config{TablePrefix: "app"}, db,
 		sessionsdatabase.WithSweeper(ctx, 5*time.Minute),
 	)
 	store, _ := sessions.NewStore(backend)

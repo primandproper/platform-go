@@ -39,7 +39,7 @@ func method(name string) string {
 const (
 	kindBug     = "bug"
 	detailsBug  = "the thing did not work"
-	subjectKind = "recipe"
+	subjectKind = "article"
 
 	// revised is what a revision says, where what it says is immaterial.
 	revised = "revised"

@@ -54,14 +54,14 @@ func TestNewSessionStore(T *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
-		createTable(t, client, dialect.SQLite, "ddb")
+		createTable(t, client, dialect.SQLite, "app")
 
-		store, err := NewSessionStore(&Config{TablePrefix: "ddb"}, client)
+		store, err := NewSessionStore(&Config{TablePrefix: "app"}, client)
 		must.NoError(t, err)
 
 		must.NoError(t, store.Save(t.Context(), testSession("namespaced"), time.Minute))
 
-		test.EqOp(t, 1, rowsIn(t, client, "ddb_webauthn_sessions"))
+		test.EqOp(t, 1, rowsIn(t, client, "app_webauthn_sessions"))
 		test.EqOp(t, 0, rowsIn(t, client, "webauthn_sessions"))
 	})
 
@@ -88,7 +88,7 @@ func TestNewSessionStore(T *testing.T) {
 	T.Run("refuses a prefix the schema cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSessionStore(&Config{TablePrefix: "ddb_"}, newTestClient(t))
+		store, err := NewSessionStore(&Config{TablePrefix: "app_"}, newTestClient(t))
 		test.Error(t, err)
 		test.Nil(t, store)
 	})

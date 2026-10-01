@@ -155,9 +155,9 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	// A prefix is not decoration: it renders a second table, and both the DDL
 	// and every statement have to agree about which one they mean.
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {
-		createTable(t, client, d, "ddb")
+		createTable(t, client, d, "app")
 
-		namespaced, storeErr := NewSessionStore(&Config{TablePrefix: "ddb"}, client, WithClock(c))
+		namespaced, storeErr := NewSessionStore(&Config{TablePrefix: "app"}, client, WithClock(c))
 		must.NoError(t, storeErr)
 
 		must.NoError(t, namespaced.Save(ctx, testSession("namespaced"), time.Hour))

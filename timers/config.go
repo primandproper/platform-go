@@ -17,8 +17,8 @@ const (
 	// configured, which is none — rendering scheduled_timers.
 	//
 	// The scheduled_ segment is the schema's, not the caller's: a table always
-	// says which package created it. Setting a namespace of "ddb" renders
-	// ddb_scheduled_timers, for a database shared between applications.
+	// says which package created it. Setting a namespace of "app" renders
+	// app_scheduled_timers, for a database shared between applications.
 	DefaultTablePrefix = ""
 
 	// DefaultMaxClaimBatch caps a single Claim. It is a guard, not a target: an
@@ -72,7 +72,7 @@ type Config struct {
 	Name string `env:"NAME" json:"name,omitempty" yaml:"name,omitempty"`
 
 	// TablePrefix is the namespace the timer table carries. Empty renders
-	// scheduled_timers; "ddb" renders ddb_scheduled_timers. It must match the
+	// scheduled_timers; "app" renders app_scheduled_timers. It must match the
 	// namespace the migrations were rendered with.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 

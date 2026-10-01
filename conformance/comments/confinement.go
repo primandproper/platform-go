@@ -58,7 +58,7 @@ func confinement(t *testing.T, s *conformance.Session) {
 	// Both tenants talk about the same target where the subject's target type
 	// takes any identifier — the same type and the same identifier — because a
 	// target is the application's thing rather than either tenant's, and
-	// "recipe 42" can exist in both. The discussion is still two discussions.
+	// "article 42" can exist in both. The discussion is still two discussions.
 	//
 	// Where the subject brings targets into being, each tenant's is made in
 	// that tenant, since a thing made in one need not exist in the other. The

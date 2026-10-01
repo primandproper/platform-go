@@ -43,7 +43,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a prefix the schema cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(&Config{TablePrefix: "ddb_"}, newTestClient(t))
+		store, err := NewSQLStore(&Config{TablePrefix: "app_"}, newTestClient(t))
 		test.Nil(t, store)
 		test.ErrorIs(t, err, ddl.ErrPrefixTrailingSeparator)
 	})
@@ -54,9 +54,9 @@ func TestNewSQLStore(T *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
-		createTable(t, client, dialect.SQLite, "ddb")
+		createTable(t, client, dialect.SQLite, "app")
 
-		store, err := NewSQLStore(&Config{TablePrefix: "ddb"}, client, WithClock(newFakeClock()))
+		store, err := NewSQLStore(&Config{TablePrefix: "app"}, client, WithClock(newFakeClock()))
 		must.NoError(t, err)
 
 		issuance, err := issueFor(t, store, testScope(), &signin.RefreshTokenRequest{
@@ -68,7 +68,7 @@ func TestNewSQLStore(T *testing.T) {
 		must.NoError(t, err)
 		must.NotNil(t, issuance)
 
-		test.EqOp(t, 1, rowsIn(t, client, "ddb_signin_refresh_tokens"))
+		test.EqOp(t, 1, rowsIn(t, client, "app_signin_refresh_tokens"))
 		test.EqOp(t, 0, rowsIn(t, client, "signin_refresh_tokens"))
 	})
 }

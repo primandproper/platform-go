@@ -62,7 +62,7 @@ func TestReporter_units(T *testing.T) {
 
 		rep.SetUnits(3)
 
-		for _, unit := range []string{"identity", "webhooks", "mealplanning"} {
+		for _, unit := range []string{"identity", "webhooks", "newsletters"} {
 			rep.StartUnit(unit)
 			rep.Advance(100)
 			rep.FinishUnit()

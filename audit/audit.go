@@ -19,8 +19,8 @@ const serviceName = "audit"
 // configured, which is none — rendering audit_log_entries and audit_log_chains.
 //
 // The audit_log_ segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders
-// ddb_audit_log_entries, for a database shared between applications. A namespace
+// which package created it. Setting a namespace of "app" renders
+// app_audit_log_entries, for a database shared between applications. A namespace
 // must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 
@@ -147,7 +147,7 @@ func ValidateTablePrefix(prefix string) error {
 // The comparison is on the last dot-separated segment, because a retention
 // table name may be schema-qualified, and it treats any '_'-separated prefix as
 // this package's namespace, because that is exactly what ddl.Qualify renders
-// one as: an unrelated table called ddb_audit_log_entries is not a name anybody
+// one as: an unrelated table called app_audit_log_entries is not a name anybody
 // arrives at by accident, and the cost of being wrong in that direction is a
 // startup error naming the right escape hatch. Case is folded, because the
 // dialects disagree about whether an unquoted identifier is.

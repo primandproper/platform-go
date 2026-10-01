@@ -432,7 +432,7 @@ func Example_migrations() {
 	// A namespace, for a database shared between applications. It must match
 	// what the store is built with — nothing can check that, and a mismatch
 	// surfaces as a missing table on the first query.
-	prefixed, err := migrations.SQL(dialect.Postgres, "ddb")
+	prefixed, err := migrations.SQL(dialect.Postgres, "app")
 	if err != nil {
 		fmt.Println(err)
 

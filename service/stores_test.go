@@ -118,7 +118,7 @@ func TestRegisterStores(T *testing.T) {
 		// The comment store's one dependency the environment cannot supply:
 		// which kinds of thing accept comments, each type optionally carrying a
 		// function that reads the application's own tables.
-		do.ProvideValue(i, comments.Targets{comments.TargetType("recipe"): {Description: "a recipe"}})
+		do.ProvideValue(i, comments.Targets{comments.TargetType("article"): {Description: "an article"}})
 
 		// The reset flow's two: what delivers a link, and the engine sign-in
 		// hashes with, so a reset writes a password sign-in can verify.

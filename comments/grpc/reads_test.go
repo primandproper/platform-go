@@ -69,7 +69,7 @@ func TestServer_ListRootComments(T *testing.T) {
 		h.seed(t, testScope, &comments.Comment{ParentID: root.ID})
 
 		res, err := h.server.ListRootComments(h.ctx(t), &commentspb.ListRootCommentsRequest{
-			Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+			Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 		})
 		must.NoError(t, err)
 
@@ -86,7 +86,7 @@ func TestServer_ListRootComments(T *testing.T) {
 		h.seed(t, otherScope, &comments.Comment{Target: testTarget})
 
 		res, err := h.server.ListRootComments(h.ctx(t), &commentspb.ListRootCommentsRequest{
-			Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+			Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 		})
 		must.NoError(t, err)
 
@@ -103,7 +103,7 @@ func TestServer_ListRootComments(T *testing.T) {
 		sideways := "sideways"
 
 		_, err := h.server.ListRootComments(h.ctx(t), &commentspb.ListRootCommentsRequest{
-			Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+			Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 			Filter: &filteringpb.QueryFilter{SortBy: &sideways},
 		})
 
@@ -122,7 +122,7 @@ func TestServer_ListReplies(T *testing.T) {
 		reply := h.seed(t, testScope, &comments.Comment{ParentID: root.ID})
 
 		res, err := h.server.ListReplies(h.ctx(t), &commentspb.ListRepliesRequest{
-			Target:   &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+			Target:   &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 			ParentId: root.ID,
 		})
 		must.NoError(t, err)
@@ -139,7 +139,7 @@ func TestServer_ListReplies(T *testing.T) {
 		h := newHarness(t)
 
 		_, err := h.server.ListReplies(h.ctx(t), &commentspb.ListRepliesRequest{
-			Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+			Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 		})
 
 		mustBeCode(t, err, codes.InvalidArgument)
@@ -158,7 +158,7 @@ func TestServer_ListReplies(T *testing.T) {
 		must.NoError(t, err)
 
 		res, err := h.server.ListReplies(h.ctx(t), &commentspb.ListRepliesRequest{
-			Target:   &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+			Target:   &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 			ParentId: root.ID,
 		})
 		must.NoError(t, err)
@@ -177,11 +177,11 @@ func TestServer_ListCommentsByTargetType(T *testing.T) {
 		h := newHarness(t)
 		root := h.seed(t, testScope, &comments.Comment{Target: testTarget})
 		h.seed(t, testScope, &comments.Comment{ParentID: root.ID})
-		h.seed(t, testScope, &comments.Comment{Target: comments.Target{Type: recipeType, ID: "recipe_2"}})
-		h.seed(t, testScope, &comments.Comment{Target: comments.Target{Type: mealType, ID: "meal_1"}})
+		h.seed(t, testScope, &comments.Comment{Target: comments.Target{Type: articleType, ID: "article_2"}})
+		h.seed(t, testScope, &comments.Comment{Target: comments.Target{Type: newsletterType, ID: "newsletter_1"}})
 
 		res, err := h.server.ListCommentsByTargetType(h.ctx(t),
-			&commentspb.ListCommentsByTargetTypeRequest{TargetType: string(recipeType)})
+			&commentspb.ListCommentsByTargetTypeRequest{TargetType: string(articleType)})
 		must.NoError(t, err)
 
 		test.SliceLen(t, 3, res.GetResults())
@@ -193,15 +193,15 @@ func TestServer_ListCommentsByTargetType(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.seed(t, testScope, &comments.Comment{Target: comments.Target{Type: mealType, ID: "meal_1"}})
+		h.seed(t, testScope, &comments.Comment{Target: comments.Target{Type: newsletterType, ID: "newsletter_1"}})
 
-		// The catalog is narrowed to recipes after the comment was written,
+		// The catalog is narrowed to articles after the comment was written,
 		// which is what withdrawing a target type looks like.
-		withdrawn := newHarnessWithTargets(t, comments.Targets{recipeType: {Description: "a recipe"}})
+		withdrawn := newHarnessWithTargets(t, comments.Targets{articleType: {Description: "an article"}})
 		withdrawn.seed(t, testScope, &comments.Comment{Target: testTarget})
 
 		res, err := h.server.ListCommentsByTargetType(h.ctx(t),
-			&commentspb.ListCommentsByTargetTypeRequest{TargetType: string(mealType)})
+			&commentspb.ListCommentsByTargetTypeRequest{TargetType: string(newsletterType)})
 		must.NoError(t, err)
 
 		test.SliceLen(t, 1, res.GetResults())

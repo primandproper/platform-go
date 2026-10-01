@@ -128,7 +128,7 @@ func (h *recordingHooks) failures() []*FailedLogin {
 }
 
 // The two people the suite signs in. Each one's handle is their user id, which
-// is the arrangement dinnerdonebetter uses; nothing here depends on it.
+// is grpc.UserIDHandle's arrangement; nothing here depends on it.
 const (
 	aliceID = "user_alice"
 	bobID   = "user_bob"

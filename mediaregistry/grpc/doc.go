@@ -56,7 +56,7 @@ Every policy is an option and every option but one has a default:
 # What an upload may be attached to
 
 The caller's own user subject — UserSubjectType and their principal identifier
-— or nothing. This surface cannot know whether recipe 123 is the caller's, so it
+— or nothing. This surface cannot know whether article 123 is the caller's, so it
 does not let a caller say so. An attachment to one of the consumer's nouns goes
 through the consumer's own RPC, which authorizes the subject it names and calls
 mediaregistry.StoreAndRecord with it; that is what the domain's upload RPCs are

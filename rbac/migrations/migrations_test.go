@@ -160,7 +160,7 @@ func TestValidatePrefix(T *testing.T) {
 	T.Run("accepts a plain identifier fragment", func(t *testing.T) {
 		t.Parallel()
 
-		test.NoError(t, ValidatePrefix("ddb"))
+		test.NoError(t, ValidatePrefix("app"))
 	})
 
 	T.Run("rejects a trailing separator", func(t *testing.T) {
@@ -168,13 +168,13 @@ func TestValidatePrefix(T *testing.T) {
 
 		// The renderer supplies the separator; a namespace carrying one too
 		// would render a doubled separator rather than an error.
-		test.ErrorIs(t, ValidatePrefix("ddb_"), ddl.ErrPrefixTrailingSeparator)
+		test.ErrorIs(t, ValidatePrefix("app_"), ddl.ErrPrefixTrailingSeparator)
 	})
 
 	T.Run("rejects a namespace that would not render an identifier", func(t *testing.T) {
 		t.Parallel()
 
-		for _, namespace := range []string{"ddb-1", "1ddb", "ddb 1"} {
+		for _, namespace := range []string{"app-1", "1app", "app 1"} {
 			test.ErrorIs(t, ValidatePrefix(namespace), dialect.ErrInvalidIdentifier,
 				test.Sprintf("namespace %q", namespace))
 		}

@@ -15,7 +15,7 @@ import (
 // Every caller a suite mints names them, and that is what lets a deployment
 // reserve any call it likes. Which calls a deployment keeps from its members is
 // its product's decision and never this module's: a customer dispute desk may
-// reserve commenting to its staff, a household app may let every member stock
+// reserve commenting to its staff, a team app may let every member stock
 // the catalog, and a suite that assumed either would be asserting one
 // consumer's access scheme against every other. So the suite says what the
 // caller will do, the subject says in Seams.OperatorMethods what it reserves,

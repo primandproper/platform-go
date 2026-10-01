@@ -116,12 +116,12 @@ func TestValidatePrefix(T *testing.T) {
 		t.Parallel()
 
 		test.NoError(t, ValidatePrefix(""))
-		test.NoError(t, ValidatePrefix("ddb"))
+		test.NoError(t, ValidatePrefix("app"))
 	})
 
 	T.Run("rejects a trailing separator", func(t *testing.T) {
 		t.Parallel()
 
-		test.Error(t, ValidatePrefix("ddb_"))
+		test.Error(t, ValidatePrefix("app_"))
 	})
 }

@@ -1252,9 +1252,9 @@ func runTimerSuite(t *testing.T, client database.Client) {
 	t.Run("a namespaced table is a different table", func(t *testing.T) {
 		t.Parallel()
 
-		createTable(t, client, "ddb")
+		createTable(t, client, "app")
 
-		set := newSet(t, client, func(cfg *Config) { cfg.TablePrefix = "ddb" })
+		set := newSet(t, client, func(cfg *Config) { cfg.TablePrefix = "app" })
 		must.NoError(t, commitScheduleAt(t.Context(), set, "namespaced", past(), nil))
 
 		fired, err := set.Claim(t.Context(), 10, time.Minute)
@@ -1264,7 +1264,7 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		var count int
 
 		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
-			"SELECT COUNT(*) FROM ddb_scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1),
+			"SELECT COUNT(*) FROM app_scheduled_timers WHERE timer_set = "+client.Dialect().Placeholder(1),
 			set.Name()).Scan(&count))
 		test.EqOp(t, 1, count)
 	})

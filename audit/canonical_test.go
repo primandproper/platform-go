@@ -30,11 +30,11 @@ func TestCanonicalImage(T *testing.T) {
 		// attacker can collide by choosing field values is not evidence of
 		// anything.
 		left := sampleEntry()
-		left.ResourceType = "recipe"
+		left.ResourceType = "article"
 		left.ResourceID = "1"
 
 		right := sampleEntry()
-		right.ResourceType = "recipe1"
+		right.ResourceType = "article1"
 		right.ResourceID = ""
 
 		test.NotEq(t, canonicalImage(left, nil, nil), canonicalImage(right, nil, nil))
@@ -197,7 +197,7 @@ func TestCanonicalImageIsUnchangedByTheScopeType(T *testing.T) {
 
 // goldenSampleDigest is sampleEntry's genesis hash. It is written down rather
 // than computed so that a change to the framing has to be made here too.
-const goldenSampleDigest = "c6058a9b21db47bb975161c5de8ac8d2665c1f170c9ed3e9e6787bfbe5085785"
+const goldenSampleDigest = "413bb02728699d57b34bba2ff9fc0019c0d0f0a0552c4320f7db3ec8627c9538"
 
 // sampleEntry is a fully populated entry for the framing tests.
 func sampleEntry() *Entry {
@@ -206,8 +206,8 @@ func sampleEntry() *Entry {
 		ID:           "entry_1",
 		Seq:          3,
 		Scope:        tenancy.Of("acct_1"),
-		ResourceType: "recipe",
-		ResourceID:   "recipe_1",
+		ResourceType: "article",
+		ResourceID:   "article_1",
 		EventType:    EventUpdated,
 		Actor:        Actor{ID: "user_1", Type: ActorUser, IP: "203.0.113.7"},
 	}

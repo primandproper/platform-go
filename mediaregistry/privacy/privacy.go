@@ -57,7 +57,7 @@ Both halves key on [mediaregistry.Object.OwnerID], which is what this package
 documents as the principal — a user, a service account, an API key.
 
 They deliberately do not key on [mediaregistry.Subject]. That pair is whatever a
-consumer hung an object off, in the consumer's own words — "recipe", "invoice" —
+consumer hung an object off, in the consumer's own words — "article", "invoice" —
 and a principal is not one of the things that vocabulary is for. An object
 attached to a person's row is also owned by somebody, so the owner axis reaches
 it; a deployment that has genuinely filed a person's uploads under a subject type

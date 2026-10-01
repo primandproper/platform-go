@@ -443,7 +443,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 				Run: func(_ context.Context, req exportRequest, rep Reporter) (*Result, error) {
 					rep.SetUnits(3)
 
-					for _, unit := range []string{"identity", "webhooks", "recipes"} {
+					for _, unit := range []string{"identity", "webhooks", "articles"} {
 						rep.StartUnit(unit)
 						rep.Advance(100)
 						rep.FinishUnit()

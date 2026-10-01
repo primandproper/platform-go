@@ -97,7 +97,7 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "article_1"))
 		})
 		test.Error(t, err)
 	})
@@ -115,7 +115,7 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 		}))
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), database.NewTxForTesting(&execFailingExecutor{SQLQueryExecutor: q}), tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
+			return r.Record(t.Context(), database.NewTxForTesting(&execFailingExecutor{SQLQueryExecutor: q}), tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "article_1"))
 		})
 		test.ErrorIs(t, err, errDatabase)
 	})
@@ -126,7 +126,7 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		// A channel has no JSON encoding, so the canonical form cannot be built
 		// — and an entry whose digest cannot be computed must not be written.
 		entry.Changes = map[string]Change{"broken": {New: make(chan int)}}
@@ -144,13 +144,13 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock(),
-			WithRedaction("recipe", Redaction{Hash: []string{"old", "new", "meta"}}))
+			WithRedaction("article", Redaction{Hash: []string{"old", "new", "meta"}}))
 
 		for _, changes := range []map[string]Change{
 			{"old": {Old: make(chan int)}},
 			{"new": {New: make(chan int)}},
 		} {
-			entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+			entry := entryFor(tenancy.Of("acct_1"), "article_1")
 			entry.Changes = changes
 
 			err := client.WithTransaction(t.Context(), func(q database.Tx) error {
@@ -221,7 +221,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 
 		client := newTestClient(t)
 		recorder := newTestRecorder(t, newStubClock())
-		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "recipe_1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "article_1"))
 
 		// The chain row is gone but its table is not, so the read fails rather
 		// than reporting no rows — the case where "never pruned" cannot be
@@ -297,7 +297,7 @@ func TestRows_ReportUndecodableBlobs(T *testing.T) {
 
 		client := newTestClient(t)
 		recorder := newTestRecorder(t, newStubClock())
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, recorder, entry)
 
 		// Field blobs that are not JSON: a decode failure has to be reported

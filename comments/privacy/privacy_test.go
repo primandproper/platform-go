@@ -53,7 +53,7 @@ func commentIn(scope tenancy.Scope, id string) *comments.Comment {
 		Scope:  scope,
 		Author: subject.ID,
 		Body:   "halved the sugar and it was still too sweet",
-		Target: comments.Target{Type: comments.TargetType("recipe"), ID: "recipe_1"},
+		Target: comments.Target{Type: comments.TargetType("article"), ID: "article_1"},
 	}
 }
 

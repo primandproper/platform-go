@@ -14,7 +14,7 @@ import (
 const thingType comments.TargetType = "conformance_thing"
 
 // things are the application's commentable things, which is what a consumer
-// keeps in a table of its own — recipes, tickets — and what its comments.Targets
+// keeps in a table of its own — articles, tickets — and what its comments.Targets
 // checks a comment's target against.
 //
 // The check is here rather than left off because it is the shape a deployment

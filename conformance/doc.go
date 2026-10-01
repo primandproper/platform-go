@@ -75,7 +75,7 @@ assertions run can fail on any skip it did not expect.
 # Who a call is made as
 
 Which calls a deployment keeps from its members is its product's decision, and
-never this module's. A household app may let every member stock the catalog
+never this module's. A team app may let every member stock the catalog
 and read the directory; a customer dispute desk may keep commenting to its
 staff and let customers do nothing but file. Both are deployments this module
 serves, and a suite that drew its own line between member-grade and

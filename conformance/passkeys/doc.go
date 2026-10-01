@@ -43,9 +43,9 @@ at all, which is a registration naming none and a mailed sign-in link, so it
 needs the sign-in surface and the MagicLinkToken action, and skips without
 either.
 
-What stays out is anything read off a row. dinnerdonebetter asserted durable
-single consumption by counting ceremony rows and a sign count by reading its
-column; a seam describes an action, not a table, so both are asserted here by
+What stays out is anything read off a row. A consumer's own suite can assert
+durable single consumption by counting ceremony rows and a sign count by reading
+its column; a seam describes an action, not a table, so both are asserted here by
 what a client sees instead.
 */
 package passkeys

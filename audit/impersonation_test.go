@@ -33,7 +33,7 @@ func TestRecorder_RecordsTheImpersonator(T *testing.T) {
 		reader := newTestReader(t, client)
 		scope := tenancy.Of("acct_1")
 
-		entry := impersonatedEntry(scope, "recipe_1")
+		entry := impersonatedEntry(scope, "article_1")
 		record(t, client, newTestRecorder(t, newStubClock()), entry)
 
 		got, err := reader.Get(t.Context(), client.Reader(), scope, entry.ID)
@@ -51,9 +51,9 @@ func TestRecorder_RecordsTheImpersonator(T *testing.T) {
 		scope := tenancy.Of("acct_1")
 
 		record(t, client, newTestRecorder(t, newStubClock()),
-			entryFor(scope, "recipe_1"),
-			impersonatedEntry(scope, "recipe_2"),
-			entryFor(scope, "recipe_3"),
+			entryFor(scope, "article_1"),
+			impersonatedEntry(scope, "article_2"),
+			entryFor(scope, "article_3"),
 		)
 
 		result, err := reader.Verify(t.Context(), client.Reader(), scope, time.Time{}, time.Time{}, ChainStart)
@@ -71,7 +71,7 @@ func TestRecorder_RecordsTheImpersonator(T *testing.T) {
 		reader := newTestReader(t, client)
 		scope := tenancy.Of("acct_1")
 
-		entry := impersonatedEntry(scope, "recipe_1")
+		entry := impersonatedEntry(scope, "article_1")
 		record(t, client, newTestRecorder(t, newStubClock()), entry)
 
 		exec(t, client, "UPDATE audit_log_entries SET actor_impersonator = '' WHERE id = ?", entry.ID)
@@ -90,7 +90,7 @@ func TestRecorder_RecordsTheImpersonator(T *testing.T) {
 		reader := newTestReader(t, client)
 		scope := tenancy.Of("acct_1")
 
-		entry := entryFor(scope, "recipe_1")
+		entry := entryFor(scope, "article_1")
 		record(t, client, newTestRecorder(t, newStubClock()), entry)
 
 		exec(t, client, "UPDATE audit_log_entries SET actor_impersonator = 'somebody' WHERE id = ?", entry.ID)
@@ -110,7 +110,7 @@ func TestCanonicalImage_Impersonator(T *testing.T) {
 
 		// Every entry recorded before the column existed has a hash taken over
 		// this framing, and still has to verify.
-		image := canonicalImage(entryFor(tenancy.Of("acct_1"), "recipe_1"), nil, nil)
+		image := canonicalImage(entryFor(tenancy.Of("acct_1"), "article_1"), nil, nil)
 		test.True(t, bytes.Contains(image, []byte(imageVersion)))
 		test.False(t, bytes.Contains(image, []byte(impersonatedImageVersion)))
 	})
@@ -118,7 +118,7 @@ func TestCanonicalImage_Impersonator(T *testing.T) {
 	T.Run("an impersonated entry is framed apart and carries the operator", func(t *testing.T) {
 		t.Parallel()
 
-		image := canonicalImage(impersonatedEntry(tenancy.Of("acct_1"), "recipe_1"), nil, nil)
+		image := canonicalImage(impersonatedEntry(tenancy.Of("acct_1"), "article_1"), nil, nil)
 		test.True(t, bytes.Contains(image, []byte(impersonatedImageVersion)))
 		test.True(t, bytes.HasSuffix(image, []byte("operator")))
 	})
@@ -131,12 +131,12 @@ func TestReader_ListByImpersonator(T *testing.T) {
 	reader := newTestReader(T, client)
 	scope := tenancy.Of("acct_1")
 
-	impersonated := impersonatedEntry(scope, "recipe_1")
+	impersonated := impersonatedEntry(scope, "article_1")
 
-	own := entryFor(scope, "recipe_2")
+	own := entryFor(scope, "article_2")
 	own.Actor.ID = "operator"
 
-	record(T, client, newTestRecorder(T, newStubClock()), impersonated, own, entryFor(scope, "recipe_3"))
+	record(T, client, newTestRecorder(T, newStubClock()), impersonated, own, entryFor(scope, "article_3"))
 
 	list := func(t *testing.T, query *Query) []string {
 		t.Helper()
@@ -175,7 +175,7 @@ func TestErasure_CountMentionsCountsTheImpersonator(T *testing.T) {
 	T.Parallel()
 
 	client := newTestClient(T)
-	record(T, client, newTestRecorder(T, newStubClock()), impersonatedEntry(tenancy.Of("acct_9"), "recipe_1"))
+	record(T, client, newTestRecorder(T, newStubClock()), impersonatedEntry(tenancy.Of("acct_9"), "article_1"))
 
 	for _, subject := range []string{"operator", "customer"} {
 		count, err := newTestErasure(T).CountMentions(T.Context(), client.Reader(), subject)

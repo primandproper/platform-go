@@ -81,7 +81,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, testDBClient(t))
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, testDBClient(t))
 		must.NoError(t, err)
 		test.NotNil(t, store)
 	})

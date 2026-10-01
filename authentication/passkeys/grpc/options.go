@@ -42,9 +42,13 @@ func GlobalScope(context.Context) (tenancy.Scope, error) {
 type UserHandle func(ctx context.Context, scope tenancy.Scope, userID string) ([]byte, error)
 
 // UserIDHandle is the UserHandle a server uses when a consumer names none: the
-// user's ID, as bytes. It is the arrangement whose UserResolver reads a handle
-// as the user ID it spells, which is the one dinnerdonebetter uses and the one
-// this module's own tests assume.
+// user's ID, as bytes. It pairs with a UserResolver that reads a handle as the
+// user ID it spells, and it is safe to put on an authenticator because
+// identity's IDs are opaque xids rather than anything personally identifying.
+// A deployment that wants random handles brings its own UserHandle and
+// UserResolver as a pair. The default stays as it is: changing it would break
+// every resolver that reads the handle as an ID, and every discoverable
+// credential already on an authenticator.
 func UserIDHandle(_ context.Context, _ tenancy.Scope, userID string) ([]byte, error) {
 	return []byte(userID), nil
 }

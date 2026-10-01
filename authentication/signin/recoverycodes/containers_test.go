@@ -166,9 +166,9 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	// A prefix is not decoration: it renders a second table, and both the DDL and
 	// every statement have to agree about which one they mean.
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {
-		createTable(t, client, d, "ddb")
+		createTable(t, client, d, "app")
 
-		namespaced := newHarnessOn(t, client, &Config{TablePrefix: "ddb"})
+		namespaced := newHarnessOn(t, client, &Config{TablePrefix: "app"})
 		codes := namespaced.mint(t, "user_namespaced")
 
 		test.ErrorIs(t, h.consume(t, testScope(), "user_namespaced", codes[0]), signin.ErrInvalidCredentials)

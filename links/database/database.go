@@ -53,8 +53,8 @@ const conflictAttempts = 3
 // is configured, which is none — rendering plain "action_links".
 //
 // The action_links segment is the schema's, not the caller's: a table always
-// says which package created it. Setting a namespace of "ddb" renders
-// ddb_action_links, for a database shared between applications. A namespace
+// says which package created it. Setting a namespace of "app" renders
+// app_action_links, for a database shared between applications. A namespace
 // must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 

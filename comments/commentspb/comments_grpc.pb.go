@@ -29,7 +29,7 @@
 // values is the consumer's catalog -- comments.Targets, supplied through
 // WithTargets because "which kinds of thing can be commented on" is an
 // application fact and this library has none -- and a generated enum would put
-// that vocabulary on this module's release cadence. Adding a "meal_plan" target
+// that vocabulary on this module's release cadence. Adding a "newsletter" target
 // would become a platform-go release.
 //
 // It is the same ruling issuereports.Kind and webhooks' event types are under,
