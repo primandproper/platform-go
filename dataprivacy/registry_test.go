@@ -69,7 +69,7 @@ func TestRegistry(T *testing.T) {
 
 		registry := NewRegistry()
 
-		for _, key := range []string{"Identity", "meal planning", "billing-v2", "a..b", ".leading"} {
+		for _, key := range []string{"Identity", "news letters", "billing-v2", "a..b", ".leading"} {
 			err := registry.RegisterCollector(key, staticCollector(`{}`))
 			test.ErrorIs(t, err, ErrInvalidKey, test.Sprintf("key %q", key))
 		}
@@ -80,7 +80,7 @@ func TestRegistry(T *testing.T) {
 
 		registry := NewRegistry()
 
-		for _, key := range []string{"identity", "meal_planning", "billing.invoices"} {
+		for _, key := range []string{"identity", "newsletters", "billing.invoices"} {
 			test.NoError(t, registry.RegisterCollector(key, staticCollector(`{}`)), test.Sprintf("key %q", key))
 		}
 	})

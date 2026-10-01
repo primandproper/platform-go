@@ -36,7 +36,7 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
 
 		recorder := newTestRecorder(t, newStubClock())
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, recorder, entry)
 
 		// Without the trigger this is the edit the chain would merely reveal
@@ -80,7 +80,7 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
 
 		recorder := newTestRecorder(t, newStubClock())
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, recorder, entry)
 
 		// Re-applying must leave the guard installed, not merely leave the
@@ -98,7 +98,7 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
 
 		recorder := newTestRecorder(t, newStubClock())
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, recorder, entry)
 
 		// Deliberately permitted: no trigger can tell the retention sweep apart

@@ -76,8 +76,8 @@ var codeEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 // is configured, which is none — rendering plain "signin_recovery_codes".
 //
 // The signin_recovery_codes segment is the schema's, not the caller's: a table
-// always says which package created it. Setting a namespace of "ddb" renders
-// ddb_signin_recovery_codes, for a database shared between applications. A
+// always says which package created it. Setting a namespace of "app" renders
+// app_signin_recovery_codes, for a database shared between applications. A
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 

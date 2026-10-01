@@ -204,7 +204,7 @@ func TestValidatePrefix(T *testing.T) {
 		t.Parallel()
 
 		test.NoError(t, ValidatePrefix(""))
-		test.NoError(t, ValidatePrefix("ddb"))
+		test.NoError(t, ValidatePrefix("app"))
 	})
 
 	T.Run("refuses a prefix carrying its own separator", func(t *testing.T) {
@@ -212,7 +212,7 @@ func TestValidatePrefix(T *testing.T) {
 
 		// database/ddl supplies the separator, so this would render a double
 		// underscore.
-		test.Error(t, ValidatePrefix("ddb_"))
+		test.Error(t, ValidatePrefix("app_"))
 	})
 
 	T.Run("refuses a prefix that pushes an index name past the limit", func(t *testing.T) {

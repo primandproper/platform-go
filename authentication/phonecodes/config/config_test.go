@@ -44,7 +44,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{
-			TablePrefix:   "ddb",
+			TablePrefix:   "app",
 			CodeLength:    8,
 			Lifetime:      time.Minute,
 			MaxAttempts:   3,
@@ -53,7 +53,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		}
 		cfg.EnsureDefaults()
 
-		test.EqOp(t, "ddb", cfg.TablePrefix)
+		test.EqOp(t, "app", cfg.TablePrefix)
 		test.EqOp(t, 8, cfg.CodeLength)
 		test.EqOp(t, time.Minute, cfg.Lifetime)
 		test.EqOp(t, 3, cfg.MaxAttempts)

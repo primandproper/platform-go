@@ -72,7 +72,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 		env := newSQLiteEnv(t)
 		check := newRecordingCheck(false, nil)
 		store, counter := newCountingStore(t, env, Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		})
 
 		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),
@@ -87,7 +87,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 		env := newSQLiteEnv(t)
 		check := newRecordingCheck(true, nil)
 		store, counter := newCountingStore(t, env, Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		})
 
 		must.NoError(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")))
@@ -103,7 +103,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 		// with nothing to watch. Counting it here would put it in the series an
 		// operator reads as "things are being deleted underneath people".
 		env := newSQLiteEnv(t)
-		store, counter := newCountingStore(t, env, Targets{mealType: {Description: "a meal"}})
+		store, counter := newCountingStore(t, env, Targets{newsletterType: {Description: "a newsletter"}})
 
 		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),
 			ErrUnknownTargetType)
@@ -120,7 +120,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 		env := newSQLiteEnv(t)
 		check := newRecordingCheck(false, errCheckUnavailable)
 		store, counter := newCountingStore(t, env, Targets{
-			recipeType: {Description: "a recipe", Exists: check.exists},
+			articleType: {Description: "an article", Exists: check.exists},
 		})
 
 		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),

@@ -43,8 +43,8 @@ const (
 // configured, which is none — rendering webauthn_credentials.
 //
 // The webauthn_ segment is the schema's, not the caller's: a table always says
-// which specification decided its shape. Setting a namespace of "ddb" renders
-// ddb_webauthn_credentials, for a database shared between applications. A
+// which specification decided its shape. Setting a namespace of "app" renders
+// app_webauthn_credentials, for a database shared between applications. A
 // namespace must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 

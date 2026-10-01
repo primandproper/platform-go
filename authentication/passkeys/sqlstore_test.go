@@ -31,7 +31,7 @@ func TestNewSQLStore(T *testing.T) {
 		// its own would render a double underscore in every identifier — and a
 		// table whose name differs from the migration's by one character is a
 		// missing-table error on the first query.
-		_, err := NewSQLStore(env.client, WithTablePrefix("ddb_"))
+		_, err := NewSQLStore(env.client, WithTablePrefix("app_"))
 		must.Error(t, err)
 	})
 

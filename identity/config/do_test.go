@@ -61,7 +61,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
-		do.ProvideValue(i, &Config{TablePrefix: "ddb"})
+		do.ProvideValue(i, &Config{TablePrefix: "app"})
 
 		RegisterStore(i)
 

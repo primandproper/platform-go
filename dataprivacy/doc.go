@@ -31,7 +31,7 @@ adding a domain meant editing a central type that imported every domain package:
 	// what this replaces
 	type UserDataCollection struct {
 	    Identity     identity.UserDataCollection
-	    MealPlanning mealplanning.UserDataCollection
+	    Newsletters newsletters.UserDataCollection
 	    Webhooks     webhooks.UserDataCollection
 	    // ...eight more
 	}

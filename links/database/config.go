@@ -24,7 +24,7 @@ type Config struct {
 
 	// TablePrefix is the namespace prepended to the action link table's name.
 	// Empty renders the schema's own name, "action_links"; set it to share a
-	// database between applications, which renders e.g. ddb_action_links. It
+	// database between applications, which renders e.g. app_action_links. It
 	// must not end in '_' — the separator is supplied for you.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 }

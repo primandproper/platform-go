@@ -51,12 +51,12 @@ func TestStatements(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range allDialects {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 
 			joined := strings.Join(stmts, "\n")
 			for _, table := range tableNames {
-				test.StrContains(t, joined, "ddb_"+table)
+				test.StrContains(t, joined, "app_"+table)
 			}
 
 			// An unprefixed name left behind would create a table in the shared
@@ -79,7 +79,7 @@ func TestStatements(T *testing.T) {
 		must.Error(t, ValidatePrefix(strings.Repeat("x", 200)))
 
 		must.NoError(t, ValidatePrefix(""))
-		must.NoError(t, ValidatePrefix("ddb"))
+		must.NoError(t, ValidatePrefix("app"))
 
 		for _, d := range allDialects {
 			_, err := Statements(d, "has space")
@@ -91,10 +91,10 @@ func TestStatements(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range allDialects {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 
-			body, err := SQL(d, "ddb")
+			body, err := SQL(d, "app")
 			must.NoError(t, err)
 
 			for _, stmt := range stmts {
@@ -131,12 +131,12 @@ func TestTables(T *testing.T) {
 	T.Run("renders at the prefix", func(t *testing.T) {
 		t.Parallel()
 
-		names, err := Tables("ddb")
+		names, err := Tables("app")
 		must.NoError(t, err)
 		must.SliceLen(t, len(tableNames), names)
 
 		for _, name := range names {
-			test.StrHasPrefix(t, "ddb_settings_", name)
+			test.StrHasPrefix(t, "app_settings_", name)
 		}
 	})
 
@@ -147,12 +147,12 @@ func TestTables(T *testing.T) {
 		// created the tables, and agreeing at the empty prefix is not the same as
 		// agreeing at theirs.
 		for _, d := range allDialects {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 
 			joined := strings.Join(stmts, "\n")
 
-			names, err := Tables("ddb")
+			names, err := Tables("app")
 			must.NoError(t, err)
 
 			for _, name := range names {

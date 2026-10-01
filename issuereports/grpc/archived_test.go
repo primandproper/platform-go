@@ -159,7 +159,7 @@ func TestIncludeArchivedIsAGrantAndNotAField(T *testing.T) {
 				tb.Helper()
 
 				res, err := h.server.ListReportsBySubjectType(ctx, &issuereportspb.ListReportsBySubjectTypeRequest{
-					SubjectType: "recipe",
+					SubjectType: "article",
 					Filter:      includeArchived(),
 				})
 				must.NoError(tb, err)
@@ -200,8 +200,8 @@ func TestIncludeArchivedIsAGrantAndNotAField(T *testing.T) {
 				tb.Helper()
 
 				res, err := h.server.ListReportsForSubject(ctx, &issuereportspb.ListReportsForSubjectRequest{
-					SubjectType: "recipe",
-					SubjectId:   "recipe_1",
+					SubjectType: "article",
+					SubjectId:   "article_1",
 					Filter:      includeArchived(),
 				})
 				must.NoError(tb, err)

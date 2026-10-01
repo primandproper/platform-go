@@ -179,7 +179,7 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a magic links block needs a mailer", func(t *testing.T) {
 		t.Parallel()
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{TablePrefix: "ddb"}})))
+		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{TablePrefix: "app"}})))
 		RegisterService(i)
 
 		_, err := do.Invoke[*signin.Service](i)
@@ -191,7 +191,7 @@ func TestRegisterService(T *testing.T) {
 		t.Parallel()
 
 		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles, MagicLinks: &MagicLinksConfig{
-			TablePrefix:   "ddb",
+			TablePrefix:   "app",
 			SweepInterval: pointer.To(time.Duration(0)),
 			RequestFloor:  time.Millisecond,
 		}})))

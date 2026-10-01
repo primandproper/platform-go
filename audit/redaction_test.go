@@ -203,7 +203,7 @@ func TestRedaction(T *testing.T) {
 			WithRedaction("user", Redaction{Drop: []string{"name"}}))
 		reader := newTestReader(t, client)
 
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, recorder, entry)
 
 		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)

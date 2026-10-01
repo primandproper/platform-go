@@ -53,7 +53,7 @@ func TestErasure_DeleteScopesRefusesAnUnsetScope(T *testing.T) {
 
 		record(t, client, recorder,
 			entryFor(tenancy.Global(), "config_1"),
-			entryFor(tenancy.Of("user_1"), "recipe_1"))
+			entryFor(tenancy.Of("user_1"), "article_1"))
 
 		var deleted int64
 
@@ -98,8 +98,8 @@ func TestNewErasure(T *testing.T) {
 		t.Parallel()
 
 		test.EqOp(t, "audit_log_entries", newTestErasure(t).Describe())
-		test.EqOp(t, "ddb_audit_log_entries",
-			newTestErasure(t, WithErasureTablePrefix("ddb")).Describe())
+		test.EqOp(t, "app_audit_log_entries",
+			newTestErasure(t, WithErasureTablePrefix("app")).Describe())
 	})
 }
 
@@ -265,7 +265,7 @@ func TestErasure_CountMentions(T *testing.T) {
 
 		// The subject as the actor, as the resource, and as both — three
 		// entries, not four mentions.
-		acted := entryFor(tenancy.Of("acct_9"), "recipe_1")
+		acted := entryFor(tenancy.Of("acct_9"), "article_1")
 		acted.Actor.ID = "user_1"
 
 		actedOn := entryFor(tenancy.Of("acct_9"), "user_1")
@@ -274,7 +274,7 @@ func TestErasure_CountMentions(T *testing.T) {
 		both := entryFor(tenancy.Of("acct_9"), "user_1")
 		both.Actor.ID = "user_1"
 
-		elsewhere := entryFor(tenancy.Of("acct_9"), "recipe_2")
+		elsewhere := entryFor(tenancy.Of("acct_9"), "article_2")
 		elsewhere.Actor.ID = "user_7"
 
 		record(t, client, recorder, acted, actedOn, both, elsewhere)
@@ -290,7 +290,7 @@ func TestErasure_CountMentions(T *testing.T) {
 		client := newTestClient(t)
 		recorder := newTestRecorder(t, newStubClock())
 
-		record(t, client, recorder, entryFor(tenancy.Of("acct_9"), "recipe_1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_9"), "article_1"))
 
 		count, err := newTestErasure(t).CountMentions(t.Context(), client.Reader(), "user_404")
 		must.NoError(t, err)

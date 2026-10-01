@@ -194,7 +194,7 @@ type Store interface {
 	ListReplies(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, target Target, parentID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Comment], error)
 
 	// ListCommentsByTargetType pages every comment about one kind of thing —
-	// "everything anybody has said about recipes", roots and replies alike.
+	// "everything anybody has said about articles", roots and replies alike.
 	//
 	// It is the moderation read, and it is the read an operator withdrawing a
 	// target type runs first, to see what withdrawing it would strand. It does

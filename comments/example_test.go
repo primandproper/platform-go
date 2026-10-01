@@ -19,8 +19,8 @@ import (
 // The application's own vocabulary, declared as constants so the catalog below
 // and every call site agree by type rather than by spelling.
 const (
-	recipeTarget comments.TargetType = "recipe"
-	mealTarget   comments.TargetType = "meal"
+	articleTarget    comments.TargetType = "article"
+	newsletterTarget comments.TargetType = "newsletter"
 )
 
 // A discussion is one write per comment and two reads: the target's roots, then
@@ -36,15 +36,15 @@ func Example() {
 
 	store, err := comments.NewSQLStore(client,
 		comments.WithTargets(comments.Targets{
-			recipeTarget: {Description: "a recipe"},
-			mealTarget:   {Description: "a meal"},
+			articleTarget:    {Description: "an article"},
+			newsletterTarget: {Description: "a newsletter"},
 		}))
 	if err != nil {
 		panic(err)
 	}
 
 	scope := tenancy.Of("acct_1")
-	recipe := comments.Target{Type: recipeTarget, ID: "recipe_1"}
+	article := comments.Target{Type: articleTarget, ID: "article_1"}
 
 	// Each write answers with the row it wrote — the identifier it minted, the
 	// creation time the database assigned — rather than filling those in on the
@@ -53,7 +53,7 @@ func Example() {
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
 		written, txErr := store.CreateComment(ctx, tx, scope, &comments.Comment{
-			Target: recipe,
+			Target: article,
 			Author: "user_1",
 			Body:   "halved the sugar and it was still too sweet",
 		})
@@ -83,14 +83,14 @@ func Example() {
 	// The top of the discussion. The count beside the page is of every root on
 	// the target rather than of the page, so a client asking for ten still knows
 	// how many there are.
-	roots, err := store.ListRootComments(ctx, client.Reader(), scope, recipe, nil)
+	roots, err := store.ListRootComments(ctx, client.Reader(), scope, article, nil)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println("roots:", roots.FilteredCount)
 
-	replies, err := store.ListReplies(ctx, client.Reader(), scope, recipe, root.ID, nil)
+	replies, err := store.ListReplies(ctx, client.Reader(), scope, article, root.ID, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +98,7 @@ func Example() {
 	fmt.Println("replies to the first:", replies.FilteredCount)
 
 	// Output:
-	// reply is about: recipe recipe_1
+	// reply is about: article article_1
 	// roots: 1
 	// replies to the first: 1
 }
@@ -113,14 +113,14 @@ func ExampleWithTargets() {
 
 	store, err := comments.NewSQLStore(client,
 		comments.WithTargets(comments.Targets{
-			recipeTarget: {Description: "a recipe"},
+			articleTarget: {Description: "an article"},
 		}))
 	if err != nil {
 		panic(err)
 	}
 
 	misspelled := &comments.Comment{
-		Target: comments.Target{Type: "recipies", ID: "recipe_1"},
+		Target: comments.Target{Type: "recipies", ID: "article_1"},
 		Author: "user_1",
 		Body:   "this would have been stored under a type nothing lists",
 	}
@@ -136,7 +136,7 @@ func ExampleWithTargets() {
 
 	// Output:
 	// refused: true
-	// what can be commented on: [recipe]
+	// what can be commented on: [article]
 }
 
 // A comment outlives the thing it is about, and the consumer's delete is what
@@ -148,17 +148,17 @@ func ExampleStore_DeleteCommentsForTarget() {
 	client := exampleClient(ctx)
 
 	store, err := comments.NewSQLStore(client,
-		comments.WithTargets(comments.Targets{recipeTarget: {Description: "a recipe"}}))
+		comments.WithTargets(comments.Targets{articleTarget: {Description: "an article"}}))
 	if err != nil {
 		panic(err)
 	}
 
 	scope := tenancy.Of("acct_1")
-	recipe := comments.Target{Type: recipeTarget, ID: "recipe_1"}
+	article := comments.Target{Type: articleTarget, ID: "article_1"}
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
 		root, txErr := store.CreateComment(ctx, tx, scope,
-			&comments.Comment{Target: recipe, Author: "user_1", Body: "lovely"})
+			&comments.Comment{Target: article, Author: "user_1", Body: "lovely"})
 		if txErr != nil {
 			return txErr
 		}
@@ -174,9 +174,9 @@ func ExampleStore_DeleteCommentsForTarget() {
 
 	var swept int64
 
-	// In the real thing, deleting the recipe happens in this transaction too.
+	// In the real thing, deleting the article happens in this transaction too.
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		swept, err = store.DeleteCommentsForTarget(ctx, tx, scope, recipe)
+		swept, err = store.DeleteCommentsForTarget(ctx, tx, scope, article)
 
 		return err
 	}); err != nil {
@@ -206,7 +206,7 @@ func ExampleStore_CreateComment() {
 	}
 
 	store, err := comments.NewSQLStore(client,
-		comments.WithTargets(comments.Targets{recipeTarget: {Description: "a recipe"}}))
+		comments.WithTargets(comments.Targets{articleTarget: {Description: "an article"}}))
 	if err != nil {
 		panic(err)
 	}
@@ -217,7 +217,7 @@ func ExampleStore_CreateComment() {
 		// The entry names the row the write left, which is why the write hands
 		// it back: the identifier it is keyed on is the one the store minted.
 		written, txErr := store.CreateComment(ctx, tx, tenancy.Of("acct_1"), &comments.Comment{
-			Target: comments.Target{Type: recipeTarget, ID: "recipe_1"},
+			Target: comments.Target{Type: articleTarget, ID: "article_1"},
 			Author: "user_1",
 			Body:   "this wants more salt",
 		})

@@ -889,10 +889,10 @@ func TestPlanChecker_Permissions(T *testing.T) {
 		entitlementPerms, err := newChecker(t, staticPlans(planPro)).Permissions(t.Context(), testAccount)
 		must.NoError(t, err)
 
-		rolePerms := authorization.NewPermissionSet("update.recipes")
+		rolePerms := authorization.NewPermissionSet("update.articles")
 		grants := authorization.NewGrants(rolePerms, entitlementPerms)
 
-		test.True(t, grants.Has("update.recipes"))
+		test.True(t, grants.Has("update.articles"))
 		test.True(t, grants.Has("entitlement.advanced_search"))
 		test.False(t, grants.Has("entitlement.llm_tokens"))
 	})

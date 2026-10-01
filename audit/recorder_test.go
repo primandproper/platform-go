@@ -68,7 +68,7 @@ func TestRecorder_Record(T *testing.T) {
 		c := newStubClock()
 		r := newTestRecorder(t, c)
 
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, r, entry)
 
 		test.NotEq(t, "", entry.ID)
@@ -84,7 +84,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		first, second := entryFor(tenancy.Of("acct_1"), "recipe_1"), entryFor(tenancy.Of("acct_1"), "recipe_2")
+		first, second := entryFor(tenancy.Of("acct_1"), "article_1"), entryFor(tenancy.Of("acct_1"), "article_2")
 		record(t, client, r, first, second)
 
 		test.EqOp(t, int64(0), first.Seq)
@@ -99,7 +99,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		one, two := entryFor(tenancy.Of("acct_1"), "recipe_1"), entryFor(tenancy.Of("acct_2"), "recipe_2")
+		one, two := entryFor(tenancy.Of("acct_1"), "article_1"), entryFor(tenancy.Of("acct_2"), "article_2")
 		record(t, client, r, one, two)
 
 		// Both are the first entry in their own scope, so both start at zero
@@ -116,10 +116,10 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		first := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		first := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, r, first)
 
-		second := entryFor(tenancy.Of("acct_1"), "recipe_2")
+		second := entryFor(tenancy.Of("acct_1"), "article_2")
 		record(t, client, r, second)
 
 		test.EqOp(t, int64(1), second.Seq)
@@ -135,7 +135,7 @@ func TestRecorder_Record(T *testing.T) {
 		boom := platformerrors.New("caller work failed")
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			if recordErr := r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1")); recordErr != nil {
+			if recordErr := r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "article_1")); recordErr != nil {
 				return recordErr
 			}
 
@@ -152,7 +152,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		r := newTestRecorder(t, newStubClock())
 
-		test.ErrorIs(t, r.Record(t.Context(), nil, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1")), ErrNilExecutor)
+		test.ErrorIs(t, r.Record(t.Context(), nil, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "article_1")), ErrNilExecutor)
 	})
 
 	T.Run("accepts no entries", func(t *testing.T) {
@@ -178,7 +178,7 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, tenancy.Scope{}, entryFor(tenancy.Of("acct_1"), "recipe_1"))
+			return r.Record(t.Context(), q, tenancy.Scope{}, entryFor(tenancy.Of("acct_1"), "article_1"))
 		})
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 
@@ -208,7 +208,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		scope := tenancy.Of("acct_1")
 
-		entry := entryFor(scope, "recipe_1")
+		entry := entryFor(scope, "article_1")
 		entry.Scope = tenancy.Scope{}
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
@@ -235,11 +235,11 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, tenancy.Global(), entryFor(tenancy.Global(), "recipe_1"))
+			return r.Record(t.Context(), q, tenancy.Global(), entryFor(tenancy.Global(), "article_1"))
 		}))
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Global(), "recipe_2"))
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Global(), "article_2"))
 		})
 		test.ErrorIs(t, err, ErrScopeMismatch)
 	})
@@ -255,10 +255,10 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		scope := tenancy.Of("acct_1")
-		good := entryFor(scope, "recipe_1")
+		good := entryFor(scope, "article_1")
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, scope, good, entryFor(tenancy.Of("acct_2"), "recipe_2"))
+			return r.Record(t.Context(), q, scope, good, entryFor(tenancy.Of("acct_2"), "article_2"))
 		})
 		test.ErrorIs(t, err, ErrScopeMismatch)
 
@@ -284,7 +284,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		entry.Scope = tenancy.Scope{}
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
@@ -308,8 +308,8 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		mine := entryFor(tenancy.Of("acct_1"), "recipe_1")
-		theirs := entryFor(tenancy.Of("acct_2"), "recipe_2")
+		mine := entryFor(tenancy.Of("acct_1"), "article_1")
+		theirs := entryFor(tenancy.Of("acct_2"), "article_2")
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
 			if err := r.Record(t.Context(), q, tenancy.Of("acct_1"), mine); err != nil {
@@ -343,12 +343,12 @@ func TestRecorder_Record(T *testing.T) {
 			},
 			{
 				name:    "no event type",
-				entry:   &Entry{ResourceType: "recipe", Actor: Actor{ID: "u"}},
+				entry:   &Entry{ResourceType: "article", Actor: Actor{ID: "u"}},
 				wantErr: ErrEmptyEventType,
 			},
 			{
 				name:    "no actor",
-				entry:   &Entry{ResourceType: "recipe", EventType: EventCreated},
+				entry:   &Entry{ResourceType: "article", EventType: EventCreated},
 				wantErr: ErrEmptyActor,
 			},
 			{
@@ -358,7 +358,7 @@ func TestRecorder_Record(T *testing.T) {
 				// so an entry that carries the type and nothing else is refused
 				// exactly like one that carries neither.
 				name:    "unattributed type with no actor ID",
-				entry:   &Entry{ResourceType: "recipe", EventType: EventCreated, Actor: Actor{Type: ActorUnattributed}},
+				entry:   &Entry{ResourceType: "article", EventType: EventCreated, Actor: Actor{Type: ActorUnattributed}},
 				wantErr: ErrEmptyActor,
 			},
 			{
@@ -368,7 +368,7 @@ func TestRecorder_Record(T *testing.T) {
 				// would append to a chain nobody named.
 				name: "another tenant's scope",
 				entry: &Entry{
-					ResourceType: "recipe",
+					ResourceType: "article",
 					EventType:    EventCreated,
 					Actor:        Actor{ID: "u"},
 					Scope:        tenancy.Of("acct_2"),
@@ -382,7 +382,7 @@ func TestRecorder_Record(T *testing.T) {
 				client := newTestClient(t)
 				r := newTestRecorder(t, newStubClock())
 
-				good := entryFor(tenancy.Of("acct_1"), "recipe_1")
+				good := entryFor(tenancy.Of("acct_1"), "article_1")
 
 				err := client.WithTransaction(t.Context(), func(q database.Tx) error {
 					return r.Record(t.Context(), q, tenancy.Of("acct_1"), good, tc.entry)
@@ -407,7 +407,7 @@ func TestRecorder_Record(T *testing.T) {
 		// a write that reached the recorder with no principal anywhere on its
 		// path says so in the log, in the spelling every consumer shares,
 		// rather than in a placeholder each one invents.
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		entry.Actor = Actor{ID: ActorUnattributed, Type: ActorUnattributed}
 
 		record(t, client, r, entry)
@@ -431,7 +431,7 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		entry.RecordedAt = time.Date(2026, time.July, 31, 12, 0, 0, 123456789, time.UTC)
 
 		record(t, client, r, entry)
@@ -460,7 +460,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "article_1")
 		entry.ID = "entry_supplied"
 
 		record(t, client, r, entry)
@@ -483,7 +483,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		entries := make([]*Entry, 0, count)
 		for i := range count {
-			entries = append(entries, entryFor(tenancy.Of("acct_1"), fmt.Sprintf("recipe_%d", i)))
+			entries = append(entries, entryFor(tenancy.Of("acct_1"), fmt.Sprintf("article_%d", i)))
 		}
 
 		record(t, client, recorder, entries...)
@@ -504,7 +504,7 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		platform := entryFor(tenancy.Global(), "config_1")
-		tenant := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		tenant := entryFor(tenancy.Of("acct_1"), "article_1")
 
 		record(t, client, r, platform, tenant)
 
@@ -524,7 +524,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		first := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		first := entryFor(tenancy.Of("acct_1"), "article_1")
 		record(t, client, r, first)
 
 		// Simulating what a forked chain would have to write: the unique index
@@ -534,7 +534,7 @@ func TestRecorder_Record(T *testing.T) {
 			"INSERT INTO audit_log_entries "+
 				"(id, seq, scope, recorded_at, event_type, resource_type, resource_id, "+
 				"actor_id, actor_type, actor_ip, change_set, metadata, prev_hash, hash) "+
-				"VALUES ('fork', 0, 'acct_1', ?, 'updated', 'recipe', 'r', 'u', 'user', '', NULL, NULL, '', 'deadbeef')",
+				"VALUES ('fork', 0, 'acct_1', ?, 'updated', 'article', 'r', 'u', 'user', '', NULL, NULL, '', 'deadbeef')",
 			first.RecordedAt,
 		)
 		test.Error(t, err)

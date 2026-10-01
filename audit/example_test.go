@@ -16,11 +16,11 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
-type recipe struct {
+type article struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	OwnerID  string `json:"ownerID"`
-	Servings int    `json:"servings"`
+	Revision int    `json:"revision"`
 }
 
 // Example shows the shape every write site takes: the audit entry goes into the
@@ -43,8 +43,8 @@ func Example() {
 	}
 
 	var (
-		before = &recipe{ID: "r1", Name: "Soup", OwnerID: "acct_1", Servings: 2}
-		after  = &recipe{ID: "r1", Name: "Stew", OwnerID: "acct_1", Servings: 4}
+		before = &article{ID: "r1", Name: "Draft", OwnerID: "acct_1", Revision: 2}
+		after  = &article{ID: "r1", Name: "Final", OwnerID: "acct_1", Revision: 4}
 	)
 
 	// The scope is the write's argument rather than a field on the entry. An
@@ -55,7 +55,7 @@ func Example() {
 
 	entry := &audit.Entry{
 		EventType:    audit.EventUpdated,
-		ResourceType: "recipe",
+		ResourceType: "article",
 		ResourceID:   after.ID,
 		Actor:        audit.Actor{ID: "user_123", Type: audit.ActorUser, IP: "203.0.113.7"},
 	}
@@ -90,8 +90,8 @@ func Example() {
 // ExampleDiff shows what a before/after pair produces, including how a nil side
 // reads.
 func ExampleDiff() {
-	before := &recipe{ID: "r1", Name: "Soup", Servings: 2}
-	after := &recipe{ID: "r1", Name: "Stew", Servings: 4}
+	before := &article{ID: "r1", Name: "Draft", Revision: 2}
+	after := &article{ID: "r1", Name: "Final", Revision: 4}
 
 	changes, err := audit.Diff(before, after)
 	if err != nil {
@@ -99,7 +99,7 @@ func ExampleDiff() {
 	}
 
 	fmt.Println("name:", changes["name"].Old, "->", changes["name"].New)
-	fmt.Println("servings:", changes["servings"].Old, "->", changes["servings"].New)
+	fmt.Println("revision:", changes["revision"].Old, "->", changes["revision"].New)
 
 	created, err := audit.Diff(nil, after)
 	if err != nil {
@@ -109,8 +109,8 @@ func ExampleDiff() {
 	fmt.Println("on create, old is:", created["name"].Old)
 
 	// Output:
-	// name: Soup -> Stew
-	// servings: 2 -> 4
+	// name: Draft -> Final
+	// revision: 2 -> 4
 	// on create, old is: <nil>
 }
 

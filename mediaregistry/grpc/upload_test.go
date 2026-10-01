@@ -253,7 +253,7 @@ func TestUploadObject(T *testing.T) {
 
 		for _, subject := range []*mediaregistrypb.Subject{
 			{Type: mediaregistrygrpc.UserSubjectType, Id: bob},
-			{Type: "recipe", Id: alice},
+			{Type: "article", Id: alice},
 		} {
 			_, err := h.upload(t, as(t, alice, testScope),
 				&mediaregistrypb.UploadObjectHeader{Name: "a.png", ContentType: pngType, BelongsTo: subject}, pngBytes(), 4)

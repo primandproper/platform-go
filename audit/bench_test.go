@@ -19,7 +19,7 @@ type benchResource struct {
 	Name      string    `json:"name"`
 	Descr     string    `json:"description"`
 	OwnerID   string    `json:"ownerID"`
-	Servings  int       `json:"servings"`
+	Revision  int       `json:"revision"`
 	Prep      int       `json:"prepMinutes"`
 	Published bool      `json:"published"`
 }
@@ -30,13 +30,13 @@ func benchEntry() *Entry {
 		ID:           "entry_01HZY0000000000000",
 		Seq:          4096,
 		Scope:        tenancy.Of("acct_01HZY0000000000000"),
-		ResourceType: "recipe",
-		ResourceID:   "recipe_01HZY0000000000000",
+		ResourceType: "article",
+		ResourceID:   "article_01HZY0000000000000",
 		EventType:    EventUpdated,
 		Actor:        Actor{ID: "user_01HZY0000000000000", Type: ActorUser, IP: "203.0.113.7"},
 		Changes: map[string]Change{
-			"name":        {Old: "Soup", New: "Stew"},
-			"servings":    {Old: 2, New: 4},
+			"name":        {Old: "Draft", New: "Final"},
+			"revision":    {Old: 2, New: 4},
 			"published":   {Old: false, New: true},
 			"prepMinutes": {Old: 15, New: 40},
 		},
@@ -87,17 +87,17 @@ func BenchmarkEncodeAndHash(b *testing.B) {
 func BenchmarkDiff(b *testing.B) {
 	before := benchResource{
 		CreatedAt: time.Date(2026, time.July, 31, 12, 0, 0, 0, time.UTC),
-		ID:        "recipe_01HZY0000000000000",
-		Name:      "Soup",
+		ID:        "article_01HZY0000000000000",
+		Name:      "Draft",
 		Descr:     "an ordinary description",
 		OwnerID:   "acct_01HZY0000000000000",
-		Servings:  2,
+		Revision:  2,
 		Prep:      15,
 	}
 
 	after := before
-	after.Name = "Stew"
-	after.Servings = 4
+	after.Name = "Final"
+	after.Revision = 4
 	after.Published = true
 
 	for b.Loop() {

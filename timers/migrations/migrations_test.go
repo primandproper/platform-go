@@ -21,12 +21,12 @@ func TestStatements(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range everyDialect {
-			stmts, err := Statements(d, "ddb")
+			stmts, err := Statements(d, "app")
 			must.NoError(t, err)
 			must.SliceNotEmpty(t, stmts)
 
 			for _, stmt := range stmts {
-				test.True(t, strings.Contains(stmt, "ddb_scheduled_timers"),
+				test.True(t, strings.Contains(stmt, "app_scheduled_timers"),
 					test.Sprintf("%s statement missing table name: %s", d, stmt))
 				test.False(t, strings.Contains(stmt, ddl.Placeholder),
 					test.Sprintf("%s statement left an unrendered placeholder: %s", d, stmt))
@@ -101,7 +101,7 @@ func TestStatements(T *testing.T) {
 	T.Run("rejects a prefix carrying its own separator", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, ValidatePrefix("ddb_"), ddl.ErrPrefixTrailingSeparator)
+		test.ErrorIs(t, ValidatePrefix("app_"), ddl.ErrPrefixTrailingSeparator)
 	})
 
 	T.Run("rejects a prefix that pushes an index name over the limit", func(t *testing.T) {
@@ -121,11 +121,11 @@ func TestSQL(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range everyDialect {
-			body, err := SQL(d, "ddb")
+			body, err := SQL(d, "app")
 			must.NoError(t, err)
 
 			test.False(t, strings.Contains(body, "--"), test.Sprintf("dialect %s", d))
-			test.True(t, strings.Contains(body, "ddb_scheduled_timers"), test.Sprintf("dialect %s", d))
+			test.True(t, strings.Contains(body, "app_scheduled_timers"), test.Sprintf("dialect %s", d))
 			test.True(t, strings.HasSuffix(body, ";\n"), test.Sprintf("dialect %s", d))
 		}
 	})

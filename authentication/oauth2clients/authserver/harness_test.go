@@ -271,6 +271,6 @@ func registration(scope tenancy.Scope, owner string) *oauth2clients.Client {
 		SecretHash:    oauth2server.Hash("s3cret"),
 		Name:          "test client",
 		RedirectURIs:  []string{"https://example.test/callback"},
-		Scopes:        []string{"recipes:read"},
+		Scopes:        []string{"articles:read"},
 	}
 }

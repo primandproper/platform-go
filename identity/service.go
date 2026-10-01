@@ -1013,7 +1013,7 @@ func (s *Service) ArchiveUser(ctx context.Context, scope tenancy.Scope, userID s
 // hands the hook both — the account as the archival left it, and the members it
 // took offline.
 //
-// This is how an account is closed: a household deleted, a workspace wound up,
+// This is how an account is closed: a team disbanded, a workspace wound up,
 // a customer who has gone. The store performs the fan-out — the memberships are
 // archived with the account, and a member whose landing account this was has
 // their default moved to another live membership of theirs, because a member

@@ -45,7 +45,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("a prefix ending in the separator is refused", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewSQLStore(newSQLiteEnv(t).client, newTestEncryptor(t), WithTablePrefix("ddb_"))
+		_, err := NewSQLStore(newSQLiteEnv(t).client, newTestEncryptor(t), WithTablePrefix("app_"))
 		must.Error(t, err)
 	})
 

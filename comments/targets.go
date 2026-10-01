@@ -15,7 +15,7 @@ import (
 // It is a defined type rather than a string so that an application's target
 // types are declarable in a form both a reader and a type checker recognize:
 //
-//	const Recipe comments.TargetType = "recipe"
+//	const Article comments.TargetType = "article"
 //
 // The type is what makes the set of them discoverable. A catalog has to list
 // every kind of thing an application accepts comments on — a missing entry
@@ -49,7 +49,7 @@ func (t TargetType) String() string { return string(t) }
 // answer the question this package cannot: the row a comment is about lives in a
 // table the consumer owns, in a schema this store has never seen, so there is no
 // foreign key to lean on and no join to make. A definition that supplies one
-// turns "a comment about a recipe that does not exist" into a refused write; a
+// turns "a comment about an article that does not exist" into a refused write; a
 // definition that does not leaves that comment writable, and the package
 // documentation owns what happens to it afterwards.
 //
@@ -122,9 +122,9 @@ func (t Targets) TargetTypes() []TargetType {
 // halves of that are deliberate. One value, because a target type without an id
 // is not a target and every method that takes one takes both — passing them
 // separately is how a call site ends up pairing one comment's type with
-// another's id. Two columns, because a key like "recipes:1234" scopes by
+// another's id. Two columns, because a key like "articles:1234" scopes by
 // construction and cannot be indexed, filtered or enumerated as the two facts it
-// is: "every comment about recipes" is a question the two-column shape answers
+// is: "every comment about articles" is a question the two-column shape answers
 // and the composite one does not.
 type Target struct {
 	// Type is the kind of thing, as the catalog spells it.

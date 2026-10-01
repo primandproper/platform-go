@@ -387,7 +387,7 @@ func TestEncoding(T *testing.T) {
 	T.Run("claims round-trip", func(t *testing.T) {
 		t.Parallel()
 
-		want := map[string]string{"account_id": "acct_9", "household": "h_2"}
+		want := map[string]string{"account_id": "acct_9", "workspace": "w_2"}
 
 		claims, err := decodeClaims(encodeClaims(want))
 		must.NoError(t, err)

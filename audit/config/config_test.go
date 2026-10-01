@@ -171,7 +171,7 @@ func TestNewPruneTarget(T *testing.T) {
 	T.Run("carries the configured prefix and page", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := &Config{Dialect: dialect.SQLite, TablePrefix: "ddb"}
+		cfg := &Config{Dialect: dialect.SQLite, TablePrefix: "app"}
 		cfg.Retention.ScopePageSize = 7
 
 		target, err := NewPruneTarget(t.Context(), cfg)
@@ -179,7 +179,7 @@ func TestNewPruneTarget(T *testing.T) {
 
 		// The prefix is the one the Recorder and Reader take, which is the
 		// point of it being a field of this Config.
-		test.EqOp(t, "ddb_audit_log_entries", target.Describe())
+		test.EqOp(t, "app_audit_log_entries", target.Describe())
 		test.EqOp(t, 7, target.ScopePageSize)
 	})
 

@@ -126,13 +126,13 @@ func TestServer_GetEntry(T *testing.T) {
 		entry := response.GetEntry()
 		must.NotNil(t, entry)
 		test.EqOp(t, h.mine.ID, entry.GetId())
-		test.EqOp(t, "recipe_1", entry.GetResourceId())
+		test.EqOp(t, "article_1", entry.GetResourceId())
 		test.EqOp(t, string(audit.EventUpdated), entry.GetEventType())
 		test.EqOp(t, "user_1", entry.GetActor().GetId())
 		test.EqOp(t, h.mine.Hash, entry.GetHash())
 
 		// The change survives as a value rather than as a rendered string.
-		test.EqOp(t, "Stew", entry.GetChanges()["name"].GetNewValue().GetStringValue())
+		test.EqOp(t, "Final", entry.GetChanges()["name"].GetNewValue().GetStringValue())
 	})
 
 	// The acceptance test for the whole surface: the id is real, the entry
@@ -229,8 +229,8 @@ func TestServer_ListEntries(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.record(t, ours, entryFor(ours, "recipe_3"))
-		h.record(t, theirs, entryFor(theirs, "recipe_4"))
+		h.record(t, ours, entryFor(ours, "article_3"))
+		h.record(t, theirs, entryFor(theirs, "article_4"))
 
 		response, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{})
 		must.NoError(t, err)
@@ -239,7 +239,7 @@ func TestServer_ListEntries(T *testing.T) {
 		must.SliceLen(t, 2, results)
 
 		for _, entry := range results {
-			test.SliceContains(t, []string{"recipe_1", "recipe_3"}, entry.GetResourceId(),
+			test.SliceContains(t, []string{"article_1", "article_3"}, entry.GetResourceId(),
 				test.Sprintf("%s belongs to another tenant's log", entry.GetResourceId()))
 		}
 	})
@@ -252,19 +252,19 @@ func TestServer_ListEntries(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.record(t, ours, entryFor(ours, "recipe_3"))
+		h.record(t, ours, entryFor(ours, "article_3"))
 
 		response, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{
-			Query: &auditpb.EntryQuery{ResourceId: "recipe_3"},
+			Query: &auditpb.EntryQuery{ResourceId: "article_3"},
 		})
 		must.NoError(t, err)
 		must.SliceLen(t, 1, response.GetResults())
-		test.EqOp(t, "recipe_3", response.GetResults()[0].GetResourceId())
+		test.EqOp(t, "article_3", response.GetResults()[0].GetResourceId())
 
 		// A narrowing that matches only the other tenant's entry finds nothing,
 		// rather than reaching across.
 		empty, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{
-			Query: &auditpb.EntryQuery{ResourceId: "recipe_2"},
+			Query: &auditpb.EntryQuery{ResourceId: "article_2"},
 		})
 		must.NoError(t, err)
 		test.SliceEmpty(t, empty.GetResults())
@@ -275,7 +275,7 @@ func TestServer_ListEntries(T *testing.T) {
 
 		h := newHarness(t)
 
-		impersonated := entryFor(ours, "recipe_3")
+		impersonated := entryFor(ours, "article_3")
 		impersonated.Actor = audit.Actor{ID: "customer", Type: audit.ActorUser, Impersonator: "operator"}
 		h.record(t, ours, impersonated)
 

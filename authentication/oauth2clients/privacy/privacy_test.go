@@ -56,10 +56,10 @@ func clientIn(scope tenancy.Scope, id string) *oauth2clients.Client {
 		BelongsToUser: subject.ID,
 		ClientID:      "cid_" + id,
 		SecretHash:    "deadbeefdeadbeefdeadbeefdeadbeef",
-		Name:          "Ada's recipe importer",
-		Description:   "imports recipes from elsewhere",
+		Name:          "Ada's article importer",
+		Description:   "imports articles from elsewhere",
 		RedirectURIs:  []string{"https://example.test/callback"},
-		Scopes:        []string{"recipes:read"},
+		Scopes:        []string{"articles:read"},
 	}
 }
 
@@ -238,7 +238,7 @@ func TestCollector_Collect(T *testing.T) {
 		// The public identifier goes, because it is a public identifier its
 		// owner already has and sends on every authorization request.
 		test.EqOp(t, "cid_client_in_acct_1", collected[0].ClientID)
-		test.Eq(t, []string{"recipes:read"}, collected[0].Scopes)
+		test.Eq(t, []string{"articles:read"}, collected[0].Scopes)
 	})
 
 	T.Run("the digest is not in the artifact", func(t *testing.T) {

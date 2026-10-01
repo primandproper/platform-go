@@ -489,12 +489,12 @@ func TestStore_RevokeForSubject(T *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
-		createTable(t, client, dialect.SQLite, "ddb")
+		createTable(t, client, dialect.SQLite, "app")
 
 		plain, err := New(&Config{}, client)
 		must.NoError(t, err)
 
-		namespaced, err := New(&Config{TablePrefix: "ddb"}, client)
+		namespaced, err := New(&Config{TablePrefix: "app"}, client)
 		must.NoError(t, err)
 
 		put(t, plain, testID, activeRecord())
@@ -646,17 +646,17 @@ func TestStore_TablePrefix(T *testing.T) {
 		// A prefix is not decoration: it renders a second table, and both the
 		// DDL and every statement have to agree about which one they mean.
 		client := newTestClient(t)
-		createTable(t, client, dialect.SQLite, "ddb")
+		createTable(t, client, dialect.SQLite, "app")
 
 		plain, err := New(&Config{}, client)
 		must.NoError(t, err)
 
-		namespaced, err := New(&Config{TablePrefix: "ddb"}, client)
+		namespaced, err := New(&Config{TablePrefix: "app"}, client)
 		must.NoError(t, err)
 
 		put(t, namespaced, testID, activeRecord())
 
-		test.EqOp(t, 1, rowsIn(t, client, "ddb_action_links"))
+		test.EqOp(t, 1, rowsIn(t, client, "app_action_links"))
 		test.EqOp(t, 0, rowsIn(t, client, "action_links"))
 
 		_, err = plain.Get(t.Context(), testID)

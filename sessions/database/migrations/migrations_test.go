@@ -184,15 +184,15 @@ func TestValidatePrefix(T *testing.T) {
 		t.Parallel()
 
 		must.NoError(t, ValidatePrefix(""))
-		must.NoError(t, ValidatePrefix("ddb"))
+		must.NoError(t, ValidatePrefix("app"))
 	})
 
 	// The renderer supplies the separator, so a prefix carrying one would
-	// render ddb__sessions — legal SQL, and a table nobody meant to name.
+	// render app__sessions — legal SQL, and a table nobody meant to name.
 	T.Run("rejects a trailing separator", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, ValidatePrefix("ddb_"), ddl.ErrPrefixTrailingSeparator)
+		test.ErrorIs(t, ValidatePrefix("app_"), ddl.ErrPrefixTrailingSeparator)
 	})
 
 	T.Run("rejects a prefix that is not an identifier", func(t *testing.T) {

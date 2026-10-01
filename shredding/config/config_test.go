@@ -89,10 +89,10 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 	T.Run("leaves what was set alone", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := &Config{TablePrefix: "ddb", InvalidationTopic: "shreds", KeyTTL: time.Minute, MaxCachedKeys: 8}
+		cfg := &Config{TablePrefix: "app", InvalidationTopic: "shreds", KeyTTL: time.Minute, MaxCachedKeys: 8}
 		cfg.EnsureDefaults()
 
-		test.EqOp(t, "ddb", cfg.TablePrefix)
+		test.EqOp(t, "app", cfg.TablePrefix)
 		test.EqOp(t, "shreds", cfg.InvalidationTopic)
 		test.EqOp(t, time.Minute, cfg.KeyTTL)
 		test.EqOp(t, 8, cfg.MaxCachedKeys)

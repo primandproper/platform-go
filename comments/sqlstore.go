@@ -26,7 +26,7 @@ import (
 // configured, which is none — rendering comments.
 //
 // The comments name is the schema's, not the caller's: a table always says which
-// package created it. Setting a namespace of "ddb" renders ddb_comments, for a
+// package created it. Setting a namespace of "app" renders app_comments, for a
 // database shared between applications. A namespace must not end in '_';
 // database/ddl supplies the separator.
 const DefaultTablePrefix = ""

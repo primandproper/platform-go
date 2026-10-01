@@ -30,8 +30,8 @@ import (
 // configured, which is none — rendering identity_users and its six siblings.
 //
 // The identity_ segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders
-// ddb_identity_users, for a database shared between applications. A namespace
+// which package created it. Setting a namespace of "app" renders
+// app_identity_users, for a database shared between applications. A namespace
 // must not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 

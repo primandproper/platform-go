@@ -109,7 +109,7 @@ func Permissions() map[string][]authorization.Permission {
 //
 // SwitchAccount is ExchangeRefreshToken with an account named, and anonymous
 // for the same reason: the refresh token it presents is the whole of its
-// authority, and moving to another household is something a client does at the
+// authority, and moving to another workspace is something a client does at the
 // moment its access token may well have expired.
 //
 // GetAuthStatus is anonymous too, and it answers "no" rather than refusing —
@@ -197,7 +197,7 @@ func SelfServiceMethods() []string {
 // composes several domains and their own methods into one table:
 //
 //	reqs, err := signingrpc.Require(identitygrpc.Require(authzgrpc.NewRequirements())).
-//		RequireAll(mealplanning.Permissions()).
+//		RequireAll(newsletters.Permissions()).
 //		Public(healthpb.Health_Check_FullMethodName).
 //		Build()
 //

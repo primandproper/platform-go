@@ -30,8 +30,8 @@ const serviceName = "authorization_database"
 // the two join tables.
 //
 // The authz_ segment is the schema's, not the caller's: a table always says
-// which package created it. Setting a namespace of "ddb" renders
-// ddb_authz_roles, for a database shared between applications. A namespace must
+// which package created it. Setting a namespace of "app" renders
+// app_authz_roles, for a database shared between applications. A namespace must
 // not end in '_'; database/ddl supplies the separator.
 const DefaultTablePrefix = ""
 
@@ -77,7 +77,7 @@ type Config struct {
 	Dialect dialect.Dialect `env:"DIALECT" json:"dialect,omitempty" yaml:"dialect,omitempty"`
 	// TablePrefix is the namespace prepended to every policy table name. Empty
 	// renders the schema's own names (authz_roles); set it to share a database
-	// between applications, which renders e.g. ddb_authz_roles. It must not end
+	// between applications, which renders e.g. app_authz_roles. It must not end
 	// in '_' — the separator is supplied for you.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 }

@@ -307,7 +307,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 				"INSERT INTO %s_audit_log_entries "+
 					"(id, seq, scope, recorded_at, event_type, resource_type, resource_id, "+
 					"actor_id, actor_type, actor_ip, change_set, metadata, prev_hash, hash) "+
-					"VALUES (%s, 0, 'acct_1', %s, 'updated', 'recipe', 'r', 'u', 'user', '', NULL, NULL, '', 'deadbeef')",
+					"VALUES (%s, 0, 'acct_1', %s, 'updated', 'article', 'r', 'u', 'user', '', NULL, NULL, '', 'deadbeef')",
 				prefix, env.dialect.Placeholder(1), env.dialect.Placeholder(2),
 			),
 			"fork", entry.RecordedAt)

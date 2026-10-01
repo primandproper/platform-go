@@ -350,7 +350,7 @@ stored. What an event means is an application opinion and this package has none.
 
 Both Register and Dispatch reject a type outside the catalog. That matters
 because an event type is a string underneath and string literals are typo-prone:
-a subscription to "reciped.created" accepted silently produces an endpoint that
+a subscription to "artcile.created" accepted silently produces an endpoint that
 never fires, and diagnosing it means noticing an absence.
 
 Declare the event types as EventType constants and key the catalog by them:

@@ -38,8 +38,8 @@ func TestReportToProto(T *testing.T) {
 			Reporter:      testReporter,
 			Kind:          "bug",
 			Details:       "the thing did not work",
-			SubjectType:   "recipe",
-			SubjectID:     "recipe_1",
+			SubjectType:   "article",
+			SubjectID:     "article_1",
 			Status:        issuereports.StatusResolved,
 			Resolution:    "fixed",
 			Scope:         testScope,
@@ -56,8 +56,8 @@ func TestReportToProto(T *testing.T) {
 		test.EqOp(t, testReporter, rendered.GetReporter())
 		test.EqOp(t, "bug", rendered.GetKind())
 		test.EqOp(t, "the thing did not work", rendered.GetDetails())
-		test.EqOp(t, "recipe", rendered.GetSubjectType())
-		test.EqOp(t, "recipe_1", rendered.GetSubjectId())
+		test.EqOp(t, "article", rendered.GetSubjectType())
+		test.EqOp(t, "article_1", rendered.GetSubjectId())
 		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED, rendered.GetStatus())
 		test.EqOp(t, "fixed", rendered.GetResolution())
 	})

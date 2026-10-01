@@ -11,8 +11,8 @@ makes the change rather than be discovered afterwards.
 each of the gRPC surfaces, one each for the dataprivacy, mediaregistry,
 operations and authorization server HTTP surfaces, and the ones that cut across
 every surface. The assembled subject mounts every gRPC surface and every HTTP
-surface over all three dialects. [What is left](#what-is-left) is the honest list, and nothing below
-describes something that has not been written.
+surface over all three dialects. Nothing below describes something that has not been
+written.
 
 ## The problem it exists to solve
 
@@ -25,8 +25,7 @@ been through a composition root.
 
 A consumer's integration suite boots a whole service and asserts the same
 promises again — in their repository, in their assertion library, against their
-one dialect. `dinnerdonebetter`'s `backend/testing/integration/apiserver` is the
-worked example and carried roughly 120 such tests.
+one dialect. One consumer's integration suite carried roughly 120 such tests.
 
 Neither is wrong. What is wrong is that the consumer's copy lives in the
 consumer's repository, so this module can break a promise and learn about it
@@ -379,11 +378,3 @@ tenant; the two never matched. Only the assembled subject could see it. Fixed by
 letting operations/http read across a set of owners (`WithOwnersResolver`) and
 mounting it with the caller's tenant and the caller; a colleague in the same
 tenant still gets a 404, and the suite asserts both.
-
-## What is left
-
-1. **The consumer's side.** `dinnerdonebetter` implements `Seams` against its
-   own deployment, runs these suites in its integration job, and deletes the
-   integration tests of this module's promises they now cover. That is its
-   work, in its repository, and it is what the suites exist to make possible.
-

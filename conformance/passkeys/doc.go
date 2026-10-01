@@ -44,9 +44,9 @@ needs the sign-in surface and the MagicLinkToken action, and skips without
 either, or where Seams.PasswordlessRegistrationRefused says the deployment's
 registration policy refuses such a registrant.
 
-What stays out is anything read off a row. dinnerdonebetter asserted durable
-single consumption by counting ceremony rows and a sign count by reading its
-column; a seam describes an action, not a table, so both are asserted here by
+What stays out is anything read off a row. A consumer's own suite can assert
+durable single consumption by counting ceremony rows and a sign count by reading
+its column; a seam describes an action, not a table, so both are asserted here by
 what a client sees instead.
 */
 package passkeys

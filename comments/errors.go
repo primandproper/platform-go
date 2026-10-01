@@ -59,7 +59,7 @@ var (
 
 	// ErrEmptyTargetID indicates a target naming a kind of thing and not one of
 	// them. It is refused rather than stored, because the empty id is not a
-	// wildcard: a comment holding it is about every recipe and no recipe at once.
+	// wildcard: a comment holding it is about every article and no article at once.
 	ErrEmptyTargetID = platformerrors.New("empty comment target id")
 
 	// ErrEmptyAuthor indicates a comment written by nobody.

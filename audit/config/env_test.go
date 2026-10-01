@@ -32,7 +32,7 @@ func TestConfigEnvironmentNames(T *testing.T) {
 			Prefix: "AUDIT_",
 			Environment: map[string]string{
 				"AUDIT_DIALECT":         "sqlite",
-				"AUDIT_TABLE_PREFIX":    "ddb",
+				"AUDIT_TABLE_PREFIX":    "app",
 				"AUDIT_BASIS":           "a regulation names it",
 				"AUDIT_RETENTION":       "720h",
 				"AUDIT_BATCH_SIZE":      "250",
@@ -40,7 +40,7 @@ func TestConfigEnvironmentNames(T *testing.T) {
 			},
 		}))
 
-		test.EqOp(t, "ddb", cfg.TablePrefix)
+		test.EqOp(t, "app", cfg.TablePrefix)
 		test.EqOp(t, "a regulation names it", cfg.Retention.Basis)
 		test.EqOp(t, 720*time.Hour, cfg.Retention.Retention)
 		test.EqOp(t, 250, cfg.Retention.BatchSize)

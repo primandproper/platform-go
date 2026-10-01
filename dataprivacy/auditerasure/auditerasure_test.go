@@ -75,7 +75,7 @@ func (e *auditEnv) record(t *testing.T, scope tenancy.Scope, actorID, resourceID
 	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
 		return e.recorder.Record(t.Context(), tx, scope, &audit.Entry{
 			EventType:    audit.EventUpdated,
-			ResourceType: "recipe",
+			ResourceType: "article",
 			ResourceID:   resourceID,
 			Actor:        audit.Actor{ID: actorID, Type: audit.ActorUser},
 		})
@@ -134,8 +134,8 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-2")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-2")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -156,13 +156,13 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		// Three entries in somebody else's tenant, the middle one by the
 		// subject. Deleting that middle entry is what would break the chain.
-		env.record(t, tenancy.Of("account-9"), "user-7", "recipe-3")
-		env.record(t, tenancy.Of("account-9"), "user-1", "recipe-4")
-		env.record(t, tenancy.Of("account-9"), "user-7", "recipe-5")
+		env.record(t, tenancy.Of("account-9"), "user-7", "article-3")
+		env.record(t, tenancy.Of("account-9"), "user-1", "article-4")
+		env.record(t, tenancy.Of("account-9"), "user-7", "article-5")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -185,11 +185,11 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		// One where the subject acted inside somebody else's tenant, one where
 		// they were the thing acted on.
-		env.record(t, tenancy.Of("account-9"), "user-1", "recipe-2")
+		env.record(t, tenancy.Of("account-9"), "user-1", "article-2")
 		env.record(t, tenancy.Of("account-9"), "user-7", "user-1")
 
 		eraser, err := New(dialect.SQLite)
@@ -212,7 +212,7 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -228,8 +228,8 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("tenant-a"), "user-1", "recipe-1")
-		env.record(t, tenancy.Of("tenant-b"), "user-1", "recipe-2")
+		env.record(t, tenancy.Of("tenant-a"), "user-1", "article-1")
+		env.record(t, tenancy.Of("tenant-b"), "user-1", "article-2")
 
 		eraser, err := New(dialect.SQLite,
 			WithScopeResolver(func(_ context.Context, _ tenancy.Scope, s dataprivacy.Subject) ([]tenancy.Scope, error) {
@@ -249,7 +249,7 @@ func TestEraser(T *testing.T) {
 		env := newAuditEnv(t)
 
 		env.record(t, tenancy.Global(), "user-1", "config-1")
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -271,7 +271,7 @@ func TestEraser(T *testing.T) {
 		env := newAuditEnv(t)
 
 		env.record(t, tenancy.Global(), "user-1", "config-1")
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite,
 			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
@@ -295,7 +295,7 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite,
 			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
@@ -316,7 +316,7 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, tenancy.Of("account-9"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("account-9"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite,
 			WithRetentionBasis("kept under Article 17(3)(b)"))
@@ -481,7 +481,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		t.Parallel()
 
 		env := newAuditEnv(t)
-		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)

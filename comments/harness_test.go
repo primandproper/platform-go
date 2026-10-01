@@ -37,9 +37,9 @@ const (
 // The target vocabulary this suite registers, plus one type deliberately outside
 // it for the rejection paths.
 const (
-	recipeType  TargetType = "recipe"
-	mealType    TargetType = "meal"
-	unknownType TargetType = "unregistered"
+	articleType    TargetType = "article"
+	newsletterType TargetType = "newsletter"
+	unknownType    TargetType = "unregistered"
 )
 
 // testTargets is the catalog the unit tests build stores against. Neither type
@@ -47,12 +47,12 @@ const (
 // because "no check" is the ordinary case and the check is what the interesting
 // tests are about.
 var testTargets = Targets{
-	recipeType: {Description: "a recipe"},
-	mealType:   {Description: "a meal"},
+	articleType:    {Description: "an article"},
+	newsletterType: {Description: "a newsletter"},
 }
 
 // testTarget is the thing most of these comments are about.
-var testTarget = Target{Type: recipeType, ID: "recipe_1"}
+var testTarget = Target{Type: articleType, ID: "article_1"}
 
 // errCheckUnavailable stands in for an existence check that cannot reach the
 // table it would have to read.

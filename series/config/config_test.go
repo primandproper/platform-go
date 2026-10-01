@@ -48,9 +48,9 @@ func TestConfig_EnsureDefaults(t *testing.T) {
 	test.EqOp(t, series.DefaultHorizon, cfg.Worker.Horizon)
 	test.EqOp(t, series.DefaultLockKey, cfg.Worker.LockKey)
 
-	set := &Config{TablePrefix: "ddb", Worker: series.WorkerConfig{Horizon: time.Hour}}
+	set := &Config{TablePrefix: "app", Worker: series.WorkerConfig{Horizon: time.Hour}}
 	set.EnsureDefaults()
-	test.EqOp(t, "ddb", set.TablePrefix)
+	test.EqOp(t, "app", set.TablePrefix)
 	test.EqOp(t, time.Hour, set.Worker.Horizon)
 }
 
@@ -60,7 +60,7 @@ func TestConfig_Validate(T *testing.T) {
 	T.Run("accepts a renderable prefix and a defaulted worker", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := &Config{TablePrefix: "ddb"}
+		cfg := &Config{TablePrefix: "app"}
 		cfg.EnsureDefaults()
 
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
@@ -69,7 +69,7 @@ func TestConfig_Validate(T *testing.T) {
 	T.Run("refuses a prefix that cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := &Config{TablePrefix: "ddb_"}
+		cfg := &Config{TablePrefix: "app_"}
 		cfg.EnsureDefaults()
 
 		test.Error(t, cfg.ValidateWithContext(t.Context()))

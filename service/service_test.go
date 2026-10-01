@@ -216,7 +216,7 @@ func TestNew(T *testing.T) {
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
 		i := newInjector(t, cfg)
-		do.ProvideValue(i, comments.Targets{comments.TargetType("recipe"): {Description: "a recipe"}})
+		do.ProvideValue(i, comments.Targets{comments.TargetType("article"): {Description: "an article"}})
 
 		svc, err := New(i)
 		must.NoError(t, err)

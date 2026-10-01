@@ -184,7 +184,7 @@ func TestRetentionTarget_Validate(T *testing.T) {
 	T.Run("describes the table and the status", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, "ddb_saga_instances (completed)",
-			RetentionTarget{TablePrefix: "ddb", Status: StatusCompleted}.Describe())
+		test.EqOp(t, "app_saga_instances (completed)",
+			RetentionTarget{TablePrefix: "app", Status: StatusCompleted}.Describe())
 	})
 }

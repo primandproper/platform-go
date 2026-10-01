@@ -19,7 +19,7 @@ type Config struct {
 
 	// TablePrefix is the namespace prepended to this package's four table
 	// names. Empty renders the schema's own names; set it to share a database
-	// between applications, which renders e.g. ddb_oauth2_clients. It must not
+	// between applications, which renders e.g. app_oauth2_clients. It must not
 	// end in '_' — the separator is supplied for you.
 	//
 	// The longest identifier here is 49 bytes before a prefix is applied, so

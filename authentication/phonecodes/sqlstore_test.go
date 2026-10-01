@@ -728,14 +728,14 @@ func TestSQLStore_addressesTheNamespacedTable(t *testing.T) {
 	t.Parallel()
 
 	client := newTestClient(t)
-	createTable(t, client, dialect.SQLite, "ddb")
+	createTable(t, client, dialect.SQLite, "app")
 
-	store, err := NewSQLStore(client, WithClock(newFakeClock()), WithTablePrefix("ddb"))
+	store, err := NewSQLStore(client, WithClock(newFakeClock()), WithTablePrefix("app"))
 	must.NoError(t, err)
 
 	issuance := issue(t, store)
 
-	test.EqOp(t, 1, rowsIn(t, client, "ddb_phone_codes"))
+	test.EqOp(t, 1, rowsIn(t, client, "app_phone_codes"))
 	test.EqOp(t, 0, rowsIn(t, client, "phone_codes"))
 
 	_, err = redeem(t, store, testScope(), testPhone, issuance.Plaintext)

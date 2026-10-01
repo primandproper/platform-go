@@ -23,7 +23,7 @@ phone number:
   - The subject is the consumer's. Issue takes a subject identifier and an E.164
     number, not a user id, and there is no foreign key: the person is not a
     user, and binding the table to identity would make it useless to the
-    application that needs it. What the subject is — a contact, a household
+    application that needs it. What the subject is — a contact, a team
     member — is the consumer's to say.
   - A code has a million values where a link secret has 2^256, so a code
     carries an attempt count and a limit, and a link does not need one.

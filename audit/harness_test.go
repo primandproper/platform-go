@@ -205,7 +205,7 @@ func scopesOf(entries []*Entry) []tenancy.Scope {
 func entryFor(scope tenancy.Scope, resourceID string) *Entry {
 	return &Entry{
 		EventType:    EventUpdated,
-		ResourceType: "recipe",
+		ResourceType: "article",
 		ResourceID:   resourceID,
 		Scope:        scope,
 		Actor:        Actor{ID: "user_1", Type: ActorUser, IP: "203.0.113.7"},

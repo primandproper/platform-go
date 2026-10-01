@@ -42,7 +42,7 @@ func TestCommentToProto(T *testing.T) {
 		test.EqOp(t, "comment_0", out.GetParentId())
 		test.EqOp(t, testUser, out.GetAuthor())
 		test.EqOp(t, "said", out.GetBody())
-		test.EqOp(t, string(recipeType), out.GetTarget().GetType())
+		test.EqOp(t, string(articleType), out.GetTarget().GetType())
 		test.EqOp(t, testTarget.ID, out.GetTarget().GetId())
 		test.EqOp(t, edited.UTC(), out.GetLastUpdatedAt().AsTime())
 		test.EqOp(t, archived.UTC(), out.GetArchivedAt().AsTime())

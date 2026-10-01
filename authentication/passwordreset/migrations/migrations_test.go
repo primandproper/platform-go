@@ -162,10 +162,10 @@ func TestSQL(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range allDialects() {
-			body, err := SQL(d, "ddb")
+			body, err := SQL(d, "app")
 			must.NoError(t, err)
 
-			stmts, stmtErr := Statements(d, "ddb")
+			stmts, stmtErr := Statements(d, "app")
 			must.NoError(t, stmtErr)
 
 			for _, stmt := range stmts {
@@ -192,15 +192,15 @@ func TestTables(T *testing.T) {
 		must.NoError(t, err)
 		test.Eq(t, []string{"password_reset_tokens"}, tables)
 
-		tables, err = Tables("ddb")
+		tables, err = Tables("app")
 		must.NoError(t, err)
-		test.Eq(t, []string{"ddb_password_reset_tokens"}, tables)
+		test.Eq(t, []string{"app_password_reset_tokens"}, tables)
 	})
 
 	T.Run("rejects a prefix the schema cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		tables, err := Tables("ddb_")
+		tables, err := Tables("app_")
 		test.Nil(t, tables)
 		test.ErrorIs(t, err, ddl.ErrPrefixTrailingSeparator)
 	})
@@ -212,7 +212,7 @@ func TestValidatePrefix(T *testing.T) {
 	T.Run("accepts a namespace the schema can render", func(t *testing.T) {
 		t.Parallel()
 
-		for _, prefix := range []string{"", "ddb", "app_two"} {
+		for _, prefix := range []string{"", "app", "app_two"} {
 			test.NoError(t, ValidatePrefix(prefix), test.Sprintf("prefix %q", prefix))
 		}
 	})
@@ -220,7 +220,7 @@ func TestValidatePrefix(T *testing.T) {
 	T.Run("rejects a namespace that is not an identifier fragment", func(t *testing.T) {
 		t.Parallel()
 
-		for _, prefix := range []string{"ddb-1", "a b", "reset_; DROP TABLE users;--"} {
+		for _, prefix := range []string{"app-1", "a b", "reset_; DROP TABLE users;--"} {
 			test.Error(t, ValidatePrefix(prefix), test.Sprintf("prefix %q", prefix))
 		}
 	})
@@ -237,6 +237,6 @@ func TestValidatePrefix(T *testing.T) {
 	T.Run("rejects a namespace that ends in the separator", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, ValidatePrefix("ddb_"), ddl.ErrPrefixTrailingSeparator)
+		test.ErrorIs(t, ValidatePrefix("app_"), ddl.ErrPrefixTrailingSeparator)
 	})
 }

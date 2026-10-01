@@ -27,7 +27,7 @@ func TestServer_CreateComment(T *testing.T) {
 
 		res, err := h.server.CreateComment(h.ctx(t), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
-				Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+				Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 				Body:   "the sauce needs salt",
 			},
 		})
@@ -36,7 +36,7 @@ func TestServer_CreateComment(T *testing.T) {
 
 		test.NotEqOp(t, "", res.GetResult().GetId())
 		test.EqOp(t, "the sauce needs salt", res.GetResult().GetBody())
-		test.EqOp(t, string(recipeType), res.GetResult().GetTarget().GetType())
+		test.EqOp(t, string(articleType), res.GetResult().GetTarget().GetType())
 		test.True(t, res.GetResult().GetCreatedAt().IsValid())
 		test.Nil(t, res.GetResult().GetLastUpdatedAt())
 	})
@@ -51,7 +51,7 @@ func TestServer_CreateComment(T *testing.T) {
 
 		res, err := h.server.CreateComment(h.ctxAs(t, otherUser), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
-				Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+				Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 				Body:   "written by whoever authenticated",
 			},
 		})
@@ -115,8 +115,8 @@ func TestServer_CreateComment(T *testing.T) {
 		// the consumer registered, it reads on their own connection, and what
 		// crosses the wire is the refusal.
 		h := newHarnessWithTargets(t, comments.Targets{
-			recipeType: {
-				Description: "a recipe",
+			articleType: {
+				Description: "an article",
 				Exists: func(context.Context, tenancy.Scope, string) (bool, error) {
 					return false, nil
 				},
@@ -125,8 +125,8 @@ func TestServer_CreateComment(T *testing.T) {
 
 		_, err := h.server.CreateComment(h.ctx(t), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
-				Target: &commentspb.CommentTarget{Type: string(recipeType), Id: "gone"},
-				Body:   "about a recipe that was deleted",
+				Target: &commentspb.CommentTarget{Type: string(articleType), Id: "gone"},
+				Body:   "about an article that was deleted",
 			},
 		})
 
@@ -143,7 +143,7 @@ func TestServer_CreateComment(T *testing.T) {
 		_, err := h.server.CreateComment(h.ctx(t), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
 				ParentId: root.ID,
-				Target:   &commentspb.CommentTarget{Type: string(mealType), Id: "meal_1"},
+				Target:   &commentspb.CommentTarget{Type: string(newsletterType), Id: "newsletter_1"},
 				Body:     "filed under something else",
 			},
 		})
@@ -159,7 +159,7 @@ func TestServer_CreateComment(T *testing.T) {
 
 		_, err := h.server.CreateComment(h.ctx(t), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
-				Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+				Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 			},
 		})
 
@@ -199,7 +199,7 @@ func TestServer_CreateComment(T *testing.T) {
 
 		_, err := h.server.CreateComment(t.Context(), &commentspb.CreateCommentRequest{
 			Comment: &commentspb.CommentInput{
-				Target: &commentspb.CommentTarget{Type: string(recipeType), Id: testTarget.ID},
+				Target: &commentspb.CommentTarget{Type: string(articleType), Id: testTarget.ID},
 				Body:   "anonymous",
 			},
 		})

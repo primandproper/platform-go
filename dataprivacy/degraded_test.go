@@ -303,7 +303,7 @@ func TestRegistry_EraserValidation(T *testing.T) {
 
 		registry := NewRegistry()
 
-		for _, key := range []string{"Identity", "meal planning", "billing-v2"} {
+		for _, key := range []string{"Identity", "news letters", "billing-v2"} {
 			err := registry.RegisterEraser(key, countingEraser(0, 0, nil, nil))
 			test.ErrorIs(t, err, ErrInvalidKey, test.Sprintf("key %q", key))
 		}

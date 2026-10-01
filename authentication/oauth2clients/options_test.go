@@ -45,12 +45,12 @@ func TestSQLStoreOptions(T *testing.T) {
 		tracerProvider := tracingnoop.NewTracerProvider()
 
 		s := applyStoreOptions(
-			WithTablePrefix("ddb"),
+			WithTablePrefix("app"),
 			WithStoreLogger(logger),
 			WithStoreTracerProvider(tracerProvider),
 		)
 
-		test.EqOp(t, "ddb", s.prefix)
+		test.EqOp(t, "app", s.prefix)
 		test.Eq(t, logger, s.logger)
 		test.Eq(t, tracerProvider, s.tracerProvider)
 	})

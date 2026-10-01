@@ -160,7 +160,7 @@ type Store interface {
 	ListReportsByReporter(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, reporter string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Report], error)
 
 	// ListReportsBySubjectType pages every report about one kind of thing —
-	// "everything anybody has said about recipes".
+	// "everything anybody has said about articles".
 	ListReportsBySubjectType(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectType string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Report], error)
 
 	// ListReportsForSubject pages every report about one particular thing.

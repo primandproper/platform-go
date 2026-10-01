@@ -74,7 +74,7 @@ func entry(scope tenancy.Scope, id string, seq int64, actorID, resourceID string
 		Scope:        scope,
 		Seq:          seq,
 		EventType:    audit.EventUpdated,
-		ResourceType: "recipe",
+		ResourceType: "article",
 		ResourceID:   resourceID,
 		Actor:        audit.Actor{ID: actorID, Type: audit.ActorUser, IP: "203.0.113.7"},
 	}
@@ -194,7 +194,7 @@ func TestCollector_Collect(T *testing.T) {
 				test.EqOp(t, subject.ID, query.ActorID)
 				test.EqOp(t, "", query.ResourceID)
 
-				return page(entry(*scope, "acted_in_"+scope.String(), 1, subject.ID, "recipe_1")), nil
+				return page(entry(*scope, "acted_in_"+scope.String(), 1, subject.ID, "article_1")), nil
 			default:
 				must.NotNil(t, scope)
 				test.EqOp(t, subject.ID, query.ResourceID)
@@ -257,7 +257,7 @@ func TestCollector_Collect(T *testing.T) {
 			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[audit.Entry], error) {
 			if query.ActorID != "" {
-				return page(entry(firstScope, "mine", 0, subject.ID, "recipe_1")), nil
+				return page(entry(firstScope, "mine", 0, subject.ID, "article_1")), nil
 			}
 
 			return page(entry(firstScope, "theirs", 1, "admin_1", subject.ID)), nil
@@ -290,7 +290,7 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("exports an act somebody performed as the subject as impersonated", func(t *testing.T) {
 		t.Parallel()
 
-		impersonated := entry(firstScope, "as_them", 0, subject.ID, "recipe_1")
+		impersonated := entry(firstScope, "as_them", 0, subject.ID, "article_1")
 		impersonated.Actor.Impersonator = "operator_1"
 
 		log := logOf(func(
@@ -327,7 +327,7 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("exports what the subject did as somebody else, with their own address", func(t *testing.T) {
 		t.Parallel()
 
-		asSomebody := entry(firstScope, "as_customer", 0, "customer_1", "recipe_1")
+		asSomebody := entry(firstScope, "as_customer", 0, "customer_1", "article_1")
 		asSomebody.Actor.Impersonator = subject.ID
 
 		log := logOf(func(
@@ -364,11 +364,11 @@ func TestCollector_Collect(T *testing.T) {
 
 		staffScope := tenancy.Of("staff")
 
-		inStaff := entry(staffScope, "own_act", 0, subject.ID, "recipe_1")
+		inStaff := entry(staffScope, "own_act", 0, subject.ID, "article_1")
 
-		asCustomer := entry(secondScope, "as_customer_2", 7, "customer_2", "recipe_2")
+		asCustomer := entry(secondScope, "as_customer_2", 7, "customer_2", "article_2")
 		asCustomer.Actor.Impersonator = subject.ID
-		asEarlierCustomer := entry(firstScope, "as_customer_1", 3, "customer_1", "recipe_1")
+		asEarlierCustomer := entry(firstScope, "as_customer_1", 3, "customer_1", "article_1")
 		asEarlierCustomer.Actor.Impersonator = subject.ID
 		asLaterCustomer := entry(firstScope, "as_customer_1_again", 9, "customer_1", "user_9")
 		asLaterCustomer.Actor.Impersonator = subject.ID

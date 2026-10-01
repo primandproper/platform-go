@@ -258,15 +258,15 @@ func TestListReportsBySubjectType(T *testing.T) {
 
 		h := newHarness(t)
 
-		recipe := h.seedReportAbout(t, testScope, testReporter, "recipe", "recipe_1")
+		article := h.seedReportAbout(t, testScope, testReporter, "article", "article_1")
 		invoice := h.seedReportAbout(t, testScope, testReporter, "invoice", "invoice_1")
 
 		res, err := h.server.ListReportsBySubjectType(h.ctx(t, triager),
-			&issuereportspb.ListReportsBySubjectTypeRequest{SubjectType: "recipe"})
+			&issuereportspb.ListReportsBySubjectTypeRequest{SubjectType: "article"})
 		must.NoError(t, err)
 
 		ids := idsOf(res.GetResults())
-		test.SliceContains(t, ids, recipe.ID)
+		test.SliceContains(t, ids, article.ID)
 		test.SliceNotContains(t, ids, invoice.ID)
 	})
 
@@ -293,11 +293,11 @@ func TestListReportsForSubject(T *testing.T) {
 
 		h := newHarness(t)
 
-		first := h.seedReportAbout(t, testScope, testReporter, "recipe", "recipe_1")
-		second := h.seedReportAbout(t, testScope, otherReporter, "recipe", "recipe_2")
+		first := h.seedReportAbout(t, testScope, testReporter, "article", "article_1")
+		second := h.seedReportAbout(t, testScope, otherReporter, "article", "article_2")
 
 		res, err := h.server.ListReportsForSubject(h.ctx(t, triager),
-			&issuereportspb.ListReportsForSubjectRequest{SubjectType: "recipe", SubjectId: "recipe_1"})
+			&issuereportspb.ListReportsForSubjectRequest{SubjectType: "article", SubjectId: "article_1"})
 		must.NoError(t, err)
 
 		ids := idsOf(res.GetResults())
@@ -312,8 +312,8 @@ func TestListReportsForSubject(T *testing.T) {
 
 		_, err := h.server.ListReportsForSubject(h.ctx(t, triager),
 			&issuereportspb.ListReportsForSubjectRequest{
-				SubjectType: "recipe",
-				SubjectId:   "recipe_1",
+				SubjectType: "article",
+				SubjectId:   "article_1",
 				Filter:      badFilter(),
 			})
 		must.Error(t, err)
@@ -348,13 +348,13 @@ func TestEveryListIsAnonymousToNobody(T *testing.T) {
 		},
 		"ListReportsBySubjectType": func() error {
 			_, err := h.server.ListReportsBySubjectType(T.Context(),
-				&issuereportspb.ListReportsBySubjectTypeRequest{SubjectType: "recipe"})
+				&issuereportspb.ListReportsBySubjectTypeRequest{SubjectType: "article"})
 
 			return err
 		},
 		"ListReportsForSubject": func() error {
 			_, err := h.server.ListReportsForSubject(T.Context(),
-				&issuereportspb.ListReportsForSubjectRequest{SubjectType: "recipe", SubjectId: "recipe_1"})
+				&issuereportspb.ListReportsForSubjectRequest{SubjectType: "article", SubjectId: "article_1"})
 
 			return err
 		},

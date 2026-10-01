@@ -1268,7 +1268,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		owner := registerAda(t, service, "ada")
 
 		second, err := service.CreateAccount(t.Context(), testScope, owner.User.ID,
-			&Account{Name: "second household"}, []string{"owner"})
+			&Account{Name: "second workspace"}, []string{"owner"})
 		must.NoError(t, err)
 		test.EqOp(t, owner.User.ID, second.OwnerUserID)
 		test.NotEq(t, owner.Account.ID, second.ID)

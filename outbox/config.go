@@ -87,7 +87,7 @@ func (m ClaimMode) Valid() bool {
 // its own dialect.
 type RelayConfig struct {
 	// TablePrefix is the namespace the outbox table carries. Empty renders
-	// outbox_messages; "ddb" renders ddb_outbox_messages.
+	// outbox_messages; "app" renders app_outbox_messages.
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 	// table is TablePrefix resolved to a full name, filled by EnsureDefaults so
 	// every query builder below reads one already-qualified string.

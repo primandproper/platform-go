@@ -88,7 +88,7 @@ const (
 	// the principal rather than anything a client may name. So whether members
 	// may start accounts of their own is this grant and nothing else, which is
 	// a deployment's decision and reads like one: a product where a person runs
-	// several households grants it widely, and one where an account is
+	// several workspaces grants it widely, and one where an account is
 	// provisioned for them does not grant it at all.
 	//
 	// It is separate from PermissionUpdateAccounts because the questions are
@@ -242,7 +242,7 @@ func Permissions() map[string][]authorization.Permission {
 // composes several domains and their own methods into one table:
 //
 //	reqs, err := identitygrpc.Require(authzgrpc.NewRequirements()).
-//		RequireAll(mealplanning.Permissions()).
+//		RequireAll(newsletters.Permissions()).
 //		Public(healthpb.Health_Check_FullMethodName).
 //		Build()
 //

@@ -205,8 +205,8 @@ func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
 		client:  auditclient.Wrap(conn),
 		admin:   auditpb.NewAuditAdministrationServiceClient(conn),
 		rootCtx: t.Context(),
-		mine:    entryFor(ours, "recipe_1"),
-		yours:   entryFor(theirs, "recipe_2"),
+		mine:    entryFor(ours, "article_1"),
+		yours:   entryFor(theirs, "article_2"),
 	}
 
 	// Two tenants, two calls: a recording names the chain it appends to, so the
@@ -245,11 +245,11 @@ func (h *harness) asTheirs() context.Context { return asScope(h.rootCtx, theirs.
 func entryFor(scope tenancy.Scope, resourceID string) *audit.Entry {
 	return &audit.Entry{
 		EventType:    audit.EventUpdated,
-		ResourceType: "recipe",
+		ResourceType: "article",
 		ResourceID:   resourceID,
 		Scope:        scope,
 		Actor:        audit.Actor{ID: "user_1", Type: audit.ActorUser, IP: "203.0.113.7"},
-		Changes:      map[string]audit.Change{"name": {Old: "Soup", New: "Stew"}},
+		Changes:      map[string]audit.Change{"name": {Old: "Draft", New: "Final"}},
 		Metadata:     map[string]string{"reason": "a typo"},
 	}
 }
