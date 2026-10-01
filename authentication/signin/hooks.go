@@ -182,7 +182,8 @@ const (
 
 	// RevocationReuse is a refresh token presented after it was spent, which
 	// ends its family — see [ErrRefreshTokenReused]. Nobody asked for it; the
-	// exchange or the sign-out that presented the token found a theft.
+	// exchange, the account switch or the sign-out that presented the token
+	// found a theft.
 	RevocationReuse RevocationReason = "reuse"
 )
 
@@ -212,6 +213,37 @@ type Revocation struct {
 	// FamilyIDs names each login ended, and is never empty: a door that ended
 	// nothing runs no hook.
 	FamilyIDs []string `json:"familyIDs"`
+}
+
+// AccountSwitch is one login moved from one of its subject's accounts to
+// another by [Service.SwitchAccount].
+//
+// It names the login and both accounts, and nothing that could be presented:
+// the successor's secret is on the [SignIn] AfterIssueToken is handed next, and
+// is not repeated here.
+type AccountSwitch struct {
+	_ struct{} `json:"-"`
+
+	// SubjectID is whose login moved.
+	SubjectID string `json:"subjectID"`
+
+	// FamilyID is the login that moved. A switch keeps it: the login is the
+	// same one before and after, and [ActiveSignIn.FamilyID] still names it.
+	FamilyID string `json:"familyID"`
+
+	// FromAccountID is the account the login's access tokens were for until
+	// now, and empty for a login that began against no account at all.
+	FromAccountID string `json:"fromAccountID"`
+
+	// ToAccountID is the account they are for from now on. It equals
+	// FromAccountID where the caller named the account they were already in,
+	// which is still a switch they asked for.
+	ToAccountID string `json:"toAccountID"`
+
+	// Administrative reports whether the login came through the administrative
+	// door. A switch carries that standing over unchanged, and an auditor
+	// watching operators move between tenants reads it here.
+	Administrative bool `json:"administrative"`
 }
 
 // Hooks is what a consumer commits alongside a sign-in, inside the transaction
@@ -474,6 +506,25 @@ type Hooks interface {
 	// revocation should survive belongs behind an outbox row here, as
 	// AfterAuthenticate's does.
 	AfterRevokeSignIns(ctx context.Context, tx database.Tx, scope tenancy.Scope, revocation *Revocation) error
+
+	// AfterSwitchAccount is called with a login that moved to another of its
+	// subject's accounts, in the transaction that spent its refresh token and
+	// minted the successor — see [Service.SwitchAccount].
+	//
+	// It runs before AfterIssueToken, which follows it in the same transaction
+	// with the successor's token on it, as AfterAuthenticate runs before
+	// AfterIssueToken at a door: the switch is the event, and the token is what
+	// came of it. It is a hook of its own rather than something an auditor
+	// infers from AfterIssueToken, because the account a token is for changing
+	// mid-login is exactly the fact a "who was acting in which tenant" trail
+	// exists to record, and nothing on a SignIn says what it was before.
+	//
+	// It runs only when the switch is admitted. A switch to an account the
+	// subject does not belong to is refused before it, and is not a switch.
+	//
+	// An error rolls the switch back: the presented token is left unspent and
+	// the login stays in the account it was in.
+	AfterSwitchAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, change *AccountSwitch) error
 }
 
 // NoopHooks is the Hooks a service runs when a consumer configures none, and the
@@ -548,5 +599,10 @@ func (NoopHooks) AfterReplaceRecoveryCodes(context.Context, database.Tx, tenancy
 
 // AfterRevokeSignIns does nothing.
 func (NoopHooks) AfterRevokeSignIns(context.Context, database.Tx, tenancy.Scope, *Revocation) error {
+	return nil
+}
+
+// AfterSwitchAccount does nothing.
+func (NoopHooks) AfterSwitchAccount(context.Context, database.Tx, tenancy.Scope, *AccountSwitch) error {
 	return nil
 }

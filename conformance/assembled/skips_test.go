@@ -81,6 +81,17 @@ var (
 	// rosterSkips are what the empty-requests run may skip: nothing.
 	rosterSkips []expectedSkip
 
+	// admittingSkips are what the run whose registrations issue a second
+	// factor may skip. Its door is open too, so the closed-door assertion
+	// skips there as it does everywhere.
+	admittingSkips = []expectedSkip{
+		openRegistration,
+		{
+			test: "signin/self/proving_a_second_factor_nobody_issued_is_refused_as_a_precondition",
+			why:  "the run's registration policy issues every registrant a secret, so Seams.RegistrationIssuesSecondFactor is true and nobody holds none",
+		},
+	}
+
 	// unconfirmedWaitlists are what a run whose waitlists wait at once may
 	// skip besides, in both runs that reach the waitlists suite: with no Links
 	// block there is no confirmation to follow, and Actions.WaitlistLinks is

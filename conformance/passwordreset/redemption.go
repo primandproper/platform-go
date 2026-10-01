@@ -5,8 +5,11 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
+
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -42,6 +45,12 @@ func redemption(t *testing.T, s *conformance.Session) {
 	// The whole point of the surface, asserted where it pays off: somebody who
 	// could not sign in now can, with the password the link set. It needs the
 	// sign-in surface to observe, and a subject that did not mount one skips.
+	//
+	// A caller the subject minted is the deployment's, and may hold a proven
+	// second factor the suite has no code for. Their principal says whether
+	// they do, and where they do the door's answer to the password alone is
+	// that a code is required — the one refusal sign-in gives only to a
+	// password that was right, so it is what the reset is held to there.
 	t.Run("the password a reset sets is the one that signs in", func(t *testing.T) {
 		t.Parallel()
 
@@ -50,6 +59,8 @@ func redemption(t *testing.T, s *conformance.Session) {
 		if sub.Surfaces.SignIn == nil {
 			conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so a reset's effect cannot be observed")
 		}
+
+		holdsSecondFactor := user.GetTwoFactorSecretVerifiedAt() != nil
 
 		signIn := func(password string) error {
 			_, err := sub.Surfaces.SignIn.LoginForToken(t.Context(), &signinpb.LoginForTokenRequest{
@@ -60,8 +71,16 @@ func redemption(t *testing.T, s *conformance.Session) {
 		}
 
 		// The control: before the reset this password is not theirs, so a
-		// sign-in that succeeded below would otherwise prove nothing.
-		must.Error(t, signIn(newPassword), must.Sprint("the caller signed in with a password nobody set"))
+		// sign-in that succeeded below would otherwise prove nothing — and
+		// for somebody holding a second factor, neither would being asked for
+		// a code.
+		before := signIn(newPassword)
+		must.Error(t, before, must.Sprint("the caller signed in with a password nobody set"))
+
+		if holdsSecondFactor && reasons(t, s) {
+			must.NotEqOp(t, reasonSecondFactorRequired, reason(before),
+				must.Sprint("a password nobody set was answered as a right one"))
+		}
 
 		request(t, sub, user.GetEmailAddress())
 
@@ -72,7 +91,20 @@ func redemption(t *testing.T, s *conformance.Session) {
 			})
 		must.NoError(t, err)
 
-		test.NoError(t, signIn(newPassword), test.Sprint("the password a reset set does not sign in"))
+		after := signIn(newPassword)
+		if !holdsSecondFactor {
+			test.NoError(t, after, test.Sprint("the password a reset set does not sign in"))
+
+			return
+		}
+
+		must.Error(t, after, must.Sprint("somebody holding a proven second factor signed in with no code"))
+		test.EqOp(t, codes.Unauthenticated, status.Code(after))
+
+		if reasons(t, s) {
+			test.EqOp(t, reasonSecondFactorRequired, reason(after),
+				test.Sprint("the password a reset set was not answered as the right one"))
+		}
 	})
 
 	// Single use, and the refusal says which of the three ways a link fails,
@@ -129,4 +161,37 @@ func redemption(t *testing.T, s *conformance.Session) {
 		must.Error(t, err, must.Sprint("an earlier link survived a later one being redeemed"))
 		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
 	})
+}
+
+// reasonSecondFactorRequired is the reason sign-in's contract gives a right
+// password sent without the code its holder's second factor asks for.
+const reasonSecondFactorRequired = "SECOND_FACTOR_REQUIRED"
+
+// reason is the client-safe reason a sign-in refusal carried in signin's
+// domain, or empty where it carried none. It is the reason rather than the
+// message that a reset is held to, because the reason is what sign-in's
+// contract tells a client to branch on, and the message is prose a deployment
+// may reword.
+func reason(err error) string {
+	info, ok := grpcerrors.ClientReasonFromStatus(err)
+	if !ok || info.GetDomain() != signin.ClientReasonDomain {
+		return ""
+	}
+
+	return info.GetReason()
+}
+
+// reasons reports whether s's subject carries reasons to its clients, printing
+// what goes unasserted where it does not. Without one, a wrong password and a
+// right one awaiting its code are the same code, so only the code is held.
+func reasons(t *testing.T, s *conformance.Session) bool {
+	t.Helper()
+
+	if !s.Seams().ErrorReasonsStripped {
+		return true
+	}
+
+	t.Log("conformance: this subject says its edge strips client-safe reasons (Seams.ErrorReasonsStripped), so whether a refusal was a wrong password or a missing code is not asserted")
+
+	return false
 }

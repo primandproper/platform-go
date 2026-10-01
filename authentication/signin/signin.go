@@ -75,6 +75,15 @@ const (
 	// would alarm on users behaving normally; what it is useful for is explaining
 	// a single sign-out that revoked nothing.
 	signOutNothingToEndKey = "signin.sign_out_nothing_to_end"
+
+	// switchNotAMemberKey records that an account switch named an account its
+	// subject holds no membership in, which Service.SwitchAccount answers as
+	// ErrInvalidCredentials so that the answer says nothing about the account.
+	//
+	// On the span only, for the reason signOutNothingToEndKey is: it explains
+	// one refusal to whoever reads its trace, and the caller is told nothing
+	// more than they would be of a dead token.
+	switchNotAMemberKey = "signin.switch_not_a_member"
 )
 
 // The names this service labels its instruments with, one per operation. They
@@ -116,6 +125,10 @@ const (
 	// counting it beside the revocations a detected reuse performs would mix a
 	// person's decision with an alarm.
 	opExchangeRefreshToken = "exchange_refresh_token"
+	// Switching accounts is a series of its own rather than a kind of
+	// exchange: what a dashboard asks of it is how often people move between
+	// the accounts they belong to, which an exchange's count would bury.
+	opSwitchAccount        = "switch_account"
 	opSignOut              = "sign_out"
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"

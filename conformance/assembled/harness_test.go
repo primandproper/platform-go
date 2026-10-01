@@ -49,7 +49,9 @@ import (
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	"github.com/primandproper/platform-go/v14/conformance"
 	conformanceall "github.com/primandproper/platform-go/v14/conformance/all"
+	conformancepasswordreset "github.com/primandproper/platform-go/v14/conformance/passwordreset"
 	conformancereservations "github.com/primandproper/platform-go/v14/conformance/reservations"
+	conformancesignin "github.com/primandproper/platform-go/v14/conformance/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
@@ -278,8 +280,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 	// And the consumer's registration policy, which refuses a registrant who
 	// has not accepted every agreement — so the sign-in suite runs against a
-	// deployment that requires them.
-	do.ProvideValue[signin.RegistrationPolicy](i, requireAgreements)
+	// deployment that requires them — and which the last run below switches to
+	// admitting registrants unverified with a second factor issued.
+	var admitting atomic.Bool
+	do.ProvideValue(i, admittingRegistrations(&admitting))
 
 	// And, on a run that confirms, the consumer's waitlist confirmation mailer,
 	// whose presence is what mounts the loop — over the minter the Links block
@@ -620,6 +624,25 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		expectSkips(t, rosterSkips)
 
 		conformance.Run(t, seams(nil, nil), conformancereservations.RosterSuite())
+	})
+
+	// And the registration policy a consumer may legitimately write instead of
+	// this module's default: registrants in good standing before their address
+	// is proven, each issued a second-factor secret, and callers who have
+	// proven one. Only the suites whose assertions read a registrant's or a
+	// caller's credentials, since nothing else is about them. Last, because it
+	// leaves the policy switched.
+	t.Run("registrants admitted unverified, with a second factor", func(t *testing.T) {
+		expectSkips(t, admittingSkips)
+
+		admitting.Store(true)
+
+		admitted := seams(nil, nil)
+		admitted.RegistrantsAdmittedUnverified = true
+		admitted.RegistrationIssuesSecondFactor = true
+		admitted.NewSubject = provenSecondFactor(identitySvc, admitted.NewSubject)
+
+		conformance.Run(t, admitted, conformancesignin.Suite(), conformancepasswordreset.Suite())
 	})
 }
 

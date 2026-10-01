@@ -149,6 +149,40 @@ func (s *Server) ExchangeRefreshToken(
 	return &signinpb.ExchangeRefreshTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
 }
 
+// SwitchAccount spends a refresh token and answers with a fresh pair for
+// another account the same person belongs to — the same login, moved.
+//
+// It is anonymous for ExchangeRefreshToken's reason: the refresh token is the
+// whole of the request's authority. It is an RPC of its own rather than a field
+// on that one because switching is a deliberate act, not a refresh.
+//
+// Naming an account the person is not a member of answers Unauthenticated with
+// the words a dead token gets, so the answer says nothing about the account; the
+// presented token is left unspent. An empty account answers InvalidArgument
+// through the platform mapper. See
+// [github.com/primandproper/platform-go/v14/authentication/signin.Service.SwitchAccount].
+//
+// It reads no idempotency key, and the client stamps none on it — the service
+// documents what a lost answer costs.
+func (s *Server) SwitchAccount(
+	ctx context.Context,
+	request *signinpb.SwitchAccountRequest,
+) (*signinpb.SwitchAccountResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_SwitchAccount_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	signedIn, err := s.svc.SwitchAccount(ctx, req.scope, request.GetRefreshToken(), request.GetAccountId())
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "switching accounts")
+	}
+
+	return &signinpb.SwitchAccountResponse{Token: IssuedTokenToProto(signedIn)}, nil
+}
+
 // SignOut ends the login the presented refresh token belongs to.
 //
 // It is anonymous for ExchangeRefreshToken's reason and one of its own. The

@@ -307,6 +307,36 @@ message ExchangeRefreshTokenResponse {
   IssuedToken token = 1;
 }
 
+// SwitchAccountRequest spends a refresh token for a fresh pair against another
+// account the same person belongs to: the same login, moved.
+//
+// It is anonymous for ExchangeRefreshTokenRequest's reason -- the refresh token
+// is the whole of the request's authority -- and it is a request of its own
+// rather than a field on that one because switching is a deliberate act, not a
+// refresh. Who the new token is for is read off the row the presented token
+// named; which account it is for is the one thing a client says.
+//
+// The account must be one that person is currently a member of. Naming any
+// other is refused exactly as a dead token is, so the answer says nothing about
+// the account named, and the presented token is left unspent: the login stays
+// where it was. The successor stays in the same login -- ListSignIns shows it
+// once, EndSignIn ends it, and presenting the spent token again ends it as a
+// replay of any exchange does.
+message SwitchAccountRequest {
+  reserved "scope";
+
+  // refresh_token is the credential a previous IssuedToken carried.
+  string refresh_token = 1;
+
+  // account_id is the account the new pair is for. Empty is INVALID_ARGUMENT:
+  // a switch says where it is going.
+  string account_id = 2 [json_name = "accountID"];
+}
+
+message SwitchAccountResponse {
+  IssuedToken token = 1;
+}
+
 // SignOutRequest ends one login: every refresh token this sign-in issued stops
 // being exchangeable.
 //
@@ -1005,11 +1035,13 @@ service SignInService {
   // reason: it sends mail on request.
   rpc RequestHandleReminder(RequestHandleReminderRequest) returns (RequestHandleReminderResponse);
 
-  // The two doors, and the one that keeps a sign-in alive without reopening
-  // either of them.
+  // The two doors, the one that keeps a sign-in alive without reopening
+  // either of them, and the one that moves it to another of the person's
+  // accounts without reopening them either.
   rpc LoginForToken(LoginForTokenRequest) returns (LoginForTokenResponse);
   rpc AdminLoginForToken(AdminLoginForTokenRequest) returns (AdminLoginForTokenResponse);
   rpc ExchangeRefreshToken(ExchangeRefreshTokenRequest) returns (ExchangeRefreshTokenResponse);
+  rpc SwitchAccount(SwitchAccountRequest) returns (SwitchAccountResponse);
 
   // The way out, in its two sizes. Ending this login carries the credential and
   // needs no caller, so an application whose access token expired while it was

@@ -26,6 +26,14 @@ everybody. A subject that has no callers there declines and the assertions skip;
 one whose connection resolves a tenant of its own mints the caller wherever its
 connection would place a request.
 
+# A caller who holds a second factor
+
+The callers reset here are the subject's, and may hold a proven second factor
+whose secret the suite never sees. Their principal says whether they do, and
+where they do, the password a reset set is held to the answer sign-in gives a
+right password sent without a code — that a code is required — rather than to a
+token the suite could only get with the code it does not have.
+
 # A door a deployment keeps
 
 That every RPC here is reachable without a caller is this module's declaration,

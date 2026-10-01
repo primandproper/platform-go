@@ -160,6 +160,7 @@ const (
 	SignInService_LoginForToken_FullMethodName                     = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
 	SignInService_AdminLoginForToken_FullMethodName                = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
 	SignInService_ExchangeRefreshToken_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
+	SignInService_SwitchAccount_FullMethodName                     = "/primandproper.platform.signin.v1.SignInService/SwitchAccount"
 	SignInService_SignOut_FullMethodName                           = "/primandproper.platform.signin.v1.SignInService/SignOut"
 	SignInService_SignOutEverywhere_FullMethodName                 = "/primandproper.platform.signin.v1.SignInService/SignOutEverywhere"
 	SignInService_ListSignIns_FullMethodName                       = "/primandproper.platform.signin.v1.SignInService/ListSignIns"
@@ -228,11 +229,13 @@ type SignInServiceClient interface {
 	// RequestMagicLink is, and its rate limit is the consumer's for the same
 	// reason: it sends mail on request.
 	RequestHandleReminder(ctx context.Context, in *RequestHandleReminderRequest, opts ...grpc.CallOption) (*RequestHandleReminderResponse, error)
-	// The two doors, and the one that keeps a sign-in alive without reopening
-	// either of them.
+	// The two doors, the one that keeps a sign-in alive without reopening
+	// either of them, and the one that moves it to another of the person's
+	// accounts without reopening them either.
 	LoginForToken(ctx context.Context, in *LoginForTokenRequest, opts ...grpc.CallOption) (*LoginForTokenResponse, error)
 	AdminLoginForToken(ctx context.Context, in *AdminLoginForTokenRequest, opts ...grpc.CallOption) (*AdminLoginForTokenResponse, error)
 	ExchangeRefreshToken(ctx context.Context, in *ExchangeRefreshTokenRequest, opts ...grpc.CallOption) (*ExchangeRefreshTokenResponse, error)
+	SwitchAccount(ctx context.Context, in *SwitchAccountRequest, opts ...grpc.CallOption) (*SwitchAccountResponse, error)
 	// The way out, in its two sizes. Ending this login carries the credential and
 	// needs no caller, so an application whose access token expired while it was
 	// closed can still sign out; ending every login needs a caller and names
@@ -372,6 +375,16 @@ func (c *signInServiceClient) ExchangeRefreshToken(ctx context.Context, in *Exch
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExchangeRefreshTokenResponse)
 	err := c.cc.Invoke(ctx, SignInService_ExchangeRefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) SwitchAccount(ctx context.Context, in *SwitchAccountRequest, opts ...grpc.CallOption) (*SwitchAccountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SwitchAccountResponse)
+	err := c.cc.Invoke(ctx, SignInService_SwitchAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -552,11 +565,13 @@ type SignInServiceServer interface {
 	// RequestMagicLink is, and its rate limit is the consumer's for the same
 	// reason: it sends mail on request.
 	RequestHandleReminder(context.Context, *RequestHandleReminderRequest) (*RequestHandleReminderResponse, error)
-	// The two doors, and the one that keeps a sign-in alive without reopening
-	// either of them.
+	// The two doors, the one that keeps a sign-in alive without reopening
+	// either of them, and the one that moves it to another of the person's
+	// accounts without reopening them either.
 	LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error)
 	AdminLoginForToken(context.Context, *AdminLoginForTokenRequest) (*AdminLoginForTokenResponse, error)
 	ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error)
+	SwitchAccount(context.Context, *SwitchAccountRequest) (*SwitchAccountResponse, error)
 	// The way out, in its two sizes. Ending this login carries the credential and
 	// needs no caller, so an application whose access token expired while it was
 	// closed can still sign out; ending every login needs a caller and names
@@ -624,6 +639,9 @@ func (UnimplementedSignInServiceServer) AdminLoginForToken(context.Context, *Adm
 }
 func (UnimplementedSignInServiceServer) ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExchangeRefreshToken not implemented")
+}
+func (UnimplementedSignInServiceServer) SwitchAccount(context.Context, *SwitchAccountRequest) (*SwitchAccountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SwitchAccount not implemented")
 }
 func (UnimplementedSignInServiceServer) SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SignOut not implemented")
@@ -876,6 +894,24 @@ func _SignInService_ExchangeRefreshToken_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SignInServiceServer).ExchangeRefreshToken(ctx, req.(*ExchangeRefreshTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_SwitchAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SwitchAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).SwitchAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_SwitchAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).SwitchAccount(ctx, req.(*SwitchAccountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1146,6 +1182,10 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExchangeRefreshToken",
 			Handler:    _SignInService_ExchangeRefreshToken_Handler,
+		},
+		{
+			MethodName: "SwitchAccount",
+			Handler:    _SignInService_SwitchAccount_Handler,
 		},
 		{
 			MethodName: "SignOut",

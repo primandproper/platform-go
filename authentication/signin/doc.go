@@ -77,6 +77,13 @@ happens inside the login transaction rather than beside it.
 [SignIn.FamilyID] is set whether or not a refresh token was stored, because it
 names a sign-in rather than a row.
 
+A login's account is the row's and is carried, not re-resolved, by every
+exchange. [Service.SwitchAccount] is the one door that changes it: it spends the
+token as an exchange does and mints the successor, in the same family, for
+another account the subject is a member of, so a person in several accounts
+moves between them without a password and the login stays one login.
+[Hooks.AfterSwitchAccount] records the move.
+
 The door a login came through is kept on the row too, so an exchange of an
 administrative session mints another administrative token on the administrative
 lifetime. It reaches a token as [ClaimAdministrative], which is what lets a
@@ -119,7 +126,8 @@ who asked and which door it was: [Service.SignOut], [Service.SignOutEverywhere],
 [Service.RevokeRefreshTokenFamily] and [Service.RevokeRefreshTokensForSubject]
 for an operator — with [RevokedBy]
 naming who — and the family revocation a detected reuse performs, from
-[Service.ExchangeRefreshToken] or from a sign-out presenting a spent token. A
+[Service.ExchangeRefreshToken], [Service.SwitchAccount] or a sign-out presenting
+a spent token. A
 hook that refuses rolls the revocation back, and with it the sign-out.
 
 It does not run when nothing ended: a sign-out presenting a token that names no

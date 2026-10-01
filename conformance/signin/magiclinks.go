@@ -88,21 +88,35 @@ func magicLinks(t *testing.T, s *conformance.Session) {
 	// their address cannot sign in with a password, and a sign-in link proves
 	// it. The password door refusing and then admitting them is what says the
 	// link moved their standing, rather than only minting a token past it.
+	//
+	// Where Seams.RegistrantsAdmittedUnverified says the door admits them
+	// either way, the standing is read instead: unproven before the link, and
+	// proven after it.
 	t.Run("a sign-in link finishes a registration", func(t *testing.T) {
 		t.Parallel()
 
 		anon := anonymous(t, s, loginForToken, requestMagicLink, redeemMagicLink)
 		who, _ := register(t, s, withPassword(registrationRequest()))
 
-		_, err := login(t.Context(), anon, who.username, password, "")
-		refused(t, s, err, codes.FailedPrecondition, reasonUserUnverified)
+		admitted := unproven(t, s, anon, who)
+		if admitted != nil {
+			if proven, ok := addressProven(t, s, admitted); ok {
+				test.False(t, proven, test.Sprint("a registrant nobody verified was told their address is proven"))
+			}
+		}
 
 		requestLink(t, anon, who.email)
 
-		_, err = redeem(t, anon, mailedLink(t, s, who.email))
+		_, err := redeem(t, anon, mailedLink(t, s, who.email))
 		must.NoError(t, err)
 
-		loggedIn(t, anon, who.username, password)
+		issued := loggedIn(t, anon, who.username, password)
+
+		if admitted != nil {
+			if proven, ok := addressProven(t, s, issued); ok {
+				test.True(t, proven, test.Sprint("a redeemed sign-in link left the registrant's address unproven"))
+			}
+		}
 	})
 
 	// The enumeration defense at the transport, which is where a consumer is

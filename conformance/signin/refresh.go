@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"
 	"github.com/primandproper/primitives-go/v2/identifiers"
@@ -50,6 +51,54 @@ func exchange(ctx context.Context, client signinpb.SignInServiceClient, refreshT
 	}
 
 	return response.GetToken(), nil
+}
+
+// switchTo spends a refresh token for a pair against another account.
+func switchTo(ctx context.Context, client signinpb.SignInServiceClient, refreshToken, accountID string) (*signinpb.IssuedToken, error) {
+	response, err := client.SwitchAccount(ctx, &signinpb.SwitchAccountRequest{RefreshToken: refreshToken, AccountId: accountID})
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetToken(), nil
+}
+
+// memberOfTwo is somebody registered, verified and put into a second account
+// by invitation, and that second account's ID. It skips where the subject
+// cannot surface an inviter's account or deliver an invitation.
+func memberOfTwo(t *testing.T, s *conformance.Session, anon signinpb.SignInServiceClient) (who *registrant, secondAccountID string) {
+	t.Helper()
+
+	joiner, who := signedIn(t, s, anon, acceptInvitation)
+	inviter := directoryCaller(t, s, invite)
+
+	if inviter.AccountID == "" {
+		conformance.Skip(t, "conformance: this subject does not surface the inviter's account, so there is no second account to switch to; skipping")
+	}
+
+	must.NotEqOp(t, who.accountID, inviter.AccountID, must.Sprint("the inviter is in the registrant's own account"))
+
+	delivered := s.Seams().Actions.InvitationToken
+	s.NeedsAction(t, delivered != nil, "invitation token")
+
+	invited, err := inviter.Surfaces.Identity.Invite(inviter.Context(t.Context()), &identitypb.InviteRequest{
+		AccountId: inviter.AccountID,
+		ToEmail:   who.email,
+		ToName:    inviteeName,
+		Roles:     []string{s.Roles().Membership[0]},
+	})
+	must.NoError(t, err, must.Sprint("inviting the registrant into a second account"))
+
+	token, err := delivered(t.Context(), inviter.ScopeFor(identitySurface), invited.GetInvitation().GetId())
+	must.NoError(t, err, must.Sprint("reading the token the deployment delivered"))
+
+	_, err = joiner.Surfaces.Identity.AcceptInvitation(joiner.Context(t.Context()), &identitypb.AcceptInvitationRequest{
+		InvitationId: invited.GetInvitation().GetId(),
+		Token:        token,
+	})
+	must.NoError(t, err, must.Sprint("accepting the invitation into a second account"))
+
+	return who, inviter.AccountID
 }
 
 // neverMinted is a refresh token no deployment issued, for the refusal every
@@ -168,6 +217,87 @@ func refresh(t *testing.T, s *conformance.Session) {
 
 		_, err = exchange(t.Context(), anon, first.GetRefreshToken())
 		test.NoError(t, err, test.Sprint("a refused key spent the token anyway"))
+	})
+
+	// A person in two accounts moves between them with the refresh token they
+	// hold and no password: the same login, and an access token that resolves
+	// to the account they named.
+	t.Run("a member of two accounts switches with their refresh token", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, switchAccount)
+		who, second := memberOfTwo(t, s, anon)
+		first := rotating(t, s, anon, who.username, password)
+		must.EqOp(t, who.accountID, first.GetActiveAccountId(),
+			must.Sprint("the control: a sign-in naming no account landed outside the registrant's default"))
+
+		switched, err := switchTo(t.Context(), anon, first.GetRefreshToken(), second)
+		must.NoError(t, err, must.Sprint("a switch to an account the registrant is a member of was refused"))
+
+		test.EqOp(t, second, switched.GetActiveAccountId())
+		test.EqOp(t, first.GetFamilyId(), switched.GetFamilyId(), test.Sprint("a switch began a second login"))
+		test.NotEqOp(t, first.GetRefreshToken(), switched.GetRefreshToken())
+
+		there := caller(t, s, switched, getAuthStatus)
+
+		standing, err := there.Surfaces.SignIn.GetAuthStatus(there.Context(t.Context()), &signinpb.GetAuthStatusRequest{})
+		must.NoError(t, err)
+		test.EqOp(t, second, standing.GetStatus().GetActiveAccountId(),
+			test.Sprint("the access token a switch minted resolves to another account"))
+	})
+
+	// The choice is among the person's own accounts. Somebody else's is a
+	// dead token's answer, so it says nothing about that account, and the
+	// login is untouched: its token still exchanges, into the account it was in.
+	t.Run("a switch to an account the caller is not in is refused and leaves the login intact", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, exchangeRefreshToken, switchAccount)
+		who := signInAs(t, s, anon)
+		other := signInAs(t, s, anon)
+		must.NotEqOp(t, who.accountID, other.accountID, must.Sprint("two registrants share an account"))
+
+		first := rotating(t, s, anon, who.username, password)
+
+		_, err := switchTo(t.Context(), anon, first.GetRefreshToken(), other.accountID)
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, dead := switchTo(t.Context(), anon, neverMinted(), who.accountID)
+		indistinguishable(t, s, dead, err, "a switch to somebody else's account against a token never minted")
+
+		rotated, err := exchange(t.Context(), anon, first.GetRefreshToken())
+		must.NoError(t, err, must.Sprint("a refused switch spent the token or ended the login"))
+		test.EqOp(t, first.GetFamilyId(), rotated.GetFamilyId())
+		test.EqOp(t, who.accountID, rotated.GetActiveAccountId(), test.Sprint("a refused switch moved the login anyway"))
+	})
+
+	// A switch moves a login rather than beginning one, so the person's list
+	// of where they are signed in shows it once, in the account it moved to.
+	t.Run("the switched login is still one entry in the caller's list", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken, switchAccount)
+		who, second := memberOfTwo(t, s, anon)
+		first := rotating(t, s, anon, who.username, password)
+
+		switched, err := switchTo(t.Context(), anon, first.GetRefreshToken(), second)
+		must.NoError(t, err)
+
+		sub := caller(t, s, switched, listSignIns)
+
+		listed, err := sub.Surfaces.SignIn.ListSignIns(sub.Context(t.Context()), &signinpb.ListSignInsRequest{})
+		must.NoError(t, err)
+
+		var entries []*signinpb.ActiveSignIn
+
+		for _, signIn := range listed.GetSignIns() {
+			if signIn.GetFamilyId() == first.GetFamilyId() {
+				entries = append(entries, signIn)
+			}
+		}
+
+		must.SliceLen(t, 1, entries, must.Sprint("a switched login is not listed exactly once"))
+		test.EqOp(t, second, entries[0].GetActiveAccountId())
 	})
 
 	t.Run("signing out ends the login the refresh token names", func(t *testing.T) {
