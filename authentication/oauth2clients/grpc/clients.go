@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
@@ -88,6 +89,12 @@ func (s *Server) GetOAuth2Client(
 }
 
 // ListOAuth2Clients pages every registration in the caller's registry.
+//
+// A withdrawn registration is in the page only for a caller holding
+// [PermissionArchiveClients], the grant that withdraws one: include_archived is
+// a request rather than an instruction, honored for that caller and cleared for
+// everybody else, so the read grant alone pages the live registry. See
+// internal/archivegate for the rule every surface shares.
 func (s *Server) ListOAuth2Clients(
 	ctx context.Context,
 	request *oauth2clientspb.ListOAuth2ClientsRequest,
@@ -99,11 +106,9 @@ func (s *Server) ListOAuth2Clients(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := archivegate.Filter(ctx, req.op, request.GetFilter(), s.grants,
+		PermissionArchiveClients, archivedClearedKey, "reading the filter of an oauth2 client page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of an oauth2 client page")
-
 		return nil, err
 	}
 

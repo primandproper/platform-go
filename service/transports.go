@@ -294,7 +294,7 @@ type SurfaceOptions struct {
 //
 // HTTPEnforcer is the one field added since, and it is not one surface's seam:
 // it is the HTTP half of the authorization every surface answers to, shared by
-// the three HTTP surfaces the way Grants is shared by eight gRPC ones, so a
+// the three HTTP surfaces the way Grants is shared by the gRPC ones, so a
 // consumer names it once rather than three times in Options.
 type Transports struct {
 	// Extractor is how every mounted surface tells who is calling.
@@ -350,13 +350,13 @@ type Transports struct {
 	// make this call may make it against.
 	Authorizers Authorizers
 
-	// Grants is what the caller may do, for the eight surfaces that ask it
-	// inside a handler rather than at the method: billing, comments, identity,
-	// issuereports, notifications, settings, waitlists and webhooks.
+	// Grants is what the caller may do, for every gRPC surface that asks it
+	// inside a handler rather than at the method.
 	//
 	// Each of them decides something off it that no method grant can reach,
 	// because it depends on the request rather than on the RPC — whether a
-	// read that sent include_archived receives the archived rows; on
+	// read that sent include_archived receives the archived rows, on each
+	// surface whose paged reads have any; on
 	// settings, whether a write names a setting the catalog reserved to
 	// administrators; and on identity, whether a caller the row check
 	// refused holds the operator permission that lets them past it. That
@@ -1341,9 +1341,12 @@ func (m *mount) oauth2Clients() {
 		return
 	}
 
-	opts := append([]oauth2clientsgrpc.Option{oauth2clientsgrpc.WithPillars(m.pillars)}, m.t.Options.OAuth2Clients...)
+	opts := []oauth2clientsgrpc.Option{oauth2clientsgrpc.WithPillars(m.pillars)}
+	if m.t.Grants != nil {
+		opts = append(opts, oauth2clientsgrpc.WithGrantsExtractor(m.t.Grants))
+	}
 
-	srv, err := oauth2clientsgrpc.NewServer(svc, store, client, extract, opts...)
+	srv, err := oauth2clientsgrpc.NewServer(svc, store, client, extract, append(opts, m.t.Options.OAuth2Clients...)...)
 	if err != nil {
 		m.fail(SurfaceOAuth2Clients, err)
 

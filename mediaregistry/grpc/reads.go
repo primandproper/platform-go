@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 
@@ -114,7 +115,7 @@ func (s *Server) ListMyObjects(
 
 	defer func() { done(err) }()
 
-	filter, err := s.readFilter(req, request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter())
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +165,7 @@ func (s *Server) ListObjectsBySubject(
 		return nil, s.fail(req, mediaregistry.ErrUnattachedSubject, codes.InvalidArgument, "reading the subject to list by")
 	}
 
-	filter, err := s.readFilter(req, request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter())
 	if err != nil {
 		return nil, err
 	}
@@ -217,15 +218,11 @@ func (s *Server) readable(
 
 // readFilter reads the page a request asked for, with include_archived
 // cleared. A filter no converter can read is the client's to fix.
-func (s *Server) readFilter(req *request, in *filteringpb.QueryFilter) (*filtering.QueryFilter, error) {
-	filter, err := filteringgrpc.FromProto(in)
-	if err != nil {
-		return nil, s.fail(req, err, codes.InvalidArgument, "reading the filter of an object page")
-	}
-
-	if filter != nil {
-		filter.IncludeArchived = nil
-	}
-
-	return filter, nil
+//
+// It names archivegate.NothingArchived and no grants, so the field is cleared
+// for every caller, an administrator included: no read on this surface pages
+// archived objects, for the reason the package gives. Through archivegate
+// rather than beside it, so it stays on the one door every paged read takes.
+func (s *Server) readFilter(ctx context.Context, req *request, in *filteringpb.QueryFilter) (*filtering.QueryFilter, error) {
+	return archivegate.Filter(ctx, req.op, in, nil, archivegate.NothingArchived, archivedClearedKey, "reading the filter of an object page")
 }

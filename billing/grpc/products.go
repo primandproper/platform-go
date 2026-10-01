@@ -111,15 +111,10 @@ func (s *Server) ListProducts(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveProducts, "reading the filter of a product page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a product page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveProducts)
 
 	page, err := s.store.ListProducts(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {

@@ -31,6 +31,11 @@ const serverName = "audit_grpc"
 const (
 	scopeKey   = "audit.scope"
 	entryIDKey = "audit.entry_id"
+
+	// archivedClearedKey records that a read asked for archived entries and did
+	// not receive them. An audit entry is never archived, so every such request
+	// is cleared; see filterFromProto.
+	archivedClearedKey = "audit.include_archived_cleared"
 )
 
 // The errors this package returns for its own failures, as opposed to the

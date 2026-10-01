@@ -34,16 +34,23 @@ const (
 )
 
 // WithGrantsExtractor supplies what the caller may do, which this surface reads
-// for one thing: whether a caller [TargetAuthorizer] refused holds an operator
-// permission that lets them through anyway. A nil extractor is ignored.
+// for two things: whether a caller [TargetAuthorizer] refused holds an operator
+// permission that lets them through anyway, and whether a paged read's
+// include_archived is honored or cleared. A nil extractor is ignored.
 //
 // It is the same authorization.GrantsExtractor a consumer already hands
 // primitives-go's authorization/grpc enforcer, so the interceptor that decided
-// the caller may make this call and the handler deciding which row they may
-// make it against read one authority and cannot disagree.
+// the caller may make this call and the handler deciding which rows they may
+// make it against read one authority and cannot disagree. It is not
+// [WithPermissionResolver]'s seam: that one answers what a principal may do in
+// an account GetPrincipal names, and this one what the request's own session
+// may do.
 //
-// Absent, nobody is an operator here: every refusal the row rule gives stands.
-// A caller's grants that could not be read are the same answer.
+// Absent, both answers are the safe one. Nobody is an operator here, so every
+// refusal the row rule gives stands, and include_archived is cleared on every
+// read, so a deployment that has not wired it serves live rows to everybody
+// rather than archived ones to anybody. A caller's grants that could not be
+// read are the same answer. See filterFromProto.
 func WithGrantsExtractor(grants authorization.GrantsExtractor) Option {
 	return func(s *Server) {
 		if grants != nil {

@@ -7,7 +7,9 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/filtering"
@@ -414,7 +416,7 @@ func (s *Server) ListUsers(
 
 	defer func() { done(err) }()
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), PermissionArchiveUsers)
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +445,7 @@ func (s *Server) SearchUsersByUsername(
 
 	defer func() { done(err) }()
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), PermissionArchiveUsers)
 	if err != nil {
 		return nil, err
 	}
@@ -460,20 +462,28 @@ func (s *Server) SearchUsersByUsername(
 	}, nil
 }
 
-// filterFromProto reads a query filter, in the one place every paged read does.
+// filterFromProto reads a query filter, in the one place every paged read does,
+// and narrows include_archived to a caller holding archiveGrant.
+//
+// The field is a request rather than an instruction. Each read names the grant
+// that archives what it pages: a user is archived under
+// [PermissionArchiveUsers], an account under [PermissionArchiveAccounts], and a
+// membership is ended under [PermissionManageMembers] — so whoever may take a
+// row out of the directory may see the rows taken out, and a caller holding the
+// read grant alone sees the live ones. An invitation is never archived, being
+// answered or cancelled by its status instead, so the invitation reads name
+// archivegate.NothingArchived and the field is cleared for everybody. The
+// narrowing, and why it is not a refusal, is internal/archivegate's.
 //
 // A malformed filter is codes.InvalidArgument rather than the Internal every
 // other failure here defaults to: it is the one thing on these requests a client
-// can get wrong on its own, and the filtering converters already distinguish it.
-// An absent filter is the default page rather than an error.
+// can get wrong on its own. An absent filter is the default page rather than an
+// error.
 func (s *Server) filterFromProto(
+	ctx context.Context,
 	op observability.Operation,
 	in *filteringpb.QueryFilter,
+	archiveGrant authorization.Permission,
 ) (*filtering.QueryFilter, error) {
-	filter, err := filteringgrpc.FromProto(in)
-	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "reading the query filter")
-	}
-
-	return filter, nil
+	return archivegate.Filter(ctx, op, in, s.grants, archiveGrant, archivedClearedKey, "reading the query filter")
 }

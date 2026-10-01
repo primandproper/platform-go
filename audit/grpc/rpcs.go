@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -99,7 +100,7 @@ func (s *Server) ListEntries(
 
 	defer func() { done(err) }()
 
-	filter, err := s.filterFromProto(req.op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, req.op, request.GetFilter())
 	if err != nil {
 		return nil, err
 	}
@@ -181,18 +182,15 @@ func (s *Server) VerifyChain(
 
 // filterFromProto reads a query filter, in the one place the paged read does.
 //
-// A malformed filter is codes.InvalidArgument rather than the Internal every
-// other failure here defaults to: it is the one thing on these requests a
-// client can get wrong on its own, and the filtering converters already
-// distinguish it. An absent filter is the default page rather than an error.
+// An audit entry is never archived — the log is append-only, and the store
+// reads no archived dimension — so the read names archivegate.NothingArchived
+// and include_archived is cleared for everybody. Naming it rather than skipping
+// the question keeps this read on internal/archivegate's one door, where a
+// later change that gave entries an archive would have to name its grant.
 func (s *Server) filterFromProto(
+	ctx context.Context,
 	op observability.Operation,
 	in *filteringpb.QueryFilter,
 ) (*filtering.QueryFilter, error) {
-	filter, err := filteringgrpc.FromProto(in)
-	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "reading the query filter")
-	}
-
-	return filter, nil
+	return archivegate.Filter(ctx, op, in, nil, archivegate.NothingArchived, archivedClearedKey, "reading the query filter")
 }

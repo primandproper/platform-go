@@ -220,10 +220,33 @@ const maxPages = 100
 func directoryAccounts(t *testing.T, operator *conformance.Subject) []*identitypb.Account {
 	t.Helper()
 
+	return walkAccounts(t, operator, nil)
+}
+
+// closedAccountsToo is directoryAccounts asked with include_archived set, which
+// is the walk a console makes to show the accounts somebody closed.
+func closedAccountsToo(t *testing.T, operator *conformance.Subject) []*identitypb.Account {
+	t.Helper()
+
+	include := true
+
+	return walkAccounts(t, operator, &include)
+}
+
+// walkAccounts is the walk behind both, sending includeArchived on every page.
+func walkAccounts(t *testing.T, operator *conformance.Subject, includeArchived *bool) []*identitypb.Account {
+	t.Helper()
+
 	var (
 		seen   []*identitypb.Account
 		filter *filteringpb.QueryFilter
 	)
+
+	// The first page names no filter at all unless there is something to ask,
+	// so the ordinary walk is the request a client that set nothing sends.
+	if includeArchived != nil {
+		filter = &filteringpb.QueryFilter{IncludeArchived: includeArchived}
+	}
 
 	for range maxPages {
 		page, err := operator.Surfaces.Identity.ListAccounts(operator.Context(t.Context()),
@@ -239,7 +262,7 @@ func directoryAccounts(t *testing.T, operator *conformance.Subject) []*identityp
 
 		// Cursor has explicit presence, so it is set only once there is one:
 		// an empty cursor is a cursor, not the absence of one.
-		filter = &filteringpb.QueryFilter{Cursor: &next}
+		filter = &filteringpb.QueryFilter{Cursor: &next, IncludeArchived: includeArchived}
 	}
 
 	t.Fatalf("conformance: the account directory was still paging after %d pages", maxPages)

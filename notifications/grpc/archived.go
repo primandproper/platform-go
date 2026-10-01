@@ -3,8 +3,11 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
+
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 )
 
 // Dismissed notifications are behind the grant that dismisses them, on both
@@ -27,21 +30,16 @@ import (
 //
 // The device registry pages no archived rows: a notifications.Device has no
 // ArchivedAt, being revoked by removal rather than retired in place, so
-// ListDevices has no archived dimension for this file to rule about and asks
-// nothing of it.
-//
+// ListDevices has no archived dimension to rule about. It names
+// archivegate.NothingArchived rather than skipping the question, so a registry
+// that starts retiring devices in place serves the live ones until somebody
+// names the grant.
 //
 // # It is a narrowing and not a refusal
 //
-// A read that failed because the caller asked for too much turns a console's
-// checkbox into an error, and a client cannot tell that refusal from a broken
-// filter. Clearing the field answers with the live rows, which is what the read
-// grant entitled the caller to ask for, and the page they receive is the page
-// they would have received had they never set it.
-//
-// The clearing is recorded on the read's span, because "my archived rows stopped
-// arriving" is otherwise a question an operator can only answer by reading this
-// file.
+// The field is cleared rather than the read refused, and the clearing is
+// recorded on the read's span. That half of the rule is every surface's, and
+// internal/archivegate is where it is written once.
 //
 // # What this does not reach
 //
@@ -50,41 +48,19 @@ import (
 // sets the flag in order to export a notification a subject received and later
 // dismissed. This is a ruling about the wire.
 
-// callerGrants reads the caller's authority, reporting whether it could be
-// determined at all.
+// readFilter reads the page a request asked for, confined to what the caller
+// may be shown: include_archived is honored for a caller holding archiveGrant,
+// the grant that archives the noun this read pages, and cleared for everybody
+// else.
 //
-// A server built with no [WithGrantsExtractor] answers false, which is the
-// fail-closed half of the default: a surface that cannot see what the caller may
-// do cannot tell somebody who may see the archived rows from somebody who may
-// not, and the expensive way to be wrong about that is to guess. A consumer who
-// wants the archived rows on the wire supplies the same
-// authorization.GrantsExtractor they already hand primitives-go's
-// authorization/grpc enforcer.
-func (s *Server) callerGrants(ctx context.Context) (authorization.Grants, bool) {
-	if s.grants == nil {
-		return authorization.DenyAll(), false
-	}
-
-	return s.grants(ctx)
-}
-
-// confineToLive drops a filter's IncludeArchived unless the caller holds
-// [PermissionArchiveInbox].
-//
-// It clears the field rather than writing false into it, so what reaches the
-// store is the filter of a caller who never asked — the same value every read
-// that omits the field already sends, and one this package cannot get out of
-// step with whatever the store's default for an absent field becomes.
-func (s *Server) confineToLive(ctx context.Context, req *request, filter *filtering.QueryFilter) {
-	if filter == nil || filter.IncludeArchived == nil || !*filter.IncludeArchived {
-		return
-	}
-
-	if grants, ok := s.callerGrants(ctx); ok && grants.Has(PermissionArchiveInbox) {
-		return
-	}
-
-	filter.IncludeArchived = nil
-
-	req.op.Set(archivedClearedKey, true)
+// The grant is an argument rather than a constant because this surface pages
+// several nouns and archives them under several grants; see the file comment.
+func (s *Server) readFilter(
+	ctx context.Context,
+	req *request,
+	in *filteringpb.QueryFilter,
+	archiveGrant authorization.Permission,
+	description string,
+) (*filtering.QueryFilter, error) {
+	return archivegate.Filter(ctx, req.op, in, s.grants, archiveGrant, archivedClearedKey, description)
 }

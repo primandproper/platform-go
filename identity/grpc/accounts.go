@@ -226,7 +226,7 @@ func (s *Server) ListAccounts(
 
 	defer func() { done(err) }()
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), PermissionArchiveAccounts)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func (s *Server) ListAccountsForUser(
 
 	op.Set(userIDKey, request.GetUserId())
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), PermissionArchiveAccounts)
 	if err != nil {
 		return nil, err
 	}

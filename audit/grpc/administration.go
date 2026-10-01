@@ -134,7 +134,7 @@ func (s *Server) ListAnyEntries(
 		return nil, err
 	}
 
-	filter, err := s.filterFromProto(req.op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, req.op, request.GetFilter())
 	if err != nil {
 		return nil, err
 	}

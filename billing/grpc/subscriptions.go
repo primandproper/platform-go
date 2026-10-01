@@ -83,15 +83,10 @@ func (s *Server) ListSubscriptions(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveSubscriptions, "reading the filter of a subscription page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a subscription page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
 
 	page, err := s.store.ListSubscriptions(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
@@ -126,16 +121,10 @@ func (s *Server) ListSubscriptionsForAccount(
 	// The filter is read before the authorizer is asked, so a malformed request
 	// is answered as malformed whoever sent it — saying so discloses nothing
 	// about any account. Everything past this point is gated.
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveSubscriptions, "reading the filter of a subscription page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument,
-			"reading the filter of a subscription page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
 
 	if err = s.requireAccount(req, accountID, "listing an account's subscriptions"); err != nil {
 		return nil, err
@@ -184,16 +173,10 @@ func (s *Server) ListCurrentSubscriptions(
 	accountID := request.GetAccountId()
 	req.op.Set(accountKey, accountID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), PermissionArchiveSubscriptions, "reading the filter of a current subscription page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument,
-			"reading the filter of a current subscription page")
-
 		return nil, err
 	}
-
-	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
 
 	if err = s.requireAccount(req, accountID, "listing an account's current subscriptions"); err != nil {
 		return nil, err

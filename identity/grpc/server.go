@@ -36,6 +36,11 @@ const (
 	userIDKey       = "identity.user_id"
 	accountIDKey    = "identity.account_id"
 	invitationIDKey = "identity.invitation_id"
+
+	// archivedClearedKey records that a read asked for archived rows and did
+	// not receive them, because the caller does not hold the grant that
+	// archives what the read pages.
+	archivedClearedKey = "identity.include_archived_cleared"
 )
 
 // The errors this package returns for its own failures, as opposed to the
@@ -160,9 +165,11 @@ type Server struct {
 	principals       callers.PrincipalExtractor
 	mintToken        TokenMinter
 
-	// The operator bypass: whose grants to read, which permissions let a
+	// What the caller may do: whose grants the operator bypass reads, and
+	// whose grants decide whether a paged read's include_archived is honored.
+	// The rest of the operator bypass follows — which permissions let a
 	// refused caller through, and where each admission is recorded. See
-	// operator.go.
+	// operator.go and filterFromProto.
 	grants authorization.GrantsExtractor
 
 	instruments *metrics.OperationSet

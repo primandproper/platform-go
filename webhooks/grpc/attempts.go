@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -43,12 +44,8 @@ func (s *Server) ListAttempts(
 	deliveryID := request.GetDeliveryId()
 	req.op.Set(deliveryKey, deliveryID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), archivegate.NothingArchived, "reading the filter of a webhook attempt page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument,
-			"reading the filter of a webhook attempt page")
-
 		return nil, err
 	}
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
@@ -22,6 +23,7 @@ import (
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
+	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
@@ -258,9 +260,9 @@ func (standing) AuthorizeWithdrawal(context.Context, callers.Principal, tenancy.
 }
 
 // administrative are the grants this harness reserves to an administrator, and
-// they are exactly the ones the seven grant-reading surfaces ask inside a
-// handler: every archive grant, which decides whether include_archived is
-// honored, and settings' reserved-write grant.
+// they are exactly the ones the grant-reading surfaces ask inside a handler:
+// every archive grant, which decides whether include_archived is honored, and
+// settings' reserved-write grant.
 //
 // The harness installs one piece of method enforcement, reserveStaffCalls,
 // and it reads the run's reservation rather than these grants — service mounts
@@ -278,8 +280,12 @@ var administrative = []authorization.Permission{
 	billinggrpc.PermissionArchivePurchases,
 	billinggrpc.PermissionArchiveTransactions,
 	commentsgrpc.PermissionArchiveComments,
+	identitygrpc.PermissionArchiveAccounts,
+	identitygrpc.PermissionArchiveUsers,
+	identitygrpc.PermissionManageMembers,
 	issuereportsgrpc.PermissionArchiveReports,
 	notificationsgrpc.PermissionArchiveInbox,
+	oauth2clientsgrpc.PermissionArchiveClients,
 	settingsgrpc.PermissionArchiveDefinitions,
 	settingsgrpc.PermissionWriteAdminValues,
 	waitlistsgrpc.PermissionArchiveLists,

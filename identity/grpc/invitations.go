@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v14/internal/archivegate"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
@@ -288,7 +289,7 @@ func (s *Server) ListInvitationsFromUser(
 
 	defer func() { done(err) }()
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), archivegate.NothingArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +336,7 @@ func (s *Server) ListInvitationsForEmailAddress(
 
 	defer func() { done(err) }()
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), archivegate.NothingArchived)
 	if err != nil {
 		return nil, err
 	}

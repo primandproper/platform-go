@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/callers"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -30,6 +31,10 @@ const (
 	scopeKey  = "oauth2clients.scope"
 	userIDKey = "oauth2clients.user_id"
 	clientKey = "oauth2clients.id"
+
+	// archivedClearedKey records that a page asked for withdrawn registrations
+	// and did not receive them.
+	archivedClearedKey = "oauth2clients.include_archived_cleared"
 )
 
 // The wiring failures this surface refuses to be built with.
@@ -79,6 +84,7 @@ type Server struct {
 	store      oauth2clients.Store
 	client     database.Client
 	principals callers.PrincipalExtractor
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

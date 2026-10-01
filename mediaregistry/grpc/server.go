@@ -40,6 +40,10 @@ const (
 	// refusedKey records why a request was answered as an absence. The client
 	// is told nothing; the operator reading the span is told which rule it was.
 	refusedKey = serverName + ".refused"
+
+	// archivedClearedKey records that a paged read's include_archived was
+	// cleared, which on this surface is every read that sent it.
+	archivedClearedKey = serverName + ".include_archived_cleared"
 )
 
 // The wiring failures this surface refuses to be built with, and the requests

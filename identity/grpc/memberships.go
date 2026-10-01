@@ -203,7 +203,7 @@ func (s *Server) ListAccountMembers(
 
 	op.Set(accountIDKey, request.GetAccountId())
 
-	filter, err := s.filterFromProto(op, request.GetFilter())
+	filter, err := s.filterFromProto(ctx, op, request.GetFilter(), PermissionManageMembers)
 	if err != nil {
 		return nil, err
 	}
