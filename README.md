@@ -379,9 +379,9 @@ read one entry, page them, verify a scope's hash chain. `Record` is not there
 and cannot be — an audit entry that can commit while the change it describes
 rolls back, or the reverse, is not a record of what happened, which is the
 sharpest instance of the rule that a write already inside your transaction is
-not an RPC. `Query.Scope` is not there either: in the Go type it is a `*string`
-in which nil means every tenant's events, so the scope binds off the connection
-and the schema *reserves* the field name, which makes the absence something
+not an RPC. `ListAcrossScopes` and `GetAcrossScopes` are not there either:
+they are the operator's reads of every tenant's events, so the scope binds off
+the connection and the schema *reserves* the field name, which makes the absence something
 `protoc` enforces rather than something a reviewer has to notice. What makes the
 crossing worth it is `Verify` — establishing that nobody edited, removed or
 reordered an entry is the capability a hand-written log reader never gets around
@@ -540,9 +540,23 @@ is not uniform and neither is the subset of a store that crosses:
 | `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the delivery machinery its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
-| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
+| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, `GetAcrossScopes` and `ListAcrossScopes` |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
-| `mediaregistry` | binding, not a resource surface | HTTP | every store method; what ships is the guarded serve |
+| `mediaregistry` | binding for the bytes, wire surface for the rows | HTTP and gRPC | `GetObjectByKey` — a key is not an address; `ListObjects` — an operator's read; `ArchiveObjectsForOwner` — erasure machinery |
+
+`mediaregistry`'s row was first ruled a binding alone — the guarded serve, with
+every store method kept off the wire on the premise that a listing is a
+resource surface over a consumer's noun. The premise did not hold: nothing in
+the registry is the consumer's noun. An object is bytes in a bucket and the row
+saying whose they are, and every rule a product has about them — which types,
+how large, where in the bucket, what gets metered — is a value rather than a
+shape. So `mediaregistry/grpc` ships beside the serve route, with each of those
+rules an option carrying a default: uploading as a client stream that is never
+buffered, registering bytes already in the bucket under the caller's own part
+of it, and reading back what is theirs, with every refusal answered as an
+absence. An upload may be attached to its sender or to nothing; an attachment
+to one of your nouns goes through your own RPC, which authorizes the subject
+and calls `mediaregistry.StoreAndRecord`.
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
@@ -587,26 +601,27 @@ to hold to it. What is left here is the second half of that sentence, and it is
 the whole list.
 
 <!-- readmegen:transports -->
-| Transport                           | Kind             | Whose shape it is                                                                                         |
-|-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------|
-| `billing/http`                      | binding          | a payment provider's callback, whose status code the provider acts on                                     |
-| `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                 |
-| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                       |
-| `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                       |
-| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`           |
-| `authentication/passkeys/grpc`      | resource surface | enrolling a passkey and signing in with one, into sign-in's token — over `passkeys.Service`               |
-| `authentication/passwordreset/grpc` | resource surface | ask for a reset link, check one, spend one — over `passwordreset.Service`                                 |
-| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                     |
-| `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                 |
-| `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                  |
-| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                           |
-| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                         |
-| `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                    |
-| `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`        |
-| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                          |
-| `settings/grpc`                     | resource surface | the catalog, the answers stored against it, and what a setting resolves to — over `settings.Store`        |
-| `waitlists/grpc`                    | resource surface | the catalog, the queue and the two audiences that reach them — over `waitlists.Store`                     |
-| `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store` |
+| Transport                           | Kind             | Whose shape it is                                                                                                     |
+|-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `billing/http`                      | binding          | a payment provider's callback, whose status code the provider acts on                                                 |
+| `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                             |
+| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                                   |
+| `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                                   |
+| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`                       |
+| `authentication/passkeys/grpc`      | resource surface | enrolling a passkey and signing in with one, into sign-in's token — over `passkeys.Service`                           |
+| `authentication/passwordreset/grpc` | resource surface | ask for a reset link, check one, spend one — over `passwordreset.Service`                                             |
+| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                                 |
+| `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                             |
+| `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                              |
+| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request, and download an export — over `dataprivacy.Service`               |
+| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                     |
+| `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                                |
+| `mediaregistry/grpc`                | resource surface | uploading, registering and reading back the caller's objects — over `mediaregistry.Store` and `uploads.UploadManager` |
+| `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`                    |
+| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                                      |
+| `settings/grpc`                     | resource surface | the catalog, the answers stored against it, and what a setting resolves to — over `settings.Store`                    |
+| `waitlists/grpc`                    | resource surface | the catalog, the queue and the two audiences that reach them — over `waitlists.Store`                                 |
+| `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store`             |
 <!-- /readmegen:transports -->
 
 The bindings are not surfaces. `sessions/http` binds a store to a
@@ -618,8 +633,8 @@ in it.
 documentation heads a section *"Why the row is the access control"* — whether
 this caller may read this object is answered from the owner and the scope on the
 row, not from the bucket — and then declines to act on it, because nothing in
-that package opens, reads or removes an object. A metadata surface would have
-shipped the store's flat methods and left you the guarded serve, which is the
+that package opens, reads or removes an object. The rows cross on
+`mediaregistry/grpc`; the bytes cross here, because the guarded serve is the
 half that gets written wrong: an unguessable key as the only protection a private
 document has, and a key is not a secret. What crosses instead is one route and
 the guard in front of it, and the decisions that come with it are security
@@ -645,8 +660,8 @@ there. `identity/grpc`, `authentication/signin/grpc`,
 `authentication/passwordreset/grpc`, `authentication/passkeys/grpc`,
 `authentication/oauth2clients/grpc`,
 `dataprivacy/http`, `audit/grpc`, `notifications/grpc`, `comments/grpc`,
-`webhooks/grpc`, `billing/grpc`, `issuereports/grpc`, `settings/grpc` and
-`waitlists/grpc` are the other kind — a domain's own transport, shipped under the
+`webhooks/grpc`, `billing/grpc`, `issuereports/grpc`, `mediaregistry/grpc`,
+`settings/grpc` and `waitlists/grpc` are the other kind — a domain's own transport, shipped under the
 rule above rather than as an exception to it, and every resource surface but
 `operations/http` has crossed this way. All of those are gRPC but one, for the
 reason given above: `dataprivacy`'s flow was on HTTP before there was a

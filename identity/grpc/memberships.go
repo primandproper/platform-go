@@ -66,7 +66,7 @@ func (s *Server) SetMembershipRoles(
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetUserId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, acting, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -101,7 +101,7 @@ func (s *Server) RemoveMembership(
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetUserId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, acting, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -133,7 +133,7 @@ func (s *Server) GetMembership(
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetUserId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, reading, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -171,7 +171,7 @@ func (s *Server) ListMembershipsForUser(
 
 	op.Set(userIDKey, request.GetUserId())
 
-	if err = s.authorizeUser(ctx, op, principal, request.GetUserId()); err != nil {
+	if err = s.authorizeUser(ctx, op, principal, reading, request.GetUserId()); err != nil {
 		return nil, err
 	}
 
@@ -208,7 +208,7 @@ func (s *Server) ListAccountMembers(
 		return nil, err
 	}
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, reading, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 

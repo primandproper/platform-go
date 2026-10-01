@@ -79,3 +79,6 @@ ALTER TABLE signin_refresh_tokens
 ALTER TABLE signin_refresh_tokens
     ADD COLUMN actor_id TEXT;
 
+ALTER TABLE signin_refresh_tokens
+    ADD COLUMN credential_kind TEXT;
+

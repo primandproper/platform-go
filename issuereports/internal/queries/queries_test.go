@@ -111,6 +111,8 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"ListReportsByReporter", "ListReportsByReporterDescending",
 		"ListReportsBySubjectType", "ListReportsBySubjectTypeDescending",
 		"ListReportsForSubject", "ListReportsForSubjectDescending",
+		"ListReportsAcrossScopes", "ListReportsAcrossScopesDescending",
+		"ListReportsByStatusAcrossScopes", "ListReportsByStatusAcrossScopesDescending",
 	}
 
 	slices.Sort(want)
@@ -130,10 +132,15 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 // TestRender_ScopesEveryStatement is the tenancy doctrine asserted over the text
 // rather than over the store.
 //
-// There is no exception in this corpus, and that is the assertion: every
-// statement names the scope, and the one that keys on nothing — the insert —
-// names it as a column it stores. A statement added without one would be a read
-// that answers across tenants, and nothing about its result would say so.
+// Every statement names the scope, and the one that keys on nothing — the insert
+// — names it as a column it stores. A statement added without one would be a
+// read that answers across tenants, and nothing about its result would say so.
+//
+// The exceptions are the operator's two, named in acrossScopes, and they are
+// named here too rather than detected: a third statement that omits the scope
+// fails this test until somebody adds it to that list and argues for it there.
+// They still project the scope, which is asserted, so a row read across tenants
+// says whose it is.
 func TestRender_ScopesEveryStatement(T *testing.T) {
 	T.Parallel()
 
@@ -142,6 +149,15 @@ func TestRender_ScopesEveryStatement(T *testing.T) {
 			t.Parallel()
 
 			for name, body := range statements(Render(d)) {
+				if readsAcrossScopes(name) {
+					test.StrContains(t, body, "issue_reports."+ScopeColumn+",",
+						test.Sprintf("%s does not project the scope", name))
+					test.StrNotContains(t, body, ScopeColumn+" =",
+						test.Sprintf("%s filters on the scope it exists to read across", name))
+
+					continue
+				}
+
 				test.StrContains(t, body, ScopeColumn,
 					test.Sprintf("%s does not name the scope", name))
 
@@ -152,6 +168,14 @@ func TestRender_ScopesEveryStatement(T *testing.T) {
 			}
 		})
 	}
+}
+
+// readsAcrossScopes reports whether a statement is one of the two operator reads,
+// in either direction.
+func readsAcrossScopes(name string) bool {
+	base := strings.TrimSuffix(name, "Descending")
+
+	return base == AcrossScopesListName || base == AcrossScopesByStatusListName
 }
 
 // TestRender_GuardsTheTransition pins the predicate the lifecycle rests on.

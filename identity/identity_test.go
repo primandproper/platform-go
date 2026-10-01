@@ -441,10 +441,12 @@ func TestMembership(T *testing.T) {
 		must.NoError(t, valid.ValidateWithContext(t.Context()))
 
 		// A membership with no roles is a user who belongs to an account and may
-		// do nothing in it.
+		// do nothing in it. The refusal is a sentinel errors.Is reaches rather
+		// than an entry in ozzo's field map, since a client caused it and a
+		// mapper has to find it to say so.
 		noRoles := *valid
 		noRoles.Roles = nil
-		must.Error(t, noRoles.ValidateWithContext(t.Context()))
+		must.ErrorIs(t, noRoles.ValidateWithContext(t.Context()), platformerrors.ErrEmptyInputParameter)
 
 		emptyRole := *valid
 		emptyRole.Roles = []string{""}
@@ -594,6 +596,16 @@ func TestAccount_Validate(T *testing.T) {
 		must.Error(t, ownerless.ValidateWithContext(t.Context()))
 	})
 
+	T.Run("requires a name", func(t *testing.T) {
+		t.Parallel()
+
+		// Through errors.Is rather than ozzo's field map, which has no Unwrap:
+		// a client that sent no name is told so, not that the server failed.
+		nameless := valid()
+		nameless.Name = ""
+		must.ErrorIs(t, nameless.ValidateWithContext(t.Context()), platformerrors.ErrEmptyInputParameter)
+	})
+
 	T.Run("requires a scope and a known status", func(t *testing.T) {
 		t.Parallel()
 
@@ -656,12 +668,11 @@ func TestAccount_TimeZone(T *testing.T) {
 
 		// The typo is the whole point: it looks right, and stored it would
 		// render every date on the account wrong without anything saying so.
+		// Reachable through errors.Is, not buried in ozzo's field map, since
+		// the refusal is only a client's to hear if a mapper can find it.
 		err := validate(t, "America/Chicagoo")
-
-		var fieldErrs validation.Errors
-		must.True(t, errors.As(err, &fieldErrs))
-		must.ErrorIs(t, fieldErrs["timeZone"], ErrInvalidTimeZone)
-		test.ErrorIs(t, fieldErrs["timeZone"], platformerrors.ErrUnrecognizedInputValue)
+		must.ErrorIs(t, err, ErrInvalidTimeZone)
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
 	})
 
 	T.Run("refuses Local", func(t *testing.T) {
@@ -670,11 +681,7 @@ func TestAccount_TimeZone(T *testing.T) {
 		// It loads, so only an explicit refusal catches it — and what it loads
 		// is the reader's TZ environment variable, which makes the same stored
 		// value mean different things on two replicas of one service.
-		err := validate(t, "Local")
-
-		var fieldErrs validation.Errors
-		must.True(t, errors.As(err, &fieldErrs))
-		must.ErrorIs(t, fieldErrs["timeZone"], ErrInvalidTimeZone)
+		must.ErrorIs(t, validate(t, "Local"), ErrInvalidTimeZone)
 	})
 
 	T.Run("resolves to UTC when unstated", func(t *testing.T) {

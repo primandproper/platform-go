@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/identity"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
@@ -53,3 +55,21 @@ func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Mill
 func (c *testClientConfig) GetMaxIdleConns() int              { return 2 }
 func (c *testClientConfig) GetMaxOpenConns() int              { return 4 }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
+
+// TestConformance_SQLiteUngatedHandles runs every suite against a deployment
+// whose surface lets UpdateProfile move a handle on a session alone.
+//
+// It is the positive control for the assertions that only such a deployment
+// reaches: against the default server the claim they start from is refused at
+// UpdateProfile, so without a subject that admits it, the read that must still
+// refuse an unverified address would be compiled and never executed.
+func TestConformance_SQLiteUngatedHandles(T *testing.T) {
+	T.Parallel()
+
+	db, err := sqlite.NewDatabaseClient(T.Context(),
+		&testClientConfig{connectionString: filepath.Join(T.TempDir(), "conformance.db")})
+	must.NoError(T, err)
+	T.Cleanup(func() { _ = db.Close() })
+
+	runDeployment(T, db, dialect.SQLite, func(store identity.Store) identity.Store { return store }, true)
+}

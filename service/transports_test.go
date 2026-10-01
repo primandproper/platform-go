@@ -21,6 +21,7 @@ import (
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
+	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	"github.com/primandproper/platform-go/v14/billing"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
@@ -29,6 +30,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsmock "github.com/primandproper/platform-go/v14/comments/mock"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -237,6 +239,7 @@ func TestRegisterTransports(T *testing.T) {
 			"billing gRPC",
 			"comments gRPC",
 			"issue reports gRPC",
+			"media uploads gRPC",
 			"notifications gRPC",
 			"settings gRPC",
 			"waitlists gRPC",
@@ -248,7 +251,7 @@ func TestRegisterTransports(T *testing.T) {
 
 		// One registration per mounted gRPC surface, and none for the HTTP
 		// ones, which are already on the router.
-		test.SliceLen(t, 8, mounted.registrations)
+		test.SliceLen(t, 9, mounted.registrations)
 	})
 
 	// The surfaces above are mounted off a store, which a mock satisfies. The five
@@ -348,6 +351,19 @@ func TestRegisterTransports(T *testing.T) {
 
 		test.SliceContainsAll(t, []string{"password reset gRPC", "sign-in gRPC"}, mounted.names)
 		test.SliceLen(t, 2, mounted.registrations)
+
+		// The operator half of sign-in mounts with it: one surface, two
+		// services, the second gated by permissions no role holds by default.
+		srv := grpc.NewServer()
+		t.Cleanup(srv.Stop)
+
+		for _, register := range mounted.registrations {
+			register(srv)
+		}
+
+		services := srv.GetServiceInfo()
+		test.MapContainsKey(t, services, signinpb.SignInService_ServiceDesc.ServiceName)
+		test.MapContainsKey(t, services, signinpb.SignInAdministrationService_ServiceDesc.ServiceName)
 	})
 
 	T.Run("the passkeys surface mounts from its config block beside sign-in's", func(t *testing.T) {
@@ -641,16 +657,25 @@ func TestRegisterTransports(T *testing.T) {
 	T.Run("a surface that reads the tenant with no TenantOf is a startup error", func(t *testing.T) {
 		t.Parallel()
 
-		for surface, provide := range map[string]func(do.Injector){
-			"audit": func(i do.Injector) {
+		provideMedia := func(i do.Injector) {
+			do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
+		}
+
+		// The media registry's two surfaces are built from the same store, so
+		// each is asserted with the other skipped: otherwise the gRPC lane's
+		// refusal is the only one either case could ever observe.
+		for surface, c := range map[string]struct {
+			provide func(do.Injector)
+			skip    []Surface
+		}{
+			"audit": {provide: func(i do.Injector) {
 				do.ProvideValue[audit.Reader](i, &auditmock.ReaderMock{})
-			},
-			"media registry": func(i do.Injector) {
-				do.ProvideValue[mediaregistry.Store](i, &mediaregistrymock.StoreMock{})
-			},
-			"operations": func(i do.Injector) {
+			}},
+			"media registry": {provide: provideMedia, skip: []Surface{SurfaceMediaUploads}},
+			"media uploads":  {provide: provideMedia, skip: []Surface{SurfaceMediaRegistry}},
+			"operations": {provide: func(i do.Injector) {
 				do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
-			},
+			}},
 		} {
 			t.Run(surface, func(t *testing.T) {
 				t.Parallel()
@@ -660,9 +685,9 @@ func TestRegisterTransports(T *testing.T) {
 				do.ProvideValue[database.Client](i, &databasemock.ClientMock{})
 				do.ProvideValue(i, newRouter())
 				do.ProvideValue[uploads.UploadManager](i, &uploadsmock.UploadManagerMock{})
-				provide(i)
+				c.provide(i)
 
-				RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()})
+				RegisterTransports(i, &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers(), Skip: c.skip})
 
 				_, err := do.Invoke[*mountedTransports](i)
 				must.ErrorIs(t, err, ErrNilTenantOf)
@@ -1061,8 +1086,8 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		var asked *tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				asked = query.Scope
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = &scope
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},
@@ -1085,7 +1110,7 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		t.Parallel()
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			ListFunc: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, *audit.Query, *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 				t.Error("the reader must not be consulted for a request with nobody on it")
 
 				return nil, nil
@@ -1112,8 +1137,8 @@ func TestRegisterTransports_tenantOfReachesTheMountedSurface(T *testing.T) {
 		var asked *tenancy.Scope
 
 		reader := &auditmock.ReaderMock{
-			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				asked = query.Scope
+			ListFunc: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ *audit.Query, _ *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				asked = &scope
 
 				return &filtering.QueryFilteredResult[audit.Entry]{Data: []*audit.Entry{}}, nil
 			},
@@ -1165,9 +1190,22 @@ func auditServiceOverBufconn(
 
 	RegisterTransports(i, transports)
 
+	return auditpb.NewAuditServiceClient(serveMounted(t, i, "audit gRPC", caller))
+}
+
+// serveMounted serves what RegisterTransports mounted on an in-process
+// connection, having checked that surface is among it, and returns the
+// connection.
+//
+// A non-nil caller is put on every request's server-side context by an
+// interceptor, standing in for the authentication interceptor a deployment
+// installs; nil leaves the requests with nobody on them.
+func serveMounted(t *testing.T, i do.Injector, surface string, caller callers.Principal) *grpc.ClientConn {
+	t.Helper()
+
 	mounted, err := do.Invoke[*mountedTransports](i)
 	must.NoError(t, err)
-	must.SliceContains(t, mounted.names, "audit gRPC")
+	must.SliceContains(t, mounted.names, surface)
 
 	var opts []grpc.ServerOption
 	if caller != nil {
@@ -1199,7 +1237,80 @@ func auditServiceOverBufconn(
 		_ = listener.Close()
 	})
 
-	return auditpb.NewAuditServiceClient(conn)
+	return conn
+}
+
+// TestRegisterTransports_dataPrivacyArtifactRoute pins that the privacy surface
+// serves its artifact route whatever artifact storage was or was not
+// registered: the route is part of dataprivacy/http's Mount, because a subject
+// who cannot collect their export has not been given it.
+func TestRegisterTransports_dataPrivacyArtifactRoute(T *testing.T) {
+	T.Parallel()
+
+	caller := testPrincipal{userID: "user_1", scope: tenancy.Global(), account: "acct_1"}
+
+	serve := func(t *testing.T, storage *dataprivacycfg.ArtifactStorage) nethttp.Handler {
+		t.Helper()
+
+		i := newTransportInjector(t)
+
+		router := newRouter()
+		do.ProvideValue(i, router)
+
+		if storage != nil {
+			do.ProvideValue(i, storage)
+		}
+
+		export := &dataprivacy.Request{
+			ID:          "r1",
+			Type:        dataprivacy.RequestExport,
+			Subject:     dataprivacy.Subject{ID: caller.userID, Type: dataprivacy.SubjectUser},
+			Status:      dataprivacy.StatusCompleted,
+			ArtifactRef: "privacy-exports/r1.json",
+		}
+
+		do.ProvideValue[dataprivacy.Service](i, &dataprivacymock.ServiceMock{
+			GetFunc: func(context.Context, *tenancy.Scope, string) (*dataprivacy.Request, error) {
+				return export, nil
+			},
+			DownloadFunc: func(context.Context, *tenancy.Scope, string) (string, error) {
+				return "https://storage.example/signed", nil
+			},
+		})
+
+		_, err := mountTransports(i, &Transports{Extractor: withPrincipal, TenantOf: DirectoryTenant, Authorizers: allAuthorizers()})
+		must.NoError(t, err)
+
+		return nethttp.HandlerFunc(func(res nethttp.ResponseWriter, req *nethttp.Request) {
+			router.Handler().ServeHTTP(res, req.WithContext(context.WithValue(req.Context(), principalKey{}, callers.Principal(caller))))
+		})
+	}
+
+	download := func(t *testing.T, handler nethttp.Handler) int {
+		t.Helper()
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet,
+			dataprivacyhttp.BasePath+"/r1"+dataprivacyhttp.ArtifactSuffix, nethttp.NoBody))
+
+		return res.Code
+	}
+
+	T.Run("mounted with artifact storage of its own", func(t *testing.T) {
+		t.Parallel()
+
+		handler := serve(t, &dataprivacycfg.ArtifactStorage{Manager: &uploadsmock.UploadManagerMock{}})
+
+		test.EqOp(t, nethttp.StatusSeeOther, download(t, handler))
+	})
+
+	T.Run("mounted with none registered", func(t *testing.T) {
+		t.Parallel()
+
+		handler := serve(t, nil)
+
+		test.EqOp(t, nethttp.StatusSeeOther, download(t, handler))
+	})
 }
 
 // TestRegisterTransports_httpEnforcerReachesEveryHTTPSurface is the assertion

@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -67,6 +68,12 @@ var (
 	// not the policy: an option with nothing behind it refuses a server that
 	// named none exactly as a nil argument did.
 	ErrNilScopeResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil scope resolver for the audit server")
+
+	// ErrOperatorReadsUnrecorded indicates a call to AuditAdministrationService
+	// on a server built without [WithOperatorRecorder]. It is answered as
+	// codes.Unimplemented: an operator's read that could not be recorded is not
+	// one this server makes, so it does not serve those methods at all.
+	ErrOperatorReadsUnrecorded = platformerrors.New("this audit server records no operator reads, so it serves none")
 )
 
 // Server is AuditService over an audit.Reader.
@@ -75,10 +82,16 @@ var (
 //
 // Three RPCs, each one call into the reader with a conversion on either side:
 // one entry by id, a page of them, and a verification of the caller's chain.
-// There is no orchestration here and nothing to orchestrate: it opens no
-// transaction, and the database.Client it holds is read for Reader() and
-// nothing else — every RPC here is a read, and a read that joined a caller's
-// work would be joining work no caller of this surface has.
+// There is no orchestration here and nothing to orchestrate: the
+// database.Client it holds is read for Reader() — every RPC here is a read, and
+// a read that joined a caller's work would be joining work no caller of this
+// surface has.
+//
+// It also serves AuditAdministrationService, the operator's read of every
+// tenant's log, as a service of its own so that AuditService's answer never
+// depends on who is asking. That is the one place it opens a transaction: each
+// operator's read is recorded, in the operator's own chain, before it is
+// answered — see [WithOperatorRecorder].
 //
 // # What it is not
 //
@@ -91,9 +104,9 @@ var (
 // transport lane's rule is derived from.
 //
 // The scope is never the client's to choose. [ScopeResolver] answers it off the
-// connection and this package binds it into every call — as audit.Query.Scope
-// on a list, as the *tenancy.Scope audit.Reader.Get takes, and as the chain a
-// verification walks — and the schema reserves the field name in every request
+// connection and this package binds it into every call — as the scope
+// audit.Reader.List and audit.Reader.Get take, and as the chain a verification
+// walks — and the schema reserves the field name in every request
 // message, so a client has nothing to send it in. Nothing here compares a scope
 // back after an unconfined read: an entry in somebody else's log is not read at
 // all, and the reader answers that with the same audit.ErrEntryNotFound an id
@@ -118,11 +131,18 @@ var (
 // opt out of.
 type Server struct {
 	auditpb.UnimplementedAuditServiceServer
+	auditpb.UnimplementedAuditAdministrationServiceServer
 
 	reader audit.Reader
 	client database.Client
 	scopes ScopeResolver
 	chains ChainsResolver
+
+	// The operator's read: where each one is recorded, and who is recorded as
+	// making it. Both nil is AuditAdministrationService unserved. See
+	// administration.go.
+	operatorRecorder audit.Recorder
+	principals       callers.PrincipalExtractor
 
 	o11y observability.Observer
 
@@ -145,9 +165,10 @@ var _ auditpb.AuditServiceServer = (*Server)(nil)
 // It takes a database.Client beside it, which is the shape every other surface
 // in the lane has. An audit read runs on the executor its caller supplies, and
 // this surface's caller is a connection with no transaction of its own to join,
-// so the client is read for Reader() and for nothing else: there is no Writer()
-// here, because the recorder is deliberately not on this surface, and no
-// WithTransaction, because reads have nothing to make atomic.
+// so the client is read for Reader(): there is no Writer() here, because the
+// recorder is deliberately not on this surface as an RPC. The one
+// WithTransaction is recording an operator's read, which is the server's own
+// write rather than a client's — see [WithOperatorRecorder].
 //
 // The two are positional and the scope resolver is a required option:
 // [WithScopeResolver] has no default behind it, so a server built without it is
@@ -195,8 +216,14 @@ func NewServer(reader audit.Reader, client database.Client, opts ...Option) (*Se
 // takes:
 //
 //	[]grpcserver.RegistrationFunc{identitySrv.RegisterOn, auditSrv.RegisterOn}
+//
+// It registers AuditAdministrationService beside it, always: the methods are on
+// the wire whether or not this server was armed to serve them, and one built
+// without [WithOperatorRecorder] answers them codes.Unimplemented rather than
+// leaving a client to tell an absent service from a refused call.
 func (s *Server) RegisterOn(srv *grpc.Server) {
 	auditpb.RegisterAuditServiceServer(srv, s)
+	auditpb.RegisterAuditAdministrationServiceServer(srv, s)
 }
 
 // request is what every RPC here resolves before it does anything: the
@@ -250,9 +277,8 @@ func (s *Server) begin(ctx context.Context, method string) (
 	// Validated here rather than left to the reader, so that a resolver which
 	// answered the zero Scope without an error is one refusal with one message
 	// for every RPC. Each of them would refuse it on its own — the reader
-	// validates the scope it is handed, and the *tenancy.Scope a get takes
-	// reads a non-nil pointer at the zero Scope as a lookup that came back
-	// empty rather than as "every tenant" — but "the connection could not be
+	// validates the scope it is handed, and reads the zero Scope as a lookup
+	// that came back empty rather than as "every tenant" — but "the connection could not be
 	// placed" is a fact about the request, and it is answered before the
 	// request is answered at all.
 	if err = scope.Validate(); err != nil {

@@ -45,12 +45,20 @@ type Querier interface {
 	GetReport(ctx context.Context, db DBTX, arg GetReportParams) (GetReportRow, error)
 	// ListReports runs the :many query.
 	ListReports(ctx context.Context, db DBTX, arg ListReportsParams) ([]ListReportsRow, error)
+	// ListReportsAcrossScopes runs the :many query.
+	ListReportsAcrossScopes(ctx context.Context, db DBTX, arg ListReportsAcrossScopesParams) ([]ListReportsAcrossScopesRow, error)
+	// ListReportsAcrossScopesDescending runs the :many query.
+	ListReportsAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsAcrossScopesDescendingParams) ([]ListReportsAcrossScopesDescendingRow, error)
 	// ListReportsByReporter runs the :many query.
 	ListReportsByReporter(ctx context.Context, db DBTX, arg ListReportsByReporterParams) ([]ListReportsByReporterRow, error)
 	// ListReportsByReporterDescending runs the :many query.
 	ListReportsByReporterDescending(ctx context.Context, db DBTX, arg ListReportsByReporterDescendingParams) ([]ListReportsByReporterDescendingRow, error)
 	// ListReportsByStatus runs the :many query.
 	ListReportsByStatus(ctx context.Context, db DBTX, arg ListReportsByStatusParams) ([]ListReportsByStatusRow, error)
+	// ListReportsByStatusAcrossScopes runs the :many query.
+	ListReportsByStatusAcrossScopes(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesParams) ([]ListReportsByStatusAcrossScopesRow, error)
+	// ListReportsByStatusAcrossScopesDescending runs the :many query.
+	ListReportsByStatusAcrossScopesDescending(ctx context.Context, db DBTX, arg ListReportsByStatusAcrossScopesDescendingParams) ([]ListReportsByStatusAcrossScopesDescendingRow, error)
 	// ListReportsByStatusDescending runs the :many query.
 	ListReportsByStatusDescending(ctx context.Context, db DBTX, arg ListReportsByStatusDescendingParams) ([]ListReportsByStatusDescendingRow, error)
 	// ListReportsBySubjectType runs the :many query.

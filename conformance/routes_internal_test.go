@@ -23,7 +23,7 @@ func TestHTTPRoster(t *testing.T) {
 
 	for _, route := range []string{
 		dataprivacyhttp.RouteSubmit, dataprivacyhttp.RouteList, dataprivacyhttp.RouteGet,
-		dataprivacyhttp.RouteConfirm, dataprivacyhttp.RouteCancel,
+		dataprivacyhttp.RouteConfirm, dataprivacyhttp.RouteCancel, dataprivacyhttp.RouteArtifact,
 		mediaregistryhttp.RouteServe,
 		operationshttp.RouteList, operationshttp.RouteGet, operationshttp.RouteCancel, operationshttp.RouteEvents,
 	} {
@@ -51,7 +51,10 @@ func TestRouteProblem(t *testing.T) {
 		test.EqOp(t, "", routeProblem(reservable), test.Sprintf("%q", reservable))
 	}
 
-	for _, own := range []string{dataprivacyhttp.RouteConfirm, operationshttp.RouteGet, operationshttp.RouteEvents} {
+	for _, own := range []string{
+		dataprivacyhttp.RouteConfirm, dataprivacyhttp.RouteArtifact,
+		operationshttp.RouteGet, operationshttp.RouteEvents,
+	} {
 		test.StrContains(t, routeProblem(own), "own standing", test.Sprintf("%q", own))
 	}
 

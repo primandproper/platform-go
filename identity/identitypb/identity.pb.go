@@ -1465,11 +1465,17 @@ func (x *AccountCreationInput) GetBillingAddress() *BillingAddress {
 // that read absent as "make it empty" would have wiped every field a client
 // did not think to repeat.
 type ProfileUpdateInput struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	Username     *string                `protobuf:"bytes,1,opt,name=username,proto3,oneof" json:"username,omitempty"`
-	EmailAddress *string                `protobuf:"bytes,2,opt,name=email_address,json=emailAddress,proto3,oneof" json:"email_address,omitempty"`
-	FirstName    *string                `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3,oneof" json:"first_name,omitempty"`
-	LastName     *string                `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3,oneof" json:"last_name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// username and email_address are refused by this module's server with
+	// INVALID_ARGUMENT unless it was built WithoutReauthenticatedHandles. Both are
+	// credentials in all but name -- the address is where a password reset is
+	// mailed -- and a session is not proof enough to move either, so they change
+	// through SignInService's UpdateUsername and UpdateEmailAddress, which ask
+	// for the password or a recent sign-in first.
+	Username     *string `protobuf:"bytes,1,opt,name=username,proto3,oneof" json:"username,omitempty"`
+	EmailAddress *string `protobuf:"bytes,2,opt,name=email_address,json=emailAddress,proto3,oneof" json:"email_address,omitempty"`
+	FirstName    *string `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3,oneof" json:"first_name,omitempty"`
+	LastName     *string `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3,oneof" json:"last_name,omitempty"`
 	// display_name is the name the person is shown under, and it moves on its
 	// own: it is not a spelling of username, so a request carrying one and not
 	// the other changes exactly the one it named. Sent empty it clears, and a

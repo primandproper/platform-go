@@ -10,6 +10,8 @@ import (
 	"time"
 
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -224,8 +226,27 @@ func TestRegister(T *testing.T) {
 			do.NameOf[operations.Service](),
 			do.NameOf[*operations.Worker](),
 			do.NameOf[*operations.Watcher](),
+			operationscfg.JobsKey,
 		} {
 			test.MapContainsKey(t, names, svc)
+		}
+	})
+
+	T.Run("every store that owns a reaper registers its jobs", func(t *testing.T) {
+		t.Parallel()
+
+		// Registered by the same walk that registers the store, so that the
+		// reaper is scheduled because the store was configured, and not because
+		// somebody remembered it was there.
+		for key, cfg := range map[string]*Config{
+			operationscfg.JobsKey:        {Operations: &operationscfg.Config{}},
+			sagacfg.JobsKey:              {Saga: &sagacfg.Config{}},
+			passwordresetcfg.JobsKey:     {PasswordReset: &passwordresetcfg.Config{}},
+			oauth2serverstorecfg.JobsKey: {OAuth2Server: &oauth2serverstorecfg.Config{}},
+			signincfg.JobsKey:            {SignIn: &signincfg.Config{}},
+		} {
+			cfg.Name = "example"
+			test.MapContainsKey(t, provided(newInjector(t, cfg)), key)
 		}
 	})
 

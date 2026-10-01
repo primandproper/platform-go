@@ -74,17 +74,22 @@ Neither needs a second method.
 
 # Tenancy
 
-Every read and write takes a tenancy.Scope, and there is no variant of anything
-that omits one. A deployment with a single tenant passes tenancy.Global()
-everywhere and behaves exactly as it would have without the column.
+Every write and every tenant's read takes a tenancy.Scope. A deployment with a
+single tenant passes tenancy.Global() everywhere and behaves exactly as it would
+have without the column.
 
 That includes the two writes that take a whole [Report]: the scope is the
 argument's, not the value's. A Report whose Scope names a different tenant is
 [ErrScopeMismatch] and one that names none adopts the argument — see [Store] for
 why the entity's field is not what the statement binds.
 
-There is deliberately no cross-scope listing — see [Store] for what that costs
-and why the alternative is worse.
+The exception is the operator's, and it is two reads spelled apart:
+[Store.ListReportsAcrossScopes] and [Store.ListReportsByStatusAcrossScopes] page
+every tenant's reports, because triage across tenants is what an operator
+console is for. They are separately named methods rather than a scoped read that
+widens when its scope is absent, and issuereports/grpc serves them behind a
+permission of their own that nothing in this module grants. See [Store] for the
+ruling, and why a caller-supplied list of scopes was not the answer.
 
 # The transport
 

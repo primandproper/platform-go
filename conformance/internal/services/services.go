@@ -20,6 +20,7 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -56,6 +57,8 @@ func All() []Service {
 	return []Service{
 		{Name: "audit", Service: "AuditService", Sample: &auditpb.GetEntryRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Audit != nil }},
+		{Name: "auditadministration", Service: "AuditAdministrationService", Sample: &auditpb.GetAnyEntryRequest{},
+			Mounted: func(s conformance.Surfaces) bool { return s.AuditAdministration != nil }},
 		{Name: "billing", Service: "BillingService", Sample: &billingpb.GetSubscriptionRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Billing != nil }},
 		{Name: "comments", Service: "CommentsService", Sample: &commentspb.GetCommentRequest{},
@@ -64,6 +67,8 @@ func All() []Service {
 			Mounted: func(s conformance.Surfaces) bool { return s.Identity != nil }},
 		{Name: "issuereports", Service: "IssueReportsService", Sample: &issuereportspb.GetReportRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.IssueReports != nil }},
+		{Name: "mediaregistry", Service: "MediaRegistryService", Sample: &mediaregistrypb.GetObjectRequest{},
+			Mounted: func(s conformance.Surfaces) bool { return s.MediaRegistry != nil }},
 		{Name: "notifications", Service: "NotificationsService", Sample: &notificationspb.GetNotificationRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Notifications != nil }},
 		{Name: "oauth2clients", Service: "OAuth2ClientsService", Sample: &oauth2clientspb.GetOAuth2ClientRequest{},
@@ -76,6 +81,8 @@ func All() []Service {
 			Mounted: func(s conformance.Surfaces) bool { return s.Settings != nil }},
 		{Name: "signin", Service: "SignInService", Sample: &signinpb.LoginForTokenRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.SignIn != nil }},
+		{Name: "signinadministration", Service: "SignInAdministrationService", Sample: &signinpb.ListSignInsForUserRequest{},
+			Mounted: func(s conformance.Surfaces) bool { return s.SignInAdministration != nil }},
 		{Name: "waitlists", Service: "WaitlistsService", Sample: &waitlistspb.GetListRequest{},
 			Mounted: func(s conformance.Surfaces) bool { return s.Waitlists != nil }},
 		{Name: "webhooks", Service: "WebhooksService", Sample: &webhookspb.GetEndpointRequest{},

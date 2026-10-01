@@ -42,7 +42,8 @@ type envelope[T any] struct {
 // receipt is the part of a submission's answer, and of a read, the assertions
 // read.
 type receipt struct {
-	Request request `json:"request"`
+	Request  request `json:"request"`
+	Artifact string  `json:"artifact"`
 }
 
 // request is a privacy request as its subject is shown it.

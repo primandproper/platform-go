@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -156,19 +157,34 @@ type Server struct {
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
-	svc             *identity.Service
-	principals      callers.PrincipalExtractor
-	mintToken       TokenMinter
 	targets         TargetAuthorizer
 	permissions     PermissionResolver
-	grants          authorization.GrantsExtractor
+
+	operatorRecorder audit.Recorder
+	svc              *identity.Service
+	principals       callers.PrincipalExtractor
+	mintToken        TokenMinter
+
+	// What the caller may do: whose grants the operator bypass reads, and
+	// whose grants decide whether a paged read's include_archived is honored.
+	// The rest of the operator bypass follows — which permissions let a
+	// refused caller through, and where each admission is recorded. See
+	// operator.go and filterFromProto.
+	grants authorization.GrantsExtractor
 
 	instruments *metrics.OperationSet
+
+	operatorRead authorization.Permission
+	operatorAct  authorization.Permission
 
 	invitationTTL    time.Duration
 	maxInvitationTTL time.Duration
 
 	returnInvitationToken bool
+
+	// handlesUngated is WithoutReauthenticatedHandles, and false is what
+	// "UpdateProfile refuses a username or an email address" means.
+	handlesUngated bool
 }
 
 var _ identitypb.IdentityServiceServer = (*Server)(nil)
@@ -225,6 +241,8 @@ func NewServer(
 		mintToken:        defaultTokenMinter,
 		invitationTTL:    DefaultInvitationTTL,
 		maxInvitationTTL: DefaultMaxInvitationTTL,
+		operatorRead:     PermissionOperatorRead,
+		operatorAct:      PermissionOperatorAct,
 	}
 
 	for _, opt := range opts {

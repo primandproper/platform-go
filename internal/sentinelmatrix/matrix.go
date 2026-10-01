@@ -389,6 +389,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrDisplayNameTooLong": {Err: identity.ErrDisplayNameTooLong, Is: Mapped},
 		"ErrUsernameWhitespace": {Err: identity.ErrUsernameWhitespace, Is: Mapped},
 
+		// A profile save naming a handle, on a server that changes handles only
+		// behind re-authentication. A bad request — the same save without
+		// those fields succeeds — and client-safe, since its words are the
+		// remedy: the sign-in service's door that takes them.
+		"ErrHandleChangeRequiresReauthentication": {Err: identity.ErrHandleChangeRequiresReauthentication, Is: Mapped},
+
 		// The one refusal on authority. GetPrincipal will not answer for a user
 		// whose account status does not admit sign-in, and a 403 rather than a 404
 		// is what tells a signed-in client they were suspended.
@@ -604,6 +610,11 @@ var Matrix = map[string]map[string]Decision{
 		// credential rather than of the request, read the way the rows above
 		// are, and refused rather than widened into ending every login.
 		"ErrSignInNotIdentified": {Err: signin.ErrSignInNotIdentified, Is: Mapped},
+		// A handle change that proved nothing beyond being signed in. It sits
+		// with the second-factor prompt rather than the states above —
+		// Unauthenticated and a 401 — because the remedy is the same kind of
+		// thing: prove it again, by password or by a fresh sign-in.
+		"ErrReauthenticationRequired": {Err: signin.ErrReauthenticationRequired, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Some are wiring failures and the rest
@@ -622,6 +633,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilRegistration":       {Err: signin.ErrNilRegistration, Is: Platform},
 		"ErrNilSecretRefresh":      {Err: signin.ErrNilSecretRefresh, Is: Platform},
 		"ErrNilTokenIssuer":        {Err: signin.ErrNilTokenIssuer, Is: Platform},
+
+		// The handle doors' incomplete requests, read as the rows above are.
+		"ErrEmptyNewEmailAddress":  {Err: signin.ErrEmptyNewEmailAddress, Is: Platform},
+		"ErrEmptyNewUsername":      {Err: signin.ErrEmptyNewUsername, Is: Platform},
+		"ErrNilEmailAddressUpdate": {Err: signin.ErrNilEmailAddressUpdate, Is: Platform},
+		"ErrNilUsernameUpdate":     {Err: signin.ErrNilUsernameUpdate, Is: Platform},
 
 		// Wraps errors.ErrUnrecognizedInputValue, which the platform mappers
 		// already answer as a bad request.
@@ -697,6 +714,10 @@ var Matrix = map[string]map[string]Decision{
 		"ErrRegistrationNotConfigured":       {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
 		"ErrVerificationsNotConfigured":      {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
 		"ErrVerificationMailerNotConfigured": {Err: signin.ErrVerificationMailerNotConfigured, Is: Unhandled},
+
+		// A handle door on a service given no profile write to make. Wiring,
+		// and nothing a caller sent.
+		"ErrProfileUpdaterNotConfigured": {Err: signin.ErrProfileUpdaterNotConfigured, Is: Unhandled},
 
 		// A passwordless door on a service that was given no link store — or, for
 		// the request half, no mailer. It is wiring rather than anything a caller
@@ -1159,9 +1180,10 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	mediaRegistryPkg: {
-		// The ones a consumer's own upload handler can be told, which is the
-		// endpoint these are for — mediaregistry/http is the guarded serve and
-		// answers its own 404 before any encoding happens. The two key
+		// The ones mediaregistry/grpc and a consumer's own upload handler can
+		// be told, which are the endpoints these are for — mediaregistry/http
+		// is the guarded serve and answers its own 404 before any encoding
+		// happens. The two key
 		// collisions are both here and both AlreadyExists: one is a row in the
 		// scope, the other is bytes in the bucket, and a caller told only the
 		// first would be told nothing at all about the overwrite the second

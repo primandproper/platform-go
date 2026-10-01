@@ -74,6 +74,13 @@ func (s *Server) Register(
 // which is on the credential writer rather than AdminWriter because it is not a
 // privilege escalation to hold. A "update any user" RPC would be one more,
 // hiding inside the one every signed-in person calls.
+//
+// The username and the email address are not among those fields unless the
+// server was built [WithoutReauthenticatedHandles]: a save naming either is
+// refused whole, with identity.ErrHandleChangeRequiresReauthentication, before
+// anything is written. Both are credentials in all but name, and a session is
+// not proof enough to move one — authentication/signin's UpdateUsername and
+// UpdateEmailAddress are where they change.
 func (s *Server) UpdateProfile(
 	ctx context.Context,
 	request *identitypb.UpdateProfileRequest,
@@ -88,6 +95,16 @@ func (s *Server) UpdateProfile(
 	update := profileUpdateFromProto(request.GetInput())
 	if update == nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilProfileUpdate, op.Logger(), op.Span(), codes.InvalidArgument, "updating a profile")
+
+		return nil, err
+	}
+
+	// Refused whole rather than with the handles dropped: a client whose save
+	// silently kept the old address would show the person a change that did
+	// not happen.
+	if !s.handlesUngated && (update.Username != nil || update.EmailAddress != nil) {
+		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrHandleChangeRequiresReauthentication, op.Logger(), op.Span(),
+			codes.InvalidArgument, "updating a profile")
 
 		return nil, err
 	}

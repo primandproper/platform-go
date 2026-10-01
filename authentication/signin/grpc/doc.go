@@ -8,6 +8,20 @@ passwordless pair, the exchange that keeps a login alive, the two ways out and
 the listing of logins between them with its one way to end one, two reads and
 three credential writes. Each method converts, calls one thing, and
 converts back.
+
+That is SignInService, and nothing on it is permissioned. [Server] serves a
+second service beside it, SignInAdministrationService, which is what an
+operator does to somebody else's logins — list them, end one, end all of them
+— and every method on that one requires a permission [Permissions] declares.
+No role holds any of them by default: who is an operator is the deployment's
+policy, and this package names the grants that policy hands out rather than
+deciding who holds them. An operator's end is reported to
+signin.Hooks.AfterRevokeSignIns as signin.RevocationOperator, with the caller
+as the actor, so an audit trail tells it apart from the person's own
+sign-out. Its directory is the operator's own, off the principal rather than
+the [ScopeResolver] below: the user it acts on is named by the request, so a
+connection resolving to some other directory must not make that directory's
+users the operator's to act on.
 There is no orchestration here — anything that had to happen in a transaction
 happened one layer down, where the transaction is.
 
@@ -80,6 +94,18 @@ deliberately does not make it: a mapper that installs itself by a component
 being constructed is a process-wide side effect a consumer cannot opt out of.
 Without it every refusal below arrives as codes.Unknown, which for a sign-in
 means a client cannot tell "wrong password" from "the database is down".
+
+# Where you're signed in
+
+ListSignIns and ListSignInsForUser answer each login with what signin knows
+about it — when it began and last refreshed, the account, the operator behind an
+impersonation, and the credential kind that began it — and with the attributes
+a [SignInAnnotator] answers for it. The division is the one signin's package
+documentation draws: the platform lists the logins and records how each one
+happened, and the consumer annotates the device. [WithSignInAnnotator] is the
+seam, asked once per listing for every family in it; a server built without one
+lists every login with no attributes, and one whose annotator fails answers the
+RPC with that error rather than with half the screen.
 
 # What a consumer still owes
 

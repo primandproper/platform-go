@@ -42,7 +42,7 @@ func (s *Server) UpdateAccount(
 		return nil, err
 	}
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, acting, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -125,11 +125,11 @@ func (s *Server) TransferAccountOwnership(
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetNewOwnerUserId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, acting, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
-	if err = s.authorizeUser(ctx, op, principal, request.GetNewOwnerUserId()); err != nil {
+	if err = s.authorizeUser(ctx, op, principal, acting, request.GetNewOwnerUserId()); err != nil {
 		return nil, err
 	}
 
@@ -168,7 +168,7 @@ func (s *Server) ArchiveAccount(
 
 	op.Set(accountIDKey, request.GetAccountId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, acting, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +201,7 @@ func (s *Server) GetAccount(
 
 	op.Set(accountIDKey, request.GetAccountId())
 
-	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+	if err = s.authorizeAccount(ctx, op, principal, reading, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 
@@ -268,7 +268,7 @@ func (s *Server) ListAccountsForUser(
 		return nil, err
 	}
 
-	if err = s.authorizeUser(ctx, op, principal, request.GetUserId()); err != nil {
+	if err = s.authorizeUser(ctx, op, principal, reading, request.GetUserId()); err != nil {
 		return nil, err
 	}
 

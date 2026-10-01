@@ -6,6 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/conformance"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
+	"github.com/primandproper/primitives-go/v2/identifiers"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
@@ -100,6 +102,93 @@ func accounts(t *testing.T, s *conformance.Session) {
 		test.SliceContains(t, ids, mine.AccountID)
 		test.SliceNotContains(t, ids, other.AccountID,
 			test.Sprint("an account the named user belongs to nothing of was listed for them"))
+	})
+
+	// The refusal half of the read above. Whose accounts a caller may list is
+	// a question about the user named: themselves, or somebody they share a
+	// live account with. An ordinary member, because an administrator whose
+	// standing reaches every account is entitled to list anybody's.
+	t.Run("a user's accounts are refused to a colleague who shares none with them", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(listAccountsForUser), conformance.AsMember())
+		needsAccount(t, mine)
+		stranger := colleague(t, s, mine)
+
+		// The positive control: the caller lists its own. Presence rather than
+		// the page's length, since this read does not narrow its answer to the
+		// accounts the caller is in.
+		page, err := mine.Surfaces.Identity.ListAccountsForUser(mine.Context(t.Context()),
+			&identitypb.ListAccountsForUserRequest{UserId: mine.UserID})
+		must.NoError(t, err, must.Sprint("this caller cannot list its own accounts; the refusal below proves nothing"))
+		test.SliceContains(t, accountIDs(page.GetResults()), mine.AccountID)
+
+		_, err = mine.Surfaces.Identity.ListAccountsForUser(mine.Context(t.Context()),
+			&identitypb.ListAccountsForUserRequest{UserId: stranger.UserID})
+		must.Error(t, err, must.Sprint("a colleague's accounts were listed to somebody who shares none with them"))
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+
+		// A user nobody registered is either refused, which is this module's
+		// default, or answered with nothing. Empty is a fair thing to assert of
+		// a page here, and not a count: the identifier was minted a line ago,
+		// so no other test in the run can have written under it, and a row in
+		// the answer is a row that belongs to somebody else.
+		unknown, err := mine.Surfaces.Identity.ListAccountsForUser(mine.Context(t.Context()),
+			&identitypb.ListAccountsForUserRequest{UserId: identifiers.New()})
+		if err != nil {
+			notYours(t, err, "an unknown user's accounts")
+		} else {
+			test.SliceEmpty(t, unknown.GetResults(),
+				test.Sprint("a user nobody registered was listed accounts that belong to somebody else"))
+		}
+	})
+
+	t.Run("a second account is opened owned by the caller, and does not move where they land", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(createAccount, listMembershipsForUser, getAccount))
+		needsAccount(t, mine)
+
+		// The control for "does not move": the caller lands where it was
+		// minted. A subject whose default is somewhere else says nothing
+		// about what opening an account did to it.
+		_, before := landing(t, mine, mine.UserID)
+		must.Eq(t, []string{mine.AccountID}, before,
+			must.Sprint("the caller does not land in the account it was minted with; the assertion below proves nothing"))
+
+		opened := openAccount(t, s, mine)
+		test.EqOp(t, mine.UserID, opened.GetOwnerUserId(),
+			test.Sprint("an account the caller opened is owned by somebody else"))
+
+		held, defaults := landing(t, mine, mine.UserID)
+		test.SliceContains(t, held, opened.GetId(),
+			test.Sprint("the caller holds no membership in the account they opened"))
+		test.Eq(t, []string{mine.AccountID}, defaults,
+			test.Sprint("opening a second account moved where the caller lands"))
+
+		found, err := mine.Surfaces.Identity.GetAccount(mine.Context(t.Context()),
+			&identitypb.GetAccountRequest{AccountId: opened.GetId()})
+		must.NoError(t, err, must.Sprint("the account just opened is not readable by its owner"))
+		test.EqOp(t, opened.GetId(), found.GetAccount().GetId())
+	})
+
+	// An account opened with no role for its owner is an account whose owner
+	// holds no standing in it: the membership that makes them its member
+	// grants nothing. The positive control is the test above, opening one
+	// with a role through the same call.
+	t.Run("an account opened with no owner role, or no name, is refused", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(createAccount))
+		ctx := mine.Context(t.Context())
+
+		_, err := mine.Surfaces.Identity.CreateAccount(ctx, &identitypb.CreateAccountRequest{Name: "conf_" + identifiers.New()})
+		must.Error(t, err, must.Sprint("an account was opened with no role for its owner"))
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		_, err = mine.Surfaces.Identity.CreateAccount(ctx, &identitypb.CreateAccountRequest{OwnerRoles: []string{s.Roles().Owner}})
+		must.Error(t, err, must.Sprint("an account was opened with no name"))
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
 	t.Run("a transfer of ownership moves the account and puts the new owner on its roster", func(t *testing.T) {
@@ -257,6 +346,33 @@ func accounts(t *testing.T, s *conformance.Session) {
 			&identitypb.UpdateAccountRequest{AccountId: mine.AccountID})
 		must.Error(t, err)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+	})
+
+	t.Run("an account update naming a time zone that does not load is refused, and changes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		mine := s.Subject(t, conformance.Making(updateAccount, getAccount))
+		needsAccount(t, mine)
+		ctx := mine.Context(t.Context())
+
+		// The positive control: a zone that loads is taken by the same call.
+		_, err := mine.Surfaces.Identity.UpdateAccount(ctx, &identitypb.UpdateAccountRequest{
+			AccountId: mine.AccountID,
+			Input:     &identitypb.AccountUpdateInput{TimeZone: new("Europe/Amsterdam")},
+		})
+		must.NoError(t, err, must.Sprint("a time zone that loads was refused; the refusal below proves nothing"))
+
+		_, err = mine.Surfaces.Identity.UpdateAccount(ctx, &identitypb.UpdateAccountRequest{
+			AccountId: mine.AccountID,
+			Input:     &identitypb.AccountUpdateInput{TimeZone: new("America/Chicagoo")},
+		})
+		must.Error(t, err, must.Sprint("an account took a time zone that does not load"))
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		found, err := mine.Surfaces.Identity.GetAccount(ctx, &identitypb.GetAccountRequest{AccountId: mine.AccountID})
+		must.NoError(t, err)
+		test.EqOp(t, "Europe/Amsterdam", found.GetAccount().GetTimeZone(),
+			test.Sprint("a refused time zone moved the account's anyway"))
 	})
 
 	t.Run("an account update leaves what the request did not name", func(t *testing.T) {

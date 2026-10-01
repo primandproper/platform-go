@@ -17,9 +17,10 @@ only its own change:
     and backfills it for the rows already there.
   - Version 4 adds access_token_id, which is the access token minted alongside
     a row, so a per-request check can tell a login's current access token from
-    one it has since replaced, and actor_id, the operator behind an
-    impersonation's login. Neither has a backfill: a row minted before it
-    records none of either.
+    one it has since replaced; actor_id, the operator behind an
+    impersonation's login; and credential_kind, what proved the sign-in the
+    login began with. None has a backfill: a row minted before it records none
+    of them.
 
 A shipped version is never edited. A change to this table is a new version
 appended here, which is what Latest then reports.

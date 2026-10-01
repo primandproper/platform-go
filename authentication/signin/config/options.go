@@ -30,6 +30,7 @@ type options struct {
 	metricsProvider metrics.Provider
 
 	registrar       signin.Registrar
+	profileUpdater  signin.ProfileUpdater
 	magicLinkMailer signin.MagicLinkMailer
 
 	handleReminderMailer signin.HandleReminderMailer
@@ -84,6 +85,13 @@ func WithPillars(p *observability.Pillars) Option {
 // it.
 func WithRegistrar(registrar signin.Registrar) Option {
 	return func(o *options) { o.registrar = registrar }
+}
+
+// WithProfileUpdater supplies the profile write the two handle doors make,
+// which turns them on. It is never required: without one, UpdateEmailAddress and
+// UpdateUsername refuse as a wiring failure. identity's Service satisfies it.
+func WithProfileUpdater(updater signin.ProfileUpdater) Option {
+	return func(o *options) { o.profileUpdater = updater }
 }
 
 // WithMagicLinkMailer supplies what delivers a sign-in link, which the

@@ -108,6 +108,40 @@ func TestRequestScope(T *testing.T) {
 	})
 }
 
+// logOf is a reader double answering List and ListAcrossScopes with one
+// function, where a nil scope is the read across every tenant — so each case
+// below says what it answers per scope, and the across-scopes read is still
+// only reachable through its own method.
+func logOf(
+	list func(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope *tenancy.Scope,
+		query *audit.Query,
+		filter *filtering.QueryFilter,
+	) (*filtering.QueryFilteredResult[audit.Entry], error),
+) *auditmock.ReaderMock {
+	return &auditmock.ReaderMock{
+		ListFunc: func(
+			ctx context.Context,
+			q database.SQLQueryExecutor,
+			scope tenancy.Scope,
+			query *audit.Query,
+			filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			return list(ctx, q, &scope, query, filter)
+		},
+		ListAcrossScopesFunc: func(
+			ctx context.Context,
+			q database.SQLQueryExecutor,
+			query *audit.Query,
+			filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			return list(ctx, q, nil, query, filter)
+		},
+	}
+}
+
 func TestNewCollector(T *testing.T) {
 	T.Parallel()
 
@@ -133,43 +167,41 @@ func TestCollector_Collect(T *testing.T) {
 
 		var reader database.SQLQueryExecutor = &testReader{}
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context,
-				q database.SQLQueryExecutor,
-				query *audit.Query,
-				_ *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				test.EqOp(t, reader, q)
+		log := logOf(func(
+			_ context.Context,
+			q database.SQLQueryExecutor,
+			scope *tenancy.Scope, query *audit.Query,
+			_ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			test.EqOp(t, reader, q)
 
-				// Exactly one of the three narrowings, and it is the subject.
-				switch {
-				case query.ImpersonatorID != "":
-					// The one read that spans every scope, confined instead by
-					// the subject's own ID.
-					test.Nil(t, query.Scope)
-					test.EqOp(t, subject.ID, query.ImpersonatorID)
-					test.EqOp(t, "", query.ActorID)
-					test.EqOp(t, "", query.ResourceID)
+			// Exactly one of the three narrowings, and it is the subject.
+			switch {
+			case query.ImpersonatorID != "":
+				// The one read that spans every scope, confined instead by
+				// the subject's own ID.
+				test.Nil(t, scope)
+				test.EqOp(t, subject.ID, query.ImpersonatorID)
+				test.EqOp(t, "", query.ActorID)
+				test.EqOp(t, "", query.ResourceID)
 
-					return page(), nil
-				case query.ActorID != "":
-					// Every other read names its scope. An unconfined List
-					// by actor or resource is the operator console's read,
-					// and a subject's export is not that.
-					must.NotNil(t, query.Scope)
-					test.EqOp(t, subject.ID, query.ActorID)
-					test.EqOp(t, "", query.ResourceID)
+				return page(), nil
+			case query.ActorID != "":
+				// Every other read names its scope. An unconfined List
+				// by actor or resource is the operator console's read,
+				// and a subject's export is not that.
+				must.NotNil(t, scope)
+				test.EqOp(t, subject.ID, query.ActorID)
+				test.EqOp(t, "", query.ResourceID)
 
-					return page(entry(*query.Scope, "acted_in_"+query.Scope.String(), 1, subject.ID, "recipe_1")), nil
-				default:
-					must.NotNil(t, query.Scope)
-					test.EqOp(t, subject.ID, query.ResourceID)
+				return page(entry(*scope, "acted_in_"+scope.String(), 1, subject.ID, "recipe_1")), nil
+			default:
+				must.NotNil(t, scope)
+				test.EqOp(t, subject.ID, query.ResourceID)
 
-					return page(entry(*query.Scope, "acted_on_in_"+query.Scope.String(), 0, "admin_1", subject.ID)), nil
-				}
-			},
-		}
+				return page(entry(*scope, "acted_on_in_"+scope.String(), 0, "admin_1", subject.ID)), nil
+			}
+		})
 
 		collector, err := privacy.NewCollector(log, reader, privacy.FixedScopes(firstScope, secondScope))
 		must.NoError(t, err)
@@ -191,7 +223,8 @@ func TestCollector_Collect(T *testing.T) {
 			"acted_on_in_acct_1", "acted_in_acct_1",
 			"acted_on_in_acct_2", "acted_in_acct_2",
 		}, ids)
-		test.SliceLen(t, 5, log.ListCalls())
+		test.SliceLen(t, 4, log.ListCalls())
+		test.SliceLen(t, 1, log.ListAcrossScopesCalls())
 	})
 
 	T.Run("an entry the subject acted on themselves is exported once", func(t *testing.T) {
@@ -199,13 +232,11 @@ func TestCollector_Collect(T *testing.T) {
 
 		both := entry(firstScope, "self", 0, subject.ID, subject.ID)
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				return page(both), nil
-			},
-		}
+		log := logOf(func(
+			context.Context, database.SQLQueryExecutor, *tenancy.Scope, *audit.Query, *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			return page(both), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -222,17 +253,15 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("keeps the subject's own address and drops somebody else's", func(t *testing.T) {
 		t.Parallel()
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				if query.ActorID != "" {
-					return page(entry(firstScope, "mine", 0, subject.ID, "recipe_1")), nil
-				}
+		log := logOf(func(
+			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			if query.ActorID != "" {
+				return page(entry(firstScope, "mine", 0, subject.ID, "recipe_1")), nil
+			}
 
-				return page(entry(firstScope, "theirs", 1, "admin_1", subject.ID)), nil
-			},
-		}
+			return page(entry(firstScope, "theirs", 1, "admin_1", subject.ID)), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -264,17 +293,15 @@ func TestCollector_Collect(T *testing.T) {
 		impersonated := entry(firstScope, "as_them", 0, subject.ID, "recipe_1")
 		impersonated.Actor.Impersonator = "operator_1"
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				if query.ActorID == subject.ID {
-					return page(impersonated), nil
-				}
+		log := logOf(func(
+			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			if query.ActorID == subject.ID {
+				return page(impersonated), nil
+			}
 
-				return page(), nil
-			},
-		}
+			return page(), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -303,17 +330,15 @@ func TestCollector_Collect(T *testing.T) {
 		asSomebody := entry(firstScope, "as_customer", 0, "customer_1", "recipe_1")
 		asSomebody.Actor.Impersonator = subject.ID
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				if query.ImpersonatorID == subject.ID {
-					return page(asSomebody), nil
-				}
+		log := logOf(func(
+			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			if query.ImpersonatorID == subject.ID {
+				return page(asSomebody), nil
+			}
 
-				return page(), nil
-			},
-		}
+			return page(), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -349,20 +374,18 @@ func TestCollector_Collect(T *testing.T) {
 		asLaterCustomer.Actor.Impersonator = subject.ID
 		asLaterCustomer.Changes = map[string]audit.Change{"email": {Old: "a@example.com", New: "b@example.com"}}
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				switch {
-				case query.ImpersonatorID == subject.ID:
-					return page(asCustomer, asLaterCustomer, asEarlierCustomer), nil
-				case query.ActorID == subject.ID && query.Scope.Owner() == staffScope.Owner():
-					return page(inStaff), nil
-				default:
-					return page(), nil
-				}
-			},
-		}
+		log := logOf(func(
+			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			switch {
+			case query.ImpersonatorID == subject.ID:
+				return page(asCustomer, asLaterCustomer, asEarlierCustomer), nil
+			case query.ActorID == subject.ID && scope.Owner() == staffScope.Owner():
+				return page(inStaff), nil
+			default:
+				return page(), nil
+			}
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(staffScope))
 		must.NoError(t, err)
@@ -402,17 +425,15 @@ func TestCollector_Collect(T *testing.T) {
 		onSubject := entry(firstScope, "on_subject", 1, "admin_1", subject.ID)
 		onSubject.Changes = map[string]audit.Change{"email": {Old: "me@example.com", New: "me2@example.com"}}
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				if query.ActorID != "" {
-					return page(onColleague), nil
-				}
+		log := logOf(func(
+			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			if query.ActorID != "" {
+				return page(onColleague), nil
+			}
 
-				return page(onSubject), nil
-			},
-		}
+			return page(onSubject), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -448,13 +469,11 @@ func TestCollector_Collect(T *testing.T) {
 		self := entry(firstScope, "self", 0, subject.ID, subject.ID)
 		self.Changes = map[string]audit.Change{"name": {Old: "Ann", New: "Anne"}}
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				return page(self), nil
-			},
-		}
+		log := logOf(func(
+			context.Context, database.SQLQueryExecutor, *tenancy.Scope, *audit.Query, *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			return page(self), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -471,27 +490,25 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("pages each read to its end", func(t *testing.T) {
 		t.Parallel()
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				if query.ActorID == "" {
-					return page(), nil
+		log := logOf(func(
+			_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			if query.ActorID == "" {
+				return page(), nil
+			}
+
+			// A full first page, then a short second one.
+			if filter.Cursor == nil {
+				entries := make([]*audit.Entry, filtering.MaxQueryFilterLimit)
+				for i := range entries {
+					entries[i] = entry(firstScope, fmt.Sprintf("first_%d", i), int64(i), subject.ID, "r")
 				}
 
-				// A full first page, then a short second one.
-				if filter.Cursor == nil {
-					entries := make([]*audit.Entry, filtering.MaxQueryFilterLimit)
-					for i := range entries {
-						entries[i] = entry(firstScope, fmt.Sprintf("first_%d", i), int64(i), subject.ID, "r")
-					}
+				return page(entries...), nil
+			}
 
-					return page(entries...), nil
-				}
-
-				return page(entry(firstScope, "last", int64(filtering.MaxQueryFilterLimit), subject.ID, "r")), nil
-			},
-		}
+			return page(entry(firstScope, "last", int64(filtering.MaxQueryFilterLimit), subject.ID, "r")), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -508,13 +525,11 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("a subject in no entry holds nothing", func(t *testing.T) {
 		t.Parallel()
 
-		log := &auditmock.ReaderMock{
-			ListFunc: func(
-				context.Context, database.SQLQueryExecutor, *audit.Query, *filtering.QueryFilter,
-			) (*filtering.QueryFilteredResult[audit.Entry], error) {
-				return page(), nil
-			},
-		}
+		log := logOf(func(
+			context.Context, database.SQLQueryExecutor, *tenancy.Scope, *audit.Query, *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[audit.Entry], error) {
+			return page(), nil
+		})
 
 		collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
@@ -552,17 +567,15 @@ func TestCollector_Collect(T *testing.T) {
 		t.Parallel()
 
 		for _, failing := range []string{"actor", "resource"} {
-			log := &auditmock.ReaderMock{
-				ListFunc: func(
-					_ context.Context, _ database.SQLQueryExecutor, query *audit.Query, _ *filtering.QueryFilter,
-				) (*filtering.QueryFilteredResult[audit.Entry], error) {
-					if (failing == "actor") == (query.ActorID != "") {
-						return nil, errReaderUnavailable
-					}
+			log := logOf(func(
+				_ context.Context, _ database.SQLQueryExecutor, scope *tenancy.Scope, query *audit.Query, _ *filtering.QueryFilter,
+			) (*filtering.QueryFilteredResult[audit.Entry], error) {
+				if (failing == "actor") == (query.ActorID != "") {
+					return nil, errReaderUnavailable
+				}
 
-					return page(), nil
-				},
-			}
+				return page(), nil
+			})
 
 			collector, err := privacy.NewCollector(log, &testReader{}, privacy.FixedScopes(firstScope))
 			must.NoError(t, err)

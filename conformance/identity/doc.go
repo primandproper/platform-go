@@ -54,8 +54,15 @@ A caller learns its own address through GetPrincipal rather than GetUser, so
 that reading oneself never depends on being allowed the directory. The
 directory's walls hold for whoever calls: a neighboring directory's account,
 user or memberships is refused to whatever caller the declaration implies, as
-absent or forbidden. Refusing to archive an account the caller does not
-belong to turns on membership within a directory, and is asked of a caller
-minted with conformance.AsMember.
+absent or forbidden. Refusing to read or archive an account the caller does
+not belong to, or to read an invitation into one, turns on membership within a
+directory, and is asked of a caller minted with conformance.AsMember.
+
+Those member refusals are also what hold identity/grpc's operator bypass to
+its word. A caller holding PermissionOperatorRead or PermissionOperatorAct is
+let past the row check a member is refused by, and nothing grants either by
+default; a deployment that granted one to its members would fail them here,
+which is the refusal this suite exists to report. What an operator holding one
+may reach is the deployment's grant, and is not asserted.
 */
 package identity

@@ -21,9 +21,9 @@ import (
 // GetEntry reads one entry by id, out of the log the connection is against.
 //
 // The scope goes into the read rather than into a comparison after it. The
-// reader's Get takes a *tenancy.Scope in which nil is the operator's read
-// across every tenant; this surface has no operator and never passes nil, so an
-// entry belonging to somebody else is not read at all and is answered exactly
+// reader's Get takes a tenancy.Scope, and the operator's read across every
+// tenant is GetAcrossScopes, which AuditService never calls — so an entry
+// belonging to somebody else is not read at all and is answered exactly
 // as an id that does not exist is — audit.ErrEntryNotFound, mapped to
 // codes.NotFound. Telling the two apart would make this an oracle for which
 // entry ids exist in another tenant's log, which is the one thing an audit log
@@ -84,11 +84,11 @@ func (s *Server) GetEntry(
 
 // ListEntries pages the caller's log, narrowed by whatever the query asked for.
 //
-// The scope is written onto the query here, after the conversion and over
-// nothing, because the message it was converted from has no scope field to
-// carry one. That assignment is the whole of this service's tenancy: an
-// audit.Query with a nil Scope reads every tenant's events, and it is nil for
-// exactly as long as it takes this line to run.
+// The scope is the reader's argument, off the connection, because the message
+// the query was converted from has no scope field to carry one. There is no
+// value of it that reads every tenant's events: that is
+// audit.Reader.ListAcrossScopes, which AuditService never calls — it is
+// AuditAdministrationService's, behind a permission of its own.
 func (s *Server) ListEntries(
 	ctx context.Context,
 	request *auditpb.ListEntriesRequest,

@@ -61,6 +61,13 @@
 // field; it comes off the principal the consumer's interceptor put on the
 // context. See identity.proto, which says this at greater length.
 //
+// One message says whose a report is, and no request does. The operator's two
+// reads -- [ListReportsAcrossScopesRequest] and
+// [ListReportsByStatusAcrossScopesRequest] -- page every tenant's reports, so
+// each row they answer with is a [ScopedIssueReport], which carries the scope as
+// output. Everywhere else a row's scope is the one the connection resolved, and
+// a field repeating it would tell a client something it supplied.
+//
 // No reporter on any write. A report is filed by whoever is calling, and the
 // name is taken off the principal for the same reason the scope is: a reporter a
 // client could name is a report filed in somebody else's words. It is output
@@ -123,16 +130,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IssueReportsService_CreateReport_FullMethodName             = "/primandproper.platform.issuereports.v1.IssueReportsService/CreateReport"
-	IssueReportsService_GetReport_FullMethodName                = "/primandproper.platform.issuereports.v1.IssueReportsService/GetReport"
-	IssueReportsService_ListReports_FullMethodName              = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReports"
-	IssueReportsService_ListReportsByStatus_FullMethodName      = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsByStatus"
-	IssueReportsService_ListReportsByReporter_FullMethodName    = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsByReporter"
-	IssueReportsService_ListReportsBySubjectType_FullMethodName = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsBySubjectType"
-	IssueReportsService_ListReportsForSubject_FullMethodName    = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsForSubject"
-	IssueReportsService_UpdateReport_FullMethodName             = "/primandproper.platform.issuereports.v1.IssueReportsService/UpdateReport"
-	IssueReportsService_TransitionReport_FullMethodName         = "/primandproper.platform.issuereports.v1.IssueReportsService/TransitionReport"
-	IssueReportsService_ArchiveReport_FullMethodName            = "/primandproper.platform.issuereports.v1.IssueReportsService/ArchiveReport"
+	IssueReportsService_CreateReport_FullMethodName                    = "/primandproper.platform.issuereports.v1.IssueReportsService/CreateReport"
+	IssueReportsService_GetReport_FullMethodName                       = "/primandproper.platform.issuereports.v1.IssueReportsService/GetReport"
+	IssueReportsService_ListReports_FullMethodName                     = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReports"
+	IssueReportsService_ListReportsByStatus_FullMethodName             = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsByStatus"
+	IssueReportsService_ListReportsByReporter_FullMethodName           = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsByReporter"
+	IssueReportsService_ListReportsBySubjectType_FullMethodName        = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsBySubjectType"
+	IssueReportsService_ListReportsForSubject_FullMethodName           = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsForSubject"
+	IssueReportsService_ListReportsAcrossScopes_FullMethodName         = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsAcrossScopes"
+	IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName = "/primandproper.platform.issuereports.v1.IssueReportsService/ListReportsByStatusAcrossScopes"
+	IssueReportsService_UpdateReport_FullMethodName                    = "/primandproper.platform.issuereports.v1.IssueReportsService/UpdateReport"
+	IssueReportsService_TransitionReport_FullMethodName                = "/primandproper.platform.issuereports.v1.IssueReportsService/TransitionReport"
+	IssueReportsService_ArchiveReport_FullMethodName                   = "/primandproper.platform.issuereports.v1.IssueReportsService/ArchiveReport"
 )
 
 // IssueReportsServiceClient is the client API for IssueReportsService service.
@@ -149,9 +158,14 @@ const (
 // the two whose target is a person or somebody's row ask a second question of
 // the consumer's own rule.
 //
-// The tenant is not among any method's arguments. It comes off the
-// principal the consumer's interceptor resolved, so there is no listing across
-// tenants here and no way to ask for one.
+// The tenant is not among any method's arguments. It comes off the principal
+// the consumer's interceptor resolved, and no request can name another one.
+//
+// The two exceptions are the operator's, and they are exceptions by being
+// separate methods rather than by a request field: ListReportsAcrossScopes and
+// ListReportsByStatusAcrossScopes read every tenant's reports, behind
+// issues.reports.read_any, which issuereports/grpc declares and grants to
+// nobody. A deployment gives it to its operators or to no one.
 type IssueReportsServiceClient interface {
 	CreateReport(ctx context.Context, in *CreateReportRequest, opts ...grpc.CallOption) (*CreateReportResponse, error)
 	GetReport(ctx context.Context, in *GetReportRequest, opts ...grpc.CallOption) (*GetReportResponse, error)
@@ -160,6 +174,8 @@ type IssueReportsServiceClient interface {
 	ListReportsByReporter(ctx context.Context, in *ListReportsByReporterRequest, opts ...grpc.CallOption) (*ListReportsByReporterResponse, error)
 	ListReportsBySubjectType(ctx context.Context, in *ListReportsBySubjectTypeRequest, opts ...grpc.CallOption) (*ListReportsBySubjectTypeResponse, error)
 	ListReportsForSubject(ctx context.Context, in *ListReportsForSubjectRequest, opts ...grpc.CallOption) (*ListReportsForSubjectResponse, error)
+	ListReportsAcrossScopes(ctx context.Context, in *ListReportsAcrossScopesRequest, opts ...grpc.CallOption) (*ListReportsAcrossScopesResponse, error)
+	ListReportsByStatusAcrossScopes(ctx context.Context, in *ListReportsByStatusAcrossScopesRequest, opts ...grpc.CallOption) (*ListReportsByStatusAcrossScopesResponse, error)
 	UpdateReport(ctx context.Context, in *UpdateReportRequest, opts ...grpc.CallOption) (*UpdateReportResponse, error)
 	TransitionReport(ctx context.Context, in *TransitionReportRequest, opts ...grpc.CallOption) (*TransitionReportResponse, error)
 	ArchiveReport(ctx context.Context, in *ArchiveReportRequest, opts ...grpc.CallOption) (*ArchiveReportResponse, error)
@@ -243,6 +259,26 @@ func (c *issueReportsServiceClient) ListReportsForSubject(ctx context.Context, i
 	return out, nil
 }
 
+func (c *issueReportsServiceClient) ListReportsAcrossScopes(ctx context.Context, in *ListReportsAcrossScopesRequest, opts ...grpc.CallOption) (*ListReportsAcrossScopesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListReportsAcrossScopesResponse)
+	err := c.cc.Invoke(ctx, IssueReportsService_ListReportsAcrossScopes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *issueReportsServiceClient) ListReportsByStatusAcrossScopes(ctx context.Context, in *ListReportsByStatusAcrossScopesRequest, opts ...grpc.CallOption) (*ListReportsByStatusAcrossScopesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListReportsByStatusAcrossScopesResponse)
+	err := c.cc.Invoke(ctx, IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *issueReportsServiceClient) UpdateReport(ctx context.Context, in *UpdateReportRequest, opts ...grpc.CallOption) (*UpdateReportResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UpdateReportResponse)
@@ -287,9 +323,14 @@ func (c *issueReportsServiceClient) ArchiveReport(ctx context.Context, in *Archi
 // the two whose target is a person or somebody's row ask a second question of
 // the consumer's own rule.
 //
-// The tenant is not among any method's arguments. It comes off the
-// principal the consumer's interceptor resolved, so there is no listing across
-// tenants here and no way to ask for one.
+// The tenant is not among any method's arguments. It comes off the principal
+// the consumer's interceptor resolved, and no request can name another one.
+//
+// The two exceptions are the operator's, and they are exceptions by being
+// separate methods rather than by a request field: ListReportsAcrossScopes and
+// ListReportsByStatusAcrossScopes read every tenant's reports, behind
+// issues.reports.read_any, which issuereports/grpc declares and grants to
+// nobody. A deployment gives it to its operators or to no one.
 type IssueReportsServiceServer interface {
 	CreateReport(context.Context, *CreateReportRequest) (*CreateReportResponse, error)
 	GetReport(context.Context, *GetReportRequest) (*GetReportResponse, error)
@@ -298,6 +339,8 @@ type IssueReportsServiceServer interface {
 	ListReportsByReporter(context.Context, *ListReportsByReporterRequest) (*ListReportsByReporterResponse, error)
 	ListReportsBySubjectType(context.Context, *ListReportsBySubjectTypeRequest) (*ListReportsBySubjectTypeResponse, error)
 	ListReportsForSubject(context.Context, *ListReportsForSubjectRequest) (*ListReportsForSubjectResponse, error)
+	ListReportsAcrossScopes(context.Context, *ListReportsAcrossScopesRequest) (*ListReportsAcrossScopesResponse, error)
+	ListReportsByStatusAcrossScopes(context.Context, *ListReportsByStatusAcrossScopesRequest) (*ListReportsByStatusAcrossScopesResponse, error)
 	UpdateReport(context.Context, *UpdateReportRequest) (*UpdateReportResponse, error)
 	TransitionReport(context.Context, *TransitionReportRequest) (*TransitionReportResponse, error)
 	ArchiveReport(context.Context, *ArchiveReportRequest) (*ArchiveReportResponse, error)
@@ -331,6 +374,12 @@ func (UnimplementedIssueReportsServiceServer) ListReportsBySubjectType(context.C
 }
 func (UnimplementedIssueReportsServiceServer) ListReportsForSubject(context.Context, *ListReportsForSubjectRequest) (*ListReportsForSubjectResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListReportsForSubject not implemented")
+}
+func (UnimplementedIssueReportsServiceServer) ListReportsAcrossScopes(context.Context, *ListReportsAcrossScopesRequest) (*ListReportsAcrossScopesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListReportsAcrossScopes not implemented")
+}
+func (UnimplementedIssueReportsServiceServer) ListReportsByStatusAcrossScopes(context.Context, *ListReportsByStatusAcrossScopesRequest) (*ListReportsByStatusAcrossScopesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListReportsByStatusAcrossScopes not implemented")
 }
 func (UnimplementedIssueReportsServiceServer) UpdateReport(context.Context, *UpdateReportRequest) (*UpdateReportResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateReport not implemented")
@@ -488,6 +537,42 @@ func _IssueReportsService_ListReportsForSubject_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IssueReportsService_ListReportsAcrossScopes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListReportsAcrossScopesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IssueReportsServiceServer).ListReportsAcrossScopes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IssueReportsService_ListReportsAcrossScopes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IssueReportsServiceServer).ListReportsAcrossScopes(ctx, req.(*ListReportsAcrossScopesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IssueReportsService_ListReportsByStatusAcrossScopes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListReportsByStatusAcrossScopesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IssueReportsServiceServer).ListReportsByStatusAcrossScopes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IssueReportsServiceServer).ListReportsByStatusAcrossScopes(ctx, req.(*ListReportsByStatusAcrossScopesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _IssueReportsService_UpdateReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateReportRequest)
 	if err := dec(in); err != nil {
@@ -576,6 +661,14 @@ var IssueReportsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListReportsForSubject",
 			Handler:    _IssueReportsService_ListReportsForSubject_Handler,
+		},
+		{
+			MethodName: "ListReportsAcrossScopes",
+			Handler:    _IssueReportsService_ListReportsAcrossScopes_Handler,
+		},
+		{
+			MethodName: "ListReportsByStatusAcrossScopes",
+			Handler:    _IssueReportsService_ListReportsByStatusAcrossScopes_Handler,
 		},
 		{
 			MethodName: "UpdateReport",

@@ -23,9 +23,10 @@ import (
 // Query selects which entries a List returns.
 //
 // Every field is a conjunct: a Query with an actor and a resource type matches
-// that actor's events on that type. The zero Query matches everything, which is
-// the right default for an operator console and the wrong one for anything a
-// tenant can reach — see Scope.
+// that actor's events on that type. The zero Query matches everything in
+// whatever the read is confined to — one scope for Reader.List, every tenant for
+// Reader.ListAcrossScopes. The scope is not a field here: it is the argument
+// List takes, and its absence is a different method rather than a nil.
 //
 // # Why each selector is one value
 //
@@ -49,22 +50,6 @@ import (
 // reads. What it gains is that the narrowing it did ask for is a statement sqlc
 // checked against the schema, on every dialect.
 type Query struct {
-	// Scope restricts to one tenancy boundary. Nil narrows nothing: every
-	// tenant's events, which is what an operator console asks for and what
-	// nothing a tenant can reach should. A scope names one, and tenancy.Global
-	// names the chain platform-level events are recorded in.
-	//
-	// It is a pointer to a Scope rather than a Scope because a Scope carries two
-	// of these three readings and not the third. Scope.known separates the
-	// global scope from a caller who never decided; it does not separate either
-	// of those from "do not narrow at all", and getting that distinction
-	// backwards in a multi-tenant read path is a cross-tenant disclosure rather
-	// than a wrong answer.
-	//
-	// A non-nil pointer at the zero Scope is therefore not "every tenant" but a
-	// caller whose own lookup came back empty. List refuses it with
-	// tenancy.ErrNoScope rather than widening the read to cover it.
-	Scope *tenancy.Scope
 	// ActorID restricts to one principal. Empty does not filter.
 	//
 	// It matches the actor the entry is filed under, which on an impersonated
@@ -102,19 +87,20 @@ type selectors struct {
 }
 
 // selectors renders the query's narrowings, each of which an absent value
-// leaves alone.
+// leaves alone, beside the scope the read is confined to.
 //
 // The scope is the one that reads its absence off a pointer rather than off the
-// empty string, for the reason its own field gives: the empty identifier is a
-// scope. It renders to the identifier the column holds, which validate has
-// already refused to derive from a scope that names nobody.
-func (q *Query) selectors() selectors {
+// empty string, because the empty identifier is a scope. Nil is the operator's
+// read across every tenant, and only ListAcrossScopes and GetAcrossScopes pass
+// it; List and Get take a tenancy.Scope and have validated it before it gets
+// here.
+func (q *Query) selectors(scope *tenancy.Scope) selectors {
 	if q == nil {
-		return selectors{}
+		return selectors{scope: scopeFilter(scope)}
 	}
 
 	return selectors{
-		scope:        scopeFilter(q.Scope),
+		scope:        scopeFilter(scope),
 		actorID:      optional(q.ActorID),
 		actorType:    optional(string(q.ActorType)),
 		resourceID:   optional(q.ResourceID),
@@ -122,21 +108,6 @@ func (q *Query) selectors() selectors {
 		eventType:    optional(string(q.EventType)),
 		impersonator: optional(q.ImpersonatorID),
 	}
-}
-
-// validate reports whether the query's narrowings can be bound. It is nil-safe,
-// because a nil Query is the query that narrows nothing.
-//
-// Only the scope has anything to check. Every other selector reads its absence
-// off the empty string, which is a value no caller can arrive at by losing one;
-// the scope reads its absence off the pointer, so a Scope that names nobody has
-// reached this field on purpose and cannot be told from one that was dropped.
-func (q *Query) validate() error {
-	if q == nil || q.Scope == nil {
-		return nil
-	}
-
-	return q.Scope.Validate()
 }
 
 // scopeFilter renders the scope narrowing as the identifier the column holds,
@@ -280,7 +251,7 @@ func (r *VerificationResult) Intact() bool {
 // Reader reads the audit log.
 //
 // It is a separate interface from Recorder because the two answer different
-// questions of the same tables — one appends into a chain, three read it back —
+// questions of the same tables — one appends into a chain, the rest read it back —
 // and not because they take different dependencies. Every method here takes the
 // caller's executor, exactly as Record takes the caller's transaction, so a
 // caller who recorded an entry inside a transaction can read it back inside the
@@ -293,28 +264,42 @@ func (r *VerificationResult) Intact() bool {
 // holding Client.Reader() and a recorder's caller still inside their
 // transaction, and the second sees that transaction's uncommitted entries.
 type Reader interface {
-	// Get returns one entry by ID, optionally confined to a scope. It returns
-	// an error wrapping ErrEntryNotFound when there is no such entry in that
-	// scope.
+	// Get returns one entry by ID, in one scope's chain. It returns an error
+	// wrapping ErrEntryNotFound when there is no such entry in that scope — an
+	// entry in another tenant's chain included, which is the same answer.
 	//
-	// The scope is a *tenancy.Scope carrying Query.Scope's three readings, for
-	// Query.Scope's reason: nil narrows nothing, which is the operator
-	// console's read; a scope names one chain, and tenancy.Global names the one
-	// platform-level events are recorded in; and a non-nil pointer at the zero
-	// Scope is a caller whose own lookup came back empty, refused with
-	// tenancy.ErrNoScope rather than widened to every tenant.
-	Get(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*Entry, error)
-	// List pages through the entries matching query.
-	List(ctx context.Context, q database.SQLQueryExecutor, query *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
+	// The scope is a tenancy.Scope, so a caller whose own lookup came back
+	// empty is refused with tenancy.ErrNoScope rather than widened: the read
+	// across every tenant is GetAcrossScopes, spelled apart.
+	Get(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*Entry, error)
+	// GetAcrossScopes returns one entry by ID from any tenant's chain: the
+	// operator console's read.
+	//
+	// It is a stated exception to "no read path omits the scope", and it is an
+	// exception by being a separate method rather than a nil scope — a nil that
+	// widens a read is the scopeless call the tenancy typing exists to rule
+	// out. The one transport that calls it is audit/grpc's
+	// AuditAdministrationService, behind a permission of its own. A Go caller
+	// reaching for it is an operator's surface, and the name says so in review.
+	GetAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, id string) (*Entry, error)
+	// List pages through one scope's entries matching query.
+	List(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, query *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
+	// ListAcrossScopes pages through every tenant's entries matching query:
+	// the operator console's read, and the one a privacy collector makes for
+	// what an operator did while impersonating people in any tenant.
+	//
+	// It is the same stated exception as GetAcrossScopes, spelled apart for
+	// the same reason.
+	ListAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, query *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
 	// Verify walks one scope's hash chain over a time range, from afterSeq
 	// onwards, and reports the first break or that there was none.
 	//
 	// The scope is a tenancy.Scope rather than the string it names, so a call
 	// that lost its scope fails to compile rather than walking the global
-	// chain. It is not the *tenancy.Scope Get takes, because a verification
-	// walks one chain: "every tenant" is not a chain, and the third reading has
-	// nothing to mean here. Pass ChainStart as afterSeq to walk from the
-	// beginning of the range, or a previous result's LastSeq to continue it.
+	// chain. There is no Verify across scopes, because a verification walks
+	// one chain and "every tenant" is not a chain. Pass ChainStart as afterSeq
+	// to walk from the beginning of the range, or a previous result's LastSeq
+	// to continue it.
 	// See the method on SQLReader for what an unset scope does and for what
 	// bounds one call.
 	Verify(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from, to time.Time, afterSeq int64) (*VerificationResult, error)
@@ -417,31 +402,41 @@ func NewReader(d dialect.Dialect, opts ...ReaderOption) (*SQLReader, error) {
 	return r, nil
 }
 
-// Get returns one entry, optionally confined to a scope.
+// Get returns one entry, confined to one scope's chain.
 //
-// # The scope, and its three readings
+// A tenancy.Scope that names nobody is a caller whose own lookup came back
+// empty, and it is refused with tenancy.ErrNoScope rather than widened into the
+// read that answers everything. That read is GetAcrossScopes, which is what
+// keeps it from being reachable by losing a value.
 //
-// It is a *tenancy.Scope and it carries exactly what Query.Scope carries, for
-// the same reason. Nil narrows nothing and answers across every tenant, which
-// is the operator console's read and the one a request-scoped caller must never
-// make. A scope confines the read to one chain, and tenancy.Global is a scope
-// like any other — the chain platform-level events are recorded in. A non-nil
-// pointer at the zero Scope is neither of those: it is a caller whose own
-// lookup came back empty, and it is refused with tenancy.ErrNoScope rather than
-// widened into the read that answers everything.
-//
-// A plain tenancy.Scope would collapse the first reading into the second, since
-// Scope tells the global scope from an undecided one and tells neither from "do
-// not narrow at all" — and in a multi-tenant read path that distinction is a
-// cross-tenant disclosure rather than a wrong answer.
-//
-// An entry that exists but sits outside a named scope is ErrEntryNotFound, the
+// An entry that exists but sits outside the scope is ErrEntryNotFound, the
 // same answer an id that was never written gets. Telling the two apart would
 // make this method an oracle for which entry ids exist in another tenant's log,
 // which is the one thing an audit log must not become — so it is answered here,
 // on the method every caller reaches, rather than by each surface comparing the
 // scope back after an unconfined read.
 func (r *SQLReader) Get(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	id string,
+) (*Entry, error) {
+	return r.get(ctx, q, &scope, id)
+}
+
+// GetAcrossScopes returns one entry from any tenant's chain. See
+// [Reader.GetAcrossScopes] for why it is a method of its own.
+func (r *SQLReader) GetAcrossScopes(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	id string,
+) (*Entry, error) {
+	return r.get(ctx, q, nil, id)
+}
+
+// get is Get and GetAcrossScopes, where a nil scope is the second. It is
+// unexported so that the nil is spelled in exactly one place outside it.
+func (r *SQLReader) get(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope *tenancy.Scope,
@@ -490,10 +485,37 @@ func (r *SQLReader) Get(
 	return &stored.entry, nil
 }
 
-// List pages through matching entries, newest first when the filter says so.
+// List pages through one scope's matching entries, newest first when the filter
+// says so.
+//
+// A tenancy.Scope that names nobody is refused with tenancy.ErrNoScope rather
+// than widened: the read across every tenant is ListAcrossScopes.
 func (r *SQLReader) List(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	query *Query,
+	filter *filtering.QueryFilter,
+) (*filtering.QueryFilteredResult[Entry], error) {
+	return r.list(ctx, q, &scope, query, filter)
+}
+
+// ListAcrossScopes pages through every tenant's matching entries. See
+// [Reader.ListAcrossScopes] for why it is a method of its own.
+func (r *SQLReader) ListAcrossScopes(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	query *Query,
+	filter *filtering.QueryFilter,
+) (*filtering.QueryFilteredResult[Entry], error) {
+	return r.list(ctx, q, nil, query, filter)
+}
+
+// list is List and ListAcrossScopes, where a nil scope is the second.
+func (r *SQLReader) list(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope *tenancy.Scope,
 	query *Query,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Entry], error) {
@@ -513,14 +535,20 @@ func (r *SQLReader) List(
 
 	// Checked after the query is on the span and before anything is bound, so a
 	// read that named a scope it had lost is refused with the query it asked
-	// legible in the trace.
-	if err := query.validate(); err != nil {
-		return nil, op.Error(err, "listing audit entries")
+	// legible in the trace. The scope reads as prose there, not as the
+	// identifier the column holds: "<global>" is legible where an empty string
+	// is a field that looks unset.
+	if scope != nil {
+		op.Set(scopeKey, scope.String())
+
+		if err := scope.Validate(); err != nil {
+			return nil, op.Error(err, "listing audit entries")
+		}
 	}
 
 	filter = pageFilter(filter)
 
-	rows, err := r.listRows(ctx, q, query, filter)
+	rows, err := r.listRows(ctx, q, scope, query, filter)
 	if err != nil {
 		return nil, op.Error(err, "listing audit entries")
 	}
@@ -540,10 +568,11 @@ func (r *SQLReader) List(
 func (r *SQLReader) listRows(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
+	scope *tenancy.Scope,
 	query *Query,
 	filter *filtering.QueryFilter,
 ) ([]pageRow, error) {
-	narrowings := query.selectors()
+	narrowings := query.selectors(scope)
 
 	params := auditdb.ListAuditLogEntriesParams{
 		ScopeFilter:        narrowings.scope,
@@ -985,12 +1014,6 @@ func (q *Query) attachTo(op observability.Operation) {
 		return
 	}
 
-	if q.Scope != nil {
-		// The scope reads as prose here, not as the identifier the column holds:
-		// a span attribute is read by a person, and "<global>" is legible where
-		// an empty string is a field that looks unset.
-		op.Set(scopeKey, q.Scope.String())
-	}
 	if q.ActorID != "" {
 		op.Set(actorIDKey, q.ActorID)
 	}

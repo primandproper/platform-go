@@ -225,6 +225,7 @@ func (s *Service) IssueImpersonationToken(
 				ActiveAccountID: principal.ActiveAccountID,
 				AccessTokenID:   signIn.TokenID,
 				ActorID:         operator.ID,
+				CredentialKind:  auth.CredentialKind,
 			}); mintErr != nil {
 				return platformerrors.Wrap(mintErr, "recording an impersonation's login")
 			}

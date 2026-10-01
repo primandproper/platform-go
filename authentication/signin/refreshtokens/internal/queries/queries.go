@@ -112,6 +112,12 @@ const (
 	// mint and read by the listing, so a person's list of where they are signed
 	// in can say which login is not theirs.
 	ActorIDColumn = "actor_id"
+	// CredentialKindColumn is what proved the sign-in that began the login —
+	// signin.CredentialKind — and NULL on a row minted before the column
+	// existed. It is written by the mint, carried onto a successor from the
+	// spent row the exchange reads back, and read by the listing, so a person's
+	// list of where they are signed in can say how each login happened.
+	CredentialKindColumn = "credential_kind" //nolint:gosec // G101: a column naming how a login happened, not a credential.
 )
 
 // The arguments the two clock comparisons bind, named for the comparison rather
@@ -178,6 +184,7 @@ var Columns = []string{
 	SuccessorHashColumn,
 	AccessTokenIDColumn,
 	ActorIDColumn,
+	CredentialKindColumn,
 }
 
 // RecordColumns is what the read projects, in the order the generated row type
@@ -208,6 +215,7 @@ var RecordColumns = []string{
 	RevokedAtColumn,
 	AccessTokenIDColumn,
 	ActorIDColumn,
+	CredentialKindColumn,
 }
 
 // InsertColumns is what a mint writes: every column but the two stamps, which
@@ -230,6 +238,7 @@ var InsertColumns = []string{
 	PurgeAfterColumn,
 	AccessTokenIDColumn,
 	ActorIDColumn,
+	CredentialKindColumn,
 }
 
 // FamilyColumns is what the listing of a person's live logins projects: one
@@ -249,6 +258,7 @@ var FamilyColumns = []string{
 	SignedInAtColumn,
 	ExpiresAtColumn,
 	ActorIDColumn,
+	CredentialKindColumn,
 }
 
 // LockColumns is what the locking reads project: whose login each

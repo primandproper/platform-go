@@ -55,7 +55,8 @@ func hit(t *testing.T, handler nethttp.Handler, route, id string) int {
 // untouched reports whether nothing on svc was called.
 func untouched(svc *dataprivacymock.ServiceMock) bool {
 	return len(svc.SubmitCalls()) == 0 && len(svc.ListCalls()) == 0 && len(svc.GetCalls()) == 0 &&
-		len(svc.ConfirmCalls()) == 0 && len(svc.CancelCalls()) == 0
+		len(svc.ConfirmCalls()) == 0 && len(svc.CancelCalls()) == 0 &&
+		len(svc.DownloadCalls()) == 0 && len(svc.OpenCalls()) == 0
 }
 
 // TestPermissions_coverEveryRoute is the coverage test authorization/http asks
@@ -71,6 +72,8 @@ func TestPermissions_coverEveryRoute(T *testing.T) {
 
 			handlers, router := build(t, &dataprivacymock.ServiceMock{}, WithBasePath(basePath))
 
+			// Mount and the opt-in artifact route between them are everything
+			// this surface can mount.
 			mounted := map[string]bool{}
 			for _, route := range handlers.Mount(router) {
 				mounted[route.Method+" "+route.Path] = true

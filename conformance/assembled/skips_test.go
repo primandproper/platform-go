@@ -45,9 +45,19 @@ var (
 		why:  "service builds identity's server without WithPermissionResolver, so Seams.PrincipalPermissions is false",
 	}
 
+	// gatedHandles is the assertion only a deployment that lets a session move
+	// an address reaches. service builds identity's server with the gate on,
+	// so the claim it starts from is refused at UpdateProfile — which the
+	// users assertions hold it to instead.
+	gatedHandles = expectedSkip{
+		test: "identity/invitations/a_caller_who_has_not_verified_their_address_is_refused_its_invitations",
+		why:  "service builds identity's server with re-authenticated handles, so Seams.ReauthenticatedHandlesDisabled is false",
+	}
+
 	// membersSkips are what the run reserving nothing may skip.
 	membersSkips = append(slices.Clone(pagedReadsWithNoPage),
 		unwiredPrincipalPermissions,
+		gatedHandles,
 		expectedSkip{
 			test: "reservations",
 			why:  "the run reserves nothing, so there is no reservation to hold it to",
@@ -57,7 +67,7 @@ var (
 	// staffSkips are what the run reserving staff calls may skip. Its
 	// reserved calls are made by an administrator minted for them, so the
 	// reservation itself costs no assertion here.
-	staffSkips = append(slices.Clone(pagedReadsWithNoPage), unwiredPrincipalPermissions)
+	staffSkips = append(slices.Clone(pagedReadsWithNoPage), unwiredPrincipalPermissions, gatedHandles)
 
 	// rosterSkips are what the empty-requests run may skip: nothing.
 	rosterSkips []expectedSkip

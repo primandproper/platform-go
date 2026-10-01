@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/callers"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -181,9 +182,9 @@ func (s *Server) SignOut(
 //
 // It requires a caller and takes the subject from the principal, so there is no
 // field that could name anybody else: an operator ending somebody else's sessions
-// is a different act, and it is
+// is a different act, and it is [Server.EndAllSignInsForUser] — which calls
 // [github.com/primandproper/platform-go/v14/authentication/signin.Service.RevokeRefreshTokensForSubject]
-// behind a consumer's own administrative surface rather than this RPC. The two
+// behind a permission — rather than this RPC. The two
 // are told apart in the hooks as well — this one is reported as the person's own
 // sign-out — which is why it calls SignOutEverywhere rather than that.
 //
@@ -306,6 +307,77 @@ func (s *Server) UpdatePassword(
 	}
 
 	return &signinpb.UpdatePasswordResponse{}, nil
+}
+
+// UpdateEmailAddress moves the calling user's address, once they have proven
+// again that they are who the account belongs to.
+//
+// The proof is the password on the request, or the sign-in the request came
+// through if it began recently enough — which comes off the principal, through
+// [FamilyIdentifier], and nowhere else, so a client cannot name somebody's
+// fresher login as its own. A principal that names no login offers only the
+// password. See signin.Service.UpdateEmailAddress for the refusals, and for the
+// link mailed to the new address.
+func (s *Server) UpdateEmailAddress(
+	ctx context.Context,
+	request *signinpb.UpdateEmailAddressRequest,
+) (*signinpb.UpdateEmailAddressResponse, error) {
+	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_UpdateEmailAddress_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	update := &signin.EmailAddressUpdate{
+		HandleReauthentication: handleReauthentication(req.principal, request.GetCurrentPassword(), request.GetTotpCode()),
+		NewEmailAddress:        request.GetNewEmailAddress(),
+	}
+
+	user, err := s.svc.UpdateEmailAddress(ctx, req.scope, req.principal.UserID(), update)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "updating an email address")
+	}
+
+	return &signinpb.UpdateEmailAddressResponse{User: identitygrpc.UserToProto(user)}, nil
+}
+
+// UpdateUsername renames the calling user, on the proof UpdateEmailAddress
+// takes. See signin.Service.UpdateUsername.
+func (s *Server) UpdateUsername(
+	ctx context.Context,
+	request *signinpb.UpdateUsernameRequest,
+) (*signinpb.UpdateUsernameResponse, error) {
+	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_UpdateUsername_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	update := &signin.UsernameUpdate{
+		HandleReauthentication: handleReauthentication(req.principal, request.GetCurrentPassword(), request.GetTotpCode()),
+		NewUsername:            request.GetNewUsername(),
+	}
+
+	user, err := s.svc.UpdateUsername(ctx, req.scope, req.principal.UserID(), update)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "updating a username")
+	}
+
+	return &signinpb.UpdateUsernameResponse{User: identitygrpc.UserToProto(user)}, nil
+}
+
+// handleReauthentication is the proof both handle RPCs offer: what the request
+// carried, and the login the principal names.
+func handleReauthentication(principal callers.Principal, password, code string) signin.HandleReauthentication {
+	proof := signin.HandleReauthentication{CurrentPassword: password, TOTPCode: code}
+
+	if identified, ok := principal.(FamilyIdentifier); ok {
+		proof.FamilyID = identified.FamilyID()
+	}
+
+	return proof
 }
 
 // RefreshTOTPSecret issues the calling user a new second-factor secret and

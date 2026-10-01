@@ -94,9 +94,21 @@ deployment's [ImpersonationPolicy] to decide; this package compares none.
 
 A person's live families are what [Service.ListSignIns] answers, what
 [Service.EndSignIn] ends one of, and what [Service.EndOtherSignIns] ends all but
-one of, for a "where you're signed in" screen. Each
-entry carries the family, so a consumer that records a device per login from
-[Hooks.AfterIssueToken] joins it on that.
+one of, for a "where you're signed in" screen.
+
+The screen is answered in two halves, and the line between them is who knows
+the fact. The platform lists the logins and records how each one happened: the
+[CredentialKind] its door stamped is a column on the family's row, carried
+across every refresh, and [ActiveSignIn.CredentialKind] reports it, because it
+is something this package knows at the moment of sign-in rather than something
+about the device. The consumer annotates the device. This package stores no
+address, no user agent and no device name — whether any of those is recorded at
+all is the consumer's decision, made from [Hooks.AfterIssueToken], which runs
+inside every mint with the family on the [SignIn] it is handed. signin/grpc's
+WithSignInAnnotator is how what they recorded, keyed on the family, reaches the
+listing RPCs' answer as each login's attributes, so a consumer showing it keeps
+no list of logins of their own. An annotator that fails fails the listing
+rather than answering with the logins and none of their devices.
 
 # Ending a login, and the hook that records it
 
@@ -198,6 +210,33 @@ The credential writes are the same shape in reverse: read, verify and
 hash outside, and a transaction that holds the write and the hook together.
 Nothing here holds a write transaction open across a password hash.
 
+# A handle is a credential in all but name
+
+An email address is where a password reset is mailed, so a stolen session that
+could move it would follow with a reset and own the account. A username is what
+somebody signs in with. So neither is changed by identity's profile write over a
+transport — identity/grpc refuses both fields on UpdateProfile unless its server
+was built WithoutReauthenticatedHandles — and both are changed here instead, by
+[Service.UpdateEmailAddress] and [Service.UpdateUsername], which ask what
+[Service.UpdatePassword] asks before making the write identity would have made.
+
+What they ask is one of two proofs. The password, with a code from a proven
+second factor. Or a login that began within [WithRecentSignInWindow], which
+proves what re-typing the password would have, a few minutes earlier: it is the
+"auth_time" of the sign-in the request came through, read off the login's
+refresh token as [RefreshToken.SignedInAt], which a refresh does not move. A
+password holder may offer either; somebody who holds no password — a passkey, a
+sign-in link — has only the second, and is asked to sign in again when it is
+stale. An impersonation's login is never one. [WithoutRecentSignIn] removes the
+second proof and with it any way for a passwordless person to change either
+handle.
+
+The write is identity's, through [ProfileUpdater], so identity's
+AfterUpdateProfile is the hook that records it whichever door made the change,
+and this package adds none. An address change withdraws the old address's proof
+in that write, and a service that can mail a verification link mails the new
+address one once the change has committed.
+
 # Which credential it was
 
 Every door stamps what proved the sign-in on [Authentication.CredentialKind],
@@ -219,6 +258,12 @@ caller names instead, so a consumer that proved a passkey records "passkey"
 rather than "principal". The type is a string for that
 reason: the consumer's credential is spelled without this package having heard
 of it.
+
+The kind is recorded on the login as well as handed to the hook — see
+[RefreshTokenRequest.CredentialKind] — so a listing can say how each login
+happened. An impersonation's login records [CredentialKindImpersonation]. A
+refresh records the kind the login began with, since exchanging a refresh token
+proves nothing new about how it began.
 
 # What is not here
 

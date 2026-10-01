@@ -84,8 +84,19 @@ func reportIDs(results []*issuereportspb.IssueReport) []string {
 	return out
 }
 
-// TestIncludeArchivedIsAGrantAndNotAField is the ruling, executed, on all five
-// paged reads.
+// scopedReportIDs is reportIDs for the rows the reads across tenants answer
+// with.
+func scopedReportIDs(results []*issuereportspb.ScopedIssueReport) []string {
+	out := make([]string, 0, len(results))
+	for _, result := range results {
+		out = append(out, result.GetReport().GetId())
+	}
+
+	return out
+}
+
+// TestIncludeArchivedIsAGrantAndNotAField is the ruling, executed, on every
+// paged read.
 //
 // Each case seeds one live report and one somebody archived, sends
 // include_archived: true, and asks the same question twice: as somebody holding
@@ -95,9 +106,9 @@ func reportIDs(results []*issuereportspb.IssueReport) []string {
 func TestIncludeArchivedIsAGrantAndNotAField(T *testing.T) {
 	T.Parallel()
 
-	// The five RPCs, each reduced to "which report ids does this answer with",
-	// so the table below is about the rule rather than about five response
-	// shapes.
+	// The paged RPCs, each reduced to "which report ids does this answer
+	// with", so the table below is about the rule rather than about each
+	// response's shape.
 	reads := map[string]struct {
 		read  func(tb testing.TB, h *harness, ctx context.Context) []string
 		grant authorization.Permission
@@ -154,6 +165,33 @@ func TestIncludeArchivedIsAGrantAndNotAField(T *testing.T) {
 				must.NoError(tb, err)
 
 				return reportIDs(res.GetResults())
+			},
+		},
+		"ListReportsAcrossScopes": {
+			grant: issuereportsgrpc.PermissionReadAnyReports,
+			read: func(tb testing.TB, h *harness, ctx context.Context) []string {
+				tb.Helper()
+
+				res, err := h.server.ListReportsAcrossScopes(ctx, &issuereportspb.ListReportsAcrossScopesRequest{
+					Filter: includeArchived(),
+				})
+				must.NoError(tb, err)
+
+				return scopedReportIDs(res.GetResults())
+			},
+		},
+		"ListReportsByStatusAcrossScopes": {
+			grant: issuereportsgrpc.PermissionReadAnyReports,
+			read: func(tb testing.TB, h *harness, ctx context.Context) []string {
+				tb.Helper()
+
+				res, err := h.server.ListReportsByStatusAcrossScopes(ctx, &issuereportspb.ListReportsByStatusAcrossScopesRequest{
+					Status: issuereportsgrpc.StatusToProto(issuereports.StatusOpen),
+					Filter: includeArchived(),
+				})
+				must.NoError(tb, err)
+
+				return scopedReportIDs(res.GetResults())
 			},
 		},
 		"ListReportsForSubject": {

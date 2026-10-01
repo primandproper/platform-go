@@ -141,6 +141,24 @@ func WithInvitationTokenReturned() Option {
 	return func(s *Server) { s.returnInvitationToken = true }
 }
 
+// WithoutReauthenticatedHandles lets UpdateProfile move a username and an email
+// address again, on nothing but the caller being signed in.
+//
+// Absent, it refuses a save naming either with
+// identity.ErrHandleChangeRequiresReauthentication, as InvalidArgument, and the
+// rest of the profile is a separate save without them. An email address is
+// where a password reset is mailed and a username is what somebody signs in
+// with, so a save that could move either is a stolen session's way to own the
+// account; authentication/signin's UpdateEmailAddress and UpdateUsername are
+// where they change instead, behind a password or a recent sign-in.
+//
+// It is for a deployment that re-authenticates in front of this RPC by some
+// means of its own. One that names it and re-authenticates nowhere has put the
+// hole back.
+func WithoutReauthenticatedHandles() Option {
+	return func(s *Server) { s.handlesUngated = true }
+}
+
 // defaultTokenMinter is the CSPRNG the module already uses for single-use
 // tokens.
 func defaultTokenMinter(ctx context.Context) (string, error) {
@@ -155,9 +173,10 @@ func defaultTokenMinter(ctx context.Context) (string, error) {
 // real answer rather than a placeholder: a consumer who says nothing gets a
 // directory whose request-named RPCs are closed to accounts the caller is not a
 // member of, which is what the per-method permission fragment on its own could
-// not give them. The consumers who need something else — an operator console, a
-// support role that reads every account, a policy engine of their own — are the
-// ones who name it.
+// not give them. The consumers who need something else — a support role scoped
+// some other way, a policy engine of their own — are the ones who name it. An
+// operator who reads or acts on every row is not one of them: see
+// [WithOperatorPermission].
 //
 // See [TargetAuthorizer] for what an implementation owes and
 // [MembershipAuthorizer] for the three rules the default applies.
@@ -200,24 +219,4 @@ func WithPermissionResolver(resolver PermissionResolver) Option {
 			s.permissions = resolver
 		}
 	}
-}
-
-// WithGrantsExtractor supplies what the caller may do, which this surface reads
-// for exactly one decision: whether a paged read's include_archived is honored
-// or cleared.
-//
-// It is the same authorization.GrantsExtractor a consumer already hands
-// primitives-go's authorization/grpc enforcer — the interceptor decides whether
-// a method may be called at all, and this decides which rows the answer may
-// contain, off the same authority so the two cannot disagree. It is not
-// [WithPermissionResolver]'s seam: that one answers what a principal may do in
-// an account GetPrincipal names, and this one what the request's own session
-// may do.
-//
-// It is an option rather than a parameter because its absence has a coherent
-// answer and a safe one: a server built without it clears the field on every
-// read, so a deployment that has not wired it serves live rows to everybody
-// rather than archived ones to anybody. See filterFromProto.
-func WithGrantsExtractor(grants authorization.GrantsExtractor) Option {
-	return func(s *Server) { s.grants = grants }
 }

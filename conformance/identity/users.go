@@ -142,6 +142,43 @@ func users(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, "", cleared.GetUser().GetLastName(), test.Sprint("a field the request named empty was not cleared"))
 	})
 
+	// A handle is the recovery path for the password, or the name somebody
+	// signs in with, so a session alone may not move one: the save is refused
+	// whole, before anything is written, and the rest of the profile is a save
+	// of its own. The handles change on the sign-in surface, behind a password.
+	t.Run("a profile update naming a username or an email address is refused", func(t *testing.T) {
+		t.Parallel()
+
+		if s.Seams().ReauthenticatedHandlesDisabled {
+			conformance.Skip(t, "conformance: this subject says UpdateProfile moves handles on a session alone (Seams.ReauthenticatedHandlesDisabled); skipping")
+		}
+
+		caller := s.Subject(t, conformance.Making(getPrincipal, updateProfile))
+		ctx := caller.Context(t.Context())
+		before := self(t, caller)
+
+		for name, input := range map[string]*identitypb.ProfileUpdateInput{
+			"an email address": {EmailAddress: new(freshEmail()), FirstName: new("Renamed")},
+			"a username":       {Username: new(identifiers.New()), FirstName: new("Renamed")},
+		} {
+			_, err := caller.Surfaces.Identity.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{Input: input})
+			must.Error(t, err, must.Sprintf("a profile save naming %s went through on a session alone", name))
+			test.EqOp(t, codes.InvalidArgument, status.Code(err), test.Sprintf("naming %s", name))
+		}
+
+		after := self(t, caller)
+		test.EqOp(t, before.GetUsername(), after.GetUsername(), test.Sprint("a refused save moved the username"))
+		test.EqOp(t, before.GetEmailAddress(), after.GetEmailAddress(), test.Sprint("a refused save moved the address"))
+		test.EqOp(t, before.GetFirstName(), after.GetFirstName(), test.Sprint("a refused save wrote the rest of itself"))
+
+		// The control: the same save without the handles goes through.
+		response, err := caller.Surfaces.Identity.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{
+			Input: &identitypb.ProfileUpdateInput{FirstName: new("Renamed")},
+		})
+		must.NoError(t, err)
+		test.EqOp(t, "Renamed", response.GetUser().GetFirstName())
+	})
+
 	t.Run("a profile update with no input is refused", func(t *testing.T) {
 		t.Parallel()
 
@@ -206,6 +243,27 @@ func users(t *testing.T, s *conformance.Session) {
 		if before != nil && after != nil {
 			test.EqOp(t, before.AsTime(), after.AsTime(),
 				test.Sprint("a refused list restamped the entries it had read before the bad one"))
+		}
+	})
+
+	t.Run("recording agreement to nothing is refused, and stamps nothing", func(t *testing.T) {
+		t.Parallel()
+
+		caller := s.Subject(t, conformance.Making(getPrincipal, recordAgreement))
+		before := self(t, caller).GetLastAcceptedTermsOfService()
+
+		// The positive control is "recording agreement stamps every document
+		// named", above: the same call, naming something.
+		_, err := caller.Surfaces.Identity.RecordAgreement(caller.Context(t.Context()), &identitypb.RecordAgreementRequest{})
+		must.Error(t, err, must.Sprint("an agreement to nothing was recorded"))
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		after := self(t, caller).GetLastAcceptedTermsOfService()
+		test.EqOp(t, before == nil, after == nil,
+			test.Sprint("an agreement to nothing stamped the terms of service"))
+		if before != nil && after != nil {
+			test.EqOp(t, before.AsTime(), after.AsTime(),
+				test.Sprint("an agreement to nothing restamped the terms of service"))
 		}
 	})
 

@@ -510,7 +510,7 @@ func TestHandlers_cancel(T *testing.T) {
 func TestHandlers_Mount(T *testing.T) {
 	T.Parallel()
 
-	T.Run("registers all five routes", func(t *testing.T) {
+	T.Run("registers all six routes", func(t *testing.T) {
 		t.Parallel()
 
 		handlers, router := build(t, &dataprivacymock.ServiceMock{})
@@ -518,7 +518,7 @@ func TestHandlers_Mount(T *testing.T) {
 		routes := handlers.Mount(router)
 
 		must.NoError(t, router.Err())
-		test.SliceLen(t, 5, routes)
+		test.SliceLen(t, 6, routes)
 
 		paths := map[string]string{}
 		for _, route := range routes {
@@ -531,6 +531,7 @@ func TestHandlers_Mount(T *testing.T) {
 			nethttp.MethodGet + " " + BasePath + "/{requestID}",
 			nethttp.MethodGet + " " + BasePath + "/{requestID}" + ConfirmSuffix,
 			nethttp.MethodPost + " " + BasePath + "/{requestID}" + CancelSuffix,
+			RouteArtifact,
 		} {
 			_, ok := paths[want]
 			test.True(t, ok, test.Sprintf("route %q was not registered", want))

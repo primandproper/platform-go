@@ -12,20 +12,27 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/grpc"
 )
 
-// serviceMethods is every RPC the generated service descriptor declares, in the
-// full-method form an interceptor sees.
+// serviceMethods is every RPC the generated service descriptors declare —
+// AuditService's and AuditAdministrationService's, which one Server serves — in
+// the full-method form an interceptor sees.
 //
-// Reading it off the descriptor rather than listing it here is what makes this
+// Reading it off the descriptors rather than listing it here is what makes this
 // file a check rather than a second copy: an RPC added to the schema appears
 // here without anybody remembering to add it.
 func serviceMethods() []string {
-	prefix := "/" + auditpb.AuditService_ServiceDesc.ServiceName + "/"
+	var out []string
 
-	out := make([]string, 0, len(auditpb.AuditService_ServiceDesc.Methods))
-	for _, m := range auditpb.AuditService_ServiceDesc.Methods {
-		out = append(out, prefix+m.MethodName)
+	for _, desc := range []*grpc.ServiceDesc{
+		&auditpb.AuditService_ServiceDesc,
+		&auditpb.AuditAdministrationService_ServiceDesc,
+	} {
+		prefix := "/" + desc.ServiceName + "/"
+		for _, m := range desc.Methods {
+			out = append(out, prefix+m.MethodName)
+		}
 	}
 
 	return out
@@ -82,6 +89,33 @@ func TestVerifyIsItsOwnGrant(T *testing.T) {
 	} {
 		test.SliceNotContains(T, permissions[method], auditgrpc.PermissionVerifyChain, test.Sprintf(
 			"%s requires the verification grant, which reads nothing it needs", method))
+	}
+}
+
+// TestReadingAnyTenantIsItsOwnGrant keeps the operator's read apart from the
+// ordinary one in both directions: reading one's own log never requires the
+// grant that reaches every tenant's, and reaching every tenant's is never
+// admitted by the grant everybody who reads their own log holds.
+func TestReadingAnyTenantIsItsOwnGrant(T *testing.T) {
+	T.Parallel()
+
+	permissions := auditgrpc.Permissions()
+
+	for method, required := range permissions {
+		administrative := slices.Contains([]string{
+			auditpb.AuditAdministrationService_GetAnyEntry_FullMethodName,
+			auditpb.AuditAdministrationService_ListAnyEntries_FullMethodName,
+		}, method)
+
+		if administrative {
+			test.Eq(T, []authorization.Permission{auditgrpc.PermissionReadAnyEntries}, required,
+				test.Sprintf("%s is admitted by something other than the operator's grant", method))
+
+			continue
+		}
+
+		test.SliceNotContains(T, required, auditgrpc.PermissionReadAnyEntries,
+			test.Sprintf("%s, a read of the caller's own log, requires the operator's grant", method))
 	}
 }
 

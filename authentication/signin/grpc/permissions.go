@@ -3,14 +3,16 @@ package grpc
 import (
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )
 
-// This service's authorization fragment, and the reason it is a list of names
-// rather than a map of permissions.
+// This package's authorization fragment: SignInService's, which is a list of
+// names rather than a map of permissions, and SignInAdministrationService's,
+// which is a map.
 //
-// Nothing here is permissioned, and that is a conclusion rather than an
-// omission. The anonymous RPCs are how a caller becomes somebody at all — or,
+// Nothing on SignInService is permissioned, and that is a conclusion rather
+// than an omission. The anonymous RPCs are how a caller becomes somebody at all — or,
 // in SignOut's case, stops being them — so there is no grant that could gate
 // them: a permission check in front of sign-in is a check against the caller's
 // roles, and an anonymous caller has none. All but one of the rest take their
@@ -28,15 +30,63 @@ import (
 // not make. What it is not is anonymous, which is why it is a list of its own
 // rather than an entry in either of the two below.
 //
-// So there is no Permissions map here, unlike identity/grpc, and a consumer
-// looking for one is looking for something that would be wrong to have. What
-// there is instead is [Require], which declares every one of them to an
-// authorization policy explicitly. The difference between "declared and
+// So SignInService has no entry in [Permissions], unlike identity/grpc's
+// service, and a consumer looking for one is looking for something that would
+// be wrong to have. What there is instead is [Require], which declares every
+// one of them to an authorization policy explicitly. The difference between "declared and
 // requires nothing" and "not declared" is the difference between a service that
 // works and one whose every method is denied by the enforcer's fail-closed
 // rule, and nothing reports the second at wiring time — which is exactly why
 // the declaration is a function here rather than a paragraph telling a consumer
 // to write a loop.
+//
+// What an operator does to somebody else's logins is a different act, and it
+// is SignInAdministrationService rather than a field on SignInService naming a
+// user — a field that would turn every "this is the caller's own row" above
+// into a question about the caller's grants. Being a service of its own is what
+// keeps that sentence true of this one.
+
+// The permissions SignInAdministrationService's methods require, in
+// authorization's vocabulary, spelled beside the service for the reason
+// identity/grpc gives for its own: the strings mean something only to sign-in.
+//
+// No role holds either by default, and nothing here says who should. Which of
+// a deployment's callers are operators is its policy's to decide, and these
+// are the names that policy grants.
+const (
+	// PermissionReadAnySignIns covers listing somebody else's live logins.
+	//
+	// It is its own grant, apart from ending them, because a support desk
+	// answering "am I signed in somewhere I shouldn't be?" needs to read the
+	// list and not thereby to end anything on it.
+	PermissionReadAnySignIns authorization.Permission = "signin.sign_ins.read_any"
+
+	// PermissionEndAnySignIns covers ending somebody else's logins: one by
+	// its family, or every one they hold.
+	//
+	// One grant for both sizes, because the second is the first repeated over
+	// the list, and a role that could end each login and not all of them
+	// would be refused nothing it could not do a row at a time.
+	PermissionEndAnySignIns authorization.Permission = "signin.sign_ins.end_any"
+)
+
+// Permissions is the default map from SignInAdministrationService's methods to
+// what each requires, the fragment [Require] declares.
+//
+// Every method on that service is here and no method on SignInService is:
+// those are [AnonymousMethods], [RegistrarMethods] and [SelfServiceMethods],
+// and the four together are exhaustive over what [Server] serves.
+// permissions_test.go keeps them so.
+//
+// It is a default and not a rule, as identity/grpc's is: a consumer who wants
+// the listing behind two permissions declares the whole fragment themselves.
+func Permissions() map[string][]authorization.Permission {
+	return map[string][]authorization.Permission{
+		signinpb.SignInAdministrationService_ListSignInsForUser_FullMethodName:   {PermissionReadAnySignIns},
+		signinpb.SignInAdministrationService_EndSignInForUser_FullMethodName:     {PermissionEndAnySignIns},
+		signinpb.SignInAdministrationService_EndAllSignInsForUser_FullMethodName: {PermissionEndAnySignIns},
+	}
+}
 
 // AnonymousMethods are the RPCs that require no caller at all.
 //
@@ -121,6 +171,8 @@ func SelfServiceMethods() []string {
 		signinpb.SignInService_UpdatePassword_FullMethodName,
 		signinpb.SignInService_RefreshTOTPSecret_FullMethodName,
 		signinpb.SignInService_VerifyTOTPSecret_FullMethodName,
+		signinpb.SignInService_UpdateEmailAddress_FullMethodName,
+		signinpb.SignInService_UpdateUsername_FullMethodName,
 		signinpb.SignInService_SignOutEverywhere_FullMethodName,
 		signinpb.SignInService_ListSignIns_FullMethodName,
 		signinpb.SignInService_EndSignIn_FullMethodName,
@@ -129,8 +181,9 @@ func SelfServiceMethods() []string {
 	}
 }
 
-// Require declares every one of this service's methods onto a requirements
-// builder, all of them as public.
+// Require declares every one of this package's methods onto a requirements
+// builder: SignInService's as public, and SignInAdministrationService's with
+// what [Permissions] says they need.
 //
 // Public there means "no authorization check", not "no authentication": the
 // consumer's authentication interceptor still runs, and the self-service
@@ -148,14 +201,16 @@ func SelfServiceMethods() []string {
 // A method declared twice is ErrDuplicateMethod, so a consumer who wants one of
 // these gated after all declares the whole set themselves rather than calling
 // this and amending it. That is the same bargain identity/grpc's Require makes,
-// and it is why this exists at all: the three lists above are exhaustive over
-// the service, permissions_test.go keeps them that way, and an RPC added later
+// and it is why this exists at all: the three lists and the map above are
+// exhaustive over both services, permissions_test.go keeps them that way, and an RPC added later
 // and decided about in none of them fails there rather than being denied in
 // somebody's production.
 func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	if b == nil {
 		return nil
 	}
+
+	b.RequireAll(Permissions())
 
 	for _, method := range AnonymousMethods() {
 		b.Public(method)

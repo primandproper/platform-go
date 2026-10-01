@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -202,6 +203,8 @@ type Seams struct {
 	// mounts, and that none is a route its surface exports among its
 	// OwnStandingRoutes: those ask for no grant, so no deployment can keep them
 	// from its members, and a list naming one has contradicted itself.
+	// conformance/reservations checks that the deployment refuses a member
+	// each entry as 403, and before it reads the row the route names.
 	OperatorRoutes []string
 
 	// FulfillmentBudget is how long this deployment may take to pick queued
@@ -229,6 +232,19 @@ type Seams struct {
 	// caller is either a gate that is off or a gate that is broken, and only the
 	// deployment knows which it meant.
 	PasswordChangeGateDisabled bool
+
+	// ReauthenticatedHandlesDisabled says the deployment's identity surface
+	// lets UpdateProfile move a username or an email address on nothing but a
+	// session — it built identity/grpc's server WithoutReauthenticatedHandles.
+	// True skips the assertion that such a save is refused, and runs instead
+	// the ones that move an address through UpdateProfile; false, the zero
+	// value, asserts the refusal, because the gate is on by default.
+	//
+	// A fact about the deployment rather than an action, for
+	// PasswordChangeGateDisabled's reason: a save that goes through is either
+	// a gate that is off or a gate that is broken, and only the deployment
+	// knows which it meant.
+	ReauthenticatedHandlesDisabled bool
 
 	// ErrorReasonsStripped says the deployment's edge drops a refusal's
 	// client-safe reason before it reaches a client. True skips the reason half
@@ -462,6 +478,7 @@ type Surfaces struct {
 	Comments      commentspb.CommentsServiceClient
 	Identity      identitypb.IdentityServiceClient
 	IssueReports  issuereportspb.IssueReportsServiceClient
+	MediaRegistry mediaregistrypb.MediaRegistryServiceClient
 	Notifications notificationspb.NotificationsServiceClient
 	OAuth2Clients oauth2clientspb.OAuth2ClientsServiceClient
 	Passkeys      passkeyspb.PasskeysServiceClient
@@ -469,7 +486,22 @@ type Surfaces struct {
 	Settings      settingspb.SettingsServiceClient
 	SignIn        signinpb.SignInServiceClient
 	Waitlists     waitlistspb.WaitlistsServiceClient
-	Webhooks      webhookspb.WebhooksServiceClient
+
+	// SignInAdministration is the operator half of sign-in, which
+	// authentication/signin/grpc's Server registers beside SignIn. A subject
+	// that mounts it sets it, and one that mounts sign-in without it leaves it
+	// nil and the assertions that need an operator's view of somebody's
+	// logins skip.
+	SignInAdministration signinpb.SignInAdministrationServiceClient
+	Webhooks             webhookspb.WebhooksServiceClient
+
+	// AuditAdministration is the operator's read of every tenant's audit log,
+	// which audit/grpc's Server registers beside Audit. Setting it declares
+	// that the subject serves it — built with a recorder to file each read
+	// through — so an Unimplemented answer fails rather than skips. A subject
+	// that mounts the audit log without an operator's read leaves it nil, and
+	// the assertions that need one skip.
+	AuditAdministration auditpb.AuditAdministrationServiceClient
 }
 
 // Actions are the states no client can bring about on its own.
@@ -650,14 +682,14 @@ type Actions struct {
 	// as the user's, the way the deployment's own upload path does, and
 	// reports what it registered.
 	//
-	// There is no route or RPC that creates one, and that is mediaregistry's
-	// design rather than a gap: an object comes to exist through whatever
-	// upload the application offers — a form, a signed URL, a migration from
-	// an existing bucket — and the registry is the row the application writes
-	// once the bytes are somewhere. Only the read is served. A consumer
-	// implements this by uploading through their own path; this module's
-	// harnesses by mediaregistry.StoreAndRecord over the manager and store the
-	// composition root built, which is where that path ends anyway.
+	// The serve route's assertions start here rather than at
+	// mediaregistry/grpc's UploadObject, because a deployment may upload
+	// through a path of its own — a form, a signed URL, a migration from an
+	// existing bucket — and serve the result all the same. A consumer
+	// implements this by uploading through whichever path it offers; this
+	// module's harnesses by mediaregistry.StoreAndRecord over the manager and
+	// store the composition root built, which is where every path ends anyway.
+	// The resource surface's assertions need none: they upload through it.
 	//
 	// The bytes come back rather than going in for Audited's reason: what an
 	// object is belongs to the deployment, and what the suite asserts is which

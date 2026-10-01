@@ -146,7 +146,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		reader, err := audit.NewReader(client.Dialect())
 		must.NoError(t, err)
 
-		entries, err := reader.List(t.Context(), client.Reader(),
+		entries, err := reader.ListAcrossScopes(t.Context(), client.Reader(),
 			&audit.Query{ResourceType: AuditResourceType},
 			filtering.DefaultQueryFilter(),
 		)
