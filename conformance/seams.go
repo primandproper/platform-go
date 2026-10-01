@@ -727,12 +727,13 @@ type Actions struct {
 	// caller elsewhere; what kind it is and what it does are the consumer's.
 	//
 	// The kind must be one the deployment registered: operations.Service.Start
-	// refuses a kind its Registry does not hold. A kind whose work does
-	// nothing is fine, and one that is still pending when it is read is
-	// better, but nothing asserted waits on it either way. Started
-	// operations.WithOwner(scope), because a tenant-owned operation is the one
-	// the owners fan-out admits a colleague to, and the suite asserts that it
-	// does.
+	// refuses a kind its Registry does not hold. Its work should run until it
+	// is cancelled: the suite asserts that a cancellation refused to another
+	// tenant left the operation as it was, which a finished operation is
+	// whatever the surface did, and it ends by cancelling the operation as its
+	// owner. Started operations.WithOwner(scope), because a tenant-owned
+	// operation is the one the owners fan-out admits a colleague to, and the
+	// suite asserts that it does.
 	Operated func(ctx context.Context, scope tenancy.Scope) (operationID string, err error)
 }
 

@@ -67,6 +67,7 @@ func personOwned(t *testing.T, s *conformance.Session, probe *conformance.Subjec
 		status, got := read(t, mine, op)
 		must.EqOp(t, http.StatusOK, status, must.Sprint("a person could not read their own operation"))
 		test.NotEqOp(t, stateCancelled, got.State, test.Sprint("a colleague's refused cancellation cancelled the operation anyway"))
+		test.False(t, got.CancelRequested, test.Sprint("a colleague's refused cancellation asked the running operation to stop anyway"))
 
 		// The positive control, after the attempt: the route does cancel, for
 		// the owner. The state is not asserted, because cancelling a finished

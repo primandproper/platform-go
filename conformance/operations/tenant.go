@@ -56,7 +56,19 @@ func tenantOwned(t *testing.T, s *conformance.Session) {
 		test.EqOp(t, http.StatusNotFound, status, test.Sprint("a caller in another tenant could follow its operation"))
 	}
 
+	// The operation is still running, or still waiting for a worker: the kind
+	// Operated starts runs until it is cancelled. So a refused cancellation
+	// that leaked through is on the row either way — cancelled outright if
+	// nothing had claimed it, flagged if something had.
 	status, got = read(t, colleague, op)
 	must.EqOp(t, http.StatusOK, status)
 	test.NotEqOp(t, stateCancelled, got.State, test.Sprint("a refused cancellation from another tenant cancelled the operation anyway"))
+	test.False(t, got.CancelRequested, test.Sprint("a refused cancellation from another tenant asked the operation to stop anyway"))
+
+	// The positive control for the two above, and what releases the worker the
+	// operation is holding: the owner's cancellation lands, and lands visibly.
+	status, got = cancel(t, mine, op)
+	must.EqOp(t, http.StatusOK, status, must.Sprint("the tenant could not cancel its own operation; the refusal above proves nothing"))
+	test.True(t, got.State == stateCancelled || got.CancelRequested,
+		test.Sprintf("the tenant's own cancellation left no mark on the operation (state %q), so the absence of one above proves nothing", got.State))
 }

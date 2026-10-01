@@ -62,6 +62,11 @@ type operation struct {
 	ID    string `json:"id"`
 	Kind  string `json:"kind"`
 	State string `json:"state"`
+
+	// CancelRequested is what a cancellation writes on an operation that has
+	// started, which it does not stop on the spot: the state stays running
+	// until the work notices.
+	CancelRequested bool `json:"cancelRequested"`
 }
 
 // page is one page of a listing.
