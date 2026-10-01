@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/conformance"
 
@@ -42,6 +43,12 @@ func redemption(t *testing.T, s *conformance.Session) {
 	// The whole point of the surface, asserted where it pays off: somebody who
 	// could not sign in now can, with the password the link set. It needs the
 	// sign-in surface to observe, and a subject that did not mount one skips.
+	//
+	// A caller the subject minted is the deployment's, and may hold a proven
+	// second factor the suite has no code for. Their principal says whether
+	// they do, and where they do the door's answer to the password alone is
+	// that a code is required — the one refusal sign-in gives only to a
+	// password that was right, so it is what the reset is held to there.
 	t.Run("the password a reset sets is the one that signs in", func(t *testing.T) {
 		t.Parallel()
 
@@ -50,6 +57,8 @@ func redemption(t *testing.T, s *conformance.Session) {
 		if sub.Surfaces.SignIn == nil {
 			conformance.Skip(t, "conformance: this subject mounts no sign-in surface, so a reset's effect cannot be observed")
 		}
+
+		holdsSecondFactor := user.GetTwoFactorSecretVerifiedAt() != nil
 
 		signIn := func(password string) error {
 			_, err := sub.Surfaces.SignIn.LoginForToken(t.Context(), &signinpb.LoginForTokenRequest{
@@ -60,8 +69,16 @@ func redemption(t *testing.T, s *conformance.Session) {
 		}
 
 		// The control: before the reset this password is not theirs, so a
-		// sign-in that succeeded below would otherwise prove nothing.
-		must.Error(t, signIn(newPassword), must.Sprint("the caller signed in with a password nobody set"))
+		// sign-in that succeeded below would otherwise prove nothing — and
+		// for somebody holding a second factor, neither would being asked for
+		// a code.
+		before := signIn(newPassword)
+		must.Error(t, before, must.Sprint("the caller signed in with a password nobody set"))
+
+		if holdsSecondFactor {
+			must.NotEqOp(t, signin.ErrSecondFactorRequired.Error(), status.Convert(before).Message(),
+				must.Sprint("a password nobody set was answered as a right one"))
+		}
 
 		request(t, sub, user.GetEmailAddress())
 
@@ -72,7 +89,17 @@ func redemption(t *testing.T, s *conformance.Session) {
 			})
 		must.NoError(t, err)
 
-		test.NoError(t, signIn(newPassword), test.Sprint("the password a reset set does not sign in"))
+		after := signIn(newPassword)
+		if !holdsSecondFactor {
+			test.NoError(t, after, test.Sprint("the password a reset set does not sign in"))
+
+			return
+		}
+
+		must.Error(t, after, must.Sprint("somebody holding a proven second factor signed in with no code"))
+		test.EqOp(t, codes.Unauthenticated, status.Code(after))
+		test.EqOp(t, signin.ErrSecondFactorRequired.Error(), status.Convert(after).Message(),
+			test.Sprint("the password a reset set was not answered as the right one"))
 	})
 
 	// Single use, and the refusal says which of the three ways a link fails,

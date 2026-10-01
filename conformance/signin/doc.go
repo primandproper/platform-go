@@ -107,6 +107,16 @@ that every other call is refused with PASSWORD_CHANGE_REQUIRED until it is
 made. The second is the gate signin/grpc's extractor runs by default, and
 skips where the subject says Seams.PasswordChangeGateDisabled.
 
+A registrant is asserted as a registration with no policy writes one: refused
+at the password door with USER_UNVERIFIED until a link proves their address,
+and holding no second-factor secret until they enroll. A
+signin.RegistrationPolicy may write somebody else, and a subject whose policy
+does says which. Seams.RegistrantsAdmittedUnverified holds the door to
+admitting them at once, and the link to proving the address all the same, as
+the registrant's own auth status reads it. Seams.RegistrationIssuesSecondFactor
+holds the registration to answering with the secret it issued, unproven until a
+code from it is, and skips the assertion about proving a factor nobody issued.
+
 A handle change is asserted as a password change is: an address or a username
 moved with the wrong current password is refused and moves nothing, and the
 right one moves it. That identity's UpdateProfile refuses the same two fields

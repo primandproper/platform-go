@@ -233,6 +233,10 @@ func self(t *testing.T, s *conformance.Session) {
 	t.Run("proving a second factor nobody issued is refused as a precondition", func(t *testing.T) {
 		t.Parallel()
 
+		if s.Seams().RegistrationIssuesSecondFactor {
+			conformance.Skip(t, "conformance: this subject says its registration issues every registrant a second-factor secret (Seams.RegistrationIssuesSecondFactor), so nobody here holds none; skipping")
+		}
+
 		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
 		sub, _ := signedIn(t, s, anon, verifyTOTPSecret, refreshTOTPSecret)
 
@@ -243,6 +247,51 @@ func self(t *testing.T, s *conformance.Session) {
 		// The control: once a secret is issued, the same call with its code is
 		// the proof it was refused for lacking.
 		enroll(t, sub)
+	})
+
+	// A registration issues a second-factor secret exactly where the subject
+	// says its policy has it do so, and what it issues is a secret rather than
+	// a factor: the registrant holds none until they prove it, a wrong code is
+	// refused as a wrong code, and the right one is the proof.
+	t.Run("a registration issues a second-factor secret where the deployment says, unproven", func(t *testing.T) {
+		t.Parallel()
+
+		anon := anonymous(t, s, verifyEmailAddress, loginForToken)
+		who, registered := register(t, s, withPassword(registrationRequest(s)))
+		issued := registered.GetTotpEnrollment()
+
+		if !s.Seams().RegistrationIssuesSecondFactor {
+			test.Nil(t, issued, test.Sprint("a registration issued a second-factor secret, and this subject does not say its policy has it do so (Seams.RegistrationIssuesSecondFactor)"))
+
+			return
+		}
+
+		must.NotNil(t, issued, must.Sprint("this subject says its registration issues a second-factor secret (Seams.RegistrationIssuesSecondFactor), and it answered with none"))
+		must.NotEqOp(t, "", issued.GetSecret(), must.Sprint("a registration issued a second factor with no secret"))
+
+		if s.Seams().SignedIn == nil {
+			conformance.Skip(t, "conformance: this subject supplies no SignedIn seam, so nobody the suite signs in can be called as; skipping")
+		}
+
+		verify(t, s, anon, who)
+
+		sub := caller(t, s, loggedIn(t, anon, who.username, password), getAuthStatus, verifyTOTPSecret)
+		ctx := sub.Context(t.Context())
+
+		unproven, err := sub.Surfaces.SignIn.GetAuthStatus(ctx, &signinpb.GetAuthStatusRequest{})
+		must.NoError(t, err)
+		test.False(t, unproven.GetStatus().GetTwoFactorEnrolled(),
+			test.Sprint("a secret a registration issued counts as a second factor before anybody proved it"))
+
+		_, err = sub.Surfaces.SignIn.VerifyTOTPSecret(ctx, &signinpb.VerifyTOTPSecretRequest{TotpCode: wrongCode(t, issued.GetSecret())})
+		refused(t, s, err, codes.Unauthenticated, reasonInvalidCredentials)
+
+		_, err = sub.Surfaces.SignIn.VerifyTOTPSecret(ctx, &signinpb.VerifyTOTPSecretRequest{TotpCode: code(t, issued.GetSecret())})
+		must.NoError(t, err, must.Sprint("the right code for the secret a registration issued did not prove it"))
+
+		proven, err := sub.Surfaces.SignIn.GetAuthStatus(ctx, &signinpb.GetAuthStatusRequest{})
+		must.NoError(t, err)
+		test.True(t, proven.GetStatus().GetTwoFactorEnrolled())
 	})
 
 	// Replacing a second factor is replacing a credential, so it asks for
