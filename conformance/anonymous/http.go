@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,6 +12,8 @@ import (
 	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -31,9 +34,11 @@ type httpRoute struct {
 // TestHTTPRosterMatchesWhatEachSurfaceMounts is what stops the list drifting —
 // it mounts each surface's real handlers and compares, in both directions.
 //
-// None of the three has a route reachable without a caller. dataprivacy's
-// confirm is a link in a mail, and it is still a browser arriving with its
-// session: the handler resolves the subject before it reads the request.
+// The authorization server is the one surface with routes reachable without a
+// caller, and it names them per route in public. dataprivacy's confirm is not
+// among them: it is a link in a mail, and it is still a browser arriving with
+// its session, since the handler resolves the subject before it reads the
+// request.
 type httpSurface struct {
 	mounted func(*conformance.HTTPSurfaces) bool
 
@@ -42,8 +47,15 @@ type httpSurface struct {
 	// deployment runs a watcher, and the deployment says so.
 	routeMounted func(*conformance.HTTPSurfaces, httpRoute) bool
 
+	// why says what the public routes are for, on the surface that has some.
+	why string
+
 	name   string
 	routes []httpRoute
+
+	// public are the routes among routes that a request with nobody on it
+	// must reach rather than be refused at.
+	public []httpRoute
 }
 
 func httpRoster() []httpSurface {
@@ -68,6 +80,33 @@ func httpRoster() []httpSurface {
 			mounted: func(h *conformance.HTTPSurfaces) bool { return h.MediaRegistry },
 			routes: []httpRoute{
 				{http.MethodGet, mediaregistryhttp.BasePath + "/{objectID}"},
+			},
+		},
+		{
+			// Listed by hand like the rest, from the constants oauth2server
+			// fixes them at: Mount registers them and returns nothing to read
+			// them back from. /register is not here, because a deployment
+			// whose clients come from the registry builds the server without
+			// it; see the roster test.
+			//
+			// /token and /revoke are not public, and that is not a statement
+			// that a person must be signed in to reach them: they are reached
+			// by a client authenticating as itself, and a request carrying no
+			// credential at all is refused there as 401 like anywhere else.
+			name:    "oauth2server",
+			mounted: func(h *conformance.HTTPSurfaces) bool { return h.OAuth2Server },
+			why:     "a client discovers the server and sends a person to sign in before anybody is signed in",
+			routes: []httpRoute{
+				{http.MethodGet, oauth2server.PathAuthorizationServerMetadata},
+				{http.MethodGet, oauth2server.PathAuthorize},
+				{http.MethodPost, oauth2server.PathAuthorize},
+				{http.MethodPost, oauth2server.PathToken},
+				{http.MethodPost, oauth2server.PathRevoke},
+			},
+			public: []httpRoute{
+				{http.MethodGet, oauth2server.PathAuthorizationServerMetadata},
+				{http.MethodGet, oauth2server.PathAuthorize},
+				{http.MethodPost, oauth2server.PathAuthorize},
 			},
 		},
 		{
@@ -109,12 +148,14 @@ var pathParam = regexp.MustCompile(`\{[^}]+\}`)
 const absentID = "conformance-absent"
 
 // runHTTP is the HTTP half: every route on every mounted HTTP surface refuses a
-// request with nobody on it, as 401.
+// request with nobody on it, as 401, except the routes a surface names public,
+// which must not be refused that way.
 //
-// One direction only, because none of the three has an anonymous route. The
-// request carries a well-formed empty body where the method takes one, so a
+// The request carries a well-formed empty body where the method takes one, so a
 // refusal cannot be about a body the router failed to decode — what is asserted
-// is that the surface refused for want of a caller, and refused as that.
+// is that the surface refused for want of a caller, and refused as that. A
+// public route is asserted only to be reachable, never to succeed, for the
+// reason an anonymous RPC is: an empty request will usually fail on its input.
 func runHTTP(t *testing.T, s *conformance.Session, probe *conformance.Subject) {
 	t.Helper()
 
@@ -173,6 +214,14 @@ func runHTTP(t *testing.T, s *conformance.Session, probe *conformance.Subject) {
 					must.NoError(t, doErr, must.Sprintf("%s %s", route.method, url))
 
 					test.NoError(t, res.Body.Close())
+
+					if slices.Contains(surf.public, route) {
+						test.NotEqOp(t, http.StatusUnauthorized, res.StatusCode,
+							test.Sprintf("%s %s is reachable without a caller (%s) and was refused for want of one",
+								route.method, route.path, surf.why))
+
+						return
+					}
 
 					test.EqOp(t, http.StatusUnauthorized, res.StatusCode,
 						test.Sprintf("%s %s answered a request carrying no caller with %d rather than refusing it as unauthenticated",

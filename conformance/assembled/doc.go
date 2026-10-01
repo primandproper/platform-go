@@ -76,7 +76,8 @@ it would be proving a service nobody could run.
     both.
   - The HTTP half of authorization, which service does not build either: an
     authorization/http Enforcer named to service.Transports as the
-    HTTPEnforcer the three HTTP surfaces check their routes with. Its grants
+    HTTPEnforcer the three HTTP surfaces that declare route permissions
+    check their routes with. Its grants
     are the role policy's — a member holds every permission those surfaces'
     Permissions maps name — except in the reserving run, where httpGrants
     withholds from a member the permissions of staffOnlyRoutes, one route on
@@ -112,9 +113,17 @@ reads that as a failure rather than skipping, so a regression in what
 RegisterTransports mounts cannot pass as an absence.
 
 The HTTP surfaces are mounted on every dialect too: mediaregistry, operations,
-and dataprivacy, which fulfills its requests as operations. Subject.HTTP still
-says which are mounted, because the flags are how a hand-built subject that
-serves fewer reports it; this harness sets all three.
+dataprivacy, which fulfills its requests as operations, and the authorization
+server. Subject.HTTP still says which are mounted, because the flags are how a
+hand-built subject that serves fewer reports it; this harness sets them all.
+
+The authorization server is built by hand rather than from
+Config.OAuth2Server, the way a deployment whose clients come from the registry
+builds it: over oauth2clients/authserver's store, with its authenticator and its
+guarded resolver, and without /register. service mounts it all the same, because
+what it mounts is whatever *oauth2server.Server resolves. A person approves a
+request the way they call everything else here, with the token the harness
+minted for them, which is Actions.Authorized.
 
 Every run is held to its skips as well as its failures. The harness sets every
 seam and action to the value that makes an assertion run, so a skip it makes is

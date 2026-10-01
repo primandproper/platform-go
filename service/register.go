@@ -529,7 +529,8 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	// application's, because how a deployment identifies a human is not
 	// something an environment variable says. A container that registered none
 	// fails at the invoke rather than issuing authorization codes to whoever
-	// asks.
+	// asks — and RegisterTransports invokes it, to mount the server's routes,
+	// so for a service that mounts its surfaces that is the startup.
 	if cfg.OAuth2Server != nil {
 		do.ProvideValue(i, cfg.OAuth2Server)
 		do.ProvideValue(i, &cfg.OAuth2Server.Config)
