@@ -394,6 +394,25 @@ func (e *env) addAccount(t *testing.T, name string) string {
 	return account.ID
 }
 
+// addForeignAccount creates an account the registered user is not a member
+// of — one that exists, so a switch naming it is refused for the membership and
+// not for the account's absence.
+func (e *env) addForeignAccount(t *testing.T, name string) string {
+	t.Helper()
+
+	var account *identity.Account
+
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		created, err := e.store.CreateAccount(t.Context(), tx, testScope,
+			&identity.Account{Name: name, Scope: testScope, OwnerUserID: e.user.ID})
+		account = created
+
+		return err
+	}))
+
+	return account.ID
+}
+
 // setStatus moves the registered user's account status.
 func (e *env) setStatus(t *testing.T, status identity.AccountStatus, explanation string) {
 	t.Helper()
@@ -545,6 +564,10 @@ type recordingHooks struct {
 	// it follows rolls back with it.
 	revokeErr error
 
+	// switchErr fails the account switch hook, so a test can prove the switch
+	// it follows rolls back with it.
+	switchErr error
+
 	// verified is the user the second-factor hook was handed: the row the
 	// directory's write answered with, rather than the copy read before it.
 	verified *identity.User
@@ -566,6 +589,7 @@ type recordingHooks struct {
 	resent          []*identity.User
 	magicLinked     []*identity.User
 	revocations     []*signin.Revocation
+	switches        []*signin.AccountSwitch
 
 	passwords,
 	refreshes,
@@ -687,6 +711,18 @@ func (h *recordingHooks) AfterRevokeSignIns(
 	h.revocations = append(h.revocations, revocation)
 
 	return h.revokeErr
+}
+
+func (h *recordingHooks) AfterSwitchAccount(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	change *signin.AccountSwitch,
+) error {
+	h.calls = append(h.calls, "switch")
+	h.switches = append(h.switches, change)
+
+	return h.switchErr
 }
 
 // stubAuthenticator is an Authenticator with no argon2 behind it, for the tests

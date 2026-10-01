@@ -96,6 +96,11 @@ func Permissions() map[string][]authorization.Permission {
 // require a live access token to renew an expired one, which is the one moment a
 // client has none.
 //
+// SwitchAccount is ExchangeRefreshToken with an account named, and anonymous
+// for the same reason: the refresh token it presents is the whole of its
+// authority, and moving to another household is something a client does at the
+// moment its access token may well have expired.
+//
 // GetAuthStatus is anonymous too, and it answers "no" rather than refusing —
 // see its own documentation for why a whoami that refuses anonymous callers
 // makes every client treat its first question as an error.
@@ -128,6 +133,7 @@ func AnonymousMethods() []string {
 		signinpb.SignInService_LoginForToken_FullMethodName,
 		signinpb.SignInService_AdminLoginForToken_FullMethodName,
 		signinpb.SignInService_ExchangeRefreshToken_FullMethodName,
+		signinpb.SignInService_SwitchAccount_FullMethodName,
 		signinpb.SignInService_GetAuthStatus_FullMethodName,
 		signinpb.SignInService_AttachPassword_FullMethodName,
 		signinpb.SignInService_VerifyEmailAddress_FullMethodName,

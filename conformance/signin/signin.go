@@ -46,6 +46,7 @@ const (
 	requestVerificationEmailByAddress = signinpb.SignInService_RequestVerificationEmailByAddress_FullMethodName
 	signOut                           = signinpb.SignInService_SignOut_FullMethodName
 	signOutEverywhere                 = signinpb.SignInService_SignOutEverywhere_FullMethodName
+	switchAccount                     = signinpb.SignInService_SwitchAccount_FullMethodName
 	updateEmailAddress                = signinpb.SignInService_UpdateEmailAddress_FullMethodName
 	updatePassword                    = signinpb.SignInService_UpdatePassword_FullMethodName
 	updateUsername                    = signinpb.SignInService_UpdateUsername_FullMethodName

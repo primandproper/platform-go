@@ -655,6 +655,10 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyFamilyID":     {Err: signin.ErrEmptyFamilyID, Is: Platform},
 		"ErrEmptyRefreshToken": {Err: signin.ErrEmptyRefreshToken, Is: Platform},
 
+		// An account switch naming no account, which is the same reading: a
+		// client that did not say where to go, not a membership that missed.
+		"ErrEmptyAccountID": {Err: signin.ErrEmptyAccountID, Is: Platform},
+
 		// A check that named no access token to compare, which is the same
 		// reading: a caller that did not read the claim, not a token that lost.
 		"ErrEmptyTokenID": {Err: signin.ErrEmptyTokenID, Is: Platform},
