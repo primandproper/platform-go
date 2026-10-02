@@ -30,6 +30,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 	runSignupSuite(t, env)
 	runWithdrawalSuite(t, env)
 	runTransactionSuite(t, env)
+	runHooksSuite(t, env)
 }
 
 // TestSQLStore_RefusedWritesAnswerWithNoRow is the claim the `refused` helper

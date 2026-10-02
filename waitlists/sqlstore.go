@@ -50,6 +50,7 @@ type SQLStore struct {
 
 	clock  clock.Clock
 	hasher hashing.Hasher
+	hooks  Hooks
 
 	signupsCounter metrics.Int64Counter
 
@@ -94,6 +95,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		prefix: DefaultTablePrefix,
 		clock:  defaultClock(),
 		hasher: defaultHasher(),
+		hooks:  NoopHooks{},
 	}
 
 	for _, opt := range opts {
@@ -162,9 +164,10 @@ func (s *SQLStore) Digest(contact string) string {
 // countSignups records n signups reaching a status, including the one a signup
 // is written at.
 //
-// It is called when the statement lands, which is before the caller commits. A
-// companion write that fails afterwards takes the row back and not the count,
-// and that is the trade: the alternative is a counter fed after a commit this
+// It is called when the statement lands and the hooks have run, which is before
+// the caller commits. A hook that fails is never counted, because the write
+// reports the failure; a companion the caller writes afterwards that fails takes
+// the row back and not the count, and that is the trade: the alternative is a counter fed after a commit this
 // store does not perform, which is to say a counter nothing here could feed.
 func (s *SQLStore) countSignups(ctx context.Context, status Status, n int64) {
 	s.signupsCounter.Add(ctx, n, metric.WithAttributes(attribute.String(statusKey, string(status))))

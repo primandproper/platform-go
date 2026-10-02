@@ -80,6 +80,10 @@ func (s *SQLStore) CreateList(
 	created.LastUpdatedAt = nil
 	created.ArchivedAt = nil
 
+	if err = s.hooks.AfterCreateList(ctx, tx, scope, &created); err != nil {
+		return nil, op.Error(err, "running the hook after creating waitlist %q", created.ID)
+	}
+
 	return &created, nil
 }
 
@@ -270,6 +274,10 @@ func (s *SQLStore) UpdateList(
 		return nil, op.Error(err, "reading back the updated waitlist %q", list.ID)
 	}
 
+	if err = s.hooks.AfterUpdateList(ctx, tx, scope, updated); err != nil {
+		return nil, op.Error(err, "running the hook after updating waitlist %q", list.ID)
+	}
+
 	return updated, nil
 }
 
@@ -310,7 +318,13 @@ func (s *SQLStore) ArchiveList(
 		return nil, op.Error(notFound(err, ErrListNotFound), "reading back the archived waitlist %q", listID)
 	}
 
-	return listFromArchivedRow(&row), nil
+	archived := listFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveList(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving waitlist %q", listID)
+	}
+
+	return archived, nil
 }
 
 // readList is the read by id, through whatever executor the caller is holding.

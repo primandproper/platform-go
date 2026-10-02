@@ -83,7 +83,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `settings`     | Per-user and per-account runtime settings: definitions, per-subject values, and `settings/privacy` | postgres, mysql, sqlite |
 | `comments`     | Threaded comments on consumer-declared targets                                                   | postgres, mysql, sqlite |
 | `issuereports` | User-submitted issue reports with a triage lifecycle                                             | postgres, mysql, sqlite |
-| `waitlists`    | Pre-launch waitlists: signup lifecycle, and an unsubscribe that outlives the address             | postgres, mysql, sqlite |
+| `waitlists`    | Pre-launch waitlists: signup lifecycle, and an unsubscribe that outlives the address (seam: `Hooks`) | postgres, mysql, sqlite |
 | `series`       | Standing appointments: a weekly rule, its occurrences written ahead, and their skips, moves and make-ups | postgres, mysql, sqlite |
 | `links`        | Opaque, expiring, single-use action links                                                        | postgres, mysql, sqlite |
 
