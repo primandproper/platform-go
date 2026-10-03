@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/internal/txcount"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -333,4 +335,56 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 	})
+
+	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
+		t.Parallel()
+
+		// Each runs one write on a fresh store and reports how many statements
+		// it sent. NoopHooks is installed hooks as far as the store can tell, so
+		// the difference is the before read and nothing else.
+		markRead := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			n := env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.MarkNotificationRead(t.Context(), tx, testScope, testPrincipal, n.ID)
+				return err
+			})
+		}
+
+		// A re-registration, so the before row the hooked store reads is a real
+		// one rather than an absence.
+		registerDevice := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.RegisterDevice(t.Context(), tx, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
+				return err
+			})
+		}
+
+		test.Less(t, markRead(t, WithHooks(NoopHooks{})), markRead(t), test.Sprint("MarkNotificationRead"))
+		test.Less(t, registerDevice(t, WithHooks(NoopHooks{})), registerDevice(t), test.Sprint("RegisterDevice"))
+	})
+}
+
+// countStatements runs fn in a transaction of its own and reports how many
+// statements it sent through it.
+func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error) int64 {
+	tb.Helper()
+
+	var counted *txcount.Tx
+
+	must.NoError(tb, env.inTx(tb, func(tx database.Tx) error {
+		counted = txcount.Wrap(tx)
+
+		return fn(counted)
+	}))
+
+	return counted.Statements()
 }

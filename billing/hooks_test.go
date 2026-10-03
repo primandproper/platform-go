@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/internal/txcount"
+
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -332,4 +334,89 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
 		must.NoError(t, env.setSubscriptionStatus(t, store, testScope, subscription.ID, capitalism.SubscriptionStatusPastDue))
 	})
+
+	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
+		t.Parallel()
+
+		// Each runs one update on a fresh store and reports how many statements
+		// it sent. NoopHooks is installed hooks as far as the store can tell, so
+		// the difference is the before read and nothing else.
+		updateProduct := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
+			repriced := *product
+			repriced.AmountCents = product.AmountCents + 100
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.UpdateProduct(t.Context(), tx, testScope, &repriced)
+				return err
+			})
+		}
+
+		updateSubscription := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
+			subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
+			extended := *subscription
+			extended.CurrentPeriodEnd = subscription.CurrentPeriodEnd.AddDate(0, 1, 0)
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.UpdateSubscription(t.Context(), tx, testScope, &extended)
+				return err
+			})
+		}
+
+		setSubscriptionStatus := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
+			subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				return store.SetSubscriptionStatus(t.Context(), tx, testScope, subscription.ID, capitalism.SubscriptionStatusPastDue)
+			})
+		}
+
+		setTransactionStatus := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			recorded := mustRecordTransaction(t, env, store, testScope, pendingTransaction(testAccount))
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				return store.SetTransactionStatus(t.Context(), tx, testScope, recorded.ID, TransactionSucceeded)
+			})
+		}
+
+		test.Less(t, updateProduct(t, WithHooks(NoopHooks{})), updateProduct(t), test.Sprint("UpdateProduct"))
+		test.Less(t, updateSubscription(t, WithHooks(NoopHooks{})), updateSubscription(t), test.Sprint("UpdateSubscription"))
+
+		// The two status writes return only an error, so with hooks installed they
+		// read the row after the write as well as before it. Both reads are the
+		// hooks', and a Less would still pass with one of them leaked to every
+		// store, so the difference is pinned at both.
+		test.EqOp(t, setSubscriptionStatus(t)+2, setSubscriptionStatus(t, WithHooks(NoopHooks{})), test.Sprint("SetSubscriptionStatus"))
+		test.EqOp(t, setTransactionStatus(t)+2, setTransactionStatus(t, WithHooks(NoopHooks{})), test.Sprint("SetTransactionStatus"))
+	})
+}
+
+// countStatements runs fn in a transaction of its own and reports how many
+// statements it sent through it.
+func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error) int64 {
+	tb.Helper()
+
+	var counted *txcount.Tx
+
+	must.NoError(tb, env.inTx(tb, func(tx database.Tx) error {
+		counted = txcount.Wrap(tx)
+
+		return fn(counted)
+	}))
+
+	return counted.Statements()
 }

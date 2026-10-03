@@ -483,7 +483,9 @@ var _ Hooks = NoopHooks{}
 //
 // Embedding rather than implementing every method is what keeps a method added
 // to Hooks later from breaking every consumer — a new operation arrives as a
-// no-op they can then choose to override.
+// no-op they can then choose to override. That can be the point the other way
+// round: a consumer that records every write may prefer a new one to fail to
+// compile until somebody decides what it records, and implements Hooks outright.
 type NoopHooks struct{}
 
 // AfterRegister does nothing.

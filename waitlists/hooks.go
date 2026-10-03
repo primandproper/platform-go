@@ -94,6 +94,12 @@ type Hooks interface {
 	// who came off which list written from that would be a record of nobody. The
 	// status on it is the one the signup was withdrawn from; the one it is in
 	// now is StatusWithdrawn, which is what the hook being called says.
+	//
+	// The contact is handed over so the hook can act on it — a confirmation that
+	// somebody is off the list goes to the address they came off with — and not
+	// so it can be kept. Erasing it is what the withdrawal is for, so an audit
+	// entry or an outbox event written from this row should name the signup by
+	// its ID or ContactDigest and leave Contact behind; audit.Diff already does.
 	AfterWithdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *Signup) error
 
 	// AfterWithdrawSignupsForSubject is called with the subject an erasure

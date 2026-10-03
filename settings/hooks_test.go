@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/internal/txcount"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -312,6 +314,56 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
 		mustArchive(t, env, store, testScope, created.ID)
 	})
+
+	t.Run("a write reads the row for its hook only when hooks are installed", func(t *testing.T) {
+		t.Parallel()
+
+		// Each runs one write on a fresh store and reports how many statements
+		// it sent. NoopHooks is installed hooks as far as the store can tell, so
+		// the difference is the read for the hook and nothing else.
+		archive := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				return store.ArchiveDefinition(t.Context(), tx, testScope, created.ID)
+			})
+		}
+
+		set := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			mustCreate(t, env, store, testScope, stringDefinition("digest"))
+			mustSet(t, env, store, testScope, testSubject, "digest", "daily")
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.SetValue(t.Context(), tx, testScope, testSubject, "digest", "weekly")
+				return err
+			})
+		}
+
+		test.Less(t, archive(t, WithHooks(NoopHooks{})), archive(t), test.Sprint("ArchiveDefinition"))
+		test.Less(t, set(t, WithHooks(NoopHooks{})), set(t), test.Sprint("SetValue"))
+	})
+}
+
+// countStatements runs fn in a transaction of its own and reports how many
+// statements it sent through it.
+func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error) int64 {
+	tb.Helper()
+
+	var counted *txcount.Tx
+
+	must.NoError(tb, env.inTx(tb, func(tx database.Tx) error {
+		counted = txcount.Wrap(tx)
+
+		return fn(counted)
+	}))
+
+	return counted.Statements()
 }
 
 // otherSubject is somebody who has answered nothing.

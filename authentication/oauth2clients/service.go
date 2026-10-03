@@ -40,16 +40,16 @@ const serviceLayerName = serviceName + "_service"
 // own, so a service method over them would be a second name for the store's,
 // and the transport holds both handles for that reason.
 type Service struct {
-	client database.Client
-	store  Store
-	hooks  Hooks
-	o11y   observability.Observer
+	client   database.Client
+	store    Store
+	hooks    Hooks
+	generate CredentialGenerator
+	o11y     observability.Observer
 
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
-	generate        CredentialGenerator
 
 	instruments *metrics.OperationSet
 

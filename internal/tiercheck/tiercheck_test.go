@@ -119,6 +119,7 @@ var roster = map[string]entry{
 	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
 	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},
 	"internal/directrequires":   {tier: root, why: "a convention test over go.mod's account of what the module imports"},
+	"internal/hookroster":       {tier: root, why: "a convention test pairing every store write with the hook it owes"},
 	"internal/protoconvention":  {tier: root, why: "a convention test over every .proto the module ships"},
 	"internal/routeguard":       {tier: domain, why: "the permission check the domain HTTP surfaces put in front of their guarded routes"},
 	"internal/scheduledjob":     {tier: domain, why: "the defaulting and rendering every self-scheduling store's job config shares"},
@@ -127,6 +128,7 @@ var roster = map[string]entry{
 	"internal/sentinelmatrix":   {tier: root, why: "the roster of every domain sentinel and the mappers that answer for it"},
 	"internal/sqltier":          {tier: root, why: "the roster of every package in the module that holds SQL"},
 	"internal/tiercheck":        {tier: root, why: "this roster"},
+	"internal/txcount":          {tier: root, why: "the statement count behind every store's claim that no hooks cost nothing"},
 }
 
 type entry struct {

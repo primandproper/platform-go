@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/internal/txcount"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -316,4 +318,55 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 
 		filed(t, env, store, newReport(testReporter, "bug", "details"))
 	})
+
+	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
+		t.Parallel()
+
+		// Each runs one write on a fresh store and reports how many statements
+		// it sent. NoopHooks is installed hooks as far as the store can tell, so
+		// the difference is the before read and nothing else.
+		updateReport := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			revision := *filed(t, env, store, newReport(testReporter, "bug", "the button does nothing"))
+			revision.Details = "the button does nothing, twice"
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.UpdateReport(t.Context(), tx, testScope, &revision)
+				return err
+			})
+		}
+
+		transitionReport := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			report := filed(t, env, store, newReport(testReporter, "bug", "the button does nothing"))
+
+			return countStatements(t, env, func(tx database.Tx) error {
+				_, err := store.TransitionReport(t.Context(), tx, testScope, report.ID, StatusOpen, StatusResolved, "fixed")
+				return err
+			})
+		}
+
+		test.Less(t, updateReport(t, WithHooks(NoopHooks{})), updateReport(t), test.Sprint("UpdateReport"))
+		test.Less(t, transitionReport(t, WithHooks(NoopHooks{})), transitionReport(t), test.Sprint("TransitionReport"))
+	})
+}
+
+// countStatements runs fn in a transaction of its own and reports how many
+// statements it sent through it.
+func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error) int64 {
+	tb.Helper()
+
+	var counted *txcount.Tx
+
+	must.NoError(tb, env.inTx(tb, func(tx database.Tx) error {
+		counted = txcount.Wrap(tx)
+
+		return fn(counted)
+	}))
+
+	return counted.Statements()
 }

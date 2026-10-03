@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/internal/txcount"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -310,4 +312,60 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 
 		registerEndpoint(t, store, "endpoint-1", orderCreated)
 	})
+
+	t.Run("a write reads its before row only for hooks", func(t *testing.T) {
+		t.Parallel()
+
+		// Each runs one write on a fresh store and reports how many statements
+		// it sent. NoopHooks is installed hooks as far as the store can tell, so
+		// the difference is the before read and nothing else.
+		resave := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			registerEndpoint(t, store, "endpoint-1", orderCreated)
+
+			return countStatements(t, store, func(tx database.Tx) error {
+				_, err := store.SaveEndpoint(t.Context(), tx, testScope, &Endpoint{
+					ID:            "endpoint-1",
+					URL:           "https://93.184.216.34/hooks/moved",
+					ContentType:   DefaultContentType,
+					Secret:        Secret{Current: []byte("secret-endpoint-1")},
+					Subscriptions: SubscribeTo(orderCreated),
+				})
+				return err
+			})
+		}
+
+		subscribe := func(t *testing.T, opts ...SQLStoreOption) int64 {
+			t.Helper()
+
+			store := env.newStore(t, opts...)
+			registerEndpoint(t, store, "endpoint-1", orderCreated)
+
+			return countStatements(t, store, func(tx database.Tx) error {
+				_, err := store.AddSubscription(t.Context(), tx, testScope, "endpoint-1", orderUpdated)
+				return err
+			})
+		}
+
+		test.Less(t, resave(t, WithHooks(NoopHooks{})), resave(t), test.Sprint("SaveEndpoint"))
+		test.Less(t, subscribe(t, WithHooks(NoopHooks{})), subscribe(t), test.Sprint("AddSubscription"))
+	})
+}
+
+// countStatements runs fn in a transaction of its own and reports how many
+// statements it sent through it.
+func countStatements(t *testing.T, store Store, fn func(tx database.Tx) error) int64 {
+	t.Helper()
+
+	var counted *txcount.Tx
+
+	must.NoError(t, inTx(t, store, func(tx database.Tx) error {
+		counted = txcount.Wrap(tx)
+
+		return fn(counted)
+	}))
+
+	return counted.Statements()
 }
