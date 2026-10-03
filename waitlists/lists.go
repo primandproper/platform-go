@@ -264,6 +264,14 @@ func (s *SQLStore) UpdateList(
 		return nil, op.Error(err, "updating waitlist %q", list.ID)
 	}
 
+	var before *List
+	if s.hooked {
+		var err error
+		if before, err = s.readList(ctx, tx, scope, list.ID); err != nil {
+			return nil, op.Error(err, "updating waitlist %q", list.ID)
+		}
+	}
+
 	count, err := s.q.UpdateList(ctx, tx, updateListParams(list, scope))
 	if err = guardCount(count, err, ErrListNotFound, "updating waitlist"); err != nil {
 		return nil, op.Error(err, "updating waitlist %q", list.ID)
@@ -274,7 +282,7 @@ func (s *SQLStore) UpdateList(
 		return nil, op.Error(err, "reading back the updated waitlist %q", list.ID)
 	}
 
-	if err = s.hooks.AfterUpdateList(ctx, tx, scope, updated); err != nil {
+	if err = s.hooks.AfterUpdateList(ctx, tx, scope, before, updated); err != nil {
 		return nil, op.Error(err, "running the hook after updating waitlist %q", list.ID)
 	}
 

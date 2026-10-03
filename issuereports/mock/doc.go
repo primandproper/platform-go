@@ -5,4 +5,4 @@ package issuereportsmock
 
 // Regenerate via `go generate ./issuereports/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out issuereports_mock.go -pkg issuereportsmock -rm -fmt goimports .. Store:StoreMock
+//go:generate go tool github.com/matryer/moq -out issuereports_mock.go -pkg issuereportsmock -rm -fmt goimports .. Store:StoreMock Hooks:HooksMock

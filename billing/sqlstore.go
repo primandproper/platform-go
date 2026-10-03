@@ -62,6 +62,7 @@ type SQLStore struct {
 	o11y observability.Observer
 
 	clock clock.Clock
+	hooks Hooks
 
 	transactionsCounter metrics.Int64Counter
 
@@ -72,6 +73,9 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+	// hooked is whether WithHooks installed any, which decides whether an
+	// update or a status move pays for the reads of the row it changes.
+	hooked bool
 }
 
 // NewSQLStore builds a Store over the given database.
@@ -107,6 +111,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	s := &SQLStore{
 		prefix: DefaultTablePrefix,
 		clock:  defaultClock(),
+		hooks:  NoopHooks{},
 	}
 
 	for _, opt := range opts {
@@ -162,6 +167,11 @@ func (s *SQLStore) TablePrefix() string { return s.prefix }
 
 // countTransaction records a ledger row reaching a status, including the one it
 // is written at.
+//
+// It is called once the statement has landed and the hooks have run, so a hook
+// that fails is never counted — the write reports the failure. A companion the
+// caller writes afterwards that fails still takes the row back and not the
+// count, for the reason [Store.RecordTransaction] gives.
 func (s *SQLStore) countTransaction(ctx context.Context, status TransactionStatus) {
 	s.transactionsCounter.Add(ctx, 1, metric.WithAttributes(attribute.String(statusKey, string(status))))
 }

@@ -80,6 +80,10 @@ func (s *SQLStore) RecordTransaction(
 		return nil, op.Error(err, "recording transaction")
 	}
 
+	if err := s.hooks.AfterRecordTransaction(ctx, tx, scope, &recorded); err != nil {
+		return nil, op.Error(err, "running the hook after recording transaction %q", recorded.ID)
+	}
+
 	s.countTransaction(ctx, recorded.Status)
 
 	return &recorded, nil
@@ -191,13 +195,12 @@ func (s *SQLStore) GetTransaction(
 		return nil, op.Error(err, "reading transaction %q", transactionID)
 	}
 
-	row, err := s.q.GetTransaction(ctx, q,
-		billingdb.GetTransactionParams{ID: transactionID, Scope: scope})
+	transaction, err := s.readTransaction(ctx, q, scope, transactionID)
 	if err != nil {
-		return nil, op.Error(notFound(err, ErrTransactionNotFound), "reading transaction %q", transactionID)
+		return nil, op.Error(err, "reading transaction %q", transactionID)
 	}
 
-	return transactionFromRow(&row), nil
+	return transaction, nil
 }
 
 // GetTransactionByExternalID reads one live ledger row by the payment provider's
@@ -369,6 +372,14 @@ func (s *SQLStore) SetTransactionStatus(
 			"setting transaction %q status", transactionID)
 	}
 
+	var before *Transaction
+	if s.hooked {
+		var err error
+		if before, err = s.readTransaction(ctx, tx, scope, transactionID); err != nil {
+			return op.Error(err, "setting transaction %q status", transactionID)
+		}
+	}
+
 	count, err := s.q.SetTransactionStatus(ctx, tx, billingdb.SetTransactionStatusParams{
 		Status: string(status),
 		ID:     transactionID,
@@ -382,6 +393,18 @@ func (s *SQLStore) SetTransactionStatus(
 	if count == 0 {
 		return op.Error(s.refuseTransactionStatusWrite(ctx, tx, scope, transactionID),
 			"setting transaction %q status", transactionID)
+	}
+
+	if s.hooked {
+		after, readErr := s.readTransaction(ctx, tx, scope, transactionID)
+		if readErr != nil {
+			return op.Error(platformerrors.Wrap(readErr, "reading back the moved transaction"),
+				"setting transaction %q status", transactionID)
+		}
+
+		if err = s.hooks.AfterSetTransactionStatus(ctx, tx, scope, before, after); err != nil {
+			return op.Error(err, "running the hook after setting transaction %q status", transactionID)
+		}
 	}
 
 	s.countTransaction(ctx, status)
@@ -430,7 +453,13 @@ func (s *SQLStore) ArchiveTransaction(
 			"archiving transaction %q", transactionID)
 	}
 
-	return transactionFromArchivedRow(&row), nil
+	archived := transactionFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveTransaction(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving transaction %q", transactionID)
+	}
+
+	return archived, nil
 }
 
 // drainTransactions turns one list statement's rows into the paged result.
@@ -460,12 +489,28 @@ func (s *SQLStore) refuseTransactionStatusWrite(
 	scope tenancy.Scope,
 	transactionID string,
 ) error {
-	if _, err := s.q.GetTransaction(ctx, q,
-		billingdb.GetTransactionParams{ID: transactionID, Scope: scope}); err != nil {
-		return notFound(err, ErrTransactionNotFound)
+	if _, err := s.readTransaction(ctx, q, scope, transactionID); err != nil {
+		return err
 	}
 
 	return platformerrors.Wrapf(ErrStatusUnchanged, "transaction %q", transactionID)
+}
+
+// readTransaction is the read by id, through whatever executor the caller is
+// holding.
+func (s *SQLStore) readTransaction(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	transactionID string,
+) (*Transaction, error) {
+	row, err := s.q.GetTransaction(ctx, q,
+		billingdb.GetTransactionParams{ID: transactionID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrTransactionNotFound)
+	}
+
+	return transactionFromRow(&row), nil
 }
 
 // readTransactionByExternalID is the read keyed on a provider's identifier. It

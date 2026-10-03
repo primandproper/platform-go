@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/waitlists"
-
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -2487,10 +2486,10 @@ var _ waitlists.Hooks = &HooksMock{}
 //			AfterJoinFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error {
 //				panic("mock out the AfterJoin method")
 //			},
-//			AfterUpdateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error {
+//			AfterUpdateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *waitlists.List, after *waitlists.List) error {
 //				panic("mock out the AfterUpdateList method")
 //			},
-//			AfterUpdateSignupNotesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error {
+//			AfterUpdateSignupNotesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *waitlists.Signup, after *waitlists.Signup) error {
 //				panic("mock out the AfterUpdateSignupNotes method")
 //			},
 //			AfterWithdrawFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error {
@@ -2528,10 +2527,10 @@ type HooksMock struct {
 	AfterJoinFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error
 
 	// AfterUpdateListFunc mocks the AfterUpdateList method.
-	AfterUpdateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error
+	AfterUpdateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *waitlists.List, after *waitlists.List) error
 
 	// AfterUpdateSignupNotesFunc mocks the AfterUpdateSignupNotes method.
-	AfterUpdateSignupNotesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error
+	AfterUpdateSignupNotesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *waitlists.Signup, after *waitlists.Signup) error
 
 	// AfterWithdrawFunc mocks the AfterWithdraw method.
 	AfterWithdrawFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error
@@ -2626,8 +2625,10 @@ type HooksMock struct {
 			Tx database.Tx
 			// Scope is the scope argument value.
 			Scope tenancy.Scope
-			// List is the list argument value.
-			List *waitlists.List
+			// Before is the before argument value.
+			Before *waitlists.List
+			// After is the after argument value.
+			After *waitlists.List
 		}
 		// AfterUpdateSignupNotes holds details about calls to the AfterUpdateSignupNotes method.
 		AfterUpdateSignupNotes []struct {
@@ -2637,8 +2638,10 @@ type HooksMock struct {
 			Tx database.Tx
 			// Scope is the scope argument value.
 			Scope tenancy.Scope
-			// Signup is the signup argument value.
-			Signup *waitlists.Signup
+			// Before is the before argument value.
+			Before *waitlists.Signup
+			// After is the after argument value.
+			After *waitlists.Signup
 		}
 		// AfterWithdraw holds details about calls to the AfterWithdraw method.
 		AfterWithdraw []struct {
@@ -2987,25 +2990,27 @@ func (mock *HooksMock) AfterJoinCalls() []struct {
 }
 
 // AfterUpdateList calls AfterUpdateListFunc.
-func (mock *HooksMock) AfterUpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error {
+func (mock *HooksMock) AfterUpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *waitlists.List, after *waitlists.List) error {
 	if mock.AfterUpdateListFunc == nil {
 		panic("HooksMock.AfterUpdateListFunc: method is nil but Hooks.AfterUpdateList was just called")
 	}
 	callInfo := struct {
-		Ctx   context.Context
-		Tx    database.Tx
-		Scope tenancy.Scope
-		List  *waitlists.List
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *waitlists.List
+		After  *waitlists.List
 	}{
-		Ctx:   ctx,
-		Tx:    tx,
-		Scope: scope,
-		List:  list,
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
 	}
 	mock.lockAfterUpdateList.Lock()
 	mock.calls.AfterUpdateList = append(mock.calls.AfterUpdateList, callInfo)
 	mock.lockAfterUpdateList.Unlock()
-	return mock.AfterUpdateListFunc(ctx, tx, scope, list)
+	return mock.AfterUpdateListFunc(ctx, tx, scope, before, after)
 }
 
 // AfterUpdateListCalls gets all the calls that were made to AfterUpdateList.
@@ -3013,16 +3018,18 @@ func (mock *HooksMock) AfterUpdateList(ctx context.Context, tx database.Tx, scop
 //
 //	len(mockedHooks.AfterUpdateListCalls())
 func (mock *HooksMock) AfterUpdateListCalls() []struct {
-	Ctx   context.Context
-	Tx    database.Tx
-	Scope tenancy.Scope
-	List  *waitlists.List
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *waitlists.List
+	After  *waitlists.List
 } {
 	var calls []struct {
-		Ctx   context.Context
-		Tx    database.Tx
-		Scope tenancy.Scope
-		List  *waitlists.List
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *waitlists.List
+		After  *waitlists.List
 	}
 	mock.lockAfterUpdateList.RLock()
 	calls = mock.calls.AfterUpdateList
@@ -3031,7 +3038,7 @@ func (mock *HooksMock) AfterUpdateListCalls() []struct {
 }
 
 // AfterUpdateSignupNotes calls AfterUpdateSignupNotesFunc.
-func (mock *HooksMock) AfterUpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *waitlists.Signup) error {
+func (mock *HooksMock) AfterUpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *waitlists.Signup, after *waitlists.Signup) error {
 	if mock.AfterUpdateSignupNotesFunc == nil {
 		panic("HooksMock.AfterUpdateSignupNotesFunc: method is nil but Hooks.AfterUpdateSignupNotes was just called")
 	}
@@ -3039,17 +3046,19 @@ func (mock *HooksMock) AfterUpdateSignupNotes(ctx context.Context, tx database.T
 		Ctx    context.Context
 		Tx     database.Tx
 		Scope  tenancy.Scope
-		Signup *waitlists.Signup
+		Before *waitlists.Signup
+		After  *waitlists.Signup
 	}{
 		Ctx:    ctx,
 		Tx:     tx,
 		Scope:  scope,
-		Signup: signup,
+		Before: before,
+		After:  after,
 	}
 	mock.lockAfterUpdateSignupNotes.Lock()
 	mock.calls.AfterUpdateSignupNotes = append(mock.calls.AfterUpdateSignupNotes, callInfo)
 	mock.lockAfterUpdateSignupNotes.Unlock()
-	return mock.AfterUpdateSignupNotesFunc(ctx, tx, scope, signup)
+	return mock.AfterUpdateSignupNotesFunc(ctx, tx, scope, before, after)
 }
 
 // AfterUpdateSignupNotesCalls gets all the calls that were made to AfterUpdateSignupNotes.
@@ -3060,13 +3069,15 @@ func (mock *HooksMock) AfterUpdateSignupNotesCalls() []struct {
 	Ctx    context.Context
 	Tx     database.Tx
 	Scope  tenancy.Scope
-	Signup *waitlists.Signup
+	Before *waitlists.Signup
+	After  *waitlists.Signup
 } {
 	var calls []struct {
 		Ctx    context.Context
 		Tx     database.Tx
 		Scope  tenancy.Scope
-		Signup *waitlists.Signup
+		Before *waitlists.Signup
+		After  *waitlists.Signup
 	}
 	mock.lockAfterUpdateSignupNotes.RLock()
 	calls = mock.calls.AfterUpdateSignupNotes

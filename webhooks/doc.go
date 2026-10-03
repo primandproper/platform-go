@@ -217,6 +217,24 @@ optional — an application that does not attribute endpoints to a person leaves
 it unset — and it is written once, with the row, because an endpoint does not
 change hands.
 
+# Companions every write owes go in Hooks
+
+A consumer whose every endpoint and subscription write owes the same companions
+— an audit entry for each, a data change event for each — can write them beside
+each call, or hand the store a [Hooks] through [WithHooks] and have each write
+call it on the same transaction once its statements have landed. The second is
+what a consumer reaches for when the alternative is wrapping the Store: a
+wrapper has to reimplement every write to call through, and cannot say what a
+re-registration changed without reading the row before the upsert does. A hook
+is handed that row. A hook's error fails the write it was called from, so the
+row and its companions commit together or not at all.
+
+The hooks cover the consumer writes and nothing else: SaveEndpoint,
+ArchiveEndpoint, RotateSecret, AddSubscription and ArchiveSubscription. The
+delivery queue's own writes — Claim, MarkDelivered, RecordFailure,
+RecordAttempt, Requeue and Reap — take no caller transaction for a companion to
+join, and Enqueue's companion belongs beside the Dispatch call that caused it.
+
 # Ordering
 
 Deliveries sharing an OrderingKey reach a given endpoint in dispatch order. The

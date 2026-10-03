@@ -350,6 +350,14 @@ func (s *SQLStore) UpdateSignupNotes(
 		return nil, op.Error(err, "updating waitlist signup %q", signupID)
 	}
 
+	var before *Signup
+	if s.hooked {
+		var err error
+		if before, err = s.readSignup(ctx, tx, scope, listID, signupID); err != nil {
+			return nil, op.Error(err, "updating waitlist signup %q", signupID)
+		}
+	}
+
 	count, err := s.q.UpdateSignupNotes(ctx, tx, waitlistsdb.UpdateSignupNotesParams{
 		Notes:      notes,
 		ID:         signupID,
@@ -365,7 +373,7 @@ func (s *SQLStore) UpdateSignupNotes(
 		return nil, op.Error(err, "reading back the updated waitlist signup %q", signupID)
 	}
 
-	if err = s.hooks.AfterUpdateSignupNotes(ctx, tx, scope, updated); err != nil {
+	if err = s.hooks.AfterUpdateSignupNotes(ctx, tx, scope, before, updated); err != nil {
 		return nil, op.Error(err, "running the hook after updating waitlist signup %q", signupID)
 	}
 

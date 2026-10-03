@@ -90,7 +90,13 @@ func (s *SQLStore) CreateNotification(
 			"reading back the filed notification")
 	}
 
-	return notificationFromRow(&row), nil
+	created := notificationFromRow(&row)
+
+	if err = s.hooks.AfterCreateNotification(ctx, tx, scope, created); err != nil {
+		return nil, op.Error(err, "running the hook after creating notification %q", created.ID)
+	}
+
+	return created, nil
 }
 
 // GetNotification reads one of the principal's live notifications.
@@ -305,6 +311,22 @@ func (s *SQLStore) MarkNotificationRead(
 		return nil, op.Error(ErrEmptyPrincipal, "marking notification %q read", notificationID)
 	}
 
+	var before *Notification
+
+	if s.hooked {
+		row, err := s.q.GetNotification(ctx, tx, notificationsdb.GetNotificationParams{
+			ID:        notificationID,
+			Scope:     scope,
+			Principal: principal,
+		})
+		if err != nil {
+			return nil, op.Error(notFound(err, ErrNotificationNotFound),
+				"marking notification %q read", notificationID)
+		}
+
+		before = notificationFromRow(&row)
+	}
+
 	readAt := s.now()
 
 	if _, err := s.q.MarkNotificationRead(ctx, tx,
@@ -327,7 +349,13 @@ func (s *SQLStore) MarkNotificationRead(
 			"marking notification %q read", notificationID)
 	}
 
-	return notificationFromRow(&row), nil
+	marked := notificationFromRow(&row)
+
+	if err = s.hooks.AfterMarkNotificationRead(ctx, tx, scope, before, marked); err != nil {
+		return nil, op.Error(err, "running the hook after marking notification %q read", notificationID)
+	}
+
+	return marked, nil
 }
 
 // MarkAllNotificationsRead stamps everything the principal has not read through
@@ -369,6 +397,10 @@ func (s *SQLStore) MarkAllNotificationsRead(
 	}
 
 	op.SpanOnly(countKey, count)
+
+	if err = s.hooks.AfterMarkAllNotificationsRead(ctx, tx, scope, principal, count); err != nil {
+		return 0, op.Error(err, "running the hook after marking every notification read")
+	}
 
 	return count, nil
 }
@@ -441,7 +473,13 @@ func (s *SQLStore) ArchiveNotification(
 		return nil, op.Error(err, "reading back the archived notification")
 	}
 
-	return archivedNotificationFromRow(&archived), nil
+	dismissed := archivedNotificationFromRow(&archived)
+
+	if err = s.hooks.AfterArchiveNotification(ctx, tx, scope, dismissed); err != nil {
+		return nil, op.Error(err, "running the hook after archiving notification %q", notificationID)
+	}
+
+	return dismissed, nil
 }
 
 // DeleteNotificationsForPrincipal destroys every notification this scope holds
@@ -492,6 +530,10 @@ func (s *SQLStore) DeleteNotificationsForPrincipal(
 	}
 
 	op.SpanOnly(countKey, count)
+
+	if err = s.hooks.AfterDeleteNotificationsForPrincipal(ctx, tx, scope, principal, count); err != nil {
+		return 0, op.Error(err, "running the hook after erasing every notification for a principal")
+	}
 
 	return count, nil
 }

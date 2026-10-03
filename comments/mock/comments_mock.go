@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/comments"
-
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -683,5 +682,355 @@ func (mock *StoreMock) UpdateCommentCalls() []struct {
 	mock.lockUpdateComment.RLock()
 	calls = mock.calls.UpdateComment
 	mock.lockUpdateComment.RUnlock()
+	return calls
+}
+
+// Ensure, that HooksMock does implement comments.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ comments.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of comments.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked comments.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchiveCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+//				panic("mock out the AfterArchiveComment method")
+//			},
+//			AfterCreateCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+//				panic("mock out the AfterCreateComment method")
+//			},
+//			AfterDeleteCommentsByAuthorFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, author string, deleted int64) error {
+//				panic("mock out the AfterDeleteCommentsByAuthor method")
+//			},
+//			AfterDeleteCommentsForTargetFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, target comments.Target, deleted int64) error {
+//				panic("mock out the AfterDeleteCommentsForTarget method")
+//			},
+//			AfterUpdateCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *comments.Comment, after *comments.Comment) error {
+//				panic("mock out the AfterUpdateComment method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires comments.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchiveCommentFunc mocks the AfterArchiveComment method.
+	AfterArchiveCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error
+
+	// AfterCreateCommentFunc mocks the AfterCreateComment method.
+	AfterCreateCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error
+
+	// AfterDeleteCommentsByAuthorFunc mocks the AfterDeleteCommentsByAuthor method.
+	AfterDeleteCommentsByAuthorFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, author string, deleted int64) error
+
+	// AfterDeleteCommentsForTargetFunc mocks the AfterDeleteCommentsForTarget method.
+	AfterDeleteCommentsForTargetFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, target comments.Target, deleted int64) error
+
+	// AfterUpdateCommentFunc mocks the AfterUpdateComment method.
+	AfterUpdateCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *comments.Comment, after *comments.Comment) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchiveComment holds details about calls to the AfterArchiveComment method.
+		AfterArchiveComment []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Comment is the comment argument value.
+			Comment *comments.Comment
+		}
+		// AfterCreateComment holds details about calls to the AfterCreateComment method.
+		AfterCreateComment []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Comment is the comment argument value.
+			Comment *comments.Comment
+		}
+		// AfterDeleteCommentsByAuthor holds details about calls to the AfterDeleteCommentsByAuthor method.
+		AfterDeleteCommentsByAuthor []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Author is the author argument value.
+			Author string
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterDeleteCommentsForTarget holds details about calls to the AfterDeleteCommentsForTarget method.
+		AfterDeleteCommentsForTarget []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Target is the target argument value.
+			Target comments.Target
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterUpdateComment holds details about calls to the AfterUpdateComment method.
+		AfterUpdateComment []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *comments.Comment
+			// After is the after argument value.
+			After *comments.Comment
+		}
+	}
+	lockAfterArchiveComment          sync.RWMutex
+	lockAfterCreateComment           sync.RWMutex
+	lockAfterDeleteCommentsByAuthor  sync.RWMutex
+	lockAfterDeleteCommentsForTarget sync.RWMutex
+	lockAfterUpdateComment           sync.RWMutex
+}
+
+// AfterArchiveComment calls AfterArchiveCommentFunc.
+func (mock *HooksMock) AfterArchiveComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+	if mock.AfterArchiveCommentFunc == nil {
+		panic("HooksMock.AfterArchiveCommentFunc: method is nil but Hooks.AfterArchiveComment was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Comment *comments.Comment
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Comment: comment,
+	}
+	mock.lockAfterArchiveComment.Lock()
+	mock.calls.AfterArchiveComment = append(mock.calls.AfterArchiveComment, callInfo)
+	mock.lockAfterArchiveComment.Unlock()
+	return mock.AfterArchiveCommentFunc(ctx, tx, scope, comment)
+}
+
+// AfterArchiveCommentCalls gets all the calls that were made to AfterArchiveComment.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveCommentCalls())
+func (mock *HooksMock) AfterArchiveCommentCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Comment *comments.Comment
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Comment *comments.Comment
+	}
+	mock.lockAfterArchiveComment.RLock()
+	calls = mock.calls.AfterArchiveComment
+	mock.lockAfterArchiveComment.RUnlock()
+	return calls
+}
+
+// AfterCreateComment calls AfterCreateCommentFunc.
+func (mock *HooksMock) AfterCreateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+	if mock.AfterCreateCommentFunc == nil {
+		panic("HooksMock.AfterCreateCommentFunc: method is nil but Hooks.AfterCreateComment was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Comment *comments.Comment
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Comment: comment,
+	}
+	mock.lockAfterCreateComment.Lock()
+	mock.calls.AfterCreateComment = append(mock.calls.AfterCreateComment, callInfo)
+	mock.lockAfterCreateComment.Unlock()
+	return mock.AfterCreateCommentFunc(ctx, tx, scope, comment)
+}
+
+// AfterCreateCommentCalls gets all the calls that were made to AfterCreateComment.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreateCommentCalls())
+func (mock *HooksMock) AfterCreateCommentCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Comment *comments.Comment
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Comment *comments.Comment
+	}
+	mock.lockAfterCreateComment.RLock()
+	calls = mock.calls.AfterCreateComment
+	mock.lockAfterCreateComment.RUnlock()
+	return calls
+}
+
+// AfterDeleteCommentsByAuthor calls AfterDeleteCommentsByAuthorFunc.
+func (mock *HooksMock) AfterDeleteCommentsByAuthor(ctx context.Context, tx database.Tx, scope tenancy.Scope, author string, deleted int64) error {
+	if mock.AfterDeleteCommentsByAuthorFunc == nil {
+		panic("HooksMock.AfterDeleteCommentsByAuthorFunc: method is nil but Hooks.AfterDeleteCommentsByAuthor was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Author  string
+		Deleted int64
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Author:  author,
+		Deleted: deleted,
+	}
+	mock.lockAfterDeleteCommentsByAuthor.Lock()
+	mock.calls.AfterDeleteCommentsByAuthor = append(mock.calls.AfterDeleteCommentsByAuthor, callInfo)
+	mock.lockAfterDeleteCommentsByAuthor.Unlock()
+	return mock.AfterDeleteCommentsByAuthorFunc(ctx, tx, scope, author, deleted)
+}
+
+// AfterDeleteCommentsByAuthorCalls gets all the calls that were made to AfterDeleteCommentsByAuthor.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteCommentsByAuthorCalls())
+func (mock *HooksMock) AfterDeleteCommentsByAuthorCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Author  string
+	Deleted int64
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Author  string
+		Deleted int64
+	}
+	mock.lockAfterDeleteCommentsByAuthor.RLock()
+	calls = mock.calls.AfterDeleteCommentsByAuthor
+	mock.lockAfterDeleteCommentsByAuthor.RUnlock()
+	return calls
+}
+
+// AfterDeleteCommentsForTarget calls AfterDeleteCommentsForTargetFunc.
+func (mock *HooksMock) AfterDeleteCommentsForTarget(ctx context.Context, tx database.Tx, scope tenancy.Scope, target comments.Target, deleted int64) error {
+	if mock.AfterDeleteCommentsForTargetFunc == nil {
+		panic("HooksMock.AfterDeleteCommentsForTargetFunc: method is nil but Hooks.AfterDeleteCommentsForTarget was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Target  comments.Target
+		Deleted int64
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Target:  target,
+		Deleted: deleted,
+	}
+	mock.lockAfterDeleteCommentsForTarget.Lock()
+	mock.calls.AfterDeleteCommentsForTarget = append(mock.calls.AfterDeleteCommentsForTarget, callInfo)
+	mock.lockAfterDeleteCommentsForTarget.Unlock()
+	return mock.AfterDeleteCommentsForTargetFunc(ctx, tx, scope, target, deleted)
+}
+
+// AfterDeleteCommentsForTargetCalls gets all the calls that were made to AfterDeleteCommentsForTarget.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteCommentsForTargetCalls())
+func (mock *HooksMock) AfterDeleteCommentsForTargetCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Target  comments.Target
+	Deleted int64
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Target  comments.Target
+		Deleted int64
+	}
+	mock.lockAfterDeleteCommentsForTarget.RLock()
+	calls = mock.calls.AfterDeleteCommentsForTarget
+	mock.lockAfterDeleteCommentsForTarget.RUnlock()
+	return calls
+}
+
+// AfterUpdateComment calls AfterUpdateCommentFunc.
+func (mock *HooksMock) AfterUpdateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *comments.Comment, after *comments.Comment) error {
+	if mock.AfterUpdateCommentFunc == nil {
+		panic("HooksMock.AfterUpdateCommentFunc: method is nil but Hooks.AfterUpdateComment was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *comments.Comment
+		After  *comments.Comment
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterUpdateComment.Lock()
+	mock.calls.AfterUpdateComment = append(mock.calls.AfterUpdateComment, callInfo)
+	mock.lockAfterUpdateComment.Unlock()
+	return mock.AfterUpdateCommentFunc(ctx, tx, scope, before, after)
+}
+
+// AfterUpdateCommentCalls gets all the calls that were made to AfterUpdateComment.
+// Check the length with:
+//
+//	len(mockedHooks.AfterUpdateCommentCalls())
+func (mock *HooksMock) AfterUpdateCommentCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *comments.Comment
+	After  *comments.Comment
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *comments.Comment
+		After  *comments.Comment
+	}
+	mock.lockAfterUpdateComment.RLock()
+	calls = mock.calls.AfterUpdateComment
+	mock.lockAfterUpdateComment.RUnlock()
 	return calls
 }

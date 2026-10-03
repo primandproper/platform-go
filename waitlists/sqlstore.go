@@ -61,6 +61,9 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+	// hooked is whether WithHooks installed any, which decides whether an
+	// update pays for the read of the row it is about to overwrite.
+	hooked bool
 }
 
 // NewSQLStore builds a Store over the given database.

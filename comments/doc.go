@@ -130,6 +130,22 @@ What does not move into that transaction is the target existence hook, which
 takes no executor and reads on whatever connection the consumer built it over.
 [Store.CreateComment] says what that costs.
 
+# Companions every write owes go in Hooks
+
+A consumer whose every write owes the same companions — an audit entry for each,
+an event for each — can write them beside each call, as the example above does,
+or hand the store a [Hooks] through [WithHooks] and have each write call it on
+the same transaction once its statements have landed. The second is what a
+consumer reaches for when the alternative is wrapping the Store: a wrapper has to
+reimplement every method to call through, has to read the comment an edit is
+about to overwrite before the store does, and cannot reach the comment an archive
+hid at all. A hook is handed both. A hook's error fails the write it was called
+from, so the row and its companions commit together or not at all.
+
+The two sweeps call theirs too, with what they destroyed counted rather than
+listed: the count is the DELETE's own, so a companion written from it covers
+every row the statement removed rather than a page of them read beforehand.
+
 # Tenancy
 
 Every read and write takes a tenancy.Scope, and there is no variant of anything

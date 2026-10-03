@@ -52,6 +52,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		runTransactionSuite(t, env)
 	})
+
+	t.Run("hooks", func(t *testing.T) {
+		t.Parallel()
+
+		runHooksSuite(t, env)
+	})
 }
 
 func runInboxSuite(t *testing.T, env *storeEnv) {

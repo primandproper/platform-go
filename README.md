@@ -64,10 +64,10 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `authentication/signin/magiclinks` | The sign-in links the passwordless door mails: digest at rest, single use, and a redemption that proves the address it was sent to | postgres, mysql, sqlite          |
 | `authentication/signin/recoverycodes` | The recovery codes a person keeps on paper for a lost authenticator: digest at rest, single use, spent by the door they prove, and `authentication/signin/recoverycodes/privacy` | postgres, mysql, sqlite          |
 | `authentication/phonecodes`        | Short codes texted to a person who is not a user: digest at rest, single use, dead after too many wrong guesses, one live code per number, and `authentication/phonecodes/privacy` | postgres, mysql, sqlite          |
-| `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
+| `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` (seam: `Hooks`) | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
 | `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, the `Service` that runs registration and named and discoverable login over them (seams: `UserResolver`, `UsernameResolver`, `EnrollmentGate`, `AlternativeSignIn`, `Hooks`), and `authentication/passkeys/privacy` | postgres, mysql, sqlite (+ grpc) |
-| `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
+| `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` (seam: `Hooks`) | postgres, mysql, sqlite (+ grpc) |
 | `authentication/grants`            | The tokens a third party granted this deployment, per subject per provider: sealed at rest, refreshed by compare-and-set, revocable from either side, and `authentication/grants/privacy` | postgres, mysql, sqlite          |
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
 | `rbac`                             | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |
@@ -77,12 +77,12 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 ### Product & commerce
 | Package        | Purpose                                                                                          | Implementations         |
 |----------------|--------------------------------------------------------------------------------------------------|-------------------------|
-| `billing`      | What a deployment sells, and what its customers paid: catalog, subscriptions, purchases, ledger  | postgres, mysql, sqlite |
+| `billing`      | What a deployment sells, and what its customers paid: catalog, subscriptions, purchases, ledger (seam: `Hooks`) | postgres, mysql, sqlite |
 | `entitlements` | Feature access & remaining quota                                                                 | —                       |
 | `metering`     | Durable usage metering & quotas. Ships no privacy adapter, and its doc records the ruling         | postgres, mysql, sqlite |
-| `settings`     | Per-user and per-account runtime settings: definitions, per-subject values, and `settings/privacy` | postgres, mysql, sqlite |
-| `comments`     | Threaded comments on consumer-declared targets                                                   | postgres, mysql, sqlite |
-| `issuereports` | User-submitted issue reports with a triage lifecycle                                             | postgres, mysql, sqlite |
+| `settings`     | Per-user and per-account runtime settings: definitions, per-subject values, and `settings/privacy` (seam: `Hooks`) | postgres, mysql, sqlite |
+| `comments`     | Threaded comments on consumer-declared targets (seam: `Hooks`) | postgres, mysql, sqlite |
+| `issuereports` | User-submitted issue reports with a triage lifecycle (seam: `Hooks`) | postgres, mysql, sqlite |
 | `waitlists`    | Pre-launch waitlists: signup lifecycle, and an unsubscribe that outlives the address (seam: `Hooks`) | postgres, mysql, sqlite |
 | `series`       | Standing appointments: a weekly rule, its occurrences written ahead, and their skips, moves and make-ups | postgres, mysql, sqlite |
 | `links`        | Opaque, expiring, single-use action links                                                        | postgres, mysql, sqlite |
@@ -94,7 +94,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `dataprivacy`   | Subject access & erasure requests           | postgres, mysql, sqlite          |
 | `shredding`     | Per-subject data keys that can be destroyed | postgres, mysql, sqlite          |
 | `retention`     | Policy-driven expiry deletion               | postgres, mysql, sqlite          |
-| `mediaregistry` | Object metadata rows over an object store, and `mediaregistry/privacy`   | postgres, mysql, sqlite          |
+| `mediaregistry` | Object metadata rows over an object store, and `mediaregistry/privacy` (seam: `Hooks`) | postgres, mysql, sqlite          |
 
 ### Coordination & delivery
 | Package         | Purpose                                                                             | Implementations                  |
@@ -104,8 +104,8 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres, mysql, sqlite          |
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres, mysql, sqlite (+ http) |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
-| `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
-| `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out         | postgres, mysql, sqlite (+ grpc) |
+| `webhooks`      | Outbound webhook delivery (seam: `Hooks`) | postgres, mysql, sqlite          |
+| `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out (seam: `Hooks`) | postgres, mysql, sqlite (+ grpc) |
 | `searchsync`    | Reindexing worker driven by the outbox                                              | —                                |
 
 ### The composition root

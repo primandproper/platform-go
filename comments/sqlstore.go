@@ -46,6 +46,7 @@ type SQLStore struct {
 	q       commentsdb.Querier
 	o11y    observability.Observer
 	targets Targets
+	hooks   Hooks
 
 	// absentTargetCounter counts creates refused because a registered existence
 	// check did not find the target, which is the one number nothing above this
@@ -66,6 +67,10 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+
+	// hooked is whether WithHooks installed any, which decides whether an edit
+	// pays for the read of the row it is about to overwrite.
+	hooked bool
 }
 
 // NewSQLStore builds a comment store over the given database.
@@ -104,6 +109,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	s := &SQLStore{
 		prefix:  DefaultTablePrefix,
 		targets: Targets{},
+		hooks:   NoopHooks{},
 	}
 
 	for _, opt := range opts {

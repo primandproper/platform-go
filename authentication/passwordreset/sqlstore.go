@@ -64,6 +64,7 @@ type SQLStore struct {
 	clock     clock.Clock
 	generator random.Generator
 	hasher    hashing.Hasher
+	hooks     Hooks
 	o11y      observability.Observer
 
 	sweptCounter       metrics.Int64Counter
@@ -114,6 +115,7 @@ func NewSQLStore(cfg *Config, db database.Client, opts ...Option) (*SQLStore, er
 		clock:       o.clock,
 		generator:   o.generator,
 		hasher:      o.hasher,
+		hooks:       o.hooks,
 		secretBytes: o.secretBytes,
 		o11y:        observability.NewObserver(serviceName, o.logger, o.tracerProvider),
 	}
@@ -234,6 +236,12 @@ func (s *SQLStore) Issue(
 
 	op.Set(tokenKey, token.ID)
 
+	// The hook is handed the row and not the Issuance, so the secret goes back
+	// to the one caller that asked for it and nowhere else. See Hooks.
+	if err = s.hooks.AfterIssue(ctx, tx, scope, token); err != nil {
+		return nil, op.Error(err, "running the hook after issuing password reset token %q", token.ID)
+	}
+
 	return &Issuance{Token: token, Secret: secret}, nil
 }
 
@@ -315,6 +323,10 @@ func (s *SQLStore) Consume(
 
 	observe(op, token)
 
+	if err = s.hooks.AfterConsume(ctx, tx, scope, token); err != nil {
+		return nil, op.Error(err, "running the hook after consuming password reset token %q", token.ID)
+	}
+
 	return token, nil
 }
 
@@ -347,6 +359,10 @@ func (s *SQLStore) RevokeForUser(
 	})
 	if err != nil {
 		return 0, op.Error(err, "revoking password reset token rows")
+	}
+
+	if err = s.hooks.AfterRevokeForUser(ctx, tx, scope, userID, revoked); err != nil {
+		return 0, op.Error(err, "running the hook after revoking password reset token rows")
 	}
 
 	return revoked, nil
@@ -382,6 +398,10 @@ func (s *SQLStore) DeleteForUser(
 	})
 	if err != nil {
 		return 0, op.Error(err, "erasing password reset token rows")
+	}
+
+	if err = s.hooks.AfterDeleteForUser(ctx, tx, scope, userID, deleted); err != nil {
+		return 0, op.Error(err, "running the hook after erasing password reset token rows")
 	}
 
 	return deleted, nil

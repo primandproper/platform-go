@@ -31,6 +31,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 	runResolutionSuite(t, env)
 	runTransactionSuite(t, env)
 	runErasureSuite(t, env)
+	runHooksSuite(t, env)
 }
 
 func TestNewSQLStore(T *testing.T) {

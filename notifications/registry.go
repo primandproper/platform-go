@@ -2,6 +2,8 @@ package notifications
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/primandproper/platform-go/v14/notifications/internal/notificationsdb"
 
@@ -73,6 +75,28 @@ func (s *SQLStore) RegisterDevice(
 		registered.LastSeenAt = s.now()
 	}
 
+	// The registration the token already has here, for the hook that is handed
+	// the pair. Absent is an answer rather than a failure — it is a first
+	// registration, or a token arriving from another scope — and no read happens
+	// at all without hooks: a consumer that asked for nothing pays for nothing.
+	var before *Device
+
+	if s.hooked {
+		prior, err := s.q.GetDeviceByToken(ctx, tx, notificationsdb.GetDeviceByTokenParams{
+			Scope:    scope,
+			Platform: registered.Platform.String(),
+			Token:    registered.Token,
+		})
+
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return nil, op.Error(err, "reading the registration the token already has")
+		default:
+			before = deviceFromRow(&prior)
+		}
+	}
+
 	if err := s.q.RegisterDevice(ctx, tx, registerDeviceParams(scope, &registered)); err != nil {
 		return nil, op.Error(err, "registering device")
 	}
@@ -89,6 +113,10 @@ func (s *SQLStore) RegisterDevice(
 	stored := deviceFromRow(&row)
 
 	op.Set(deviceIDKey, stored.ID)
+
+	if err = s.hooks.AfterRegisterDevice(ctx, tx, scope, before, stored); err != nil {
+		return nil, op.Error(err, "running the hook after registering device %q", stored.ID)
+	}
 
 	return stored, nil
 }
@@ -247,7 +275,13 @@ func (s *SQLStore) RevokeDevice(
 		return nil, op.Error(guardErr, "revoking device %q", deviceID)
 	}
 
-	return deviceFromGetRow(&row), nil
+	revoked := deviceFromGetRow(&row)
+
+	if err = s.hooks.AfterRevokeDevice(ctx, tx, scope, revoked); err != nil {
+		return nil, op.Error(err, "running the hook after revoking device %q", deviceID)
+	}
+
+	return revoked, nil
 }
 
 // InvalidateDeviceToken removes a token the provider has permanently rejected.
@@ -333,6 +367,10 @@ func (s *SQLStore) DeleteDevicesForPrincipal(
 	}
 
 	op.SpanOnly(countKey, count)
+
+	if err = s.hooks.AfterDeleteDevicesForPrincipal(ctx, tx, scope, principal, count); err != nil {
+		return 0, op.Error(err, "running the hook after erasing every device for a principal")
+	}
 
 	return count, nil
 }

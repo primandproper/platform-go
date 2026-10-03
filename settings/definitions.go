@@ -80,6 +80,10 @@ func (s *SQLStore) CreateDefinition(
 		return nil, op.Error(err, "creating setting definition %q", created.Name)
 	}
 
+	if err := s.hooks.AfterCreateDefinition(ctx, tx, scope, &created); err != nil {
+		return nil, op.Error(err, "running the hook after creating setting definition %q", created.Name)
+	}
+
 	return &created, nil
 }
 
@@ -377,9 +381,13 @@ func (s *SQLStore) UpdateDefinition(
 	updated.Scope = scope
 	updated.Enumeration = sortedEnumeration(definition.Enumeration)
 
-	edited, err := s.rewriteDefinition(ctx, tx, scope, &updated)
+	existing, edited, err := s.rewriteDefinition(ctx, tx, scope, &updated)
 	if err != nil {
 		return nil, op.Error(err, "updating setting definition %q", updated.Name)
+	}
+
+	if err = s.hooks.AfterUpdateDefinition(ctx, tx, scope, existing, edited); err != nil {
+		return nil, op.Error(err, "running the hook after updating setting definition %q", updated.Name)
 	}
 
 	return edited, nil
@@ -404,37 +412,43 @@ func (s *SQLStore) UpdateDefinition(
 // definition it returns carries the stamp the server assigned. The edit leaves
 // the row live, so the read that describes it is the one every other caller
 // makes.
+//
+// It answers with both reads, what was there and what the edit left, because
+// the first is the before row [Hooks.AfterUpdateDefinition] is handed.
 func (s *SQLStore) rewriteDefinition(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	updated *Definition,
-) (*Definition, error) {
-	existing, err := s.readDefinitionForUpdate(ctx, q, scope, updated.ID)
-	if err != nil {
-		return nil, err
+) (existing, edited *Definition, err error) {
+	if existing, err = s.readDefinitionForUpdate(ctx, q, scope, updated.ID); err != nil {
+		return nil, nil, err
 	}
 
 	if err = s.refuseTakenName(ctx, q, scope, updated.Name, &updated.ID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if reinterprets(existing, updated) {
 		if err = s.refuseStrandedValues(ctx, q, scope, updated); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	count, err := s.q.UpdateDefinition(ctx, q, updateDefinitionParams(updated, scope))
 	if err = guardCount(count, err, ErrDefinitionNotFound, "updating setting definition"); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err = s.writeEnumeration(ctx, q, updated.ID, updated.Enumeration); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return s.readDefinition(ctx, q, scope, updated.ID)
+	if edited, err = s.readDefinition(ctx, q, scope, updated.ID); err != nil {
+		return nil, nil, err
+	}
+
+	return existing, edited, nil
 }
 
 // ArchiveDefinition retires one of the scope's settings, inside the caller's
@@ -454,6 +468,11 @@ func (s *SQLStore) rewriteDefinition(
 // it, on the same transaction and at the same cost. Returning it here would have
 // meant two more statements — the archived row and its enumeration — charged to
 // every caller, including the ones that only wanted the setting retired.
+//
+// A store with hooks installed pays one of those statements anyway, before the
+// archive rather than after it: [Hooks.AfterArchiveDefinition] is handed the
+// row as it stood, and a consumer recording the retirement is exactly the
+// caller that wanted it. A store without hooks still pays nothing.
 func (s *SQLStore) ArchiveDefinition(
 	ctx context.Context,
 	tx database.Tx,
@@ -474,9 +493,24 @@ func (s *SQLStore) ArchiveDefinition(
 		return op.Error(err, "archiving setting definition %q", definitionID)
 	}
 
+	// The row as it stands, for the hook alone: once the statement below lands
+	// no read here reaches it. A store without hooks skips the read, which is
+	// why the write answers with nothing — see the method's documentation.
+	var retired *Definition
+	if s.hooked {
+		var err error
+		if retired, err = s.readDefinition(ctx, tx, scope, definitionID); err != nil {
+			return op.Error(err, "archiving setting definition %q", definitionID)
+		}
+	}
+
 	count, err := s.q.ArchiveDefinition(ctx, tx, settingsdb.ArchiveDefinitionParams{ID: definitionID, Scope: scope})
 	if err = guardCount(count, err, ErrDefinitionNotFound, "archiving setting definition"); err != nil {
 		return op.Error(err, "archiving setting definition %q", definitionID)
+	}
+
+	if err = s.hooks.AfterArchiveDefinition(ctx, tx, scope, retired); err != nil {
+		return op.Error(err, "running the hook after archiving setting definition %q", definitionID)
 	}
 
 	return nil

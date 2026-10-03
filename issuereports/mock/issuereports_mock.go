@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/issuereports"
-
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -881,5 +880,355 @@ func (mock *StoreMock) UpdateReportCalls() []struct {
 	mock.lockUpdateReport.RLock()
 	calls = mock.calls.UpdateReport
 	mock.lockUpdateReport.RUnlock()
+	return calls
+}
+
+// Ensure, that HooksMock does implement issuereports.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ issuereports.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of issuereports.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked issuereports.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchiveReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+//				panic("mock out the AfterArchiveReport method")
+//			},
+//			AfterCreateReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+//				panic("mock out the AfterCreateReport method")
+//			},
+//			AfterDeleteReportsByReporterFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reporter string, deleted int64) error {
+//				panic("mock out the AfterDeleteReportsByReporter method")
+//			},
+//			AfterTransitionReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *issuereports.Report, after *issuereports.Report) error {
+//				panic("mock out the AfterTransitionReport method")
+//			},
+//			AfterUpdateReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *issuereports.Report, after *issuereports.Report) error {
+//				panic("mock out the AfterUpdateReport method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires issuereports.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchiveReportFunc mocks the AfterArchiveReport method.
+	AfterArchiveReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error
+
+	// AfterCreateReportFunc mocks the AfterCreateReport method.
+	AfterCreateReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error
+
+	// AfterDeleteReportsByReporterFunc mocks the AfterDeleteReportsByReporter method.
+	AfterDeleteReportsByReporterFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reporter string, deleted int64) error
+
+	// AfterTransitionReportFunc mocks the AfterTransitionReport method.
+	AfterTransitionReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *issuereports.Report, after *issuereports.Report) error
+
+	// AfterUpdateReportFunc mocks the AfterUpdateReport method.
+	AfterUpdateReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *issuereports.Report, after *issuereports.Report) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchiveReport holds details about calls to the AfterArchiveReport method.
+		AfterArchiveReport []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Report is the report argument value.
+			Report *issuereports.Report
+		}
+		// AfterCreateReport holds details about calls to the AfterCreateReport method.
+		AfterCreateReport []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Report is the report argument value.
+			Report *issuereports.Report
+		}
+		// AfterDeleteReportsByReporter holds details about calls to the AfterDeleteReportsByReporter method.
+		AfterDeleteReportsByReporter []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Reporter is the reporter argument value.
+			Reporter string
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterTransitionReport holds details about calls to the AfterTransitionReport method.
+		AfterTransitionReport []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *issuereports.Report
+			// After is the after argument value.
+			After *issuereports.Report
+		}
+		// AfterUpdateReport holds details about calls to the AfterUpdateReport method.
+		AfterUpdateReport []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *issuereports.Report
+			// After is the after argument value.
+			After *issuereports.Report
+		}
+	}
+	lockAfterArchiveReport           sync.RWMutex
+	lockAfterCreateReport            sync.RWMutex
+	lockAfterDeleteReportsByReporter sync.RWMutex
+	lockAfterTransitionReport        sync.RWMutex
+	lockAfterUpdateReport            sync.RWMutex
+}
+
+// AfterArchiveReport calls AfterArchiveReportFunc.
+func (mock *HooksMock) AfterArchiveReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+	if mock.AfterArchiveReportFunc == nil {
+		panic("HooksMock.AfterArchiveReportFunc: method is nil but Hooks.AfterArchiveReport was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Report *issuereports.Report
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Report: report,
+	}
+	mock.lockAfterArchiveReport.Lock()
+	mock.calls.AfterArchiveReport = append(mock.calls.AfterArchiveReport, callInfo)
+	mock.lockAfterArchiveReport.Unlock()
+	return mock.AfterArchiveReportFunc(ctx, tx, scope, report)
+}
+
+// AfterArchiveReportCalls gets all the calls that were made to AfterArchiveReport.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveReportCalls())
+func (mock *HooksMock) AfterArchiveReportCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Report *issuereports.Report
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Report *issuereports.Report
+	}
+	mock.lockAfterArchiveReport.RLock()
+	calls = mock.calls.AfterArchiveReport
+	mock.lockAfterArchiveReport.RUnlock()
+	return calls
+}
+
+// AfterCreateReport calls AfterCreateReportFunc.
+func (mock *HooksMock) AfterCreateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+	if mock.AfterCreateReportFunc == nil {
+		panic("HooksMock.AfterCreateReportFunc: method is nil but Hooks.AfterCreateReport was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Report *issuereports.Report
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Report: report,
+	}
+	mock.lockAfterCreateReport.Lock()
+	mock.calls.AfterCreateReport = append(mock.calls.AfterCreateReport, callInfo)
+	mock.lockAfterCreateReport.Unlock()
+	return mock.AfterCreateReportFunc(ctx, tx, scope, report)
+}
+
+// AfterCreateReportCalls gets all the calls that were made to AfterCreateReport.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreateReportCalls())
+func (mock *HooksMock) AfterCreateReportCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Report *issuereports.Report
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Report *issuereports.Report
+	}
+	mock.lockAfterCreateReport.RLock()
+	calls = mock.calls.AfterCreateReport
+	mock.lockAfterCreateReport.RUnlock()
+	return calls
+}
+
+// AfterDeleteReportsByReporter calls AfterDeleteReportsByReporterFunc.
+func (mock *HooksMock) AfterDeleteReportsByReporter(ctx context.Context, tx database.Tx, scope tenancy.Scope, reporter string, deleted int64) error {
+	if mock.AfterDeleteReportsByReporterFunc == nil {
+		panic("HooksMock.AfterDeleteReportsByReporterFunc: method is nil but Hooks.AfterDeleteReportsByReporter was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Reporter string
+		Deleted  int64
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		Reporter: reporter,
+		Deleted:  deleted,
+	}
+	mock.lockAfterDeleteReportsByReporter.Lock()
+	mock.calls.AfterDeleteReportsByReporter = append(mock.calls.AfterDeleteReportsByReporter, callInfo)
+	mock.lockAfterDeleteReportsByReporter.Unlock()
+	return mock.AfterDeleteReportsByReporterFunc(ctx, tx, scope, reporter, deleted)
+}
+
+// AfterDeleteReportsByReporterCalls gets all the calls that were made to AfterDeleteReportsByReporter.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteReportsByReporterCalls())
+func (mock *HooksMock) AfterDeleteReportsByReporterCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	Reporter string
+	Deleted  int64
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Reporter string
+		Deleted  int64
+	}
+	mock.lockAfterDeleteReportsByReporter.RLock()
+	calls = mock.calls.AfterDeleteReportsByReporter
+	mock.lockAfterDeleteReportsByReporter.RUnlock()
+	return calls
+}
+
+// AfterTransitionReport calls AfterTransitionReportFunc.
+func (mock *HooksMock) AfterTransitionReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *issuereports.Report, after *issuereports.Report) error {
+	if mock.AfterTransitionReportFunc == nil {
+		panic("HooksMock.AfterTransitionReportFunc: method is nil but Hooks.AfterTransitionReport was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *issuereports.Report
+		After  *issuereports.Report
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterTransitionReport.Lock()
+	mock.calls.AfterTransitionReport = append(mock.calls.AfterTransitionReport, callInfo)
+	mock.lockAfterTransitionReport.Unlock()
+	return mock.AfterTransitionReportFunc(ctx, tx, scope, before, after)
+}
+
+// AfterTransitionReportCalls gets all the calls that were made to AfterTransitionReport.
+// Check the length with:
+//
+//	len(mockedHooks.AfterTransitionReportCalls())
+func (mock *HooksMock) AfterTransitionReportCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *issuereports.Report
+	After  *issuereports.Report
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *issuereports.Report
+		After  *issuereports.Report
+	}
+	mock.lockAfterTransitionReport.RLock()
+	calls = mock.calls.AfterTransitionReport
+	mock.lockAfterTransitionReport.RUnlock()
+	return calls
+}
+
+// AfterUpdateReport calls AfterUpdateReportFunc.
+func (mock *HooksMock) AfterUpdateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *issuereports.Report, after *issuereports.Report) error {
+	if mock.AfterUpdateReportFunc == nil {
+		panic("HooksMock.AfterUpdateReportFunc: method is nil but Hooks.AfterUpdateReport was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *issuereports.Report
+		After  *issuereports.Report
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterUpdateReport.Lock()
+	mock.calls.AfterUpdateReport = append(mock.calls.AfterUpdateReport, callInfo)
+	mock.lockAfterUpdateReport.Unlock()
+	return mock.AfterUpdateReportFunc(ctx, tx, scope, before, after)
+}
+
+// AfterUpdateReportCalls gets all the calls that were made to AfterUpdateReport.
+// Check the length with:
+//
+//	len(mockedHooks.AfterUpdateReportCalls())
+func (mock *HooksMock) AfterUpdateReportCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *issuereports.Report
+	After  *issuereports.Report
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *issuereports.Report
+		After  *issuereports.Report
+	}
+	mock.lockAfterUpdateReport.RLock()
+	calls = mock.calls.AfterUpdateReport
+	mock.lockAfterUpdateReport.RUnlock()
 	return calls
 }

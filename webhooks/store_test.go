@@ -2016,6 +2016,8 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 			return nil
 		}))
 	})
+
+	runHooksSuite(t, env)
 }
 
 // idsOf projects endpoint IDs.

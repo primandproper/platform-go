@@ -32,6 +32,11 @@ import (
 // enqueues, not in the hook. Mailing an invitation from AfterInvite makes the
 // invitation fail when the mail provider is down.
 //
+// An update is handed two rows, the one before it and the one after, because
+// what an update means is the difference between them and that is not readable
+// once the write has run. The before row costs the update one keyed read on the
+// transaction, which the store makes only when hooks are installed.
+//
 // Every method is "After", and none is a veto. Whether somebody may join, be
 // invited or be withdrawn is decided before the store is called; a hook
 // returning an error is an abort of a decision already taken.
@@ -49,9 +54,10 @@ type Hooks interface {
 	// it was minted under and the creation time the database stamped.
 	AfterCreateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *List) error
 
-	// AfterUpdateList is called with the list UpdateList left, read back on the
-	// transaction after the write.
-	AfterUpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *List) error
+	// AfterUpdateList is called with the list as it stood before UpdateList and
+	// as UpdateList left it, both read on the transaction — so a hook can say
+	// what changed, which the row alone cannot. audit.Diff takes the pair.
+	AfterUpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, before, after *List) error
 
 	// AfterArchiveList is called with the list ArchiveList hid, read back on the
 	// transaction through the statement that still sees archived rows.
@@ -61,9 +67,10 @@ type Hooks interface {
 	// written at — StatusPending or StatusWaiting.
 	AfterJoin(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *Signup) error
 
-	// AfterUpdateSignupNotes is called with the signup UpdateSignupNotes left,
-	// read back after the write.
-	AfterUpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, signup *Signup) error
+	// AfterUpdateSignupNotes is called with the signup as it stood before
+	// UpdateSignupNotes and as UpdateSignupNotes left it, both read on the
+	// transaction.
+	AfterUpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, before, after *Signup) error
 
 	// AfterConfirm is called with the signup Confirm moved from StatusPending to
 	// StatusWaiting, carrying the StatusChangedAt the move stamped.
@@ -133,7 +140,7 @@ func (NoopHooks) AfterCreateList(context.Context, database.Tx, tenancy.Scope, *L
 }
 
 // AfterUpdateList implements Hooks.
-func (NoopHooks) AfterUpdateList(context.Context, database.Tx, tenancy.Scope, *List) error {
+func (NoopHooks) AfterUpdateList(context.Context, database.Tx, tenancy.Scope, *List, *List) error {
 	return nil
 }
 
@@ -148,7 +155,7 @@ func (NoopHooks) AfterJoin(context.Context, database.Tx, tenancy.Scope, *Signup)
 }
 
 // AfterUpdateSignupNotes implements Hooks.
-func (NoopHooks) AfterUpdateSignupNotes(context.Context, database.Tx, tenancy.Scope, *Signup) error {
+func (NoopHooks) AfterUpdateSignupNotes(context.Context, database.Tx, tenancy.Scope, *Signup, *Signup) error {
 	return nil
 }
 

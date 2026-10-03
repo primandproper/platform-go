@@ -109,6 +109,10 @@ func (s *SQLStore) CreateReport(
 		return nil, op.Error(err, "reading back the created issue report")
 	}
 
+	if err = s.hooks.AfterCreateReport(ctx, tx, scope, created); err != nil {
+		return nil, op.Error(err, "running the hook after creating issue report %q", created.ID)
+	}
+
 	return created, nil
 }
 
@@ -588,6 +592,14 @@ func (s *SQLStore) UpdateReport(
 		return nil, op.Error(err, "updating issue report %q", report.ID)
 	}
 
+	var before *Report
+	if s.hooked {
+		var err error
+		if before, err = s.reportOn(ctx, tx, scope, revision.ID); err != nil {
+			return nil, op.Error(err, "updating issue report %q", report.ID)
+		}
+	}
+
 	count, err := s.q.UpdateReport(ctx, tx, updateReportParams(scope, &revision))
 	if err = guardCount(count, err, ErrReportNotFound, "updating the issue report"); err != nil {
 		return nil, op.Error(err, "updating issue report %q", report.ID)
@@ -596,6 +608,10 @@ func (s *SQLStore) UpdateReport(
 	revised, err := s.reportOn(ctx, tx, scope, revision.ID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the revised issue report")
+	}
+
+	if err = s.hooks.AfterUpdateReport(ctx, tx, scope, before, revised); err != nil {
+		return nil, op.Error(err, "running the hook after updating issue report %q", report.ID)
 	}
 
 	return revised, nil
@@ -641,6 +657,17 @@ func (s *SQLStore) TransitionReport(
 
 	if err := checkTransition(from, to); err != nil {
 		return nil, op.Error(err, "transitioning issue report %q", reportID)
+	}
+
+	// The row the move is about to overwrite, for the hook. A report that is not
+	// in the scope fails here with the ErrReportNotFound the miss below would
+	// have reached, one statement earlier.
+	var before *Report
+	if s.hooked {
+		var err error
+		if before, err = s.reportOn(ctx, tx, scope, reportID); err != nil {
+			return nil, op.Error(err, "transitioning issue report %q", reportID)
+		}
 	}
 
 	// The one stamp this store supplies rather than the statement. It is read
@@ -689,6 +716,10 @@ func (s *SQLStore) TransitionReport(
 	moved, err := s.reportOn(ctx, tx, scope, reportID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the transitioned issue report")
+	}
+
+	if err = s.hooks.AfterTransitionReport(ctx, tx, scope, before, moved); err != nil {
+		return nil, op.Error(err, "running the hook after transitioning issue report %q", reportID)
 	}
 
 	return moved, nil
@@ -749,7 +780,13 @@ func (s *SQLStore) ArchiveReport(
 		return nil, op.Error(err, "reading back the archived issue report")
 	}
 
-	return reportFromArchivedRow(&row), nil
+	archived := reportFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveReport(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving issue report %q", reportID)
+	}
+
+	return archived, nil
 }
 
 // DeleteReportsByReporter destroys every report one person filed within the
@@ -790,6 +827,10 @@ func (s *SQLStore) DeleteReportsByReporter(
 	}
 
 	op.Set(countKey, deleted)
+
+	if err = s.hooks.AfterDeleteReportsByReporter(ctx, tx, scope, reporter, deleted); err != nil {
+		return 0, op.Error(err, "running the hook after erasing issue reports")
+	}
 
 	return deleted, nil
 }

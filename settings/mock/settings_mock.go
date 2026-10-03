@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/settings"
-
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -1897,5 +1896,429 @@ func (mock *ValueStoreMock) SetValueCalls() []struct {
 	mock.lockSetValue.RLock()
 	calls = mock.calls.SetValue
 	mock.lockSetValue.RUnlock()
+	return calls
+}
+
+// Ensure, that HooksMock does implement settings.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ settings.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of settings.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked settings.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+//				panic("mock out the AfterArchiveDefinition method")
+//			},
+//			AfterClearValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition, value *settings.Value) error {
+//				panic("mock out the AfterClearValue method")
+//			},
+//			AfterCreateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+//				panic("mock out the AfterCreateDefinition method")
+//			},
+//			AfterDeleteValuesForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, deleted int64) error {
+//				panic("mock out the AfterDeleteValuesForSubject method")
+//			},
+//			AfterSetValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition, before *settings.Value, after *settings.Value) error {
+//				panic("mock out the AfterSetValue method")
+//			},
+//			AfterUpdateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *settings.Definition, after *settings.Definition) error {
+//				panic("mock out the AfterUpdateDefinition method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires settings.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchiveDefinitionFunc mocks the AfterArchiveDefinition method.
+	AfterArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error
+
+	// AfterClearValueFunc mocks the AfterClearValue method.
+	AfterClearValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition, value *settings.Value) error
+
+	// AfterCreateDefinitionFunc mocks the AfterCreateDefinition method.
+	AfterCreateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error
+
+	// AfterDeleteValuesForSubjectFunc mocks the AfterDeleteValuesForSubject method.
+	AfterDeleteValuesForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, deleted int64) error
+
+	// AfterSetValueFunc mocks the AfterSetValue method.
+	AfterSetValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition, before *settings.Value, after *settings.Value) error
+
+	// AfterUpdateDefinitionFunc mocks the AfterUpdateDefinition method.
+	AfterUpdateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *settings.Definition, after *settings.Definition) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchiveDefinition holds details about calls to the AfterArchiveDefinition method.
+		AfterArchiveDefinition []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Definition is the definition argument value.
+			Definition *settings.Definition
+		}
+		// AfterClearValue holds details about calls to the AfterClearValue method.
+		AfterClearValue []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Definition is the definition argument value.
+			Definition *settings.Definition
+			// Value is the value argument value.
+			Value *settings.Value
+		}
+		// AfterCreateDefinition holds details about calls to the AfterCreateDefinition method.
+		AfterCreateDefinition []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Definition is the definition argument value.
+			Definition *settings.Definition
+		}
+		// AfterDeleteValuesForSubject holds details about calls to the AfterDeleteValuesForSubject method.
+		AfterDeleteValuesForSubject []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Subject is the subject argument value.
+			Subject settings.Subject
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterSetValue holds details about calls to the AfterSetValue method.
+		AfterSetValue []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Definition is the definition argument value.
+			Definition *settings.Definition
+			// Before is the before argument value.
+			Before *settings.Value
+			// After is the after argument value.
+			After *settings.Value
+		}
+		// AfterUpdateDefinition holds details about calls to the AfterUpdateDefinition method.
+		AfterUpdateDefinition []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *settings.Definition
+			// After is the after argument value.
+			After *settings.Definition
+		}
+	}
+	lockAfterArchiveDefinition      sync.RWMutex
+	lockAfterClearValue             sync.RWMutex
+	lockAfterCreateDefinition       sync.RWMutex
+	lockAfterDeleteValuesForSubject sync.RWMutex
+	lockAfterSetValue               sync.RWMutex
+	lockAfterUpdateDefinition       sync.RWMutex
+}
+
+// AfterArchiveDefinition calls AfterArchiveDefinitionFunc.
+func (mock *HooksMock) AfterArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+	if mock.AfterArchiveDefinitionFunc == nil {
+		panic("HooksMock.AfterArchiveDefinitionFunc: method is nil but Hooks.AfterArchiveDefinition was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		Definition: definition,
+	}
+	mock.lockAfterArchiveDefinition.Lock()
+	mock.calls.AfterArchiveDefinition = append(mock.calls.AfterArchiveDefinition, callInfo)
+	mock.lockAfterArchiveDefinition.Unlock()
+	return mock.AfterArchiveDefinitionFunc(ctx, tx, scope, definition)
+}
+
+// AfterArchiveDefinitionCalls gets all the calls that were made to AfterArchiveDefinition.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveDefinitionCalls())
+func (mock *HooksMock) AfterArchiveDefinitionCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	Definition *settings.Definition
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+	}
+	mock.lockAfterArchiveDefinition.RLock()
+	calls = mock.calls.AfterArchiveDefinition
+	mock.lockAfterArchiveDefinition.RUnlock()
+	return calls
+}
+
+// AfterClearValue calls AfterClearValueFunc.
+func (mock *HooksMock) AfterClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition, value *settings.Value) error {
+	if mock.AfterClearValueFunc == nil {
+		panic("HooksMock.AfterClearValueFunc: method is nil but Hooks.AfterClearValue was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+		Value      *settings.Value
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		Definition: definition,
+		Value:      value,
+	}
+	mock.lockAfterClearValue.Lock()
+	mock.calls.AfterClearValue = append(mock.calls.AfterClearValue, callInfo)
+	mock.lockAfterClearValue.Unlock()
+	return mock.AfterClearValueFunc(ctx, tx, scope, definition, value)
+}
+
+// AfterClearValueCalls gets all the calls that were made to AfterClearValue.
+// Check the length with:
+//
+//	len(mockedHooks.AfterClearValueCalls())
+func (mock *HooksMock) AfterClearValueCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	Definition *settings.Definition
+	Value      *settings.Value
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+		Value      *settings.Value
+	}
+	mock.lockAfterClearValue.RLock()
+	calls = mock.calls.AfterClearValue
+	mock.lockAfterClearValue.RUnlock()
+	return calls
+}
+
+// AfterCreateDefinition calls AfterCreateDefinitionFunc.
+func (mock *HooksMock) AfterCreateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+	if mock.AfterCreateDefinitionFunc == nil {
+		panic("HooksMock.AfterCreateDefinitionFunc: method is nil but Hooks.AfterCreateDefinition was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		Definition: definition,
+	}
+	mock.lockAfterCreateDefinition.Lock()
+	mock.calls.AfterCreateDefinition = append(mock.calls.AfterCreateDefinition, callInfo)
+	mock.lockAfterCreateDefinition.Unlock()
+	return mock.AfterCreateDefinitionFunc(ctx, tx, scope, definition)
+}
+
+// AfterCreateDefinitionCalls gets all the calls that were made to AfterCreateDefinition.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreateDefinitionCalls())
+func (mock *HooksMock) AfterCreateDefinitionCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	Definition *settings.Definition
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+	}
+	mock.lockAfterCreateDefinition.RLock()
+	calls = mock.calls.AfterCreateDefinition
+	mock.lockAfterCreateDefinition.RUnlock()
+	return calls
+}
+
+// AfterDeleteValuesForSubject calls AfterDeleteValuesForSubjectFunc.
+func (mock *HooksMock) AfterDeleteValuesForSubject(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, deleted int64) error {
+	if mock.AfterDeleteValuesForSubjectFunc == nil {
+		panic("HooksMock.AfterDeleteValuesForSubjectFunc: method is nil but Hooks.AfterDeleteValuesForSubject was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Subject settings.Subject
+		Deleted int64
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Subject: subject,
+		Deleted: deleted,
+	}
+	mock.lockAfterDeleteValuesForSubject.Lock()
+	mock.calls.AfterDeleteValuesForSubject = append(mock.calls.AfterDeleteValuesForSubject, callInfo)
+	mock.lockAfterDeleteValuesForSubject.Unlock()
+	return mock.AfterDeleteValuesForSubjectFunc(ctx, tx, scope, subject, deleted)
+}
+
+// AfterDeleteValuesForSubjectCalls gets all the calls that were made to AfterDeleteValuesForSubject.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteValuesForSubjectCalls())
+func (mock *HooksMock) AfterDeleteValuesForSubjectCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Subject settings.Subject
+	Deleted int64
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Subject settings.Subject
+		Deleted int64
+	}
+	mock.lockAfterDeleteValuesForSubject.RLock()
+	calls = mock.calls.AfterDeleteValuesForSubject
+	mock.lockAfterDeleteValuesForSubject.RUnlock()
+	return calls
+}
+
+// AfterSetValue calls AfterSetValueFunc.
+func (mock *HooksMock) AfterSetValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition, before *settings.Value, after *settings.Value) error {
+	if mock.AfterSetValueFunc == nil {
+		panic("HooksMock.AfterSetValueFunc: method is nil but Hooks.AfterSetValue was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+		Before     *settings.Value
+		After      *settings.Value
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		Definition: definition,
+		Before:     before,
+		After:      after,
+	}
+	mock.lockAfterSetValue.Lock()
+	mock.calls.AfterSetValue = append(mock.calls.AfterSetValue, callInfo)
+	mock.lockAfterSetValue.Unlock()
+	return mock.AfterSetValueFunc(ctx, tx, scope, definition, before, after)
+}
+
+// AfterSetValueCalls gets all the calls that were made to AfterSetValue.
+// Check the length with:
+//
+//	len(mockedHooks.AfterSetValueCalls())
+func (mock *HooksMock) AfterSetValueCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	Definition *settings.Definition
+	Before     *settings.Value
+	After      *settings.Value
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		Definition *settings.Definition
+		Before     *settings.Value
+		After      *settings.Value
+	}
+	mock.lockAfterSetValue.RLock()
+	calls = mock.calls.AfterSetValue
+	mock.lockAfterSetValue.RUnlock()
+	return calls
+}
+
+// AfterUpdateDefinition calls AfterUpdateDefinitionFunc.
+func (mock *HooksMock) AfterUpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *settings.Definition, after *settings.Definition) error {
+	if mock.AfterUpdateDefinitionFunc == nil {
+		panic("HooksMock.AfterUpdateDefinitionFunc: method is nil but Hooks.AfterUpdateDefinition was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *settings.Definition
+		After  *settings.Definition
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterUpdateDefinition.Lock()
+	mock.calls.AfterUpdateDefinition = append(mock.calls.AfterUpdateDefinition, callInfo)
+	mock.lockAfterUpdateDefinition.Unlock()
+	return mock.AfterUpdateDefinitionFunc(ctx, tx, scope, before, after)
+}
+
+// AfterUpdateDefinitionCalls gets all the calls that were made to AfterUpdateDefinition.
+// Check the length with:
+//
+//	len(mockedHooks.AfterUpdateDefinitionCalls())
+func (mock *HooksMock) AfterUpdateDefinitionCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *settings.Definition
+	After  *settings.Definition
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *settings.Definition
+		After  *settings.Definition
+	}
+	mock.lockAfterUpdateDefinition.RLock()
+	calls = mock.calls.AfterUpdateDefinition
+	mock.lockAfterUpdateDefinition.RUnlock()
 	return calls
 }

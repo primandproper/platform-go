@@ -5,4 +5,4 @@ package settingsmock
 
 // Regenerate via `go generate ./settings/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out settings_mock.go -pkg settingsmock -rm -fmt goimports .. Store:StoreMock DefinitionStore:DefinitionStoreMock ValueStore:ValueStoreMock
+//go:generate go tool github.com/matryer/moq -out settings_mock.go -pkg settingsmock -rm -fmt goimports .. Store:StoreMock DefinitionStore:DefinitionStoreMock ValueStore:ValueStoreMock Hooks:HooksMock

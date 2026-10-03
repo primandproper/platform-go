@@ -17,6 +17,7 @@ var errHook = platformerrors.New("the hook failed")
 
 // hookCall is one hook invocation, as the recording hooks saw it.
 type hookCall struct {
+	before    any
 	list      *List
 	signup    *Signup
 	subject   Subject
@@ -51,8 +52,8 @@ func (h *recordingHooks) AfterCreateList(_ context.Context, _ database.Tx, scope
 	return h.record(&hookCall{name: "AfterCreateList", scope: scope, list: list})
 }
 
-func (h *recordingHooks) AfterUpdateList(_ context.Context, _ database.Tx, scope tenancy.Scope, list *List) error {
-	return h.record(&hookCall{name: "AfterUpdateList", scope: scope, list: list})
+func (h *recordingHooks) AfterUpdateList(_ context.Context, _ database.Tx, scope tenancy.Scope, before, after *List) error {
+	return h.record(&hookCall{name: "AfterUpdateList", scope: scope, list: after, before: before})
 }
 
 func (h *recordingHooks) AfterArchiveList(_ context.Context, _ database.Tx, scope tenancy.Scope, list *List) error {
@@ -63,8 +64,8 @@ func (h *recordingHooks) AfterJoin(_ context.Context, _ database.Tx, scope tenan
 	return h.record(&hookCall{name: "AfterJoin", scope: scope, signup: signup})
 }
 
-func (h *recordingHooks) AfterUpdateSignupNotes(_ context.Context, _ database.Tx, scope tenancy.Scope, signup *Signup) error {
-	return h.record(&hookCall{name: "AfterUpdateSignupNotes", scope: scope, signup: signup})
+func (h *recordingHooks) AfterUpdateSignupNotes(_ context.Context, _ database.Tx, scope tenancy.Scope, before, after *Signup) error {
+	return h.record(&hookCall{name: "AfterUpdateSignupNotes", scope: scope, signup: after, before: before})
 }
 
 func (h *recordingHooks) AfterConfirm(_ context.Context, _ database.Tx, scope tenancy.Scope, signup *Signup) error {
@@ -132,6 +133,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "AfterUpdateList", call.name)
 		test.EqOp(t, "rewritten", call.list.Description)
 		test.EqOp(t, updated, call.list)
+		beforeList, ok := call.before.(*List)
+		must.True(t, ok)
+		test.EqOp(t, list.ID, beforeList.ID)
+		test.EqOp(t, "early access to the beta", beforeList.Description)
 
 		signup := mustJoin(t, env, store, testScope, list.ID, &Signup{
 			Contact: "ada@example.com",
@@ -148,6 +153,9 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		call = hooks.last(t)
 		test.EqOp(t, "AfterUpdateSignupNotes", call.name)
 		test.EqOp(t, "met at the conference", call.signup.Notes)
+		beforeSignup, ok := call.before.(*Signup)
+		must.True(t, ok)
+		test.EqOp(t, "", beforeSignup.Notes)
 
 		_, err = env.confirm(t, store, testScope, list.ID, signup.ID)
 		must.NoError(t, err)

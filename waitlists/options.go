@@ -74,7 +74,7 @@ func WithHasher(hasher hashing.Hasher) SQLStoreOption {
 func WithHooks(hooks Hooks) SQLStoreOption {
 	return func(s *SQLStore) {
 		if hooks != nil {
-			s.hooks = hooks
+			s.hooks, s.hooked = hooks, true
 		}
 	}
 }

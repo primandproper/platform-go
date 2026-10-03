@@ -44,6 +44,7 @@ type (
 		logger          logging.Logger
 		tracerProvider  tracing.Provider
 		metricsProvider metrics.Provider
+		hooks           Hooks
 
 		//nolint:containedctx // deliberate: see WithSweeper
 		sweepCtx      context.Context
@@ -59,6 +60,7 @@ func newOptions(opts []Option) *options {
 		clock:       clock.NewClock(),
 		generator:   random.NewGenerator(),
 		hasher:      sha256.NewSHA256Hasher(),
+		hooks:       NoopHooks{},
 		secretBytes: DefaultSecretBytes,
 	}
 
@@ -149,6 +151,19 @@ func WithSweeper(ctx context.Context, interval time.Duration) Option {
 
 		o.sweepCtx = ctx
 		o.sweepInterval = interval
+	}
+}
+
+// WithHooks runs hooks inside every write's transaction, once its statements
+// have landed. See Hooks.
+//
+// Absent, or nil, the hooks are NoopHooks: a consumer with nothing to commit
+// alongside a write configures nothing.
+func WithHooks(hooks Hooks) Option {
+	return func(o *options) {
+		if hooks != nil {
+			o.hooks = hooks
+		}
 	}
 }
 

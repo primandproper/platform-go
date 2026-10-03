@@ -183,6 +183,23 @@ status came in on the provider's event — to a row that stays in its table, whi
 [SubscriptionStore.GetSubscription] and [TransactionStore.GetTransaction] still
 reach on the transaction that wrote it.
 
+# Companions every write owes go in Hooks
+
+A consumer whose every write owes the same companions — an audit entry for each,
+an event for each — can write them beside each call, or hand the store a [Hooks]
+through [WithHooks] and have each write call it on the same transaction once its
+statements have landed. The second is what a consumer reaches for when the
+alternative is wrapping the Store: a wrapper has to reimplement all thirteen
+writes to call through, and has to read the row an archive is about to hide or a
+status move is about to change before the store does. A hook is handed those
+rows, and an update or a status move is handed the row from before it as well. A
+hook's error fails the write it was called from, so the row and its companions
+commit together or not at all.
+
+The two status moves still answer their caller with nothing; it is their hooks
+that are handed the rows, read only when hooks are installed, so the boundary in
+the section above holds for a store with none.
+
 # A price is a fact about a moment, not a lookup
 
 [Purchase] and [Transaction] each carry their own amount and currency rather than
