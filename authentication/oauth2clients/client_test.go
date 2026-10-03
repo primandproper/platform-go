@@ -105,7 +105,7 @@ func TestNoopHooksDoNothingToEveryOperation(T *testing.T) {
 
 	// A nil transaction, because a noop must not reach for one.
 	test.NoError(T, hooks.AfterCreateClient(T.Context(), nil, scope, client))
-	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client))
+	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client, client))
 	test.NoError(T, hooks.AfterArchiveClient(T.Context(), nil, scope, client))
 }
 
@@ -149,7 +149,7 @@ func TestEmbeddingNoopHooksOverridesOneMethodAndInheritsTheRest(T *testing.T) {
 	// A nil transaction, because the inherited methods must not reach for one
 	// and the override here does not write.
 	must.NoError(T, hooks.AfterCreateClient(T.Context(), nil, scope, client))
-	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client))
+	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client, client))
 	test.NoError(T, hooks.AfterArchiveClient(T.Context(), nil, scope, client))
 
 	recorded, ok := hooks.(*auditOnlyHooks)

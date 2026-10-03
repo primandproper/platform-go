@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -554,7 +553,7 @@ var _ oauth2clients.Hooks = &HooksMock{}
 //			AfterCreateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error {
 //				panic("mock out the AfterCreateClient method")
 //			},
-//			AfterUpdateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error {
+//			AfterUpdateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *oauth2clients.Client, after *oauth2clients.Client) error {
 //				panic("mock out the AfterUpdateClient method")
 //			},
 //		}
@@ -571,7 +570,7 @@ type HooksMock struct {
 	AfterCreateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error
 
 	// AfterUpdateClientFunc mocks the AfterUpdateClient method.
-	AfterUpdateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error
+	AfterUpdateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *oauth2clients.Client, after *oauth2clients.Client) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -605,8 +604,10 @@ type HooksMock struct {
 			Tx database.Tx
 			// Scope is the scope argument value.
 			Scope tenancy.Scope
-			// Client is the client argument value.
-			Client *oauth2clients.Client
+			// Before is the before argument value.
+			Before *oauth2clients.Client
+			// After is the after argument value.
+			After *oauth2clients.Client
 		}
 	}
 	lockAfterArchiveClient sync.RWMutex
@@ -703,7 +704,7 @@ func (mock *HooksMock) AfterCreateClientCalls() []struct {
 }
 
 // AfterUpdateClient calls AfterUpdateClientFunc.
-func (mock *HooksMock) AfterUpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error {
+func (mock *HooksMock) AfterUpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *oauth2clients.Client, after *oauth2clients.Client) error {
 	if mock.AfterUpdateClientFunc == nil {
 		panic("HooksMock.AfterUpdateClientFunc: method is nil but Hooks.AfterUpdateClient was just called")
 	}
@@ -711,17 +712,19 @@ func (mock *HooksMock) AfterUpdateClient(ctx context.Context, tx database.Tx, sc
 		Ctx    context.Context
 		Tx     database.Tx
 		Scope  tenancy.Scope
-		Client *oauth2clients.Client
+		Before *oauth2clients.Client
+		After  *oauth2clients.Client
 	}{
 		Ctx:    ctx,
 		Tx:     tx,
 		Scope:  scope,
-		Client: client,
+		Before: before,
+		After:  after,
 	}
 	mock.lockAfterUpdateClient.Lock()
 	mock.calls.AfterUpdateClient = append(mock.calls.AfterUpdateClient, callInfo)
 	mock.lockAfterUpdateClient.Unlock()
-	return mock.AfterUpdateClientFunc(ctx, tx, scope, client)
+	return mock.AfterUpdateClientFunc(ctx, tx, scope, before, after)
 }
 
 // AfterUpdateClientCalls gets all the calls that were made to AfterUpdateClient.
@@ -732,13 +735,15 @@ func (mock *HooksMock) AfterUpdateClientCalls() []struct {
 	Ctx    context.Context
 	Tx     database.Tx
 	Scope  tenancy.Scope
-	Client *oauth2clients.Client
+	Before *oauth2clients.Client
+	After  *oauth2clients.Client
 } {
 	var calls []struct {
 		Ctx    context.Context
 		Tx     database.Tx
 		Scope  tenancy.Scope
-		Client *oauth2clients.Client
+		Before *oauth2clients.Client
+		After  *oauth2clients.Client
 	}
 	mock.lockAfterUpdateClient.RLock()
 	calls = mock.calls.AfterUpdateClient

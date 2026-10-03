@@ -193,8 +193,16 @@ type Hooks interface {
 		endedMemberships []*Membership,
 	) error
 
-	// AfterUpdateUserAccountStatus is called with the user under their new
-	// status and the status they held before it.
+	// AfterUpdateUserAccountStatus is called with the user as they stood before
+	// the status write and as it left them, both redacted.
+	//
+	// Both rows rather than the previous status alone, because the write moves
+	// two columns and not one: the status, and the explanation an operator gave
+	// for it. A record of a reinstatement that can say what the user was
+	// suspended for, and a record of a ban that can say what reason it replaced,
+	// both need the explanation the column no longer holds. The before row is
+	// the one the operation already reads to confirm the user exists, so handing
+	// it on costs nothing.
 	//
 	// This is where a consumer revokes what a suspended user is still holding,
 	// and it is the only place that can: identity holds no handle on a session or
@@ -227,8 +235,7 @@ type Hooks interface {
 		ctx context.Context,
 		tx database.Tx,
 		scope tenancy.Scope,
-		user *User,
-		previousStatus AccountStatus,
+		before, after *User,
 	) error
 
 	// AfterSetUserServiceRoles is called with the user holding their new
@@ -251,9 +258,10 @@ type Hooks interface {
 	// The names and not the old values, because a profile save is the one write
 	// here whose before-image is a privacy question of its own: an audit trail
 	// that records what somebody's email address used to be is a second copy of
-	// a personal detail, kept somewhere the erasure path does not reach. A
-	// consumer that genuinely needs the old value reads it in the hook, on the
-	// transaction, before this returns.
+	// a personal detail, kept somewhere the erasure path does not reach. The old
+	// value is not readable from the hook either — the row already holds the new
+	// one when this runs — so leaving it off is a decision this interface makes
+	// for its consumers rather than a default they can reach past.
 	AfterUpdateProfile(
 		ctx context.Context,
 		tx database.Tx,
@@ -262,14 +270,22 @@ type Hooks interface {
 		changed []string,
 	) error
 
-	// AfterUpdateAccount is called with the account as it stands after the save
-	// and the fields that moved.
+	// AfterUpdateAccount is called with the account as it stood before the save
+	// and as the save left it.
+	//
+	// Both rows rather than the names of the fields that moved, which is what
+	// AfterUpdateProfile is handed and for a reason that does not carry over: an
+	// account's name, time zone and billing address are an organization's
+	// details rather than a person's, and a record that a household was renamed
+	// is not much of a record without the name it had. The before row is the
+	// one the save was applied to, read on this transaction before the write, so
+	// a consumer diffing the two sees exactly what this save changed — the
+	// LastUpdatedAt it stamped included.
 	AfterUpdateAccount(
 		ctx context.Context,
 		tx database.Tx,
 		scope tenancy.Scope,
-		account *Account,
-		changed []string,
+		before, after *Account,
 	) error
 
 	// AfterRecordAgreement is called with the user and the documents they just
@@ -502,7 +518,6 @@ func (NoopHooks) AfterCancelInvitation(context.Context, database.Tx, tenancy.Sco
 	return nil
 }
 
-// AfterTransferAccountOwnership does nothing.
 // AfterCreateAccount does nothing.
 func (NoopHooks) AfterCreateAccount(
 	context.Context, database.Tx, tenancy.Scope, *Account, *Membership,
@@ -510,6 +525,7 @@ func (NoopHooks) AfterCreateAccount(
 	return nil
 }
 
+// AfterTransferAccountOwnership does nothing.
 func (NoopHooks) AfterTransferAccountOwnership(
 	context.Context, database.Tx, tenancy.Scope, *Account, string,
 ) error {
@@ -542,7 +558,7 @@ func (NoopHooks) AfterArchiveAccount(
 // ban itself is still effective on the next request — Store.GetPrincipal refuses
 // it — and the interface's doc names the two calls that clear the rows.
 func (NoopHooks) AfterUpdateUserAccountStatus(
-	context.Context, database.Tx, tenancy.Scope, *User, AccountStatus,
+	context.Context, database.Tx, tenancy.Scope, *User, *User,
 ) error {
 	return nil
 }
@@ -563,7 +579,7 @@ func (NoopHooks) AfterUpdateProfile(
 
 // AfterUpdateAccount does nothing.
 func (NoopHooks) AfterUpdateAccount(
-	context.Context, database.Tx, tenancy.Scope, *Account, []string,
+	context.Context, database.Tx, tenancy.Scope, *Account, *Account,
 ) error {
 	return nil
 }

@@ -59,12 +59,13 @@ type ServiceOption func(*Service)
 
 // WithHooks sets what runs inside each operation's transaction.
 //
-// Absent, hooks are [NoopHooks] — a consumer with nothing to commit alongside a
-// registration configures nothing.
+// Absent, or nil, hooks are [NoopHooks] — a consumer with nothing to commit
+// alongside a registration configures nothing, and its updates skip the read of
+// the row they are about to overwrite, which only a hook has a use for.
 func WithHooks(hooks Hooks) ServiceOption {
 	return func(s *Service) {
 		if hooks != nil {
-			s.hooks = hooks
+			s.hooks, s.hooked = hooks, true
 		}
 	}
 }

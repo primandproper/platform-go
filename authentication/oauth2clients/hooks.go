@@ -42,16 +42,23 @@ type Hooks interface {
 	AfterCreateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *Client) error
 
 	// AfterUpdateClient runs once a registration has been revised, inside its
-	// transaction, with the row as it now stands.
-	AfterUpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *Client) error
+	// transaction, with the row as it stood before the revision and as it now
+	// stands.
+	//
+	// Both, because a companion that records a revision records what changed,
+	// and only the hook can say what the row was: once the statement has run,
+	// the old name and redirect URIs are gone. The before row is one keyed read
+	// on the operation's transaction, made only when [WithHooks] installed
+	// hooks, so a Service without them pays nothing for it.
+	AfterUpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, before, after *Client) error
 
 	// AfterArchiveClient runs once a registration has been withdrawn, inside its
 	// transaction.
 	//
-	// It is handed the row as it stood before the archive, because that is what
-	// an audit entry needs to say what was withdrawn — a caller reading the id
-	// back later has a row whose name and redirect URIs are the only record of
-	// what the credential was for.
+	// It is handed the row as the archive left it — ArchivedAt set, everything
+	// else as it stood — because that is what an audit entry needs to say what
+	// was withdrawn and when: a caller reading the id back later has a row whose
+	// name and redirect URIs are the only record of what the credential was for.
 	AfterArchiveClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *Client) error
 }
 
@@ -80,7 +87,7 @@ func (NoopHooks) AfterCreateClient(context.Context, database.Tx, tenancy.Scope, 
 }
 
 // AfterUpdateClient implements [Hooks].
-func (NoopHooks) AfterUpdateClient(context.Context, database.Tx, tenancy.Scope, *Client) error {
+func (NoopHooks) AfterUpdateClient(context.Context, database.Tx, tenancy.Scope, *Client, *Client) error {
 	return nil
 }
 
