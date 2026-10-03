@@ -106,7 +106,9 @@ type Hooks interface {
 // Embedding it rather than implementing every method is what makes a method
 // added to Hooks later additive: an embedder gains a no-op rather than a compile
 // failure. A consumer implementing the interface outright — which the generated
-// HooksMock invites — is the consumer the next method breaks.
+// HooksMock invites — is the consumer the next method breaks. That can
+// be the point: a consumer that records every write may prefer a new one to
+// fail to compile until somebody decides what it records.
 type NoopHooks struct{}
 
 var _ Hooks = NoopHooks{}

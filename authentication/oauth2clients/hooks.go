@@ -76,7 +76,9 @@ type Hooks interface {
 // to [Hooks] later additive: an embedder gains a no-op rather than a compile
 // failure. A consumer who implements the interface outright — which the
 // generated HooksMock in the mock subpackage invites, since it implements every
-// method — is the consumer the next method breaks.
+// method — is the consumer the next method breaks. That can
+// be the point: a consumer that records every write may prefer a new one to
+// fail to compile until somebody decides what it records.
 type NoopHooks struct{}
 
 var _ Hooks = NoopHooks{}
