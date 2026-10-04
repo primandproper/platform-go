@@ -58,7 +58,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 ### Identity & access
 | Package                            | Purpose                                                                       | Implementations                  |
 |------------------------------------|-------------------------------------------------------------------------------|----------------------------------|
-| `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request | postgres, mysql, sqlite (+ grpc) |
+| `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request (seam: `Hooks`) | postgres, mysql, sqlite (+ grpc) |
 | `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table of its own | — (+ grpc)                       |
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/signin/magiclinks` | The sign-in links the passwordless door mails: digest at rest, single use, and a redemption that proves the address it was sent to | postgres, mysql, sqlite          |

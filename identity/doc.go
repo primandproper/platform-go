@@ -291,6 +291,16 @@ gets into it — one method per operation, each called inside that transaction,
 so an audit entry, a data change event or a search stamp commits with the row
 or neither does.
 
+A deployment that owes every operation the ordinary pair, an audit entry and a
+domain event, does not write that Hooks itself. [RecordingHooks] is it, built
+over a recording.Recorder: an entry per row an operation wrote, naming it by
+[ResourceTypeUser], [ResourceTypeAccount], [ResourceTypeMembership] or
+[ResourceTypeInvitation], and one event per operation from those [EventCatalog]
+describes. The verification and invitation tokens travel on the event, where
+the outbox consumer mailing the link reads them, and never on an entry. It
+revokes nothing on a suspension; a consumer that wants that embeds it and
+overrides [Hooks.AfterUpdateUserAccountStatus].
+
 What a consumer still writes is the policy, and that is the point of the split.
 Whether a registration requires a password, whether an invitation is required
 to begin one, what a username may look like, how long a link lives, who may
