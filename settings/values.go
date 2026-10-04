@@ -87,6 +87,17 @@ func (s *SQLStore) SetValue(
 		return nil, op.Error(err, "setting %q", name)
 	}
 
+	// The answer as it stood, for the hook alone. A subject with no live answer
+	// is the ordinary case rather than a failure, and arrives as a nil before.
+	var before *Value
+	if s.hooked {
+		if before, err = s.readValue(ctx, tx, scope, subject, definition.ID); err != nil {
+			if !errors.Is(err, ErrValueNotFound) {
+				return nil, op.Error(err, "setting %q", name)
+			}
+		}
+	}
+
 	if err = s.q.UpsertValue(ctx, tx,
 		upsertValueParams(identifiers.New(), scope, subject, definition.ID, raw)); err != nil {
 		return nil, op.Error(platformerrors.Wrap(err, "writing setting value"), "setting %q", name)
@@ -100,6 +111,10 @@ func (s *SQLStore) SetValue(
 	value, err := s.readValue(ctx, tx, scope, subject, definition.ID)
 	if err != nil {
 		return nil, op.Error(err, "setting %q", name)
+	}
+
+	if err = s.hooks.AfterSetValue(ctx, tx, scope, definition, before, value); err != nil {
+		return nil, op.Error(err, "running the hook after setting %q", name)
 	}
 
 	return value, nil
@@ -201,6 +216,10 @@ func (s *SQLStore) ClearValue(
 		return nil, op.Error(err, "reading back the cleared value of setting %q", name)
 	}
 
+	if err = s.hooks.AfterClearValue(ctx, tx, scope, definition, cleared); err != nil {
+		return nil, op.Error(err, "running the hook after clearing setting %q", name)
+	}
+
 	return cleared, nil
 }
 
@@ -245,6 +264,10 @@ func (s *SQLStore) DeleteValuesForSubject(
 	}
 
 	op.Set(countKey, deleted)
+
+	if err = s.hooks.AfterDeleteValuesForSubject(ctx, tx, scope, subject, deleted); err != nil {
+		return 0, op.Error(err, "running the hook after erasing setting values")
+	}
 
 	return deleted, nil
 }

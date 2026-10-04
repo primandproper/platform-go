@@ -30,7 +30,7 @@ func Example() {
 
 	client := exampleClient(ctx)
 
-	store, err := notifications.NewSQLStore(client)
+	store, err := notifications.NewSQLStore(client, notifications.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -110,7 +110,7 @@ func ExampleRegistry_InvalidateDeviceToken() {
 
 	client := exampleClient(ctx)
 
-	store, err := notifications.NewSQLStore(client)
+	store, err := notifications.NewSQLStore(client, notifications.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

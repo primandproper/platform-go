@@ -31,7 +31,7 @@ func faultyServer(tb testing.TB, store *oauth2clientsmock.StoreMock) *oauth2clie
 
 	h := newHarness(tb)
 
-	svc, err := oauth2clients.NewService(h.db, store)
+	svc, err := oauth2clients.NewService(h.db, store, oauth2clients.NoopHooks{})
 	must.NoError(tb, err)
 
 	srv, err := oauth2clientsgrpc.NewServer(svc, store, h.db, extractPrincipal)

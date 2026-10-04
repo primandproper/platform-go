@@ -55,7 +55,7 @@ func newAdministrationHarness(t *testing.T) (*harness, *revocationHooks) {
 
 	hooks := &revocationHooks{}
 
-	return newRefreshHarness(t, []signin.ServiceOption{signin.WithHooks(hooks)}), hooks
+	return buildHarness(t, &fakeIssuer{}, true, false, hooks, nil), hooks
 }
 
 // liveFamilies is the families the harness's user still holds, read through

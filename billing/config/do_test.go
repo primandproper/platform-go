@@ -38,6 +38,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[billing.Hooks](i, billing.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -55,6 +56,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[billing.Hooks](i, billing.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "app"})
 
 		RegisterStore(i)
@@ -64,12 +66,27 @@ func TestRegisterStore(T *testing.T) {
 		test.NotNil(t, store)
 	})
 
+	T.Run("requires hooks", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+
+		RegisterStore(i)
+
+		_, err := do.Invoke[billing.Store](i)
+		must.Error(t, err)
+	})
+
 	T.Run("surfaces a bad config", func(t *testing.T) {
 		t.Parallel()
 
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[billing.Hooks](i, billing.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "has space"})
 
 		RegisterStore(i)

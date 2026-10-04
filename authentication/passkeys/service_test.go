@@ -198,12 +198,11 @@ func (e *storeEnv) newService(t *testing.T, opts ...ServiceOption) *serviceFixtu
 	hooks := &recordingHooks{}
 
 	defaults := []ServiceOption{
-		WithHooks(hooks),
 		WithEnrollmentGate(AdmitEveryEnrollment),
 		WithUsernameResolver(resolveUsername),
 	}
 
-	service, err := NewService(e.client, store, rp, users, append(defaults, opts...)...)
+	service, err := NewService(e.client, store, rp, users, hooks, append(defaults, opts...)...)
 	must.NoError(t, err)
 
 	return &serviceFixture{env: e, store: store, service: service, hooks: hooks}
@@ -703,30 +702,33 @@ func TestNewService(T *testing.T) {
 	T.Run("every dependency is required", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewService(nil, store, rp, users, gate)
+		_, err := NewService(nil, store, rp, users, NoopHooks{}, gate)
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
 
-		_, err = NewService(env.client, nil, rp, users, gate)
+		_, err = NewService(env.client, nil, rp, users, NoopHooks{}, gate)
 		test.ErrorIs(t, err, ErrNilStore)
 
-		_, err = NewService(env.client, store, nil, users, gate)
+		_, err = NewService(env.client, store, nil, users, NoopHooks{}, gate)
 		test.ErrorIs(t, err, ErrNilRelyingParty)
 
-		_, err = NewService(env.client, store, rp, nil, gate)
+		_, err = NewService(env.client, store, rp, nil, NoopHooks{}, gate)
 		test.ErrorIs(t, err, ErrNilUserSource)
+
+		_, err = NewService(env.client, store, rp, users, nil, gate)
+		test.ErrorIs(t, err, ErrNilHooks)
 	})
 
 	T.Run("a service with no enrollment gate is refused", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewService(env.client, store, rp, users)
+		_, err := NewService(env.client, store, rp, users, NoopHooks{})
 		test.ErrorIs(t, err, ErrNoEnrollmentGate)
 	})
 
 	T.Run("a named login needs a username resolver", func(t *testing.T) {
 		t.Parallel()
 
-		service, err := NewService(env.client, store, rp, users, gate)
+		service, err := NewService(env.client, store, rp, users, NoopHooks{}, gate)
 		must.NoError(t, err)
 
 		_, err = service.BeginLogin(t.Context(), env.reader(), testScope, "alice")
@@ -740,7 +742,7 @@ func TestNewService(T *testing.T) {
 	T.Run("a named login names somebody", func(t *testing.T) {
 		t.Parallel()
 
-		service, err := NewService(env.client, store, rp, users, gate, WithUsernameResolver(resolveUsername))
+		service, err := NewService(env.client, store, rp, users, NoopHooks{}, gate, WithUsernameResolver(resolveUsername))
 		must.NoError(t, err)
 
 		_, err = service.BeginLogin(t.Context(), env.reader(), testScope, "")
@@ -751,7 +753,7 @@ func TestNewService(T *testing.T) {
 		t.Parallel()
 
 		errDirectoryDown := errors.New("directory unavailable")
-		service, err := NewService(env.client, store, rp, users, gate,
+		service, err := NewService(env.client, store, rp, users, NoopHooks{}, gate,
 			WithUsernameResolver(func(context.Context, tenancy.Scope, string) ([]byte, error) {
 				return nil, errDirectoryDown
 			}))
@@ -764,7 +766,7 @@ func TestNewService(T *testing.T) {
 	T.Run("a finish without a response is refused", func(t *testing.T) {
 		t.Parallel()
 
-		service, err := NewService(env.client, store, rp, users, gate, WithUsernameResolver(resolveUsername))
+		service, err := NewService(env.client, store, rp, users, NoopHooks{}, gate, WithUsernameResolver(resolveUsername))
 		must.NoError(t, err)
 
 		_, err = service.FinishLogin(t.Context(), testScope, "alice", nil)
@@ -810,7 +812,7 @@ func TestService_ceremonyStoreOnTheSameDatabase(T *testing.T) {
 	users, err := NewUserSource(store, resolveHandle)
 	must.NoError(T, err)
 
-	service, err := NewService(env.client, store, rp, users,
+	service, err := NewService(env.client, store, rp, users, NoopHooks{},
 		WithEnrollmentGate(AdmitEveryEnrollment), WithUsernameResolver(resolveUsername))
 	must.NoError(T, err)
 

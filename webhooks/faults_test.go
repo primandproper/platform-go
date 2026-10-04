@@ -89,7 +89,7 @@ func newFailingClient(t *testing.T) *failingClient {
 func newFailingStore(t *testing.T) Store {
 	t.Helper()
 
-	store, err := NewSQLStore(newFailingClient(t))
+	store, err := NewSQLStore(newFailingClient(t), NoopHooks{})
 	must.NoError(t, err)
 
 	return store

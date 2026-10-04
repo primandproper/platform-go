@@ -52,6 +52,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		runTransactionSuite(t, env)
 	})
+
+	t.Run("hooks", func(t *testing.T) {
+		t.Parallel()
+
+		runHooksSuite(t, env)
+	})
 }
 
 func runInboxSuite(t *testing.T, env *storeEnv) {
@@ -1230,9 +1236,20 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewSQLStore(nil)
+		_, err := NewSQLStore(nil, NoopHooks{})
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
 		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
+	})
+
+	T.Run("refuses nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		store, err := NewSQLStore(env.client, nil)
+		test.ErrorIs(t, err, ErrNilHooks)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
+		test.Nil(t, store)
 	})
 
 	T.Run("refuses a prefix that would not render an identifier", func(t *testing.T) {
@@ -1240,7 +1257,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		_, err := NewSQLStore(env.client, WithTablePrefix("no-hyphens-allowed"))
+		_, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("no-hyphens-allowed"))
 		test.Error(t, err)
 	})
 
@@ -1249,11 +1266,11 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		store, err := NewSQLStore(env.client, WithTablePrefix("ntf"))
+		store, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("ntf"))
 		must.NoError(t, err)
 		test.EqOp(t, "ntf", store.TablePrefix())
 
-		unprefixed, err := NewSQLStore(env.client)
+		unprefixed, err := NewSQLStore(env.client, NoopHooks{})
 		must.NoError(t, err)
 		test.EqOp(t, DefaultTablePrefix, unprefixed.TablePrefix())
 	})
@@ -1263,7 +1280,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		store, err := NewSQLStore(env.client, nil, WithClock(nil))
+		store, err := NewSQLStore(env.client, NoopHooks{}, nil, WithClock(nil))
 		must.NoError(t, err)
 		must.NotNil(t, store)
 		test.False(t, store.now().IsZero())

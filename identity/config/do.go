@@ -47,27 +47,21 @@ func RegisterStore(i do.Injector) {
 
 // RegisterService registers an *identity.Service with the injector.
 //
-// Prerequisites: *Config, database.Client and identity.Store (see RegisterStore)
-// must be registered before the Service is invoked.
+// Prerequisites: *Config, database.Client, identity.Store (see RegisterStore)
+// and identity.Hooks must be registered before the Service is invoked.
 //
-// identity.Hooks is resolved if something registered one and defaulted to
-// identity.NoopHooks otherwise, which is the same reading the constructor takes:
-// an application with nothing to commit beside an identity write registers
-// nothing. Absence is the only thing the lookup absorbs, and it is decided by
-// whether a Hooks is registered, not by the error the invocation returns. A
-// Hooks that is registered but fails to build is returned — including one whose
-// own provider asked the container for something nobody registered, which do
-// reports with the very sentinel a missing Hooks would carry. The distinction
-// is the one observability.InvokePillars draws, through the same
-// injection.InvokeOptional: "nobody registered one" is a configuration, "the
-// one registered could not be built" is a failure, and a Service that quietly
-// ran the noop in its place would commit every identity write with none of the
-// companions the consumer registered hooks to get.
+// identity.Hooks has no default. An application with nothing to commit beside
+// an identity write registers identity.NoopHooks{} by name:
 //
-// An identity.InvitationMailer is resolved the same way. Registering one is
-// what moves an invitation's token out of Hooks.AfterInvite and into the
-// mailer, as identity.WithInvitationMailer describes; registering none leaves
-// the hook holding it.
+//	do.ProvideValue[identity.Hooks](i, identity.NoopHooks{})
+//
+// A container that registers none fails when the Service is invoked, with an
+// error naming the type it wanted.
+//
+// An identity.InvitationMailer is resolved if something registered one, and
+// absence is left alone. Registering one is what moves an invitation's token
+// out of Hooks.AfterInvite and into the mailer, as identity.WithInvitationMailer
+// describes; registering none leaves the hook holding it.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*identity.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -77,13 +71,11 @@ func RegisterService(i do.Injector) {
 
 		opts := []Option{WithPillars(pillars)}
 
-		hooks, err := injection.InvokeOptional[identity.Hooks](i)
+		hooks, err := do.Invoke[identity.Hooks](i)
 		if err != nil {
-			return nil, platformerrors.Wrap(err, "invoking identity hooks")
-		}
-
-		if hooks != nil {
-			opts = append(opts, WithHooks(hooks))
+			return nil, platformerrors.Wrapf(err,
+				"resolving %s: the application registers what commits alongside each identity write, or identity.NoopHooks{}",
+				do.NameOf[identity.Hooks]())
 		}
 
 		mailer, err := injection.InvokeOptional[identity.InvitationMailer](i)
@@ -115,7 +107,7 @@ func RegisterService(i do.Injector) {
 			return nil, err
 		}
 
-		return NewService(ctx, cfg, client, store, opts...)
+		return NewService(ctx, cfg, client, store, hooks, opts...)
 	})
 }
 

@@ -642,7 +642,7 @@ func newBareService(t *testing.T, opts ...signin.ServiceOption) (*signin.Service
 
 	e := newEnv(t)
 
-	return signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, opts...)
+	return signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, signin.NoopHooks{}, opts...)
 }
 
 // refreshTable names the table the env's refresh token store writes to, for the

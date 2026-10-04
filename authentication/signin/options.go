@@ -342,16 +342,6 @@ func WithPillars(p *observability.Pillars) ServiceOption {
 	return func(s *Service) { s.logger, s.tracerProvider, s.metricsProvider = p.Deps() }
 }
 
-// WithHooks attaches what a consumer commits alongside a sign-in. A nil Hooks is
-// ignored, leaving NoopHooks.
-func WithHooks(hooks Hooks) ServiceOption {
-	return func(s *Service) {
-		if hooks != nil {
-			s.hooks = hooks
-		}
-	}
-}
-
 // WithSecondFactorPolicy sets what happens to a user who holds no proven second
 // factor. An unrecognized policy is ignored, leaving SecondFactorWhenEnrolled.
 func WithSecondFactorPolicy(policy SecondFactorPolicy) ServiceOption {

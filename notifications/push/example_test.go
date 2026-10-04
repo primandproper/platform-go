@@ -34,7 +34,7 @@ func Example() {
 
 	client := exampleClient(ctx)
 
-	store, err := notifications.NewSQLStore(client)
+	store, err := notifications.NewSQLStore(client, notifications.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -113,12 +113,12 @@ func Example_recipientFilter() {
 		}
 	}
 
-	devices, err := notifications.NewSQLStore(client)
+	devices, err := notifications.NewSQLStore(client, notifications.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
 
-	preferences, err := settings.NewSQLStore(client)
+	preferences, err := settings.NewSQLStore(client, settings.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

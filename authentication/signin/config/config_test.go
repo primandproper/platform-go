@@ -273,7 +273,7 @@ func TestConfig_ServerOptions(T *testing.T) {
 		}
 
 		svc, err := NewService(t.Context(), cfg, testDBClient(t), &identitymock.StoreMock{},
-			argon2.NewArgon2Authenticator(), stubIssuer{}, WithRegistrar(stubRegistrar{}))
+			argon2.NewArgon2Authenticator(), stubIssuer{}, signin.NoopHooks{}, WithRegistrar(stubRegistrar{}))
 		must.NoError(t, err)
 
 		srv, err := signingrpc.NewServer(svc, nobody, cfg.ServerOptions()...)
@@ -313,7 +313,7 @@ func TestNewService(T *testing.T) {
 		t.Helper()
 
 		return NewService(t.Context(), cfg, testDBClient(t), &identitymock.StoreMock{},
-			argon2.NewArgon2Authenticator(), stubIssuer{}, append([]Option{WithRegistrar(stubRegistrar{})}, opts...)...)
+			argon2.NewArgon2Authenticator(), stubIssuer{}, signin.NoopHooks{}, append([]Option{WithRegistrar(stubRegistrar{})}, opts...)...)
 	}
 
 	// noSweepers is the zero config with the refresh token sweeper off, so no
@@ -377,7 +377,7 @@ func TestNewService(T *testing.T) {
 		cfg.Registration.Disabled = true
 
 		svc, err := NewService(t.Context(), cfg, testDBClient(t), &identitymock.StoreMock{},
-			argon2.NewArgon2Authenticator(), stubIssuer{})
+			argon2.NewArgon2Authenticator(), stubIssuer{}, signin.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = svc.Register(t.Context(), scope, &signin.Registration{User: &identity.User{}})
@@ -388,7 +388,7 @@ func TestNewService(T *testing.T) {
 		t.Parallel()
 
 		svc, err := NewService(t.Context(), noSweepers(), testDBClient(t), &identitymock.StoreMock{},
-			argon2.NewArgon2Authenticator(), stubIssuer{})
+			argon2.NewArgon2Authenticator(), stubIssuer{}, signin.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, svc)
 		test.StrContains(t, err.Error(), "registrar")
@@ -422,7 +422,7 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses a missing authenticator rather than defaulting one", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), noSweepers(), testDBClient(t), &identitymock.StoreMock{}, nil, stubIssuer{},
+		svc, err := NewService(t.Context(), noSweepers(), testDBClient(t), &identitymock.StoreMock{}, nil, stubIssuer{}, signin.NoopHooks{},
 			WithRegistrar(stubRegistrar{}))
 		test.ErrorIs(t, err, signin.ErrNilAuthenticator)
 		test.Nil(t, svc)
@@ -500,7 +500,7 @@ func TestNewService_aFailedBuildLeavesNoSweeper(t *testing.T) {
 
 		// Both sweepers start, then the service itself refuses the nil
 		// authenticator.
-		svc, err := NewService(ctx, cfg, client, &identitymock.StoreMock{}, nil, stubIssuer{},
+		svc, err := NewService(ctx, cfg, client, &identitymock.StoreMock{}, nil, stubIssuer{}, signin.NoopHooks{},
 			WithRegistrar(stubRegistrar{}), WithMagicLinkMailer(discardingMailer{}))
 		test.ErrorIs(t, err, signin.ErrNilAuthenticator)
 		test.Nil(t, svc)

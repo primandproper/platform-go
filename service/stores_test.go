@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -82,6 +83,27 @@ func sqliteDatabase(t *testing.T) *databasecfg.Config {
 // point of a walk a consumer never reads — so each one is invoked here.
 func TestRegisterStores(T *testing.T) {
 	T.Parallel()
+
+	T.Run("a store whose hooks nobody registered fails naming them", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Name:     "example",
+			Database: sqliteDatabase(t),
+			Settings: &settingscfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		// Not newInjector, which registers NoopHooks for every package: what is
+		// under test is the container that forgot to.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		Register(i, cfg)
+
+		_, err := do.Invoke[settings.Store](i)
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "settings.Hooks")
+	})
 
 	T.Run("builds the stores the config names", func(t *testing.T) {
 		t.Parallel()

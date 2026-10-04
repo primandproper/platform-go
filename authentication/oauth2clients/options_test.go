@@ -176,28 +176,21 @@ func TestServiceOptions(T *testing.T) {
 		test.Nil(t, s.metricsProvider)
 	})
 
-	T.Run("WithHooks and WithCredentialGenerator refuse to unset themselves", func(t *testing.T) {
+	T.Run("WithCredentialGenerator refuses to unset itself", func(t *testing.T) {
 		t.Parallel()
 
-		// Both defaults are the safe answer — NoopHooks, and a generator reading
-		// crypto/rand — so a nil argument leaves them in place rather than
-		// installing a nil the next call would panic on. A consumer building an
-		// option list conditionally passes whatever they resolved.
-		configured := applyServiceOptions(
-			WithHooks(NoopHooks{}),
-			WithCredentialGenerator(generateCredentials),
-		)
-		must.NotNil(t, configured.hooks)
+		// The default is the safe answer — a generator reading crypto/rand — so
+		// a nil argument leaves it in place rather than installing a nil the
+		// next call would panic on. A consumer building an option list
+		// conditionally passes whatever they resolved.
+		configured := applyServiceOptions(WithCredentialGenerator(generateCredentials))
 		must.NotNil(t, configured.generate)
 
 		unset := applyServiceOptions(
-			WithHooks(NoopHooks{}),
 			WithCredentialGenerator(generateCredentials),
-			WithHooks(nil),
 			WithCredentialGenerator(nil),
 		)
 
-		test.NotNil(t, unset.hooks)
 		test.NotNil(t, unset.generate)
 	})
 }

@@ -50,6 +50,7 @@ type SQLStore struct {
 
 	clock  clock.Clock
 	hasher hashing.Hasher
+	hooks  Hooks
 
 	signupsCounter metrics.Int64Counter
 
@@ -60,6 +61,9 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+	// hooked is whether the hooks are anything but NoopHooks, which decides whether
+	// an update pays for the read of the row it is about to overwrite.
+	hooked bool
 }
 
 // NewSQLStore builds a Store over the given database.
@@ -78,11 +82,19 @@ type SQLStore struct {
 // nothing to join opens a transaction with Client.WithTransaction and passes the
 // Tx it is handed.
 //
+// hooks run inside every write's transaction, once its statements have landed;
+// see Hooks. They are required: a caller with nothing to commit alongside these
+// writes passes NoopHooks{} by name, and nil is refused with ErrNilHooks.
+//
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger and traces to a noop provider.
-func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
 	}
 
 	d := client.Dialect()
@@ -94,6 +106,15 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		prefix: DefaultTablePrefix,
 		clock:  defaultClock(),
 		hasher: defaultHasher(),
+		hooks:  hooks,
+	}
+
+	// NoopHooks, by value or by pointer, is a caller saying it commits nothing
+	// alongside these writes, so no write reads a row only a hook would be handed.
+	switch hooks.(type) {
+	case NoopHooks, *NoopHooks:
+	default:
+		s.hooked = true
 	}
 
 	for _, opt := range opts {
@@ -162,9 +183,10 @@ func (s *SQLStore) Digest(contact string) string {
 // countSignups records n signups reaching a status, including the one a signup
 // is written at.
 //
-// It is called when the statement lands, which is before the caller commits. A
-// companion write that fails afterwards takes the row back and not the count,
-// and that is the trade: the alternative is a counter fed after a commit this
+// It is called when the statement lands and the hooks have run, which is before
+// the caller commits. A hook that fails is never counted, because the write
+// reports the failure; a companion the caller writes afterwards that fails takes
+// the row back and not the count, and that is the trade: the alternative is a counter fed after a commit this
 // store does not perform, which is to say a counter nothing here could feed.
 func (s *SQLStore) countSignups(ctx context.Context, status Status, n int64) {
 	s.signupsCounter.Add(ctx, n, metric.WithAttributes(attribute.String(statusKey, string(status))))

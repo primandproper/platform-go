@@ -66,7 +66,7 @@ func WithStoreOptions(opts ...passkeys.SQLStoreOption) Option {
 
 // WithServiceOptions passes opts to NewService, which applies them after the
 // ones it derives from its arguments — so a caller can attach a username
-// resolver, hooks or the last-credential guard's answer about passwords.
+// resolver or the last-credential guard's answer about passwords.
 func WithServiceOptions(opts ...passkeys.ServiceOption) Option {
 	return func(o *options) { o.service = append(o.service, opts...) }
 }

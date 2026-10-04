@@ -55,16 +55,6 @@ func WithPillars(p *observability.Pillars) SQLStoreOption {
 // ServiceOption configures a [Service] at construction.
 type ServiceOption func(*Service)
 
-// WithHooks sets what runs inside each write's transaction. Absent, hooks are
-// [NoopHooks].
-func WithHooks(hooks Hooks) ServiceOption {
-	return func(s *Service) {
-		if hooks != nil {
-			s.hooks = hooks
-		}
-	}
-}
-
 // WithEnrollmentGate sets the check a registration must pass before a passkey
 // is added to somebody's account. It is required: see [EnrollmentGate] and
 // ErrNoEnrollmentGate.

@@ -88,14 +88,21 @@ func newSQLiteEnv(tb testing.TB) *storeEnv {
 func (e *storeEnv) newStore(tb testing.TB, opts ...SQLStoreOption) *SQLStore {
 	tb.Helper()
 
-	store, _ := e.newStoreWithPrefix(tb, opts...)
+	return e.newStoreWithHooks(tb, NoopHooks{}, opts...)
+}
+
+// newStoreWithHooks is newStore, built with hooks instead of NoopHooks.
+func (e *storeEnv) newStoreWithHooks(tb testing.TB, hooks Hooks, opts ...SQLStoreOption) *SQLStore {
+	tb.Helper()
+
+	store, _ := e.newStoreWithPrefix(tb, hooks, opts...)
 
 	return store
 }
 
 // newStoreWithPrefix is newStore, also handing back the prefix so a test can
 // reach the tables directly.
-func (e *storeEnv) newStoreWithPrefix(tb testing.TB, opts ...SQLStoreOption) (store *SQLStore, prefix string) {
+func (e *storeEnv) newStoreWithPrefix(tb testing.TB, hooks Hooks, opts ...SQLStoreOption) (store *SQLStore, prefix string) {
 	tb.Helper()
 
 	prefix = fmt.Sprintf("wl_%d", prefixCounter.Add(1))
@@ -111,7 +118,7 @@ func (e *storeEnv) newStoreWithPrefix(tb testing.TB, opts ...SQLStoreOption) (st
 
 	base := []SQLStoreOption{WithTablePrefix(prefix), WithClock(newStubClock())}
 
-	store, err = NewSQLStore(e.client, append(base, opts...)...)
+	store, err = NewSQLStore(e.client, hooks, append(base, opts...)...)
 	must.NoError(tb, err)
 
 	return store, prefix

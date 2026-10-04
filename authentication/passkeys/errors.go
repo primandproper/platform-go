@@ -115,6 +115,11 @@ var (
 	// ErrNilUserSource indicates a nil UserSource handed to NewService.
 	ErrNilUserSource = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey user source")
 
+	// ErrNilHooks indicates nil Hooks handed to NewService. A service whose
+	// writes owe no companions is handed NoopHooks{} by name. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey hooks")
+
 	// ErrNoEnrollmentGate indicates a Service built without WithEnrollmentGate.
 	//
 	// There is no default gate, because the question it answers — has the

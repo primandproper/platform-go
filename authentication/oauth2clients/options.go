@@ -57,18 +57,6 @@ func WithStorePillars(pillars *observability.Pillars) SQLStoreOption {
 // ServiceOption configures a [Service] at construction.
 type ServiceOption func(*Service)
 
-// WithHooks sets what runs inside each operation's transaction.
-//
-// Absent, hooks are [NoopHooks] — a consumer with nothing to commit alongside a
-// registration configures nothing.
-func WithHooks(hooks Hooks) ServiceOption {
-	return func(s *Service) {
-		if hooks != nil {
-			s.hooks = hooks
-		}
-	}
-}
-
 // WithCredentialGenerator replaces how client identifiers and secrets are
 // minted.
 //

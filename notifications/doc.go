@@ -28,7 +28,7 @@ delete. So a rejection the provider calls permanent becomes
 mobile.ErrTokenInvalid at the sender, and [Registry.InvalidateDeviceToken] is
 the hook that removes the row:
 
-	store, err := notifications.NewSQLStore(client)
+	store, err := notifications.NewSQLStore(client, notifications.NoopHooks{})
 	// ...
 	sender := mobile.NewMultiPlatformPushSender(apnsSender, fcmSender,
 		mobile.WithTokenInvalidator(store))
@@ -89,6 +89,22 @@ polling its inbox passes Client.Reader(), and a service that has just filed a
 notification passes the Tx it filed through and sees it.
 
 [Registry.InvalidateDeviceToken] takes neither, for the reason below.
+
+# Companions every write owes go in Hooks
+
+A consumer whose every write owes the same companions — an audit entry for each,
+an event for each — can write them beside each call, on the transaction it
+hands the store as above, or hand [NewSQLStore] a [Hooks] and have each write
+call it on the same transaction once its statements have landed. The second is
+what a consumer reaches for when the alternative is wrapping the Inbox and the
+Registry: a wrapper has to reimplement every write to call through, and cannot
+see what a re-registration replaced or say what a mark-read changed. A hook is
+handed the row, and an update is handed the row from before it too. A hook's
+error fails the write it was called from, so the row and its companions commit
+together or not at all. [Registry.InvalidateDeviceToken] has no hook, because it
+has no transaction for one to write on. The hooks are a required argument rather
+than an option, so a consumer with nothing to commit alongside a write passes
+[NoopHooks] by name and one that forgot to decide fails to compile.
 
 # Tenancy, and the one method without it
 

@@ -186,7 +186,7 @@ func newHarnessWithAuthorizer(tb testing.TB, targets billinggrpc.AccountAuthoriz
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := billing.NewSQLStore(db, billing.WithTablePrefix(prefix))
+	store, err := billing.NewSQLStore(db, billing.NoopHooks{}, billing.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
 	server, err := billinggrpc.NewServer(store, db, extractPrincipal, targets,

@@ -281,7 +281,7 @@ func exampleWiring() (database.Client, webhooks.Store, webhooks.Dispatcher) {
 		}
 	}
 
-	store, err := webhooks.NewSQLStore(client)
+	store, err := webhooks.NewSQLStore(client, webhooks.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

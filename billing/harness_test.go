@@ -154,7 +154,14 @@ func newSQLiteEnv(tb testing.TB) *storeEnv {
 func (e *storeEnv) newStore(tb testing.TB, opts ...SQLStoreOption) *SQLStore {
 	tb.Helper()
 
-	store, _ := e.newStoreWithClock(tb, opts...)
+	return e.newHookedStore(tb, NoopHooks{}, opts...)
+}
+
+// newHookedStore is newStore with the hooks the case names.
+func (e *storeEnv) newHookedStore(tb testing.TB, hooks Hooks, opts ...SQLStoreOption) *SQLStore {
+	tb.Helper()
+
+	store, _ := e.buildStore(tb, hooks, opts...)
 
 	return store
 }
@@ -162,6 +169,14 @@ func (e *storeEnv) newStore(tb testing.TB, opts ...SQLStoreOption) *SQLStore {
 // newStoreWithClock is newStore, also handing back the clock so a test can move
 // time past a subscription's period end.
 func (e *storeEnv) newStoreWithClock(tb testing.TB, opts ...SQLStoreOption) (*SQLStore, *stubClock) {
+	tb.Helper()
+
+	return e.buildStore(tb, NoopHooks{}, opts...)
+}
+
+// buildStore migrates a uniquely prefixed table set and returns a store over it
+// with the given hooks, and the clock it is parked on.
+func (e *storeEnv) buildStore(tb testing.TB, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, *stubClock) {
 	tb.Helper()
 
 	prefix := fmt.Sprintf("bl_%d", prefixCounter.Add(1))
@@ -179,7 +194,7 @@ func (e *storeEnv) newStoreWithClock(tb testing.TB, opts ...SQLStoreOption) (*SQ
 
 	base := []SQLStoreOption{WithTablePrefix(prefix), WithClock(stub)}
 
-	store, err := NewSQLStore(e.client, append(base, opts...)...)
+	store, err := NewSQLStore(e.client, hooks, append(base, opts...)...)
 	must.NoError(tb, err)
 
 	return store, stub

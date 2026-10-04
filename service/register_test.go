@@ -9,18 +9,30 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
+	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
+	"github.com/primandproper/platform-go/v14/issuereports"
+	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	"github.com/primandproper/platform-go/v14/saga"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
+	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v14/waitlists"
+	"github.com/primandproper/platform-go/v14/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
@@ -81,9 +93,30 @@ func newInjector(t *testing.T, cfg *Config) do.Injector {
 
 	i := do.New()
 	do.ProvideValue[context.Context](i, t.Context())
+	provideNoopHooks(i)
 	Register(i, cfg)
 
 	return i
+}
+
+// provideNoopHooks registers NoopHooks, by name, for every package whose store
+// or service requires Hooks. A deployment decides per package what commits
+// beside its writes; these tests commit nothing, and say so here once rather
+// than in every case that configures a block.
+func provideNoopHooks(i do.Injector) {
+	do.ProvideValue[billing.Hooks](i, billing.NoopHooks{})
+	do.ProvideValue[comments.Hooks](i, comments.NoopHooks{})
+	do.ProvideValue[identity.Hooks](i, identity.NoopHooks{})
+	do.ProvideValue[issuereports.Hooks](i, issuereports.NoopHooks{})
+	do.ProvideValue[mediaregistry.Hooks](i, mediaregistry.NoopHooks{})
+	do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
+	do.ProvideValue[oauth2clients.Hooks](i, oauth2clients.NoopHooks{})
+	do.ProvideValue[passkeys.Hooks](i, passkeys.NoopHooks{})
+	do.ProvideValue[passwordreset.Hooks](i, passwordreset.NoopHooks{})
+	do.ProvideValue[settings.Hooks](i, settings.NoopHooks{})
+	do.ProvideValue[signin.Hooks](i, signin.NoopHooks{})
+	do.ProvideValue[waitlists.Hooks](i, waitlists.NoopHooks{})
+	do.ProvideValue[webhooks.Hooks](i, webhooks.NoopHooks{})
 }
 
 func TestRegister(T *testing.T) {

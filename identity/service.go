@@ -238,10 +238,13 @@ type Service struct {
 // than *SQLStore so that a consumer whose directory is not this schema still
 // gets these operations.
 //
-// Hooks default to NoopHooks, so a consumer with nothing to commit alongside an
-// identity write configures nothing. Observability is optional and defaults to
+// hooks are what every operation calls inside its transaction — the seam a
+// consumer's audit entry, data change event or search stamp commits with the
+// row; see Hooks for what belongs in one. They are required, and nil is
+// ErrNilHooks: a consumer with nothing to commit alongside an identity write
+// passes NoopHooks{} by name. Observability is optional and defaults to
 // nothing.
-func NewService(client database.Client, store Store, opts ...ServiceOption) (*Service, error) {
+func NewService(client database.Client, store Store, hooks Hooks, opts ...ServiceOption) (*Service, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
 	}
@@ -250,10 +253,14 @@ func NewService(client database.Client, store Store, opts ...ServiceOption) (*Se
 		return nil, ErrNilStore
 	}
 
+	if hooks == nil {
+		return nil, ErrNilHooks
+	}
+
 	s := &Service{
 		client: client,
 		store:  store,
-		hooks:  NoopHooks{},
+		hooks:  hooks,
 	}
 
 	for _, opt := range opts {
@@ -1105,12 +1112,13 @@ func (s *Service) accountRoster(
 // UpdateUserAccountStatus moves a user between statuses and reports what they
 // held before.
 //
-// A ban, a termination, a reinstatement. The previous status is read on the way
-// to confirming the user exists, so the hook that records the change can record
-// it as a change rather than as a state.
+// A ban, a termination, a reinstatement. The user is read on the way to
+// confirming they exist, and that read is handed to the hook beside the one
+// after the write, so the hook that records the change can record it as a
+// change rather than as a state.
 //
 // The user handed back and passed to the hook is read after the write, on the
-// transaction that made it, and is redacted.
+// transaction that made it, and is redacted; so is the before row.
 func (s *Service) UpdateUserAccountStatus(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -1132,8 +1140,6 @@ func (s *Service) UpdateUserAccountStatus(
 			return err
 		}
 
-		previousStatus := before.AccountStatus
-
 		if err = s.store.UpdateUserAccountStatus(ctx, tx, scope, userID, status, explanation); err != nil {
 			return err
 		}
@@ -1145,7 +1151,7 @@ func (s *Service) UpdateUserAccountStatus(
 
 		updated = after.Redacted()
 
-		return s.hooks.AfterUpdateUserAccountStatus(ctx, tx, scope, updated, previousStatus)
+		return s.hooks.AfterUpdateUserAccountStatus(ctx, tx, scope, before.Redacted(), updated)
 	})
 	if err != nil {
 		return nil, op.Error(err, "updating account status of identity user %q", userID)
@@ -1395,12 +1401,14 @@ func (s *Service) UpdateProfile(
 	return updated, nil
 }
 
-// UpdateAccount saves the fields an account holder may change and reports which
-// ones moved.
+// UpdateAccount saves the fields an account holder may change and hands the
+// hook the account as it stood before the save and as the save left it.
 //
 // The same bargain UpdateProfile makes, for the other noun: a rename is what a
 // consumer's search index and its audit trail both want, and a save that
-// changes nothing writes nothing.
+// changes nothing writes nothing. Where it parts from UpdateProfile is the
+// hook's shape — see Hooks.AfterUpdateAccount for why an account's old values
+// are handed over when a user's are not.
 func (s *Service) UpdateAccount(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -1425,8 +1433,12 @@ func (s *Service) UpdateAccount(
 			return err
 		}
 
-		changed := update.apply(account)
-		if len(changed) == 0 {
+		// apply edits the row in place, so the hook's before is a copy taken
+		// first. A shallow one is enough: apply assigns fields and reaches
+		// through no pointer.
+		before := *account
+
+		if changed := update.apply(account); len(changed) == 0 {
 			updated = account
 
 			return nil
@@ -1436,7 +1448,7 @@ func (s *Service) UpdateAccount(
 			return err
 		}
 
-		return s.hooks.AfterUpdateAccount(ctx, tx, scope, updated, changed)
+		return s.hooks.AfterUpdateAccount(ctx, tx, scope, &before, updated)
 	})
 	if err != nil {
 		return nil, op.Error(err, "updating identity account %q", accountID)

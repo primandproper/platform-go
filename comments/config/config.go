@@ -74,6 +74,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 // table, and targets is the application's declaration of what can be commented
 // on.
 //
+// hooks are required, as they are by comments.NewSQLStore: a caller with nothing to
+// commit alongside the store's writes passes comments.NoopHooks{} by name.
+//
 // An empty catalog is not refused here, and that is the leaf package's ruling
 // rather than a gap in this one: a store with no targets accepts no writes, which
 // is a wiring mistake that fails on the first comment rather than one that stores
@@ -89,6 +92,7 @@ func NewStore(
 	cfg *Config,
 	client database.Client,
 	targets comments.Targets,
+	hooks comments.Hooks,
 	opts ...Option,
 ) (comments.Store, error) {
 	if cfg == nil {
@@ -111,7 +115,7 @@ func NewStore(
 		comments.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	store, storeErr := comments.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := comments.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}

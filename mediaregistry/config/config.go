@@ -69,14 +69,15 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 }
 
 // NewStore builds the Store. client must be the database holding the registry
-// table.
+// table, and hooks run inside every write's transaction; a caller with nothing
+// to commit alongside a write passes mediaregistry.NoopHooks by name.
 //
 // The store is built into a variable and returned only once its error is known
 // to be nil. mediaregistry.NewSQLStore returns its own concrete type, so returning
 // one straight through would convert a nil *mediaregistry.SQLStore into a non-nil
 // mediaregistry.Store on the error path, and a caller testing the result against nil
 // would find a store that panics on first use.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (mediaregistry.Store, error) {
+func NewStore(ctx context.Context, cfg *Config, client database.Client, hooks mediaregistry.Hooks, opts ...Option) (mediaregistry.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -96,7 +97,7 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 		mediaregistry.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	store, storeErr := mediaregistry.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := mediaregistry.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}

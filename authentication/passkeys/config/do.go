@@ -52,12 +52,13 @@ func RegisterStore(i do.Injector) {
 //
 //	do.ProvideValue[passkeys.UserResolver](i, resolve)
 //	do.ProvideValue[passkeys.EnrollmentGate](i, gate) // or passkeys.AdmitEveryEnrollment
+//	do.ProvideValue[passkeys.Hooks](i, hooks)         // or passkeys.NoopHooks{}
 //
-// Both are required and neither has a default; a container missing either fails
+// All three are required and none has a default; a container missing any fails
 // when the Service is invoked — at boot, for a service built through
 // service.New — with an error naming the one it wanted. A registered
-// passkeys.UsernameResolver, passkeys.AlternativeSignIn or passkeys.Hooks is
-// attached, and an absent one is left off.
+// passkeys.UsernameResolver or passkeys.AlternativeSignIn is attached, and an
+// absent one is left off.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*passkeys.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -106,12 +107,19 @@ func RegisterService(i do.Injector) {
 				do.NameOf[passkeys.EnrollmentGate]())
 		}
 
+		hooks, err := do.Invoke[passkeys.Hooks](i)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err,
+				"resolving %s: the application registers what runs inside each passkey write, or passkeys.NoopHooks{}",
+				do.NameOf[passkeys.Hooks]())
+		}
+
 		serviceOpts, err := optionalServiceOptions(i)
 		if err != nil {
 			return nil, err
 		}
 
-		return NewService(ctx, cfg, client, store, rp, resolve, gate,
+		return NewService(ctx, cfg, client, store, rp, resolve, gate, hooks,
 			WithPillars(pillars), WithServiceOptions(serviceOpts...))
 	})
 }
@@ -137,15 +145,6 @@ func optionalServiceOptions(i do.Injector) ([]passkeys.ServiceOption, error) {
 
 	if alternative != nil {
 		opts = append(opts, passkeys.WithAlternativeSignIn(alternative))
-	}
-
-	hooks, err := injection.InvokeOptional[passkeys.Hooks](i)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking passkey hooks")
-	}
-
-	if hooks != nil {
-		opts = append(opts, passkeys.WithHooks(hooks))
 	}
 
 	return opts, nil

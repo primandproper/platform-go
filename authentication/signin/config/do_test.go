@@ -50,9 +50,11 @@ func base(t *testing.T, cfg *Config) do.Injector {
 	return i
 }
 
-// withAuthenticator registers the one thing the application always supplies.
+// withAuthenticator registers the two things the application always supplies:
+// the authenticator, and the hooks (NoopHooks, by name).
 func withAuthenticator(i do.Injector) do.Injector {
 	do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+	do.ProvideValue[signin.Hooks](i, signin.NoopHooks{})
 
 	return i
 }
@@ -88,6 +90,18 @@ func TestRegisterService(T *testing.T) {
 		_, err := do.Invoke[*signin.Service](i)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), do.NameOf[authentication.Authenticator]())
+	})
+
+	T.Run("missing hooks fail naming them rather than defaulting", func(t *testing.T) {
+		t.Parallel()
+
+		i := withRegistrar(base(t, &Config{DefaultOwnerRoles: ownerRoles}))
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
+		RegisterService(i)
+
+		_, err := do.Invoke[*signin.Service](i)
+		test.ErrorIs(t, err, do.ErrServiceNotFound)
+		test.StrContains(t, err.Error(), do.NameOf[signin.Hooks]())
 	})
 
 	T.Run("a missing token issuer fails naming it", func(t *testing.T) {
@@ -380,12 +394,13 @@ func TestRegisterService(T *testing.T) {
 		test.False(t, errors.Is(err, signin.ErrImpersonationDisabled))
 	})
 
-	T.Run("a registered hook that fails to build is returned, not skipped", func(t *testing.T) {
+	T.Run("a registered hook that fails to build is returned", func(t *testing.T) {
 		t.Parallel()
 
 		broken := errors.New("hooks could not be built")
 
-		i := withRegistrar(withAuthenticator(base(t, &Config{DefaultOwnerRoles: ownerRoles})))
+		i := withRegistrar(base(t, &Config{DefaultOwnerRoles: ownerRoles}))
+		do.ProvideValue[authentication.Authenticator](i, argon2.NewArgon2Authenticator())
 		do.Provide(i, func(do.Injector) (signin.Hooks, error) { return nil, broken })
 		RegisterService(i)
 

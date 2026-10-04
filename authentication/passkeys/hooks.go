@@ -66,8 +66,9 @@ type FailedLogin struct {
 	CredentialID []byte
 }
 
-// NoopHooks does nothing, and is what a [Service] built without [WithHooks]
-// runs. It is also the type to embed in a [Hooks] that overrides some:
+// NoopHooks does nothing. It is what a caller passes [NewService], by name, when
+// it commits nothing alongside these writes — a seed import, a bootstrap tool, a
+// test — and it is the type to embed in a [Hooks] that overrides some:
 //
 //	type auditHooks struct {
 //		passkeys.NoopHooks
@@ -77,7 +78,10 @@ type FailedLogin struct {
 //
 // Embedding it rather than implementing all three is what makes a method added
 // to [Hooks] later additive: an embedder gains a no-op rather than a compile
-// failure.
+// failure. A consumer implementing the interface outright is the consumer the
+// next method breaks, and that can be the point: a consumer that records every
+// write may prefer a new one to fail to compile until somebody decides what it
+// records.
 type NoopHooks struct{}
 
 var _ Hooks = NoopHooks{}

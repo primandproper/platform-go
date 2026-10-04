@@ -266,7 +266,7 @@ func newHarness(tb testing.TB, opts ...mediaregistrygrpc.Option) *harness {
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := mediaregistry.NewSQLStore(db, mediaregistry.WithTablePrefix(prefix))
+	store, err := mediaregistry.NewSQLStore(db, mediaregistry.NoopHooks{}, mediaregistry.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
 	objects := newBucket()

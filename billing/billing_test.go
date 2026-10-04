@@ -455,8 +455,15 @@ func TestNewSQLStore_Refusals(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewSQLStore(nil)
+		_, err := NewSQLStore(nil, NoopHooks{})
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
+	})
+
+	T.Run("refuses nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewSQLStore(newSQLiteEnv(t).client, nil)
+		test.ErrorIs(t, err, ErrNilHooks)
 	})
 
 	T.Run("refuses a prefix that renders an illegal identifier", func(t *testing.T) {
@@ -464,7 +471,7 @@ func TestNewSQLStore_Refusals(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		_, err := NewSQLStore(env.client, WithTablePrefix("no spaces allowed"))
+		_, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("no spaces allowed"))
 		test.Error(t, err)
 	})
 
@@ -473,7 +480,7 @@ func TestNewSQLStore_Refusals(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		store, err := NewSQLStore(env.client)
+		store, err := NewSQLStore(env.client, NoopHooks{})
 		must.NoError(t, err)
 		test.EqOp(t, DefaultTablePrefix, store.TablePrefix())
 	})

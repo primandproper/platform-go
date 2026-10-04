@@ -88,22 +88,19 @@ func TestRegisterStore(T *testing.T) {
 func TestRegisterService(T *testing.T) {
 	T.Parallel()
 
-	T.Run("resolves without hooks registered", func(t *testing.T) {
+	T.Run("needs hooks", func(t *testing.T) {
 		t.Parallel()
 
-		// A container that registers no Hooks is an application with nothing
-		// to commit beside a registration, which is a configuration rather than
-		// a hole.
+		// An application with nothing to commit beside a registration registers
+		// NoopHooks by name; one that registers nothing has forgotten.
 		i := base(t, &Config{})
 		RegisterStore(i)
 		RegisterService(i)
 
-		_, err := do.Invoke[oauth2clients.Hooks](i)
-		test.Error(t, err, test.Sprint("this case is only meaningful with no Hooks registered"))
-
 		svc, err := do.Invoke[*oauth2clients.Service](i)
-		must.NoError(t, err)
-		test.NotNil(t, svc)
+		test.Nil(t, svc)
+		test.ErrorIs(t, err, do.ErrServiceNotFound)
+		test.StrContains(t, err.Error(), do.NameOf[oauth2clients.Hooks]())
 	})
 
 	T.Run("uses the hooks the container holds", func(t *testing.T) {
@@ -122,9 +119,9 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a hooks provider that fails to build fails the service", func(t *testing.T) {
 		t.Parallel()
 
-		// Absent is a configuration; registered-and-broken is not, and a Service
-		// that ran the noop in its place would commit every registration with
-		// none of the companions the consumer registered hooks to get.
+		// A Service that ran the noop in its place would commit every
+		// registration with none of the companions the consumer registered
+		// hooks to get.
 		boom := errors.New("audit sink unreachable")
 
 		i := base(t, &Config{})
@@ -141,8 +138,7 @@ func TestRegisterService(T *testing.T) {
 		t.Parallel()
 
 		// The same failure by the route that reports do's own not-found
-		// sentinel, which a lookup keyed on that sentinel would have read as
-		// "nobody registered hooks".
+		// sentinel.
 		i := base(t, &Config{})
 		do.Provide(i, func(i do.Injector) (oauth2clients.Hooks, error) {
 			if _, err := do.Invoke[*unregisteredRecorder](i); err != nil {
@@ -163,6 +159,7 @@ func TestRegisterService(T *testing.T) {
 		t.Parallel()
 
 		i := base(t, &Config{})
+		do.ProvideValue[oauth2clients.Hooks](i, oauth2clients.NoopHooks{})
 		RegisterService(i)
 
 		svc, err := do.Invoke[*oauth2clients.Service](i)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
+	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 
@@ -22,15 +23,16 @@ import (
 // Example_mount is what turning this domain on looks like, and it is written as
 // the acceptance test for the package's seams rather than as a tour.
 //
-// Everything a consumer supplies is something only they can: the database, how
-// somebody proved who they are, whose reports a caller may name, and which of
-// their roles may do what. Nothing in it is boilerplate this module could have
+// Everything a consumer supplies is something only they can: the database, what
+// each write commits beside it, how somebody proved who they are, whose reports
+// a caller may name, and which of their roles may do what. Nothing in it is boilerplate this module could have
 // written and did not — and there is deliberately no place in it to say what a
 // report is about or what categories a product sorts them into, because that
 // vocabulary is the consumer's and stays a string.
 func Example_mount() {
 	var (
 		ctx        context.Context
+		hooks      issuereports.Hooks            // yours: what each write commits with it
 		cfg        *issuereportscfg.Config       // yours: a config block
 		client     database.Client               //
 		pillars    *observability.Pillars        //
@@ -41,7 +43,7 @@ func Example_mount() {
 	)
 
 	_ = func() error {
-		store, err := issuereportscfg.NewStore(ctx, cfg, client, issuereportscfg.WithPillars(pillars))
+		store, err := issuereportscfg.NewStore(ctx, cfg, client, hooks, issuereportscfg.WithPillars(pillars))
 		if err != nil {
 			return err
 		}

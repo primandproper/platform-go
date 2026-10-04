@@ -3929,3 +3929,855 @@ func (mock *TransactionStoreMock) SetTransactionStatusCalls() []struct {
 	mock.lockSetTransactionStatus.RUnlock()
 	return calls
 }
+
+// Ensure, that HooksMock does implement billing.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ billing.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of billing.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked billing.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchiveProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+//				panic("mock out the AfterArchiveProduct method")
+//			},
+//			AfterArchivePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error {
+//				panic("mock out the AfterArchivePurchase method")
+//			},
+//			AfterArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+//				panic("mock out the AfterArchiveSubscription method")
+//			},
+//			AfterArchiveTransactionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *billing.Transaction) error {
+//				panic("mock out the AfterArchiveTransaction method")
+//			},
+//			AfterCompletePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error {
+//				panic("mock out the AfterCompletePurchase method")
+//			},
+//			AfterCreateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+//				panic("mock out the AfterCreateProduct method")
+//			},
+//			AfterCreatePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error {
+//				panic("mock out the AfterCreatePurchase method")
+//			},
+//			AfterCreateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+//				panic("mock out the AfterCreateSubscription method")
+//			},
+//			AfterRecordTransactionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *billing.Transaction) error {
+//				panic("mock out the AfterRecordTransaction method")
+//			},
+//			AfterSetSubscriptionStatusFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Subscription, after *billing.Subscription) error {
+//				panic("mock out the AfterSetSubscriptionStatus method")
+//			},
+//			AfterSetTransactionStatusFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Transaction, after *billing.Transaction) error {
+//				panic("mock out the AfterSetTransactionStatus method")
+//			},
+//			AfterUpdateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Product, after *billing.Product) error {
+//				panic("mock out the AfterUpdateProduct method")
+//			},
+//			AfterUpdateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Subscription, after *billing.Subscription) error {
+//				panic("mock out the AfterUpdateSubscription method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires billing.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchiveProductFunc mocks the AfterArchiveProduct method.
+	AfterArchiveProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error
+
+	// AfterArchivePurchaseFunc mocks the AfterArchivePurchase method.
+	AfterArchivePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error
+
+	// AfterArchiveSubscriptionFunc mocks the AfterArchiveSubscription method.
+	AfterArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error
+
+	// AfterArchiveTransactionFunc mocks the AfterArchiveTransaction method.
+	AfterArchiveTransactionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *billing.Transaction) error
+
+	// AfterCompletePurchaseFunc mocks the AfterCompletePurchase method.
+	AfterCompletePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error
+
+	// AfterCreateProductFunc mocks the AfterCreateProduct method.
+	AfterCreateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error
+
+	// AfterCreatePurchaseFunc mocks the AfterCreatePurchase method.
+	AfterCreatePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error
+
+	// AfterCreateSubscriptionFunc mocks the AfterCreateSubscription method.
+	AfterCreateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error
+
+	// AfterRecordTransactionFunc mocks the AfterRecordTransaction method.
+	AfterRecordTransactionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *billing.Transaction) error
+
+	// AfterSetSubscriptionStatusFunc mocks the AfterSetSubscriptionStatus method.
+	AfterSetSubscriptionStatusFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Subscription, after *billing.Subscription) error
+
+	// AfterSetTransactionStatusFunc mocks the AfterSetTransactionStatus method.
+	AfterSetTransactionStatusFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Transaction, after *billing.Transaction) error
+
+	// AfterUpdateProductFunc mocks the AfterUpdateProduct method.
+	AfterUpdateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Product, after *billing.Product) error
+
+	// AfterUpdateSubscriptionFunc mocks the AfterUpdateSubscription method.
+	AfterUpdateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Subscription, after *billing.Subscription) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchiveProduct holds details about calls to the AfterArchiveProduct method.
+		AfterArchiveProduct []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Product is the product argument value.
+			Product *billing.Product
+		}
+		// AfterArchivePurchase holds details about calls to the AfterArchivePurchase method.
+		AfterArchivePurchase []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Purchase is the purchase argument value.
+			Purchase *billing.Purchase
+		}
+		// AfterArchiveSubscription holds details about calls to the AfterArchiveSubscription method.
+		AfterArchiveSubscription []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Subscription is the subscription argument value.
+			Subscription *billing.Subscription
+		}
+		// AfterArchiveTransaction holds details about calls to the AfterArchiveTransaction method.
+		AfterArchiveTransaction []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Transaction is the transaction argument value.
+			Transaction *billing.Transaction
+		}
+		// AfterCompletePurchase holds details about calls to the AfterCompletePurchase method.
+		AfterCompletePurchase []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Purchase is the purchase argument value.
+			Purchase *billing.Purchase
+		}
+		// AfterCreateProduct holds details about calls to the AfterCreateProduct method.
+		AfterCreateProduct []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Product is the product argument value.
+			Product *billing.Product
+		}
+		// AfterCreatePurchase holds details about calls to the AfterCreatePurchase method.
+		AfterCreatePurchase []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Purchase is the purchase argument value.
+			Purchase *billing.Purchase
+		}
+		// AfterCreateSubscription holds details about calls to the AfterCreateSubscription method.
+		AfterCreateSubscription []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Subscription is the subscription argument value.
+			Subscription *billing.Subscription
+		}
+		// AfterRecordTransaction holds details about calls to the AfterRecordTransaction method.
+		AfterRecordTransaction []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Transaction is the transaction argument value.
+			Transaction *billing.Transaction
+		}
+		// AfterSetSubscriptionStatus holds details about calls to the AfterSetSubscriptionStatus method.
+		AfterSetSubscriptionStatus []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *billing.Subscription
+			// After is the after argument value.
+			After *billing.Subscription
+		}
+		// AfterSetTransactionStatus holds details about calls to the AfterSetTransactionStatus method.
+		AfterSetTransactionStatus []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *billing.Transaction
+			// After is the after argument value.
+			After *billing.Transaction
+		}
+		// AfterUpdateProduct holds details about calls to the AfterUpdateProduct method.
+		AfterUpdateProduct []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *billing.Product
+			// After is the after argument value.
+			After *billing.Product
+		}
+		// AfterUpdateSubscription holds details about calls to the AfterUpdateSubscription method.
+		AfterUpdateSubscription []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *billing.Subscription
+			// After is the after argument value.
+			After *billing.Subscription
+		}
+	}
+	lockAfterArchiveProduct        sync.RWMutex
+	lockAfterArchivePurchase       sync.RWMutex
+	lockAfterArchiveSubscription   sync.RWMutex
+	lockAfterArchiveTransaction    sync.RWMutex
+	lockAfterCompletePurchase      sync.RWMutex
+	lockAfterCreateProduct         sync.RWMutex
+	lockAfterCreatePurchase        sync.RWMutex
+	lockAfterCreateSubscription    sync.RWMutex
+	lockAfterRecordTransaction     sync.RWMutex
+	lockAfterSetSubscriptionStatus sync.RWMutex
+	lockAfterSetTransactionStatus  sync.RWMutex
+	lockAfterUpdateProduct         sync.RWMutex
+	lockAfterUpdateSubscription    sync.RWMutex
+}
+
+// AfterArchiveProduct calls AfterArchiveProductFunc.
+func (mock *HooksMock) AfterArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+	if mock.AfterArchiveProductFunc == nil {
+		panic("HooksMock.AfterArchiveProductFunc: method is nil but Hooks.AfterArchiveProduct was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Product *billing.Product
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Product: product,
+	}
+	mock.lockAfterArchiveProduct.Lock()
+	mock.calls.AfterArchiveProduct = append(mock.calls.AfterArchiveProduct, callInfo)
+	mock.lockAfterArchiveProduct.Unlock()
+	return mock.AfterArchiveProductFunc(ctx, tx, scope, product)
+}
+
+// AfterArchiveProductCalls gets all the calls that were made to AfterArchiveProduct.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveProductCalls())
+func (mock *HooksMock) AfterArchiveProductCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Product *billing.Product
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Product *billing.Product
+	}
+	mock.lockAfterArchiveProduct.RLock()
+	calls = mock.calls.AfterArchiveProduct
+	mock.lockAfterArchiveProduct.RUnlock()
+	return calls
+}
+
+// AfterArchivePurchase calls AfterArchivePurchaseFunc.
+func (mock *HooksMock) AfterArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error {
+	if mock.AfterArchivePurchaseFunc == nil {
+		panic("HooksMock.AfterArchivePurchaseFunc: method is nil but Hooks.AfterArchivePurchase was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Purchase *billing.Purchase
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		Purchase: purchase,
+	}
+	mock.lockAfterArchivePurchase.Lock()
+	mock.calls.AfterArchivePurchase = append(mock.calls.AfterArchivePurchase, callInfo)
+	mock.lockAfterArchivePurchase.Unlock()
+	return mock.AfterArchivePurchaseFunc(ctx, tx, scope, purchase)
+}
+
+// AfterArchivePurchaseCalls gets all the calls that were made to AfterArchivePurchase.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchivePurchaseCalls())
+func (mock *HooksMock) AfterArchivePurchaseCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	Purchase *billing.Purchase
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Purchase *billing.Purchase
+	}
+	mock.lockAfterArchivePurchase.RLock()
+	calls = mock.calls.AfterArchivePurchase
+	mock.lockAfterArchivePurchase.RUnlock()
+	return calls
+}
+
+// AfterArchiveSubscription calls AfterArchiveSubscriptionFunc.
+func (mock *HooksMock) AfterArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+	if mock.AfterArchiveSubscriptionFunc == nil {
+		panic("HooksMock.AfterArchiveSubscriptionFunc: method is nil but Hooks.AfterArchiveSubscription was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Subscription *billing.Subscription
+	}{
+		Ctx:          ctx,
+		Tx:           tx,
+		Scope:        scope,
+		Subscription: subscription,
+	}
+	mock.lockAfterArchiveSubscription.Lock()
+	mock.calls.AfterArchiveSubscription = append(mock.calls.AfterArchiveSubscription, callInfo)
+	mock.lockAfterArchiveSubscription.Unlock()
+	return mock.AfterArchiveSubscriptionFunc(ctx, tx, scope, subscription)
+}
+
+// AfterArchiveSubscriptionCalls gets all the calls that were made to AfterArchiveSubscription.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveSubscriptionCalls())
+func (mock *HooksMock) AfterArchiveSubscriptionCalls() []struct {
+	Ctx          context.Context
+	Tx           database.Tx
+	Scope        tenancy.Scope
+	Subscription *billing.Subscription
+} {
+	var calls []struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Subscription *billing.Subscription
+	}
+	mock.lockAfterArchiveSubscription.RLock()
+	calls = mock.calls.AfterArchiveSubscription
+	mock.lockAfterArchiveSubscription.RUnlock()
+	return calls
+}
+
+// AfterArchiveTransaction calls AfterArchiveTransactionFunc.
+func (mock *HooksMock) AfterArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *billing.Transaction) error {
+	if mock.AfterArchiveTransactionFunc == nil {
+		panic("HooksMock.AfterArchiveTransactionFunc: method is nil but Hooks.AfterArchiveTransaction was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		Tx          database.Tx
+		Scope       tenancy.Scope
+		Transaction *billing.Transaction
+	}{
+		Ctx:         ctx,
+		Tx:          tx,
+		Scope:       scope,
+		Transaction: transaction,
+	}
+	mock.lockAfterArchiveTransaction.Lock()
+	mock.calls.AfterArchiveTransaction = append(mock.calls.AfterArchiveTransaction, callInfo)
+	mock.lockAfterArchiveTransaction.Unlock()
+	return mock.AfterArchiveTransactionFunc(ctx, tx, scope, transaction)
+}
+
+// AfterArchiveTransactionCalls gets all the calls that were made to AfterArchiveTransaction.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveTransactionCalls())
+func (mock *HooksMock) AfterArchiveTransactionCalls() []struct {
+	Ctx         context.Context
+	Tx          database.Tx
+	Scope       tenancy.Scope
+	Transaction *billing.Transaction
+} {
+	var calls []struct {
+		Ctx         context.Context
+		Tx          database.Tx
+		Scope       tenancy.Scope
+		Transaction *billing.Transaction
+	}
+	mock.lockAfterArchiveTransaction.RLock()
+	calls = mock.calls.AfterArchiveTransaction
+	mock.lockAfterArchiveTransaction.RUnlock()
+	return calls
+}
+
+// AfterCompletePurchase calls AfterCompletePurchaseFunc.
+func (mock *HooksMock) AfterCompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error {
+	if mock.AfterCompletePurchaseFunc == nil {
+		panic("HooksMock.AfterCompletePurchaseFunc: method is nil but Hooks.AfterCompletePurchase was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Purchase *billing.Purchase
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		Purchase: purchase,
+	}
+	mock.lockAfterCompletePurchase.Lock()
+	mock.calls.AfterCompletePurchase = append(mock.calls.AfterCompletePurchase, callInfo)
+	mock.lockAfterCompletePurchase.Unlock()
+	return mock.AfterCompletePurchaseFunc(ctx, tx, scope, purchase)
+}
+
+// AfterCompletePurchaseCalls gets all the calls that were made to AfterCompletePurchase.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCompletePurchaseCalls())
+func (mock *HooksMock) AfterCompletePurchaseCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	Purchase *billing.Purchase
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Purchase *billing.Purchase
+	}
+	mock.lockAfterCompletePurchase.RLock()
+	calls = mock.calls.AfterCompletePurchase
+	mock.lockAfterCompletePurchase.RUnlock()
+	return calls
+}
+
+// AfterCreateProduct calls AfterCreateProductFunc.
+func (mock *HooksMock) AfterCreateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+	if mock.AfterCreateProductFunc == nil {
+		panic("HooksMock.AfterCreateProductFunc: method is nil but Hooks.AfterCreateProduct was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Product *billing.Product
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		Product: product,
+	}
+	mock.lockAfterCreateProduct.Lock()
+	mock.calls.AfterCreateProduct = append(mock.calls.AfterCreateProduct, callInfo)
+	mock.lockAfterCreateProduct.Unlock()
+	return mock.AfterCreateProductFunc(ctx, tx, scope, product)
+}
+
+// AfterCreateProductCalls gets all the calls that were made to AfterCreateProduct.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreateProductCalls())
+func (mock *HooksMock) AfterCreateProductCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	Product *billing.Product
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		Product *billing.Product
+	}
+	mock.lockAfterCreateProduct.RLock()
+	calls = mock.calls.AfterCreateProduct
+	mock.lockAfterCreateProduct.RUnlock()
+	return calls
+}
+
+// AfterCreatePurchase calls AfterCreatePurchaseFunc.
+func (mock *HooksMock) AfterCreatePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) error {
+	if mock.AfterCreatePurchaseFunc == nil {
+		panic("HooksMock.AfterCreatePurchaseFunc: method is nil but Hooks.AfterCreatePurchase was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Purchase *billing.Purchase
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		Purchase: purchase,
+	}
+	mock.lockAfterCreatePurchase.Lock()
+	mock.calls.AfterCreatePurchase = append(mock.calls.AfterCreatePurchase, callInfo)
+	mock.lockAfterCreatePurchase.Unlock()
+	return mock.AfterCreatePurchaseFunc(ctx, tx, scope, purchase)
+}
+
+// AfterCreatePurchaseCalls gets all the calls that were made to AfterCreatePurchase.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreatePurchaseCalls())
+func (mock *HooksMock) AfterCreatePurchaseCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	Purchase *billing.Purchase
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Purchase *billing.Purchase
+	}
+	mock.lockAfterCreatePurchase.RLock()
+	calls = mock.calls.AfterCreatePurchase
+	mock.lockAfterCreatePurchase.RUnlock()
+	return calls
+}
+
+// AfterCreateSubscription calls AfterCreateSubscriptionFunc.
+func (mock *HooksMock) AfterCreateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+	if mock.AfterCreateSubscriptionFunc == nil {
+		panic("HooksMock.AfterCreateSubscriptionFunc: method is nil but Hooks.AfterCreateSubscription was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Subscription *billing.Subscription
+	}{
+		Ctx:          ctx,
+		Tx:           tx,
+		Scope:        scope,
+		Subscription: subscription,
+	}
+	mock.lockAfterCreateSubscription.Lock()
+	mock.calls.AfterCreateSubscription = append(mock.calls.AfterCreateSubscription, callInfo)
+	mock.lockAfterCreateSubscription.Unlock()
+	return mock.AfterCreateSubscriptionFunc(ctx, tx, scope, subscription)
+}
+
+// AfterCreateSubscriptionCalls gets all the calls that were made to AfterCreateSubscription.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreateSubscriptionCalls())
+func (mock *HooksMock) AfterCreateSubscriptionCalls() []struct {
+	Ctx          context.Context
+	Tx           database.Tx
+	Scope        tenancy.Scope
+	Subscription *billing.Subscription
+} {
+	var calls []struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Subscription *billing.Subscription
+	}
+	mock.lockAfterCreateSubscription.RLock()
+	calls = mock.calls.AfterCreateSubscription
+	mock.lockAfterCreateSubscription.RUnlock()
+	return calls
+}
+
+// AfterRecordTransaction calls AfterRecordTransactionFunc.
+func (mock *HooksMock) AfterRecordTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *billing.Transaction) error {
+	if mock.AfterRecordTransactionFunc == nil {
+		panic("HooksMock.AfterRecordTransactionFunc: method is nil but Hooks.AfterRecordTransaction was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		Tx          database.Tx
+		Scope       tenancy.Scope
+		Transaction *billing.Transaction
+	}{
+		Ctx:         ctx,
+		Tx:          tx,
+		Scope:       scope,
+		Transaction: transaction,
+	}
+	mock.lockAfterRecordTransaction.Lock()
+	mock.calls.AfterRecordTransaction = append(mock.calls.AfterRecordTransaction, callInfo)
+	mock.lockAfterRecordTransaction.Unlock()
+	return mock.AfterRecordTransactionFunc(ctx, tx, scope, transaction)
+}
+
+// AfterRecordTransactionCalls gets all the calls that were made to AfterRecordTransaction.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRecordTransactionCalls())
+func (mock *HooksMock) AfterRecordTransactionCalls() []struct {
+	Ctx         context.Context
+	Tx          database.Tx
+	Scope       tenancy.Scope
+	Transaction *billing.Transaction
+} {
+	var calls []struct {
+		Ctx         context.Context
+		Tx          database.Tx
+		Scope       tenancy.Scope
+		Transaction *billing.Transaction
+	}
+	mock.lockAfterRecordTransaction.RLock()
+	calls = mock.calls.AfterRecordTransaction
+	mock.lockAfterRecordTransaction.RUnlock()
+	return calls
+}
+
+// AfterSetSubscriptionStatus calls AfterSetSubscriptionStatusFunc.
+func (mock *HooksMock) AfterSetSubscriptionStatus(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Subscription, after *billing.Subscription) error {
+	if mock.AfterSetSubscriptionStatusFunc == nil {
+		panic("HooksMock.AfterSetSubscriptionStatusFunc: method is nil but Hooks.AfterSetSubscriptionStatus was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Subscription
+		After  *billing.Subscription
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterSetSubscriptionStatus.Lock()
+	mock.calls.AfterSetSubscriptionStatus = append(mock.calls.AfterSetSubscriptionStatus, callInfo)
+	mock.lockAfterSetSubscriptionStatus.Unlock()
+	return mock.AfterSetSubscriptionStatusFunc(ctx, tx, scope, before, after)
+}
+
+// AfterSetSubscriptionStatusCalls gets all the calls that were made to AfterSetSubscriptionStatus.
+// Check the length with:
+//
+//	len(mockedHooks.AfterSetSubscriptionStatusCalls())
+func (mock *HooksMock) AfterSetSubscriptionStatusCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *billing.Subscription
+	After  *billing.Subscription
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Subscription
+		After  *billing.Subscription
+	}
+	mock.lockAfterSetSubscriptionStatus.RLock()
+	calls = mock.calls.AfterSetSubscriptionStatus
+	mock.lockAfterSetSubscriptionStatus.RUnlock()
+	return calls
+}
+
+// AfterSetTransactionStatus calls AfterSetTransactionStatusFunc.
+func (mock *HooksMock) AfterSetTransactionStatus(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Transaction, after *billing.Transaction) error {
+	if mock.AfterSetTransactionStatusFunc == nil {
+		panic("HooksMock.AfterSetTransactionStatusFunc: method is nil but Hooks.AfterSetTransactionStatus was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Transaction
+		After  *billing.Transaction
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterSetTransactionStatus.Lock()
+	mock.calls.AfterSetTransactionStatus = append(mock.calls.AfterSetTransactionStatus, callInfo)
+	mock.lockAfterSetTransactionStatus.Unlock()
+	return mock.AfterSetTransactionStatusFunc(ctx, tx, scope, before, after)
+}
+
+// AfterSetTransactionStatusCalls gets all the calls that were made to AfterSetTransactionStatus.
+// Check the length with:
+//
+//	len(mockedHooks.AfterSetTransactionStatusCalls())
+func (mock *HooksMock) AfterSetTransactionStatusCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *billing.Transaction
+	After  *billing.Transaction
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Transaction
+		After  *billing.Transaction
+	}
+	mock.lockAfterSetTransactionStatus.RLock()
+	calls = mock.calls.AfterSetTransactionStatus
+	mock.lockAfterSetTransactionStatus.RUnlock()
+	return calls
+}
+
+// AfterUpdateProduct calls AfterUpdateProductFunc.
+func (mock *HooksMock) AfterUpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Product, after *billing.Product) error {
+	if mock.AfterUpdateProductFunc == nil {
+		panic("HooksMock.AfterUpdateProductFunc: method is nil but Hooks.AfterUpdateProduct was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Product
+		After  *billing.Product
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterUpdateProduct.Lock()
+	mock.calls.AfterUpdateProduct = append(mock.calls.AfterUpdateProduct, callInfo)
+	mock.lockAfterUpdateProduct.Unlock()
+	return mock.AfterUpdateProductFunc(ctx, tx, scope, before, after)
+}
+
+// AfterUpdateProductCalls gets all the calls that were made to AfterUpdateProduct.
+// Check the length with:
+//
+//	len(mockedHooks.AfterUpdateProductCalls())
+func (mock *HooksMock) AfterUpdateProductCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *billing.Product
+	After  *billing.Product
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Product
+		After  *billing.Product
+	}
+	mock.lockAfterUpdateProduct.RLock()
+	calls = mock.calls.AfterUpdateProduct
+	mock.lockAfterUpdateProduct.RUnlock()
+	return calls
+}
+
+// AfterUpdateSubscription calls AfterUpdateSubscriptionFunc.
+func (mock *HooksMock) AfterUpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *billing.Subscription, after *billing.Subscription) error {
+	if mock.AfterUpdateSubscriptionFunc == nil {
+		panic("HooksMock.AfterUpdateSubscriptionFunc: method is nil but Hooks.AfterUpdateSubscription was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Subscription
+		After  *billing.Subscription
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterUpdateSubscription.Lock()
+	mock.calls.AfterUpdateSubscription = append(mock.calls.AfterUpdateSubscription, callInfo)
+	mock.lockAfterUpdateSubscription.Unlock()
+	return mock.AfterUpdateSubscriptionFunc(ctx, tx, scope, before, after)
+}
+
+// AfterUpdateSubscriptionCalls gets all the calls that were made to AfterUpdateSubscription.
+// Check the length with:
+//
+//	len(mockedHooks.AfterUpdateSubscriptionCalls())
+func (mock *HooksMock) AfterUpdateSubscriptionCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *billing.Subscription
+	After  *billing.Subscription
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *billing.Subscription
+		After  *billing.Subscription
+	}
+	mock.lockAfterUpdateSubscription.RLock()
+	calls = mock.calls.AfterUpdateSubscription
+	mock.lockAfterUpdateSubscription.RUnlock()
+	return calls
+}

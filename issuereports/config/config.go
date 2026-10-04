@@ -73,6 +73,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 // NewStore builds the Store. client must be the database holding the issue
 // reports table.
 //
+// hooks are required, as they are by issuereports.NewSQLStore: a caller with nothing to
+// commit alongside the store's writes passes issuereports.NoopHooks{} by name.
+//
 // The store is built into a variable and returned only once its error is known
 // to be nil. issuereports.NewSQLStore returns its own concrete type, so returning
 // it straight through would convert a nil *issuereports.SQLStore into a non-nil
@@ -82,6 +85,7 @@ func NewStore(
 	ctx context.Context,
 	cfg *Config,
 	client database.Client,
+	hooks issuereports.Hooks,
 	opts ...Option,
 ) (issuereports.Store, error) {
 	if cfg == nil {
@@ -103,7 +107,7 @@ func NewStore(
 		issuereports.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	store, storeErr := issuereports.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := issuereports.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}

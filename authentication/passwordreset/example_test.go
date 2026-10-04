@@ -32,7 +32,7 @@ func Example() {
 	client, cleanup := exampleClient(ctx)
 	defer cleanup()
 
-	store, err := passwordreset.NewSQLStore(&passwordreset.Config{}, client)
+	store, err := passwordreset.NewSQLStore(&passwordreset.Config{}, client, passwordreset.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -172,7 +172,7 @@ func ExampleService() {
 	client, cleanup := exampleClient(ctx)
 	defer cleanup()
 
-	store, err := passwordreset.NewSQLStore(&passwordreset.Config{}, client)
+	store, err := passwordreset.NewSQLStore(&passwordreset.Config{}, client, passwordreset.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

@@ -36,7 +36,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		store, err := NewSQLStore(env.client)
+		store, err := NewSQLStore(env.client, NoopHooks{})
 		must.NoError(t, err)
 		test.NotNil(t, store)
 	})
@@ -46,15 +46,24 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		_, err := NewSQLStore(bogusDialectClient{env.client})
+		_, err := NewSQLStore(bogusDialectClient{env.client}, NoopHooks{})
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 
 	T.Run("nil client", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewSQLStore(nil)
+		_, err := NewSQLStore(nil, NoopHooks{})
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
+	})
+
+	T.Run("nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		_, err := NewSQLStore(env.client, nil)
+		test.ErrorIs(t, err, ErrNilHooks)
 	})
 
 	// The prefix is interpolated into query text, not bound.
@@ -63,7 +72,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		_, err := NewSQLStore(env.client, WithTablePrefix("webhook; DROP TABLE users"))
+		_, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("webhook; DROP TABLE users"))
 		test.ErrorIs(t, err, dialect.ErrInvalidIdentifier)
 	})
 }
@@ -2016,6 +2025,8 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 			return nil
 		}))
 	})
+
+	runHooksSuite(t, env)
 }
 
 // idsOf projects endpoint IDs.
@@ -2046,7 +2057,7 @@ func TestSQLStore_StampsFromTheDatabaseClock(T *testing.T) {
 		env := newSQLiteEnv(t)
 		client, prefix := env.database(t)
 
-		store, err := NewSQLStore(client, WithTablePrefix(prefix))
+		store, err := NewSQLStore(client, NoopHooks{}, WithTablePrefix(prefix))
 		must.NoError(t, err)
 
 		before := time.Now().UTC().Add(-time.Minute)

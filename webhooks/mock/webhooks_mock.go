@@ -1736,3 +1736,347 @@ func (mock *EnqueuerMock) EnqueueCalls() []struct {
 	mock.lockEnqueue.RUnlock()
 	return calls
 }
+
+// Ensure, that HooksMock does implement webhooks.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ webhooks.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of webhooks.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked webhooks.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterAddSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *webhooks.Subscription, after *webhooks.Subscription) error {
+//				panic("mock out the AfterAddSubscription method")
+//			},
+//			AfterArchiveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
+//				panic("mock out the AfterArchiveEndpoint method")
+//			},
+//			AfterArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *webhooks.Subscription) error {
+//				panic("mock out the AfterArchiveSubscription method")
+//			},
+//			AfterRotateSecretFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error {
+//				panic("mock out the AfterRotateSecret method")
+//			},
+//			AfterSaveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *webhooks.Endpoint, after *webhooks.Endpoint) error {
+//				panic("mock out the AfterSaveEndpoint method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires webhooks.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterAddSubscriptionFunc mocks the AfterAddSubscription method.
+	AfterAddSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *webhooks.Subscription, after *webhooks.Subscription) error
+
+	// AfterArchiveEndpointFunc mocks the AfterArchiveEndpoint method.
+	AfterArchiveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error
+
+	// AfterArchiveSubscriptionFunc mocks the AfterArchiveSubscription method.
+	AfterArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *webhooks.Subscription) error
+
+	// AfterRotateSecretFunc mocks the AfterRotateSecret method.
+	AfterRotateSecretFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error
+
+	// AfterSaveEndpointFunc mocks the AfterSaveEndpoint method.
+	AfterSaveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *webhooks.Endpoint, after *webhooks.Endpoint) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterAddSubscription holds details about calls to the AfterAddSubscription method.
+		AfterAddSubscription []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *webhooks.Subscription
+			// After is the after argument value.
+			After *webhooks.Subscription
+		}
+		// AfterArchiveEndpoint holds details about calls to the AfterArchiveEndpoint method.
+		AfterArchiveEndpoint []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Endpoint is the endpoint argument value.
+			Endpoint *webhooks.Endpoint
+		}
+		// AfterArchiveSubscription holds details about calls to the AfterArchiveSubscription method.
+		AfterArchiveSubscription []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Subscription is the subscription argument value.
+			Subscription *webhooks.Subscription
+		}
+		// AfterRotateSecret holds details about calls to the AfterRotateSecret method.
+		AfterRotateSecret []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// EndpointID is the endpointID argument value.
+			EndpointID string
+		}
+		// AfterSaveEndpoint holds details about calls to the AfterSaveEndpoint method.
+		AfterSaveEndpoint []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *webhooks.Endpoint
+			// After is the after argument value.
+			After *webhooks.Endpoint
+		}
+	}
+	lockAfterAddSubscription     sync.RWMutex
+	lockAfterArchiveEndpoint     sync.RWMutex
+	lockAfterArchiveSubscription sync.RWMutex
+	lockAfterRotateSecret        sync.RWMutex
+	lockAfterSaveEndpoint        sync.RWMutex
+}
+
+// AfterAddSubscription calls AfterAddSubscriptionFunc.
+func (mock *HooksMock) AfterAddSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *webhooks.Subscription, after *webhooks.Subscription) error {
+	if mock.AfterAddSubscriptionFunc == nil {
+		panic("HooksMock.AfterAddSubscriptionFunc: method is nil but Hooks.AfterAddSubscription was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *webhooks.Subscription
+		After  *webhooks.Subscription
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterAddSubscription.Lock()
+	mock.calls.AfterAddSubscription = append(mock.calls.AfterAddSubscription, callInfo)
+	mock.lockAfterAddSubscription.Unlock()
+	return mock.AfterAddSubscriptionFunc(ctx, tx, scope, before, after)
+}
+
+// AfterAddSubscriptionCalls gets all the calls that were made to AfterAddSubscription.
+// Check the length with:
+//
+//	len(mockedHooks.AfterAddSubscriptionCalls())
+func (mock *HooksMock) AfterAddSubscriptionCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *webhooks.Subscription
+	After  *webhooks.Subscription
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *webhooks.Subscription
+		After  *webhooks.Subscription
+	}
+	mock.lockAfterAddSubscription.RLock()
+	calls = mock.calls.AfterAddSubscription
+	mock.lockAfterAddSubscription.RUnlock()
+	return calls
+}
+
+// AfterArchiveEndpoint calls AfterArchiveEndpointFunc.
+func (mock *HooksMock) AfterArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
+	if mock.AfterArchiveEndpointFunc == nil {
+		panic("HooksMock.AfterArchiveEndpointFunc: method is nil but Hooks.AfterArchiveEndpoint was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Endpoint *webhooks.Endpoint
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		Endpoint: endpoint,
+	}
+	mock.lockAfterArchiveEndpoint.Lock()
+	mock.calls.AfterArchiveEndpoint = append(mock.calls.AfterArchiveEndpoint, callInfo)
+	mock.lockAfterArchiveEndpoint.Unlock()
+	return mock.AfterArchiveEndpointFunc(ctx, tx, scope, endpoint)
+}
+
+// AfterArchiveEndpointCalls gets all the calls that were made to AfterArchiveEndpoint.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveEndpointCalls())
+func (mock *HooksMock) AfterArchiveEndpointCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	Endpoint *webhooks.Endpoint
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		Endpoint *webhooks.Endpoint
+	}
+	mock.lockAfterArchiveEndpoint.RLock()
+	calls = mock.calls.AfterArchiveEndpoint
+	mock.lockAfterArchiveEndpoint.RUnlock()
+	return calls
+}
+
+// AfterArchiveSubscription calls AfterArchiveSubscriptionFunc.
+func (mock *HooksMock) AfterArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *webhooks.Subscription) error {
+	if mock.AfterArchiveSubscriptionFunc == nil {
+		panic("HooksMock.AfterArchiveSubscriptionFunc: method is nil but Hooks.AfterArchiveSubscription was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Subscription *webhooks.Subscription
+	}{
+		Ctx:          ctx,
+		Tx:           tx,
+		Scope:        scope,
+		Subscription: subscription,
+	}
+	mock.lockAfterArchiveSubscription.Lock()
+	mock.calls.AfterArchiveSubscription = append(mock.calls.AfterArchiveSubscription, callInfo)
+	mock.lockAfterArchiveSubscription.Unlock()
+	return mock.AfterArchiveSubscriptionFunc(ctx, tx, scope, subscription)
+}
+
+// AfterArchiveSubscriptionCalls gets all the calls that were made to AfterArchiveSubscription.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveSubscriptionCalls())
+func (mock *HooksMock) AfterArchiveSubscriptionCalls() []struct {
+	Ctx          context.Context
+	Tx           database.Tx
+	Scope        tenancy.Scope
+	Subscription *webhooks.Subscription
+} {
+	var calls []struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Subscription *webhooks.Subscription
+	}
+	mock.lockAfterArchiveSubscription.RLock()
+	calls = mock.calls.AfterArchiveSubscription
+	mock.lockAfterArchiveSubscription.RUnlock()
+	return calls
+}
+
+// AfterRotateSecret calls AfterRotateSecretFunc.
+func (mock *HooksMock) AfterRotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error {
+	if mock.AfterRotateSecretFunc == nil {
+		panic("HooksMock.AfterRotateSecretFunc: method is nil but Hooks.AfterRotateSecret was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		EndpointID string
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		EndpointID: endpointID,
+	}
+	mock.lockAfterRotateSecret.Lock()
+	mock.calls.AfterRotateSecret = append(mock.calls.AfterRotateSecret, callInfo)
+	mock.lockAfterRotateSecret.Unlock()
+	return mock.AfterRotateSecretFunc(ctx, tx, scope, endpointID)
+}
+
+// AfterRotateSecretCalls gets all the calls that were made to AfterRotateSecret.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRotateSecretCalls())
+func (mock *HooksMock) AfterRotateSecretCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	EndpointID string
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		EndpointID string
+	}
+	mock.lockAfterRotateSecret.RLock()
+	calls = mock.calls.AfterRotateSecret
+	mock.lockAfterRotateSecret.RUnlock()
+	return calls
+}
+
+// AfterSaveEndpoint calls AfterSaveEndpointFunc.
+func (mock *HooksMock) AfterSaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *webhooks.Endpoint, after *webhooks.Endpoint) error {
+	if mock.AfterSaveEndpointFunc == nil {
+		panic("HooksMock.AfterSaveEndpointFunc: method is nil but Hooks.AfterSaveEndpoint was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *webhooks.Endpoint
+		After  *webhooks.Endpoint
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterSaveEndpoint.Lock()
+	mock.calls.AfterSaveEndpoint = append(mock.calls.AfterSaveEndpoint, callInfo)
+	mock.lockAfterSaveEndpoint.Unlock()
+	return mock.AfterSaveEndpointFunc(ctx, tx, scope, before, after)
+}
+
+// AfterSaveEndpointCalls gets all the calls that were made to AfterSaveEndpoint.
+// Check the length with:
+//
+//	len(mockedHooks.AfterSaveEndpointCalls())
+func (mock *HooksMock) AfterSaveEndpointCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *webhooks.Endpoint
+	After  *webhooks.Endpoint
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *webhooks.Endpoint
+		After  *webhooks.Endpoint
+	}
+	mock.lockAfterSaveEndpoint.RLock()
+	calls = mock.calls.AfterSaveEndpoint
+	mock.lockAfterSaveEndpoint.RUnlock()
+	return calls
+}

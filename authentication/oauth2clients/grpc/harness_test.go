@@ -166,7 +166,7 @@ func newHarness(tb testing.TB, opts ...oauth2clientsgrpc.Option) *harness {
 	store, err := oauth2clients.NewSQLStore(db, oauth2clients.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
-	svc, err := oauth2clients.NewService(db, store)
+	svc, err := oauth2clients.NewService(db, store, oauth2clients.NoopHooks{})
 	must.NoError(tb, err)
 
 	server, err := oauth2clientsgrpc.NewServer(svc, store, db, extractPrincipal, opts...)

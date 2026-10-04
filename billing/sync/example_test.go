@@ -165,7 +165,7 @@ func exampleWiring(ctx context.Context) (billing.Store, database.Client) {
 		}
 	}
 
-	store, err := billing.NewSQLStore(client)
+	store, err := billing.NewSQLStore(client, billing.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

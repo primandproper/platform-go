@@ -605,3 +605,217 @@ func (mock *StoreMock) RecordObjectCalls() []struct {
 	mock.lockRecordObject.RUnlock()
 	return calls
 }
+
+// Ensure, that HooksMock does implement mediaregistry.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ mediaregistry.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of mediaregistry.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked mediaregistry.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchiveObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error {
+//				panic("mock out the AfterArchiveObject method")
+//			},
+//			AfterArchiveObjectsForOwnerFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string, archived int64) error {
+//				panic("mock out the AfterArchiveObjectsForOwner method")
+//			},
+//			AfterRecordObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error {
+//				panic("mock out the AfterRecordObject method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires mediaregistry.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchiveObjectFunc mocks the AfterArchiveObject method.
+	AfterArchiveObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error
+
+	// AfterArchiveObjectsForOwnerFunc mocks the AfterArchiveObjectsForOwner method.
+	AfterArchiveObjectsForOwnerFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string, archived int64) error
+
+	// AfterRecordObjectFunc mocks the AfterRecordObject method.
+	AfterRecordObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchiveObject holds details about calls to the AfterArchiveObject method.
+		AfterArchiveObject []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Object is the object argument value.
+			Object *mediaregistry.Object
+		}
+		// AfterArchiveObjectsForOwner holds details about calls to the AfterArchiveObjectsForOwner method.
+		AfterArchiveObjectsForOwner []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// OwnerID is the ownerID argument value.
+			OwnerID string
+			// Archived is the archived argument value.
+			Archived int64
+		}
+		// AfterRecordObject holds details about calls to the AfterRecordObject method.
+		AfterRecordObject []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Object is the object argument value.
+			Object *mediaregistry.Object
+		}
+	}
+	lockAfterArchiveObject          sync.RWMutex
+	lockAfterArchiveObjectsForOwner sync.RWMutex
+	lockAfterRecordObject           sync.RWMutex
+}
+
+// AfterArchiveObject calls AfterArchiveObjectFunc.
+func (mock *HooksMock) AfterArchiveObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error {
+	if mock.AfterArchiveObjectFunc == nil {
+		panic("HooksMock.AfterArchiveObjectFunc: method is nil but Hooks.AfterArchiveObject was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Object *mediaregistry.Object
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Object: object,
+	}
+	mock.lockAfterArchiveObject.Lock()
+	mock.calls.AfterArchiveObject = append(mock.calls.AfterArchiveObject, callInfo)
+	mock.lockAfterArchiveObject.Unlock()
+	return mock.AfterArchiveObjectFunc(ctx, tx, scope, object)
+}
+
+// AfterArchiveObjectCalls gets all the calls that were made to AfterArchiveObject.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveObjectCalls())
+func (mock *HooksMock) AfterArchiveObjectCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Object *mediaregistry.Object
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Object *mediaregistry.Object
+	}
+	mock.lockAfterArchiveObject.RLock()
+	calls = mock.calls.AfterArchiveObject
+	mock.lockAfterArchiveObject.RUnlock()
+	return calls
+}
+
+// AfterArchiveObjectsForOwner calls AfterArchiveObjectsForOwnerFunc.
+func (mock *HooksMock) AfterArchiveObjectsForOwner(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string, archived int64) error {
+	if mock.AfterArchiveObjectsForOwnerFunc == nil {
+		panic("HooksMock.AfterArchiveObjectsForOwnerFunc: method is nil but Hooks.AfterArchiveObjectsForOwner was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		OwnerID  string
+		Archived int64
+	}{
+		Ctx:      ctx,
+		Tx:       tx,
+		Scope:    scope,
+		OwnerID:  ownerID,
+		Archived: archived,
+	}
+	mock.lockAfterArchiveObjectsForOwner.Lock()
+	mock.calls.AfterArchiveObjectsForOwner = append(mock.calls.AfterArchiveObjectsForOwner, callInfo)
+	mock.lockAfterArchiveObjectsForOwner.Unlock()
+	return mock.AfterArchiveObjectsForOwnerFunc(ctx, tx, scope, ownerID, archived)
+}
+
+// AfterArchiveObjectsForOwnerCalls gets all the calls that were made to AfterArchiveObjectsForOwner.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveObjectsForOwnerCalls())
+func (mock *HooksMock) AfterArchiveObjectsForOwnerCalls() []struct {
+	Ctx      context.Context
+	Tx       database.Tx
+	Scope    tenancy.Scope
+	OwnerID  string
+	Archived int64
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Tx       database.Tx
+		Scope    tenancy.Scope
+		OwnerID  string
+		Archived int64
+	}
+	mock.lockAfterArchiveObjectsForOwner.RLock()
+	calls = mock.calls.AfterArchiveObjectsForOwner
+	mock.lockAfterArchiveObjectsForOwner.RUnlock()
+	return calls
+}
+
+// AfterRecordObject calls AfterRecordObjectFunc.
+func (mock *HooksMock) AfterRecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error {
+	if mock.AfterRecordObjectFunc == nil {
+		panic("HooksMock.AfterRecordObjectFunc: method is nil but Hooks.AfterRecordObject was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Object *mediaregistry.Object
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Object: object,
+	}
+	mock.lockAfterRecordObject.Lock()
+	mock.calls.AfterRecordObject = append(mock.calls.AfterRecordObject, callInfo)
+	mock.lockAfterRecordObject.Unlock()
+	return mock.AfterRecordObjectFunc(ctx, tx, scope, object)
+}
+
+// AfterRecordObjectCalls gets all the calls that were made to AfterRecordObject.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRecordObjectCalls())
+func (mock *HooksMock) AfterRecordObjectCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Object *mediaregistry.Object
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Object *mediaregistry.Object
+	}
+	mock.lockAfterRecordObject.RLock()
+	calls = mock.calls.AfterRecordObject
+	mock.lockAfterRecordObject.RUnlock()
+	return calls
+}

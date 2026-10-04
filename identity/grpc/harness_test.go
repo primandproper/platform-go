@@ -276,7 +276,7 @@ func newHarnessAs(t *testing.T, principal callers.Principal, opts ...identitygrp
 
 	invites := &inviteRecorder{}
 
-	svc, err := identity.NewService(db, store, identity.WithHooks(invites))
+	svc, err := identity.NewService(db, store, invites)
 	must.NoError(t, err)
 
 	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal, opts...)

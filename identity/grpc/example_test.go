@@ -43,14 +43,14 @@ func Example_mount() {
 	)
 
 	_ = func() error {
-		opts := []identitycfg.Option{identitycfg.WithPillars(pillars), identitycfg.WithHooks(hooks)}
+		opts := []identitycfg.Option{identitycfg.WithPillars(pillars)}
 
 		store, err := identitycfg.NewStore(ctx, cfg, client, opts...)
 		if err != nil {
 			return err
 		}
 
-		svc, err := identitycfg.NewService(ctx, cfg, client, store, opts...)
+		svc, err := identitycfg.NewService(ctx, cfg, client, store, hooks, opts...)
 		if err != nil {
 			return err
 		}

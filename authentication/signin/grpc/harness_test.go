@@ -233,7 +233,7 @@ func newHarnessWithIssuer(
 ) *harness {
 	t.Helper()
 
-	return buildHarness(t, issuer, false, false, svcOpts, opts...)
+	return buildHarness(t, issuer, false, false, signin.NoopHooks{}, svcOpts, opts...)
 }
 
 // newRefreshHarness is newHarness with a live refresh token store behind the
@@ -242,7 +242,7 @@ func newHarnessWithIssuer(
 func newRefreshHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc.Option) *harness {
 	t.Helper()
 
-	return buildHarness(t, &fakeIssuer{}, true, false, svcOpts, opts...)
+	return buildHarness(t, &fakeIssuer{}, true, false, signin.NoopHooks{}, svcOpts, opts...)
 }
 
 // newMagicLinkHarness is newRefreshHarness with the passwordless door wired in:
@@ -254,7 +254,7 @@ func newRefreshHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...sig
 func newMagicLinkHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc.Option) *harness {
 	t.Helper()
 
-	return buildHarness(t, &fakeIssuer{}, true, true, svcOpts, opts...)
+	return buildHarness(t, &fakeIssuer{}, true, true, signin.NoopHooks{}, svcOpts, opts...)
 }
 
 // buildHarness is every constructor above. The refresh token store has to exist
@@ -264,6 +264,7 @@ func buildHarness(
 	t *testing.T,
 	issuer signin.TokenIssuer,
 	withRefresh, withMagicLinks bool,
+	hooks signin.Hooks,
 	svcOpts []signin.ServiceOption,
 	opts ...signingrpc.Option,
 ) *harness {
@@ -289,7 +290,7 @@ func buildHarness(
 
 	authenticator := argon2.NewArgon2Authenticator()
 
-	identitySvc, err := identity.NewService(db, store)
+	identitySvc, err := identity.NewService(db, store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	svcOpts = append([]signin.ServiceOption{
@@ -337,7 +338,7 @@ func buildHarness(
 		)
 	}
 
-	svc, err := signin.NewService(db, store, authenticator, issuer, []string{"owner"}, svcOpts...)
+	svc, err := signin.NewService(db, store, authenticator, issuer, []string{"owner"}, hooks, svcOpts...)
 	must.NoError(t, err)
 
 	// The scope comes off the connection, which is the seam that exists because
@@ -398,7 +399,7 @@ func (h *harness) register(t *testing.T, authenticator *argon2.Argon2Authenticat
 	hashed, err := authenticator.HashPassword(t.Context(), h.password)
 	must.NoError(t, err)
 
-	identitySvc, err := identity.NewService(h.db, h.store)
+	identitySvc, err := identity.NewService(h.db, h.store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	registration, err := identitySvc.Register(t.Context(), testScope,

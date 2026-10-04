@@ -238,7 +238,7 @@ func newHarnessOn(
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := waitlists.NewSQLStore(db,
+	store, err := waitlists.NewSQLStore(db, waitlists.NoopHooks{},
 		waitlists.WithTablePrefix(prefix), waitlists.WithClock(newStubClock()))
 	must.NoError(tb, err)
 

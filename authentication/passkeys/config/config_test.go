@@ -114,9 +114,22 @@ func TestNewService(T *testing.T) {
 		must.NoError(t, err)
 
 		svc, err := NewService(t.Context(), &Config{}, client, store, testRelyingParty(t),
-			resolveNobody, passkeys.AdmitEveryEnrollment)
+			resolveNobody, passkeys.AdmitEveryEnrollment, passkeys.NoopHooks{})
 		must.NoError(t, err)
 		test.NotNil(t, svc)
+	})
+
+	T.Run("no hooks", func(t *testing.T) {
+		t.Parallel()
+
+		client := testDBClient(t)
+		store, err := NewStore(t.Context(), &Config{}, client)
+		must.NoError(t, err)
+
+		svc, err := NewService(t.Context(), &Config{}, client, store, testRelyingParty(t),
+			resolveNobody, passkeys.AdmitEveryEnrollment, nil)
+		test.ErrorIs(t, err, passkeys.ErrNilHooks)
+		test.Nil(t, svc)
 	})
 
 	T.Run("no enrollment gate", func(t *testing.T) {
@@ -126,7 +139,7 @@ func TestNewService(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{}, client, store, testRelyingParty(t), resolveNobody, nil)
+		svc, err := NewService(t.Context(), &Config{}, client, store, testRelyingParty(t), resolveNobody, nil, passkeys.NoopHooks{})
 		test.ErrorIs(t, err, passkeys.ErrNoEnrollmentGate)
 		test.Nil(t, svc)
 	})
@@ -138,7 +151,7 @@ func TestNewService(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{}, client, store, testRelyingParty(t), nil, passkeys.AdmitEveryEnrollment)
+		svc, err := NewService(t.Context(), &Config{}, client, store, testRelyingParty(t), nil, passkeys.AdmitEveryEnrollment, passkeys.NoopHooks{})
 		test.ErrorIs(t, err, passkeys.ErrNilResolver)
 		test.Nil(t, svc)
 	})
@@ -146,7 +159,7 @@ func TestNewService(T *testing.T) {
 	T.Run("nil config", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), nil, testDBClient(t), nil, nil, nil, nil)
+		svc, err := NewService(t.Context(), nil, testDBClient(t), nil, nil, nil, nil, nil)
 		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 		test.Nil(t, svc)
 	})

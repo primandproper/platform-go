@@ -17,7 +17,8 @@ import (
 // registered in the injector before the Store is invoked. The Targets value is
 // the application's declaration of what can be commented on — a set of types,
 // each optionally carrying a function that reads the application's own tables —
-// so it has no environment-driven construction here.
+// so it has no environment-driven construction here. A comments.Hooks must be
+// registered too — comments.NoopHooks{} by name for a container that wants none.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (comments.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -45,11 +46,17 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
+		hooks, err := do.Invoke[comments.Hooks](i)
+		if err != nil {
+			return nil, err
+		}
+
 		return NewStore(
 			ctx,
 			cfg,
 			client,
 			targets,
+			hooks,
 			WithPillars(pillars),
 		)
 	})

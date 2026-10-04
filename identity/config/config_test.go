@@ -174,50 +174,30 @@ func TestNewService(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{}, client, store)
+		svc, err := NewService(t.Context(), &Config{}, client, store, identity.NoopHooks{})
 		must.NoError(t, err)
 		test.NotNil(t, svc)
 	})
 
-	T.Run("defaults to no hooks", func(t *testing.T) {
+	T.Run("refuses nil hooks", func(t *testing.T) {
 		t.Parallel()
 
-		// An application with nothing to commit beside an identity write
-		// configures nothing, so a Service built without WithHooks has to be
-		// usable rather than nil-hooked.
+		// An application with nothing to commit beside an identity write passes
+		// identity.NoopHooks by name; nil is a wiring mistake, not that choice.
 		client := newClient(dialect.Postgres)
 
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{}, client, store, WithHooks(nil))
-		must.NoError(t, err)
-		test.NotNil(t, svc)
-	})
-
-	T.Run("applies caller options after the ones it derives", func(t *testing.T) {
-		t.Parallel()
-
-		// Hooks are an option this constructor sets from WithHooks, so a
-		// caller's own identity.WithHooks passed through WithServiceOptions has
-		// to be applied after it — that ordering is what makes the pass-through
-		// an override rather than a suggestion.
-		client := newClient(dialect.Postgres)
-
-		store, err := NewStore(t.Context(), &Config{}, client)
-		must.NoError(t, err)
-
-		svc, err := NewService(t.Context(), &Config{}, client, store,
-			WithHooks(identity.NoopHooks{}),
-			WithServiceOptions(identity.WithHooks(identity.NoopHooks{})))
-		must.NoError(t, err)
-		test.NotNil(t, svc)
+		svc, err := NewService(t.Context(), &Config{}, client, store, nil)
+		test.Nil(t, svc)
+		must.ErrorIs(t, err, identity.ErrNilHooks)
 	})
 
 	T.Run("refuses a nil config", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), nil, newClient(dialect.Postgres), nil)
+		svc, err := NewService(t.Context(), nil, newClient(dialect.Postgres), nil, identity.NoopHooks{})
 		test.Nil(t, svc)
 		must.ErrorIs(t, err, errors.ErrNilInputParameter)
 	})
@@ -230,7 +210,7 @@ func TestNewService(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{TablePrefix: "has space"}, client, store)
+		svc, err := NewService(t.Context(), &Config{TablePrefix: "has space"}, client, store, identity.NoopHooks{})
 		test.Nil(t, svc)
 		must.Error(t, err)
 	})
@@ -249,7 +229,7 @@ func TestNewServer(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{}, client, store)
+		svc, err := NewService(t.Context(), &Config{}, client, store, identity.NoopHooks{})
 		must.NoError(t, err)
 
 		return NewServer(t.Context(), cfg, svc, store, client, principal, opts...)
@@ -274,7 +254,7 @@ func TestNewServer(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{}, client)
 		must.NoError(t, err)
 
-		svc, err := NewService(t.Context(), &Config{}, client, store)
+		svc, err := NewService(t.Context(), &Config{}, client, store, identity.NoopHooks{})
 		must.NoError(t, err)
 
 		srv, err := NewServer(t.Context(), &Config{}, svc, store, client, nil)

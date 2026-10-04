@@ -59,7 +59,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("builds a store", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres), mediaregistry.NoopHooks{})
 		must.NoError(t, err)
 		must.NotNil(t, store)
 	})
@@ -67,7 +67,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses a nil config", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres), mediaregistry.NoopHooks{})
 		must.ErrorIs(t, err, errors.ErrNilInputParameter)
 
 		// The interface must be nil, not a non-nil interface holding a nil
@@ -79,15 +79,23 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, nil)
+		store, err := NewStore(t.Context(), &Config{}, nil, mediaregistry.NoopHooks{})
 		must.ErrorIs(t, err, mediaregistry.ErrNilDatabaseClient)
+		test.Nil(t, store)
+	})
+
+	T.Run("refuses nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres), nil)
+		must.ErrorIs(t, err, mediaregistry.ErrNilHooks)
 		test.Nil(t, store)
 	})
 
 	T.Run("refuses a prefix that cannot render", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres), mediaregistry.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -97,7 +105,7 @@ func TestNewStore(T *testing.T) {
 
 		// A caller can override anything the configuration set, the table
 		// prefix included.
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres),
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres), mediaregistry.NoopHooks{},
 			WithStoreOptions(mediaregistry.WithTablePrefix("elsewhere")))
 		must.NoError(t, err)
 		must.NotNil(t, store)

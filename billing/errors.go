@@ -12,6 +12,12 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing database client")
 
+	// ErrNilHooks indicates nil Hooks. A store that commits nothing alongside
+	// its writes is handed NoopHooks by name, so a nil is a caller that forgot
+	// rather than one that decided. It wraps errors.ErrNilInputParameter, so a
+	// caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing hooks")
+
 	// ErrNilProduct indicates a nil *Product where one was required.
 	ErrNilProduct = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil product")
 

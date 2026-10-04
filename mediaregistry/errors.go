@@ -12,6 +12,12 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil upload registry database client")
 
+	// ErrNilHooks indicates nil Hooks. A store that commits nothing alongside
+	// its writes is handed NoopHooks by name, so a nil is a caller that forgot
+	// rather than one that decided. It wraps errors.ErrNilInputParameter, so a
+	// caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil upload registry hooks")
+
 	// ErrNilExecutor indicates a nil executor. Every method on the Store runs on
 	// one the caller supplies — a database.Tx for a write, an executor for a
 	// read — so there is no method that can fall back to a connection of the

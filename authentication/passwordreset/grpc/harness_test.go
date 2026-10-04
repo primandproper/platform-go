@@ -150,7 +150,7 @@ func newHarnessWithService(
 	store, err := identity.NewSQLStore(db, identity.WithTablePrefix(prefix))
 	must.NoError(t, err)
 
-	tokens, err := passwordreset.NewSQLStore(&passwordreset.Config{TablePrefix: prefix}, db)
+	tokens, err := passwordreset.NewSQLStore(&passwordreset.Config{TablePrefix: prefix}, db, passwordreset.NoopHooks{})
 	must.NoError(t, err)
 
 	mailer := &recordingMailer{}
@@ -228,7 +228,7 @@ func (h *harness) register(t *testing.T, authenticator *argon2.Argon2Authenticat
 	hashed, err := authenticator.HashPassword(t.Context(), h.password)
 	must.NoError(t, err)
 
-	identitySvc, err := identity.NewService(h.db, h.store)
+	identitySvc, err := identity.NewService(h.db, h.store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	registration, err := identitySvc.Register(t.Context(), testScope,

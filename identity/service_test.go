@@ -44,12 +44,15 @@ type recordingHooks struct {
 	membership          *Membership
 	user                *User
 
+	// The before rows the update hooks are handed beside the after.
+	accountBefore *Account
+	userBefore    *User
+
 	// What the credential hooks were told about the column their write cleared.
 	previousVerifiedAt *time.Time
 
 	previousOwnerUserID string
 	previousAccountID   string
-	previousStatus      AccountStatus
 	newDefaultAccountID string
 
 	calls            []string
@@ -212,12 +215,12 @@ func (h *recordingHooks) AfterArchiveAccount(
 }
 
 func (h *recordingHooks) AfterUpdateUserAccountStatus(
-	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User, previousStatus AccountStatus,
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, before, after *User,
 ) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.user, h.previousStatus = user, previousStatus
+	h.userBefore, h.user = before, after
 
 	return h.record(ctx, tx, "status")
 }
@@ -245,12 +248,12 @@ func (h *recordingHooks) AfterUpdateProfile(
 }
 
 func (h *recordingHooks) AfterUpdateAccount(
-	ctx context.Context, tx database.Tx, _ tenancy.Scope, account *Account, changed []string,
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, before, after *Account,
 ) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.account, h.changed = account, changed
+	h.accountBefore, h.account = before, after
 
 	return h.record(ctx, tx, "account")
 }
@@ -376,7 +379,7 @@ func (e *storeEnv) newService(t *testing.T, hooks Hooks) (*Service, *SQLStore) {
 
 	store := e.newStore(t)
 
-	service, err := NewService(e.client, store, WithHooks(hooks))
+	service, err := NewService(e.client, store, hooks)
 	must.NoError(t, err)
 
 	return service, store
@@ -978,7 +981,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return err
 		})
 
-		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		service, err := NewService(env.client, store, hooks, WithInvitationMailer(mailer))
 		must.NoError(t, err)
 
 		registration := registerAda(t, service, "ada")
@@ -1026,7 +1029,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return errMailerDown
 		})
 
-		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		service, err := NewService(env.client, store, hooks, WithInvitationMailer(mailer))
 		must.NoError(t, err)
 
 		registration := registerAda(t, service, "ada")
@@ -1058,7 +1061,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return nil
 		})
 
-		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		service, err := NewService(env.client, store, hooks, WithInvitationMailer(mailer))
 		must.NoError(t, err)
 
 		registration := registerAda(t, service, "ada")
@@ -1596,7 +1599,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.True(t, membership.DefaultAccount)
 	})
 
-	t.Run("moves a user between statuses and names the one before", func(t *testing.T) {
+	t.Run("moves a user between statuses and hands the hook the user before", func(t *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
@@ -1612,7 +1615,24 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "", banned.HashedPassword)
 
 		test.EqOp(t, 1, hooks.ran("status"))
-		test.EqOp(t, StatusGood, hooks.previousStatus)
+
+		// Both columns the write moves are on both sides, and the before row is
+		// redacted like the after: it is a credential-bearing users row either way.
+		must.NotNil(t, hooks.userBefore)
+		test.EqOp(t, registration.User.ID, hooks.userBefore.ID)
+		test.EqOp(t, StatusGood, hooks.userBefore.AccountStatus)
+		test.EqOp(t, "", hooks.userBefore.AccountStatusExplanation)
+		test.EqOp(t, "", hooks.userBefore.HashedPassword)
+		test.EqOp(t, StatusBanned, hooks.user.AccountStatus)
+		test.EqOp(t, "spam", hooks.user.AccountStatusExplanation)
+
+		// Banned again for a different reason, the before row carries the reason
+		// being replaced — the value the previous status alone could not say.
+		_, err = service.UpdateUserAccountStatus(t.Context(), testScope,
+			registration.User.ID, StatusBanned, "fraud")
+		must.NoError(t, err)
+		test.EqOp(t, "spam", hooks.userBefore.AccountStatusExplanation)
+		test.EqOp(t, "fraud", hooks.user.AccountStatusExplanation)
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, registration.User.ID)
 		must.NoError(t, err)
@@ -1756,7 +1776,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.NotEq(t, "Augusta", saved.FirstName)
 	})
 
-	t.Run("an account save reports the fields that moved", func(t *testing.T) {
+	t.Run("an account save hands the hook the account before and after", func(t *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
@@ -1770,7 +1790,18 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		test.EqOp(t, "Analytical Engines", updated.Name)
 		test.EqOp(t, 1, hooks.ran("account"))
-		test.Eq(t, []string{"name", "timeZone"}, hooks.changed)
+
+		// The before row is the account the save was applied to, untouched by
+		// the applying: apply edits in place, and a before that aliased it would
+		// read as the after.
+		must.NotNil(t, hooks.accountBefore)
+		test.EqOp(t, registration.Account.ID, hooks.accountBefore.ID)
+		test.EqOp(t, registration.Account.Name, hooks.accountBefore.Name)
+		test.EqOp(t, registration.Account.TimeZone, hooks.accountBefore.TimeZone)
+		test.Nil(t, hooks.accountBefore.LastUpdatedAt)
+		test.EqOp(t, "Analytical Engines", hooks.account.Name)
+		test.EqOp(t, "Europe/London", hooks.account.TimeZone)
+		test.NotNil(t, hooks.account.LastUpdatedAt)
 
 		saved, err := store.GetAccount(t.Context(), env.reader(), testScope, registration.Account.ID)
 		must.NoError(t, err)
@@ -1822,7 +1853,8 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 
 		test.EqOp(t, address, updated.BillingAddress)
-		test.Eq(t, []string{"billingAddress"}, hooks.changed)
+		test.EqOp(t, BillingAddress{}, hooks.accountBefore.BillingAddress)
+		test.EqOp(t, address, hooks.account.BillingAddress)
 
 		saved, err := store.GetAccount(t.Context(), env.reader(), testScope, registration.Account.ID)
 		must.NoError(t, err)
@@ -2041,7 +2073,7 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		service, err := NewService(nil, &unusedStore{})
+		service, err := NewService(nil, &unusedStore{}, NoopHooks{})
 		must.ErrorIs(t, err, ErrNilDatabaseClient)
 		test.Nil(t, service)
 	})
@@ -2051,27 +2083,33 @@ func TestNewService(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		service, err := NewService(env.client, nil)
+		service, err := NewService(env.client, nil, NoopHooks{})
 		must.ErrorIs(t, err, ErrNilStore)
 		test.Nil(t, service)
 	})
 
-	T.Run("defaults to hooks that do nothing", func(t *testing.T) {
+	T.Run("refuses nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		service, err := NewService(env.client, env.newStore(t), nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		test.Nil(t, service)
+	})
+
+	T.Run("runs NoopHooks named by the caller", func(t *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		// A nil option is skipped, and WithHooks(nil) leaves the default in
-		// place rather than installing a nil interface nothing could call.
-		service, err := NewService(env.client, store, nil, WithHooks(nil))
+		// A nil option is skipped.
+		service, err := NewService(env.client, store, NoopHooks{}, nil)
 		must.NoError(t, err)
 		must.NotNil(t, service)
-		_, isNoop := service.hooks.(NoopHooks)
-		test.True(t, isNoop)
 
-		// The whole point of the default: an operation runs with no hooks
-		// configured at all.
+		// An operation runs with hooks that commit nothing.
 		_, err = service.Register(t.Context(), testScope,
 			newUser("ada"), newAccount("ada's account", ""), []string{"admin"})
 		must.NoError(t, err)

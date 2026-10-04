@@ -83,13 +83,21 @@ func (e *storeEnv) clientFor(t *testing.T) database.Client {
 }
 
 // newStore migrates a uniquely prefixed set of webhook tables and returns a
-// Store over them.
-func (e *storeEnv) newStore(t *testing.T) Store {
+// Store over them with NoopHooks, built with whatever further options the case
+// names.
+func (e *storeEnv) newStore(t *testing.T, opts ...SQLStoreOption) Store {
+	t.Helper()
+
+	return e.newHookedStore(t, NoopHooks{}, opts...)
+}
+
+// newHookedStore is newStore with the hooks the case names.
+func (e *storeEnv) newHookedStore(t *testing.T, hooks Hooks, opts ...SQLStoreOption) Store {
 	t.Helper()
 
 	client, prefix := e.database(t)
 
-	store, err := NewSQLStore(client, WithTablePrefix(prefix))
+	store, err := NewSQLStore(client, hooks, append([]SQLStoreOption{WithTablePrefix(prefix)}, opts...)...)
 	must.NoError(t, err)
 
 	return store

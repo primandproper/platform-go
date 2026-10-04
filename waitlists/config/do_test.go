@@ -38,6 +38,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[waitlists.Hooks](i, waitlists.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -55,6 +56,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[waitlists.Hooks](i, waitlists.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "app"})
 
 		RegisterStore(i)
@@ -70,7 +72,24 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[waitlists.Hooks](i, waitlists.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "has space"})
+
+		RegisterStore(i)
+
+		_, err := do.Invoke[waitlists.Store](i)
+		must.Error(t, err)
+	})
+
+	T.Run("requires hooks", func(t *testing.T) {
+		t.Parallel()
+
+		// A container that wants none registers waitlists.NoopHooks{} by name; one
+		// that registers nothing has forgotten, and the store is not built.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
 

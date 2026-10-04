@@ -17,14 +17,17 @@ import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	auditclient "github.com/primandproper/platform-go/v14/audit/grpc/client"
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientsclient "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc/client"
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	oauth2servermigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
 	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
 	passkeysclient "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc/client"
 	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -43,6 +46,7 @@ import (
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	commentsclient "github.com/primandproper/platform-go/v14/comments/grpc/client"
@@ -61,6 +65,7 @@ import (
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
+	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
@@ -79,15 +84,18 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
 	"github.com/primandproper/platform-go/v14/service"
+	"github.com/primandproper/platform-go/v14/settings"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
 	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	waitlistsclient "github.com/primandproper/platform-go/v14/waitlists/grpc/client"
 	waitlistsmigrations "github.com/primandproper/platform-go/v14/waitlists/migrations"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v14/webhooks"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 	webhooksclient "github.com/primandproper/platform-go/v14/webhooks/grpc/client"
 	webhooksmigrations "github.com/primandproper/platform-go/v14/webhooks/migrations"
@@ -158,7 +166,7 @@ var prefixCounter atomic.Uint64
 // which surfaces mount, what the server is built from, the order it comes up in
 // — is the composition root's, which is what this subject exists to put under
 // test.
-func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists waitlistConfirmation) {
+func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, confirmation waitlistConfirmation) {
 	t.Helper()
 
 	prefix := fmt.Sprintf("asm_%d", prefixCounter.Add(1))
@@ -235,7 +243,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 			Lock: distributedlockcfg.Config{Provider: distributedlockcfg.MemoryProvider},
 		},
 	}
-	if waitlists == confirmsWaitlists {
+	if confirmation == confirmsWaitlists {
 		cfg.Links = waitlistLinksConfig(prefix)
 	}
 
@@ -258,6 +266,8 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// to be mailed. identity/config resolves them when it builds the service.
 	invites := &invitationTokens{}
 	do.ProvideValue[identity.Hooks](i, invites)
+
+	provideNoopHooks(i)
 
 	// The same value is the consumer's verification mailer, so a resent link
 	// lands where the registration's did and the action reads the newest.
@@ -291,7 +301,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// whose presence is what mounts the loop — over the minter the Links block
 	// above registered.
 	waitlistMail := &waitlistMailbox{}
-	if waitlists == confirmsWaitlists {
+	if confirmation == confirmsWaitlists {
 		do.ProvideValue[waitlistsgrpc.ConfirmationMailer](i, waitlistMail)
 	}
 	// The sign-in extractor, with this harness's role policy on it, installed
@@ -351,7 +361,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	must.NoError(t, err)
 
 	client := do.MustInvoke[database.Client](i)
-	migrate(t, client, d, prefix, waitlists)
+	migrate(t, client, d, prefix, confirmation)
 
 	addrs := run(t, svc, do.MustInvoke[*grpcserver.Server](i), do.MustInvoke[*httpserver.APIServer](i))
 	conn := dial(t, addrs.grpc)
@@ -497,7 +507,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 				VerificationToken:  invites.verificationToken,
 				MagicLinkToken:     links.token,
 				HandleReminder:     reminders.handle,
-				WaitlistLinks:      waitlistLinks(waitlists, waitlistMail),
+				WaitlistLinks:      waitlistLinks(confirmation, waitlistMail),
 				Registered: register(client,
 					do.MustInvoke[uploads.UploadManager](i), do.MustInvoke[mediaregistry.Store](i)),
 				CommentTarget: commentable.bring,
@@ -609,13 +619,13 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	// Each run is held to the skips skips_test.go names for it, and fails on
 	// any other.
 	t.Run("members make every call", func(t *testing.T) {
-		expectSkips(t, suiteSkips(membersSkips, waitlists))
+		expectSkips(t, suiteSkips(membersSkips, confirmation))
 
 		conformanceall.Run(t, seams(nil, nil))
 	})
 
 	t.Run("staff calls reserved", func(t *testing.T) {
-		expectSkips(t, suiteSkips(staffSkips, waitlists))
+		expectSkips(t, suiteSkips(staffSkips, confirmation))
 
 		conformanceall.Run(t, seams(staffOnly, staffOnlyRoutes))
 	})
@@ -772,7 +782,7 @@ func dial(t *testing.T, addr net.Addr) *grpc.ClientConn {
 // migrate renders each mounted package's schema under the run's prefix, on the
 // client the service built — which is what a consumer's migration step does,
 // since nothing in service runs one.
-func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string, waitlists waitlistConfirmation) {
+func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string, confirmation waitlistConfirmation) {
 	t.Helper()
 
 	schemas := map[string]func(dialect.Dialect, string) ([]string, error){
@@ -799,7 +809,7 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string,
 		"work queue":     workqueuemigrations.Statements,
 	}
 
-	if waitlists == confirmsWaitlists {
+	if confirmation == confirmsWaitlists {
 		schemas["action links"] = linksmigrations.Statements
 	}
 
@@ -893,4 +903,23 @@ func (c *credentialTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	req.Header.Set(headerReserving, c.reserving)
 
 	return http.DefaultTransport.RoundTrip(req)
+}
+
+// provideNoopHooks registers NoopHooks, by name, for every package other than
+// identity whose store or service requires Hooks: the assembled application
+// commits nothing beside those writes, and a store that requires Hooks fails
+// to build without one.
+func provideNoopHooks(i do.Injector) {
+	do.ProvideValue[billing.Hooks](i, billing.NoopHooks{})
+	do.ProvideValue[comments.Hooks](i, comments.NoopHooks{})
+	do.ProvideValue[issuereports.Hooks](i, issuereports.NoopHooks{})
+	do.ProvideValue[mediaregistry.Hooks](i, mediaregistry.NoopHooks{})
+	do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
+	do.ProvideValue[oauth2clients.Hooks](i, oauth2clients.NoopHooks{})
+	do.ProvideValue[passkeys.Hooks](i, passkeys.NoopHooks{})
+	do.ProvideValue[passwordreset.Hooks](i, passwordreset.NoopHooks{})
+	do.ProvideValue[settings.Hooks](i, settings.NoopHooks{})
+	do.ProvideValue[signin.Hooks](i, signin.NoopHooks{})
+	do.ProvideValue[waitlists.Hooks](i, waitlists.NoopHooks{})
+	do.ProvideValue[webhooks.Hooks](i, webhooks.NoopHooks{})
 }

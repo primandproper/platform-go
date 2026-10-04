@@ -91,7 +91,7 @@ func TestRegisterTransports_operatorReads(T *testing.T) {
 
 		client := transactingClient()
 
-		svc, err := identity.NewService(client, store)
+		svc, err := identity.NewService(client, store, identity.NoopHooks{})
 		must.NoError(t, err)
 
 		i := newTransportInjector(t)

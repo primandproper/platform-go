@@ -191,7 +191,7 @@ func newHarness(
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := settings.NewSQLStore(db, settings.WithTablePrefix(prefix))
+	store, err := settings.NewSQLStore(db, settings.NoopHooks{}, settings.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
 	if authorizer == nil {

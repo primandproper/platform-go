@@ -162,7 +162,7 @@ func Example_service() {
 
 	scope := tenancy.Global()
 
-	service, err := identity.NewService(client, store, identity.WithHooks(&auditHooks{}))
+	service, err := identity.NewService(client, store, &auditHooks{})
 	if err != nil {
 		panic(err)
 	}

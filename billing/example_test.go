@@ -266,7 +266,7 @@ func Example_callerTransaction() {
 		panic(err)
 	}
 
-	store, err := billing.NewSQLStore(client)
+	store, err := billing.NewSQLStore(client, billing.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -346,7 +346,7 @@ func Example_callerTransaction() {
 func exampleWiring() (billing.Store, database.Client) {
 	client := exampleDatabase(context.Background())
 
-	store, err := billing.NewSQLStore(client)
+	store, err := billing.NewSQLStore(client, billing.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

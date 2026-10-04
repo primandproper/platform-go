@@ -216,6 +216,7 @@ var Matrix = map[string]map[string]Decision{
 		// wiring failure rather than anything a client sent.
 		"ErrNilDatabaseClient": {Err: billing.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: billing.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: billing.ErrNilHooks, Is: Platform},
 		"ErrNilProduct":        {Err: billing.ErrNilProduct, Is: Platform},
 		"ErrNilPurchase":       {Err: billing.ErrNilPurchase, Is: Platform},
 		"ErrNilSubscription":   {Err: billing.ErrNilSubscription, Is: Platform},
@@ -406,6 +407,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilAccountUpdate":  {Err: identity.ErrNilAccountUpdate, Is: Platform},
 		"ErrNilDatabaseClient": {Err: identity.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: identity.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: identity.ErrNilHooks, Is: Platform},
 		"ErrNilInvitation":     {Err: identity.ErrNilInvitation, Is: Platform},
 		"ErrNilMembership":     {Err: identity.ErrNilMembership, Is: Platform},
 		"ErrNilProfileUpdate":  {Err: identity.ErrNilProfileUpdate, Is: Platform},
@@ -485,6 +487,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilClient":         {Err: oauth2clients.ErrNilClient, Is: Platform},
 		"ErrNilDatabaseClient": {Err: oauth2clients.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: oauth2clients.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: oauth2clients.ErrNilHooks, Is: Platform},
 		"ErrNilInput":          {Err: oauth2clients.ErrNilInput, Is: Platform},
 		"ErrNilService":        {Err: oauth2clients.ErrNilService, Is: Platform},
 		"ErrNilStore":          {Err: oauth2clients.ErrNilStore, Is: Platform},
@@ -531,6 +534,7 @@ var Matrix = map[string]map[string]Decision{
 		// them. They are wiring failures rather than anything a client sent.
 		"ErrNilDatabaseClient": {Err: waitlists.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: waitlists.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: waitlists.ErrNilHooks, Is: Platform},
 		"ErrNilList":           {Err: waitlists.ErrNilList, Is: Platform},
 		"ErrNilSignup":         {Err: waitlists.ErrNilSignup, Is: Platform},
 
@@ -639,6 +643,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyNewEmailAddress":  {Err: signin.ErrEmptyNewEmailAddress, Is: Platform},
 		"ErrEmptyNewUsername":      {Err: signin.ErrEmptyNewUsername, Is: Platform},
 		"ErrNilEmailAddressUpdate": {Err: signin.ErrNilEmailAddressUpdate, Is: Platform},
+		"ErrNilHooks":              {Err: signin.ErrNilHooks, Is: Platform},
 		"ErrNilUsernameUpdate":     {Err: signin.ErrNilUsernameUpdate, Is: Platform},
 
 		// Wraps errors.ErrUnrecognizedInputValue, which the platform mappers
@@ -779,6 +784,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient": {Err: notifications.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilDevice":         {Err: notifications.ErrNilDevice, Is: Platform},
 		"ErrNilExecutor":       {Err: notifications.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: notifications.ErrNilHooks, Is: Platform},
 		"ErrNilNotification":   {Err: notifications.ErrNilNotification, Is: Platform},
 	},
 
@@ -824,6 +830,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilComment":        {Err: comments.ErrNilComment, Is: Platform},
 		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: comments.ErrNilHooks, Is: Platform},
 	},
 
 	webhooksPkg: {
@@ -869,6 +876,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilEnqueuer":       {Err: webhooks.ErrNilEnqueuer, Is: Platform},
 		"ErrNilEvent":          {Err: webhooks.ErrNilEvent, Is: Platform},
 		"ErrNilExecutor":       {Err: webhooks.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: webhooks.ErrNilHooks, Is: Platform},
 		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
 		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},
 
@@ -920,6 +928,7 @@ var Matrix = map[string]map[string]Decision{
 		// executor it holds.
 		"ErrNilDatabaseClient": {Err: issuereports.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: issuereports.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: issuereports.ErrNilHooks, Is: Platform},
 		"ErrNilReport":         {Err: issuereports.ErrNilReport, Is: Platform},
 	},
 
@@ -970,6 +979,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient":      {Err: settings.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilDefinition":          {Err: settings.ErrNilDefinition, Is: Platform},
 		"ErrNilExecutor":            {Err: settings.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":               {Err: settings.ErrNilHooks, Is: Platform},
 		"ErrNilStore":               {Err: settings.ErrNilStore, Is: Platform},
 		"ErrMalformedValue":         {Err: settings.ErrMalformedValue, Is: Platform},
 		"ErrNotEnumerated":          {Err: settings.ErrNotEnumerated, Is: Platform},
@@ -1023,6 +1033,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilStore":          {Err: passwordreset.ErrNilStore, Is: Platform},
 		"ErrNilDirectory":      {Err: passwordreset.ErrNilDirectory, Is: Platform},
 		"ErrNilAuthenticator":  {Err: passwordreset.ErrNilAuthenticator, Is: Platform},
+		"ErrNilHooks":          {Err: passwordreset.ErrNilHooks, Is: Platform},
 		"ErrNilMailer":         {Err: passwordreset.ErrNilMailer, Is: Platform},
 		"ErrEmptyEmailAddress": {Err: passwordreset.ErrEmptyEmailAddress, Is: Platform},
 		"ErrEmptyNewPassword":  {Err: passwordreset.ErrEmptyNewPassword, Is: Platform},
@@ -1053,6 +1064,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient":      {Err: passkeys.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":            {Err: passkeys.ErrNilExecutor, Is: Platform},
 		"ErrNilCredential":          {Err: passkeys.ErrNilCredential, Is: Platform},
+		"ErrNilHooks":               {Err: passkeys.ErrNilHooks, Is: Platform},
 		"ErrNilStore":               {Err: passkeys.ErrNilStore, Is: Platform},
 		"ErrNilResolver":            {Err: passkeys.ErrNilResolver, Is: Platform},
 		"ErrNilRelyingParty":        {Err: passkeys.ErrNilRelyingParty, Is: Platform},
@@ -1214,6 +1226,7 @@ var Matrix = map[string]map[string]Decision{
 		// The nil arguments, which wrap errors.ErrNilInputParameter.
 		"ErrNilDatabaseClient": {Err: mediaregistry.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: mediaregistry.ErrNilExecutor, Is: Platform},
+		"ErrNilHooks":          {Err: mediaregistry.ErrNilHooks, Is: Platform},
 		"ErrNilReader":         {Err: mediaregistry.ErrNilReader, Is: Platform},
 		"ErrNilStore":          {Err: mediaregistry.ErrNilStore, Is: Platform},
 		"ErrNilUploadManager":  {Err: mediaregistry.ErrNilUploadManager, Is: Platform},

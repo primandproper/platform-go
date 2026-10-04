@@ -128,13 +128,13 @@ func registerApplication(i do.Injector, prefix string, commentable *things, peop
 	})
 
 	do.Provide(i, func(i do.Injector) (*oauth2clients.Service, error) {
-		return oauth2clients.NewService(do.MustInvoke[database.Client](i), do.MustInvoke[oauth2clients.Store](i))
+		return oauth2clients.NewService(do.MustInvoke[database.Client](i), do.MustInvoke[oauth2clients.Store](i), oauth2clients.NoopHooks{})
 	})
 
 	do.Provide(i, func(i do.Injector) (*passwordreset.Service, error) {
 		db := do.MustInvoke[database.Client](i)
 
-		resetTokens, err := passwordreset.NewSQLStore(&passwordreset.Config{TablePrefix: prefix}, db)
+		resetTokens, err := passwordreset.NewSQLStore(&passwordreset.Config{TablePrefix: prefix}, db, passwordreset.NoopHooks{})
 		if err != nil {
 			return nil, err
 		}

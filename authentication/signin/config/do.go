@@ -20,13 +20,14 @@ import (
 //
 // Prerequisites: *Config, a context.Context, database.Client, identity.Store
 // and tokens.Issuer must be registered before the Service is invoked, and so
-// must the authenticator the application supplies:
+// must the two the application supplies:
 //
 //	do.ProvideValue[authentication.Authenticator](i, authenticator)
+//	do.ProvideValue[signin.Hooks](i, hooks) // or signin.NoopHooks{}
 //
-// It is required and has no default. passwordresetcfg resolves the same key,
-// so a container holding both blocks hashes a reset's password with the engine
-// sign-in verifies it with. It resolves signin.PasswordPolicy too —
+// Both are required and neither has a default. passwordresetcfg resolves the
+// authenticator's key too, so a container holding both blocks hashes a reset's
+// password with the engine sign-in verifies it with. It resolves signin.PasswordPolicy too —
 // passwordreset.PasswordPolicy is an alias of it — so one registered policy
 // governs the reset door as well as this service's. The context bounds the
 // sweepers' lives.
@@ -44,14 +45,13 @@ import (
 // registering it is what switches the handle reminder door on: the door has no
 // block, so there is no presence for a missing mailer to contradict.
 //
-// signin.Hooks, signin.PasswordPolicy, signin.AccountPasswordPolicy,
+// signin.PasswordPolicy, signin.AccountPasswordPolicy,
 // signin.RegistrationPolicy and signin.ClaimsBuilder are used if the application registered them, and the
 // service's own defaults apply otherwise. So is a signin.VerificationMailer,
 // whose absence leaves RequestVerificationEmail refusing with
 // signin.ErrVerificationMailerNotConfigured: it is the one door no config block
-// turns on, because it needs nothing but the mailer. Only absence is absorbed, as
-// identitycfg absorbs it for identity.Hooks. One that is registered and fails to
-// build is returned.
+// turns on, because it needs nothing but the mailer. Only absence is absorbed.
+// One that is registered and fails to build is returned.
 //
 // A signin.ImpersonationPolicy is used if the application registered one, and
 // registering it is what opens IssueImpersonationToken: without one every call
@@ -106,6 +106,13 @@ func RegisterService(i do.Injector) {
 				do.NameOf[tokens.Issuer]())
 		}
 
+		hooks, err := do.Invoke[signin.Hooks](i)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err,
+				"resolving %s: the application registers what commits alongside each sign-in, or signin.NoopHooks{}",
+				do.NameOf[signin.Hooks]())
+		}
+
 		opts := []Option{WithPillars(pillars)}
 
 		if !cfg.Registration.Disabled {
@@ -158,7 +165,7 @@ func RegisterService(i do.Injector) {
 
 		opts = append(opts, WithServiceOptions(serviceOpts...))
 
-		return NewService(ctx, cfg, client, directory, authenticator, issuer, opts...)
+		return NewService(ctx, cfg, client, directory, authenticator, issuer, hooks, opts...)
 	})
 }
 
@@ -167,15 +174,6 @@ func RegisterService(i do.Injector) {
 // it.
 func optionalServiceOptions(i do.Injector) ([]signin.ServiceOption, error) {
 	var opts []signin.ServiceOption
-
-	hooks, err := injection.InvokeOptional[signin.Hooks](i)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking sign-in hooks")
-	}
-
-	if hooks != nil {
-		opts = append(opts, signin.WithHooks(hooks))
-	}
 
 	policy, err := injection.InvokeOptional[signin.PasswordPolicy](i)
 	if err != nil {

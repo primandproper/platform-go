@@ -16,6 +16,11 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity store")
 
+	// ErrNilHooks indicates nil Hooks handed to NewService. A service whose
+	// writes owe no companions is handed NoopHooks{} by name. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity hooks")
+
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, a database.SQLQueryExecutor
 	// for a read — so there is no method that can fall back to a connection of

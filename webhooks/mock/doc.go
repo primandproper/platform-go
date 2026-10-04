@@ -6,4 +6,4 @@ package webhooksmock
 
 // Regenerate via `go generate ./webhooks/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out webhooks_mock.go -pkg webhooksmock -rm -fmt goimports .. Store:StoreMock Dispatcher:DispatcherMock Enqueuer:EnqueuerMock
+//go:generate go tool github.com/matryer/moq -out webhooks_mock.go -pkg webhooksmock -rm -fmt goimports .. Store:StoreMock Dispatcher:DispatcherMock Enqueuer:EnqueuerMock Hooks:HooksMock

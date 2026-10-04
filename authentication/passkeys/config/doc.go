@@ -20,9 +20,10 @@ of a field for each is the reason this package resolves it from the injector:
     session is proof enough to add a way into an account is a question only
     the application's sessions can answer. A deployment that has decided it is
     registers passkeys.AdmitEveryEnrollment by name.
-  - A passkeys.UsernameResolver, a passkeys.AlternativeSignIn and passkeys.Hooks
-    are the application's and optional. Absent, only the discoverable login is
-    offered, the last-credential guard assumes nobody has a password, and
-    nothing is recorded.
+  - passkeys.Hooks are the application's and required. A deployment whose
+    passkey writes owe no companions registers passkeys.NoopHooks{} by name.
+  - A passkeys.UsernameResolver and a passkeys.AlternativeSignIn are the
+    application's and optional. Absent, only the discoverable login is offered
+    and the last-credential guard assumes nobody has a password.
 */
 package passkeyscfg

@@ -62,7 +62,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("builds a store", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres), waitlists.NoopHooks{})
 		must.NoError(t, err)
 		must.NotNil(t, store)
 	})
@@ -70,7 +70,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses a nil config", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres), waitlists.NoopHooks{})
 		must.ErrorIs(t, err, errors.ErrNilInputParameter)
 
 		// The interface must be nil, not a non-nil interface holding a nil
@@ -82,7 +82,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, nil)
+		store, err := NewStore(t.Context(), &Config{}, nil, waitlists.NoopHooks{})
 		must.ErrorIs(t, err, waitlists.ErrNilDatabaseClient)
 		test.Nil(t, store)
 	})
@@ -90,7 +90,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses an unsupported dialect", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Dialect("oracle")))
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Dialect("oracle")), waitlists.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -98,7 +98,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses an invalid prefix", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres), waitlists.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -108,7 +108,7 @@ func TestNewStore(T *testing.T) {
 
 		// A caller can override anything the config derived, the table prefix
 		// included.
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres),
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "app"}, newClient(dialect.Postgres), waitlists.NoopHooks{},
 			WithStoreOptions(waitlists.WithTablePrefix("override")))
 		must.NoError(t, err)
 		must.NotNil(t, store)
@@ -118,7 +118,7 @@ func TestNewStore(T *testing.T) {
 		t.Parallel()
 
 		// Absent means noop: a caller wanting none of the three names none.
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.SQLite),
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.SQLite), waitlists.NoopHooks{},
 			WithPillars(nil),
 			WithLogger(nil),
 			WithTracerProvider(nil),
@@ -136,7 +136,7 @@ func TestNewStore(T *testing.T) {
 		// already written, so it reaches the store through WithStoreOptions —
 		// a deployment that has also rewritten the column — rather than through
 		// a variable a restart can change.
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres),
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres), waitlists.NoopHooks{},
 			WithStoreOptions(
 				waitlists.WithHasher(sha512.NewSHA512Hasher()),
 				waitlists.WithClock(clock.NewClock()),
@@ -148,7 +148,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("takes pillars", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.MySQL),
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.MySQL), waitlists.NoopHooks{},
 			WithPillars(&observability.Pillars{}))
 		must.NoError(t, err)
 		must.NotNil(t, store)

@@ -153,7 +153,7 @@ type recoveryEnv struct {
 // whatever else the door under test mints.
 func newRecoveryEnv(
 	t *testing.T,
-	build func(*testing.T, ...signin.ServiceOption) *env,
+	build envBuilder,
 	opts ...signin.ServiceOption,
 ) *recoveryEnv {
 	t.Helper()
@@ -161,8 +161,7 @@ func newRecoveryEnv(
 	store := &lateRecoveryStore{}
 	hooks := &recoveryHooks{}
 
-	e := build(t, append([]signin.ServiceOption{
-		signin.WithHooks(hooks),
+	e := build(t, hooks, append([]signin.ServiceOption{
 		signin.WithRecoveryCodeStore(store),
 	}, opts...)...)
 
@@ -270,7 +269,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("mints a set behind the password and the second factor", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		codes, err := r.svc.ReplaceRecoveryCodes(t.Context(), testScope, r.user.ID, &signin.RecoveryCodeReplacement{
 			CurrentPassword: r.password,
@@ -295,7 +294,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("mints as many as the service was told to", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv, signin.WithRecoveryCodeCount(3))
+		r := newRecoveryEnv(t, hookedEnv, signin.WithRecoveryCodeCount(3))
 
 		test.SliceLen(t, 3, r.codes)
 	})
@@ -305,7 +304,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("takes one of the codes being replaced as the second factor", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		codes, err := r.svc.ReplaceRecoveryCodes(t.Context(), testScope, r.user.ID, &signin.RecoveryCodeReplacement{
 			CurrentPassword: r.password,
@@ -321,7 +320,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("refuses a code another request spent first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 		r.spendBehindTheDoor(t, r.codes[0])
 
 		_, err := r.svc.ReplaceRecoveryCodes(t.Context(), testScope, r.user.ID, &signin.RecoveryCodeReplacement{
@@ -351,7 +350,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("refuses a user who holds no password", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 		passwordless := r.registerPasswordless(t, "ada")
 
 		_, err := r.svc.ReplaceRecoveryCodes(t.Context(), testScope, passwordless.ID, &signin.RecoveryCodeReplacement{
@@ -363,7 +362,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("refuses what reauthentication refuses", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		for name, tc := range map[string]struct {
 			replacement *signin.RecoveryCodeReplacement
@@ -386,7 +385,7 @@ func TestService_ReplaceRecoveryCodes(T *testing.T) {
 	T.Run("refuses a request with nothing on it", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		_, err := r.svc.ReplaceRecoveryCodes(t.Context(), testScope, r.user.ID, nil)
 		test.ErrorIs(t, err, signin.ErrNilRecoveryCodeReplacement)
@@ -402,7 +401,7 @@ func TestService_RecoveryCodesRemaining(T *testing.T) {
 	T.Run("counts what is left as codes are spent", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		remaining, err := r.svc.RecoveryCodesRemaining(t.Context(), testScope, r.user.ID)
 		must.NoError(t, err)
@@ -419,7 +418,7 @@ func TestService_RecoveryCodesRemaining(T *testing.T) {
 	T.Run("refuses a count of nobody", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		_, err := r.svc.RecoveryCodesRemaining(t.Context(), testScope, "")
 		test.ErrorIs(t, err, signin.ErrEmptyUserID)
@@ -432,7 +431,7 @@ func TestIssueForPrincipal_recoveryCode(T *testing.T) {
 	T.Run("a single-factor credential takes a recovery code, and spends it first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		signIn, err := r.svc.IssueForPrincipal(t.Context(), testScope, r.user.ID, "",
 			signin.WithCredentialKind("passkey"), signin.WithTOTPCode(r.codes[0]))
@@ -447,7 +446,7 @@ func TestIssueForPrincipal_recoveryCode(T *testing.T) {
 	T.Run("refuses a sign-in whose code another request spent first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newRefreshEnv)
+		r := newRecoveryEnv(t, hookedRefreshEnv)
 		r.spendBehindTheDoor(t, r.codes[0])
 
 		_, err := r.svc.IssueForPrincipal(t.Context(), testScope, r.user.ID, "", signin.WithTOTPCode(r.codes[0]))
@@ -465,7 +464,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("signs somebody in on a recovery code, and spends it first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		signIn, err := r.svc.LoginForToken(t.Context(), testScope, r.withCode(r.codes[0]))
 		must.NoError(t, err)
@@ -493,7 +492,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("a spent code is a wrong code, and a failed sign-in", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		_, err := r.svc.LoginForToken(t.Context(), testScope, r.withCode(r.codes[0]))
 		must.NoError(t, err)
@@ -511,7 +510,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("a wrong recovery code is refused as a wrong TOTP code is", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		_, wrongRecovery := r.svc.LoginForToken(t.Context(), testScope, r.withCode("AAAA-BBBB-CCCC"))
 		_, wrongTOTP := r.svc.LoginForToken(t.Context(), testScope, r.withCode("000000"))
@@ -527,7 +526,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("takes a code however a person copied it off paper", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		typed := strings.ToLower(strings.ReplaceAll(r.codes[0], "-", ""))
 
@@ -539,7 +538,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("a TOTP code spends nothing", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		_, err := r.svc.LoginForToken(t.Context(), testScope, r.withCode(code(t, r.secret)))
 		must.NoError(t, err)
@@ -555,7 +554,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("refuses a sign-in whose code another request spent first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newRefreshEnv)
+		r := newRecoveryEnv(t, hookedRefreshEnv)
 		r.spendBehindTheDoor(t, r.codes[0])
 
 		_, err := r.svc.LoginForToken(t.Context(), testScope, r.withCode(r.codes[0]))
@@ -571,7 +570,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("a hook that refuses the spend leaves the code unspent", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 		r.hooks.usedErr = errHookRefused
 
 		_, err := r.svc.LoginForToken(t.Context(), testScope, r.withCode(r.codes[0]))
@@ -582,7 +581,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("a sign-in the consumer cannot record leaves the code unspent", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 		r.hooks.issueErr = errHookRefused
 
 		_, err := r.svc.LoginForToken(t.Context(), testScope, r.withCode(r.codes[0]))
@@ -597,7 +596,7 @@ func TestLoginForToken_recoveryCode(T *testing.T) {
 	T.Run("the administrative door takes one too", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv, signin.WithAdminServiceRoles("service_admin"))
+		r := newRecoveryEnv(t, hookedEnv, signin.WithAdminServiceRoles("service_admin"))
 		r.setServiceRoles(t, "service_admin")
 
 		signIn, err := r.svc.AdminLoginForToken(t.Context(), testScope, r.withCode(r.codes[0]))
@@ -613,7 +612,7 @@ func TestAuthenticate_recoveryCode(T *testing.T) {
 	T.Run("proves somebody on a recovery code and spends it", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		principal, err := r.svc.Authenticate(t.Context(), testScope, r.withCode(r.codes[0]))
 		must.NoError(t, err)
@@ -626,7 +625,7 @@ func TestAuthenticate_recoveryCode(T *testing.T) {
 	T.Run("refuses an authentication whose code another request spent first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 		r.spendBehindTheDoor(t, r.codes[0])
 
 		_, err := r.svc.Authenticate(t.Context(), testScope, r.withCode(r.codes[0]))
@@ -644,7 +643,7 @@ func TestRefreshTOTPSecret_recoveryCode(T *testing.T) {
 	T.Run("re-enrolls a user who has lost their authenticator", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 
 		enrollment, err := r.svc.RefreshTOTPSecret(t.Context(), testScope, r.user.ID, &signin.SecretRefresh{
 			CurrentPassword: r.password,
@@ -667,7 +666,7 @@ func TestRefreshTOTPSecret_recoveryCode(T *testing.T) {
 	T.Run("refuses a re-enrollment whose code another request spent first", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newEnv)
+		r := newRecoveryEnv(t, hookedEnv)
 		r.spendBehindTheDoor(t, r.codes[0])
 
 		_, err := r.svc.RefreshTOTPSecret(t.Context(), testScope, r.user.ID, &signin.SecretRefresh{
@@ -687,7 +686,7 @@ func TestRefreshTOTPSecret_recoveryCode(T *testing.T) {
 func TestUpdatePassword_takesNoRecoveryCode(t *testing.T) {
 	t.Parallel()
 
-	r := newRecoveryEnv(t, newEnv)
+	r := newRecoveryEnv(t, hookedEnv)
 
 	err := r.svc.UpdatePassword(t.Context(), testScope, r.user.ID, &signin.PasswordUpdate{
 		CurrentPassword: r.password,
@@ -704,7 +703,7 @@ func TestRedeemMagicLink_recoveryCode(T *testing.T) {
 	T.Run("signs somebody in on a link and a recovery code, and spends both", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newMagicLinkEnv)
+		r := newRecoveryEnv(t, hookedMagicLinkEnv)
 
 		must.NoError(t, r.svc.RequestMagicLink(t.Context(), testScope, r.user.EmailAddress))
 
@@ -726,7 +725,7 @@ func TestRedeemMagicLink_recoveryCode(T *testing.T) {
 	T.Run("refuses a redemption on a spent code, and keeps the link", func(t *testing.T) {
 		t.Parallel()
 
-		r := newRecoveryEnv(t, newMagicLinkEnv)
+		r := newRecoveryEnv(t, hookedMagicLinkEnv)
 
 		must.NoError(t, r.svc.RequestMagicLink(t.Context(), testScope, r.user.EmailAddress))
 		token := redeemToken(t, r.env)

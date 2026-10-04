@@ -70,6 +70,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		runTransactionSuite(t, env)
 	})
+
+	t.Run("hooks", func(t *testing.T) {
+		t.Parallel()
+
+		runHooksSuite(t, env)
+	})
 }
 
 func runWriteSuite(t *testing.T, env *storeEnv) {
@@ -479,10 +485,10 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		// The withdrawal case, which is the whole reason reads are ungated: the
 		// rows written under a type that has since left the catalog are exactly
 		// the ones an operator needs to reach.
-		store, prefix := env.newStoreWithPrefix(t)
+		store, prefix := env.newStoreWithPrefix(t, NoopHooks{})
 		written(t, env, store, newComment(testAuthor, "written while the type was live"))
 
-		withdrawn, err := NewSQLStore(env.client,
+		withdrawn, err := NewSQLStore(env.client, NoopHooks{},
 			WithTablePrefix(prefix), WithTargets(Targets{newsletterType: {Description: "a newsletter"}}))
 		must.NoError(t, err)
 
@@ -812,10 +818,10 @@ func runSweepSuite(t *testing.T, env *storeEnv) {
 
 		// The whole point of the sweep: a target type on its way out is exactly
 		// the one whose rows have to be reachable.
-		store, prefix := env.newStoreWithPrefix(t)
+		store, prefix := env.newStoreWithPrefix(t, NoopHooks{})
 		written(t, env, store, newComment(testAuthor, "written while the type was live"))
 
-		withdrawn, err := NewSQLStore(env.client,
+		withdrawn, err := NewSQLStore(env.client, NoopHooks{},
 			WithTablePrefix(prefix), WithTargets(Targets{newsletterType: {Description: "a newsletter"}}))
 		must.NoError(t, err)
 
@@ -1353,7 +1359,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewSQLStore(nil)
+		_, err := NewSQLStore(nil, NoopHooks{})
 		must.ErrorIs(t, err, ErrNilDatabaseClient)
 	})
 
@@ -1362,7 +1368,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		_, err := NewSQLStore(env.client, WithTablePrefix("no-hyphens-allowed"))
+		_, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("no-hyphens-allowed"))
 		test.Error(t, err)
 	})
 
@@ -1371,7 +1377,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		store, err := NewSQLStore(env.client, WithTablePrefix("cm"))
+		store, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("cm"))
 		must.NoError(t, err)
 		test.EqOp(t, "cm", store.TablePrefix())
 	})

@@ -12,6 +12,11 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil comments database client")
 
+	// ErrNilHooks indicates nil Hooks. They are required rather than defaulted, so
+	// a caller that wants none passes NoopHooks{} by name. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil comments hooks")
+
 	// ErrNilComment indicates a nil *Comment where one was required.
 	ErrNilComment = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil comment")
 

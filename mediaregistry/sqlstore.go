@@ -45,6 +45,7 @@ type SQLStore struct {
 	q           registrydb.Querier
 	o11y        observability.Observer
 	instruments *metrics.OperationSet
+	hooks       Hooks
 
 	// What the options wrote, kept only until the observer and the instruments
 	// are built from it. Read s.o11y.Logger() for the logger this store
@@ -66,11 +67,19 @@ type SQLStore struct {
 // nothing here can check that, and a mismatch surfaces as a missing table on
 // the first query rather than at construction.
 //
+// hooks run inside every write's transaction, once its statements have landed;
+// see Hooks. They are required: a caller with nothing to commit alongside a
+// write passes NoopHooks by name, and a nil is refused with ErrNilHooks.
+//
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger, traces to a noop provider, and records to noop instruments.
-func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
 	}
 
 	d := client.Dialect()
@@ -78,7 +87,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "uploads registry dialect %q", d)
 	}
 
-	s := &SQLStore{prefix: DefaultTablePrefix}
+	s := &SQLStore{prefix: DefaultTablePrefix, hooks: hooks}
 
 	for _, opt := range opts {
 		if opt != nil {
@@ -211,7 +220,13 @@ func (s *SQLStore) RecordObject(
 		return nil, s.failed(ctx, op.Error(err, "reading back the recorded object"))
 	}
 
-	return objectFromRow(&row), nil
+	recorded := objectFromRow(&row)
+
+	if err = s.hooks.AfterRecordObject(ctx, tx, scope, recorded); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "running the hook after recording uploaded object %q", id))
+	}
+
+	return recorded, nil
 }
 
 // ensureKeyFree is the collision check the create runs before it writes, so a
@@ -585,7 +600,13 @@ func (s *SQLStore) ArchiveObject(
 		return nil, s.failed(ctx, op.Error(err, "reading back the archived object %q", objectID))
 	}
 
-	return objectFromArchivedRow(&row), nil
+	archived := objectFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveObject(ctx, tx, scope, archived); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "running the hook after archiving uploaded object %q", objectID))
+	}
+
+	return archived, nil
 }
 
 // ArchiveObjectsForOwner soft-deletes every live row one principal owns and
@@ -625,6 +646,10 @@ func (s *SQLStore) ArchiveObjectsForOwner(
 	}
 
 	op.Set(countKey, archived)
+
+	if err = s.hooks.AfterArchiveObjectsForOwner(ctx, tx, scope, ownerID, archived); err != nil {
+		return 0, s.failed(ctx, op.Error(err, "running the hook after archiving uploaded objects for owner"))
+	}
 
 	return archived, nil
 }

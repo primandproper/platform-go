@@ -163,7 +163,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("builds a store", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Postgres), passwordreset.NoopHooks{})
 		must.NoError(t, err)
 		must.NotNil(t, store)
 	})
@@ -171,7 +171,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses a nil config", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres), passwordreset.NoopHooks{})
 		must.ErrorIs(t, err, errors.ErrNilInputParameter)
 		// The interface must be nil, not a non-nil interface holding a nil
 		// pointer — a caller testing the result against nil would otherwise find
@@ -182,7 +182,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, nil)
+		store, err := NewStore(t.Context(), &Config{}, nil, passwordreset.NoopHooks{})
 		must.ErrorIs(t, err, passwordreset.ErrNilDatabaseClient)
 		test.Nil(t, store)
 	})
@@ -190,7 +190,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses an unsupported dialect", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Dialect("oracle")))
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.Dialect("oracle")), passwordreset.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -198,7 +198,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("refuses an invalid config", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres))
+		store, err := NewStore(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres), passwordreset.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -207,7 +207,7 @@ func TestNewStore(T *testing.T) {
 		t.Parallel()
 
 		store, err := NewStore(t.Context(), &Config{SweepInterval: pointer.To(time.Duration(0))},
-			newClient(dialect.MySQL))
+			newClient(dialect.MySQL), passwordreset.NoopHooks{})
 		must.NoError(t, err)
 		must.NotNil(t, store)
 	})
@@ -216,7 +216,7 @@ func TestNewStore(T *testing.T) {
 		t.Parallel()
 
 		// Absent means noop: a caller wanting none of the three names none.
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.SQLite),
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.SQLite), passwordreset.NoopHooks{},
 			WithPillars(nil),
 			WithLogger(nil),
 			WithTracerProvider(nil),
@@ -231,7 +231,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("takes pillars", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.MySQL),
+		store, err := NewStore(t.Context(), &Config{}, newClient(dialect.MySQL), passwordreset.NoopHooks{},
 			WithPillars(&observability.Pillars{}))
 		must.NoError(t, err)
 		must.NotNil(t, store)

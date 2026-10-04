@@ -17,9 +17,14 @@ import (
 
 // RegisterStore registers a passwordreset.Store with the injector.
 //
-// Prerequisites: *Config, database.Client and a context.Context must be
-// registered in the injector before the Store is invoked. The context bounds
-// the sweeper's life, when the config starts one.
+// Prerequisites: *Config, database.Client, passwordreset.Hooks and a
+// context.Context must be registered in the injector before the Store is
+// invoked. The context bounds the sweeper's life, when the config starts one.
+//
+// The hooks are required. A container whose token writes owe no companions
+// registers passwordreset.NoopHooks{} by name:
+//
+//	do.ProvideValue[passwordreset.Hooks](i, passwordreset.NoopHooks{})
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (passwordreset.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -42,7 +47,14 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		hooks, err := do.Invoke[passwordreset.Hooks](i)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err,
+				"resolving %s: the application registers what runs inside each token write, NoopHooks{} if nothing",
+				do.NameOf[passwordreset.Hooks]())
+		}
+
+		return NewStore(ctx, cfg, client, hooks, WithPillars(pillars))
 	})
 }
 

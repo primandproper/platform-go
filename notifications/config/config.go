@@ -84,7 +84,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 // returning it straight through would convert a nil *notifications.SQLStore
 // into a non-nil notifications.Store on the error path, and a caller testing the
 // result against nil would find a store that panics on first use.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (notifications.Store, error) {
+func NewStore(ctx context.Context, cfg *Config, client database.Client, hooks notifications.Hooks, opts ...Option) (notifications.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -102,7 +102,7 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 		notifications.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	store, storeErr := notifications.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := notifications.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}

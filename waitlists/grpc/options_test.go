@@ -29,7 +29,7 @@ func newServerWith(tb testing.TB, opts ...waitlistsgrpc.Option) (*waitlistsgrpc.
 	must.NoError(tb, err)
 	tb.Cleanup(func() { _ = db.Close() })
 
-	store, err := waitlists.NewSQLStore(db)
+	store, err := waitlists.NewSQLStore(db, waitlists.NoopHooks{})
 	must.NoError(tb, err)
 
 	return waitlistsgrpc.NewServer(store, db, extractPrincipal, permitWithdrawals(), opts...)

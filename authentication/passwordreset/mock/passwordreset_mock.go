@@ -413,3 +413,285 @@ func (mock *StoreMock) VerifyCalls() []struct {
 	mock.lockVerify.RUnlock()
 	return calls
 }
+
+// Ensure, that HooksMock does implement passwordreset.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ passwordreset.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of passwordreset.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked passwordreset.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterConsumeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, token *passwordreset.Token) error {
+//				panic("mock out the AfterConsume method")
+//			},
+//			AfterDeleteForUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, deleted int64) error {
+//				panic("mock out the AfterDeleteForUser method")
+//			},
+//			AfterIssueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, token *passwordreset.Token) error {
+//				panic("mock out the AfterIssue method")
+//			},
+//			AfterRevokeForUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, revoked int64) error {
+//				panic("mock out the AfterRevokeForUser method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires passwordreset.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterConsumeFunc mocks the AfterConsume method.
+	AfterConsumeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, token *passwordreset.Token) error
+
+	// AfterDeleteForUserFunc mocks the AfterDeleteForUser method.
+	AfterDeleteForUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, deleted int64) error
+
+	// AfterIssueFunc mocks the AfterIssue method.
+	AfterIssueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, token *passwordreset.Token) error
+
+	// AfterRevokeForUserFunc mocks the AfterRevokeForUser method.
+	AfterRevokeForUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, revoked int64) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterConsume holds details about calls to the AfterConsume method.
+		AfterConsume []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Token is the token argument value.
+			Token *passwordreset.Token
+		}
+		// AfterDeleteForUser holds details about calls to the AfterDeleteForUser method.
+		AfterDeleteForUser []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterIssue holds details about calls to the AfterIssue method.
+		AfterIssue []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Token is the token argument value.
+			Token *passwordreset.Token
+		}
+		// AfterRevokeForUser holds details about calls to the AfterRevokeForUser method.
+		AfterRevokeForUser []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+			// Revoked is the revoked argument value.
+			Revoked int64
+		}
+	}
+	lockAfterConsume       sync.RWMutex
+	lockAfterDeleteForUser sync.RWMutex
+	lockAfterIssue         sync.RWMutex
+	lockAfterRevokeForUser sync.RWMutex
+}
+
+// AfterConsume calls AfterConsumeFunc.
+func (mock *HooksMock) AfterConsume(ctx context.Context, tx database.Tx, scope tenancy.Scope, token *passwordreset.Token) error {
+	if mock.AfterConsumeFunc == nil {
+		panic("HooksMock.AfterConsumeFunc: method is nil but Hooks.AfterConsume was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Tx    database.Tx
+		Scope tenancy.Scope
+		Token *passwordreset.Token
+	}{
+		Ctx:   ctx,
+		Tx:    tx,
+		Scope: scope,
+		Token: token,
+	}
+	mock.lockAfterConsume.Lock()
+	mock.calls.AfterConsume = append(mock.calls.AfterConsume, callInfo)
+	mock.lockAfterConsume.Unlock()
+	return mock.AfterConsumeFunc(ctx, tx, scope, token)
+}
+
+// AfterConsumeCalls gets all the calls that were made to AfterConsume.
+// Check the length with:
+//
+//	len(mockedHooks.AfterConsumeCalls())
+func (mock *HooksMock) AfterConsumeCalls() []struct {
+	Ctx   context.Context
+	Tx    database.Tx
+	Scope tenancy.Scope
+	Token *passwordreset.Token
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Tx    database.Tx
+		Scope tenancy.Scope
+		Token *passwordreset.Token
+	}
+	mock.lockAfterConsume.RLock()
+	calls = mock.calls.AfterConsume
+	mock.lockAfterConsume.RUnlock()
+	return calls
+}
+
+// AfterDeleteForUser calls AfterDeleteForUserFunc.
+func (mock *HooksMock) AfterDeleteForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, deleted int64) error {
+	if mock.AfterDeleteForUserFunc == nil {
+		panic("HooksMock.AfterDeleteForUserFunc: method is nil but Hooks.AfterDeleteForUser was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		UserID  string
+		Deleted int64
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		UserID:  userID,
+		Deleted: deleted,
+	}
+	mock.lockAfterDeleteForUser.Lock()
+	mock.calls.AfterDeleteForUser = append(mock.calls.AfterDeleteForUser, callInfo)
+	mock.lockAfterDeleteForUser.Unlock()
+	return mock.AfterDeleteForUserFunc(ctx, tx, scope, userID, deleted)
+}
+
+// AfterDeleteForUserCalls gets all the calls that were made to AfterDeleteForUser.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteForUserCalls())
+func (mock *HooksMock) AfterDeleteForUserCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	UserID  string
+	Deleted int64
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		UserID  string
+		Deleted int64
+	}
+	mock.lockAfterDeleteForUser.RLock()
+	calls = mock.calls.AfterDeleteForUser
+	mock.lockAfterDeleteForUser.RUnlock()
+	return calls
+}
+
+// AfterIssue calls AfterIssueFunc.
+func (mock *HooksMock) AfterIssue(ctx context.Context, tx database.Tx, scope tenancy.Scope, token *passwordreset.Token) error {
+	if mock.AfterIssueFunc == nil {
+		panic("HooksMock.AfterIssueFunc: method is nil but Hooks.AfterIssue was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Tx    database.Tx
+		Scope tenancy.Scope
+		Token *passwordreset.Token
+	}{
+		Ctx:   ctx,
+		Tx:    tx,
+		Scope: scope,
+		Token: token,
+	}
+	mock.lockAfterIssue.Lock()
+	mock.calls.AfterIssue = append(mock.calls.AfterIssue, callInfo)
+	mock.lockAfterIssue.Unlock()
+	return mock.AfterIssueFunc(ctx, tx, scope, token)
+}
+
+// AfterIssueCalls gets all the calls that were made to AfterIssue.
+// Check the length with:
+//
+//	len(mockedHooks.AfterIssueCalls())
+func (mock *HooksMock) AfterIssueCalls() []struct {
+	Ctx   context.Context
+	Tx    database.Tx
+	Scope tenancy.Scope
+	Token *passwordreset.Token
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Tx    database.Tx
+		Scope tenancy.Scope
+		Token *passwordreset.Token
+	}
+	mock.lockAfterIssue.RLock()
+	calls = mock.calls.AfterIssue
+	mock.lockAfterIssue.RUnlock()
+	return calls
+}
+
+// AfterRevokeForUser calls AfterRevokeForUserFunc.
+func (mock *HooksMock) AfterRevokeForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, revoked int64) error {
+	if mock.AfterRevokeForUserFunc == nil {
+		panic("HooksMock.AfterRevokeForUserFunc: method is nil but Hooks.AfterRevokeForUser was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		UserID  string
+		Revoked int64
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		UserID:  userID,
+		Revoked: revoked,
+	}
+	mock.lockAfterRevokeForUser.Lock()
+	mock.calls.AfterRevokeForUser = append(mock.calls.AfterRevokeForUser, callInfo)
+	mock.lockAfterRevokeForUser.Unlock()
+	return mock.AfterRevokeForUserFunc(ctx, tx, scope, userID, revoked)
+}
+
+// AfterRevokeForUserCalls gets all the calls that were made to AfterRevokeForUser.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRevokeForUserCalls())
+func (mock *HooksMock) AfterRevokeForUserCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	UserID  string
+	Revoked int64
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		UserID  string
+		Revoked int64
+	}
+	mock.lockAfterRevokeForUser.RLock()
+	calls = mock.calls.AfterRevokeForUser
+	mock.lockAfterRevokeForUser.RUnlock()
+	return calls
+}

@@ -60,7 +60,7 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 
 	c := newFakeClock()
 
-	store, err := NewSQLStore(&Config{}, client, WithClock(c))
+	store, err := NewSQLStore(&Config{}, client, NoopHooks{}, WithClock(c))
 	must.NoError(t, err)
 
 	t.Run("round-trips a token through the server's own column types", func(t *testing.T) {
@@ -123,7 +123,7 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	// The unique index, which only a real engine enforces the way this schema
 	// says it does.
 	t.Run("refuses a second row bearing one digest", func(t *testing.T) {
-		repeating, storeErr := NewSQLStore(&Config{}, client,
+		repeating, storeErr := NewSQLStore(&Config{}, client, NoopHooks{},
 			WithClock(c), WithGenerator(&constantGenerator{secret: "server-side-collision"}))
 		must.NoError(t, storeErr)
 
@@ -236,7 +236,7 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {
 		createTable(t, client, d, "app")
 
-		namespaced, storeErr := NewSQLStore(&Config{TablePrefix: "app"}, client, WithClock(c))
+		namespaced, storeErr := NewSQLStore(&Config{TablePrefix: "app"}, client, NoopHooks{}, WithClock(c))
 		must.NoError(t, storeErr)
 
 		issuance, issueErr := issueFor(t, namespaced, testScope(), "namespaced_user", time.Hour)
@@ -248,6 +248,17 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 
 		_, verifyErr = verify(t, namespaced, testScope(), issuance.Secret)
 		test.NoError(t, verifyErr)
+	})
+
+	// A hook's error has to roll back what the server already accepted, which
+	// SQLite's single file proves less convincingly than a server does.
+	runHooksSuite(t, func(t *testing.T, hooks Hooks) *SQLStore {
+		t.Helper()
+
+		hooked, storeErr := NewSQLStore(&Config{}, client, hooks, WithClock(c))
+		must.NoError(t, storeErr)
+
+		return hooked
 	})
 }
 

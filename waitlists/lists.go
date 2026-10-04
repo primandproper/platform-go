@@ -80,6 +80,10 @@ func (s *SQLStore) CreateList(
 	created.LastUpdatedAt = nil
 	created.ArchivedAt = nil
 
+	if err = s.hooks.AfterCreateList(ctx, tx, scope, &created); err != nil {
+		return nil, op.Error(err, "running the hook after creating waitlist %q", created.ID)
+	}
+
 	return &created, nil
 }
 
@@ -260,6 +264,14 @@ func (s *SQLStore) UpdateList(
 		return nil, op.Error(err, "updating waitlist %q", list.ID)
 	}
 
+	var before *List
+	if s.hooked {
+		var err error
+		if before, err = s.readList(ctx, tx, scope, list.ID); err != nil {
+			return nil, op.Error(err, "updating waitlist %q", list.ID)
+		}
+	}
+
 	count, err := s.q.UpdateList(ctx, tx, updateListParams(list, scope))
 	if err = guardCount(count, err, ErrListNotFound, "updating waitlist"); err != nil {
 		return nil, op.Error(err, "updating waitlist %q", list.ID)
@@ -268,6 +280,10 @@ func (s *SQLStore) UpdateList(
 	updated, err := s.readList(ctx, tx, scope, list.ID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the updated waitlist %q", list.ID)
+	}
+
+	if err = s.hooks.AfterUpdateList(ctx, tx, scope, before, updated); err != nil {
+		return nil, op.Error(err, "running the hook after updating waitlist %q", list.ID)
 	}
 
 	return updated, nil
@@ -310,7 +326,13 @@ func (s *SQLStore) ArchiveList(
 		return nil, op.Error(notFound(err, ErrListNotFound), "reading back the archived waitlist %q", listID)
 	}
 
-	return listFromArchivedRow(&row), nil
+	archived := listFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveList(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving waitlist %q", listID)
+	}
+
+	return archived, nil
 }
 
 // readList is the read by id, through whatever executor the caller is holding.

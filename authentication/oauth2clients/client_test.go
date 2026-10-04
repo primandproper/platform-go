@@ -88,8 +88,8 @@ func TestAdministeredIsAValueAndNotAnAbsence(T *testing.T) {
 	test.False(T, (&oauth2clients.Client{BelongsToUser: "user_1"}).Administered())
 }
 
-// TestNoopHooksDoNothingToEveryOperation is what a Service built without
-// WithHooks runs.
+// TestNoopHooksDoNothingToEveryOperation is what a Service handed NoopHooks
+// runs.
 //
 // All three, because they are three methods and a consumer embedding NoopHooks
 // to implement one of them relies on the other two staying silent — a noop that
@@ -105,7 +105,7 @@ func TestNoopHooksDoNothingToEveryOperation(T *testing.T) {
 
 	// A nil transaction, because a noop must not reach for one.
 	test.NoError(T, hooks.AfterCreateClient(T.Context(), nil, scope, client))
-	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client))
+	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client, client))
 	test.NoError(T, hooks.AfterArchiveClient(T.Context(), nil, scope, client))
 }
 
@@ -149,7 +149,7 @@ func TestEmbeddingNoopHooksOverridesOneMethodAndInheritsTheRest(T *testing.T) {
 	// A nil transaction, because the inherited methods must not reach for one
 	// and the override here does not write.
 	must.NoError(T, hooks.AfterCreateClient(T.Context(), nil, scope, client))
-	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client))
+	test.NoError(T, hooks.AfterUpdateClient(T.Context(), nil, scope, client, client))
 	test.NoError(T, hooks.AfterArchiveClient(T.Context(), nil, scope, client))
 
 	recorded, ok := hooks.(*auditOnlyHooks)

@@ -52,11 +52,18 @@ type storeEnv struct {
 }
 
 // newStore migrates a uniquely prefixed registry table and returns a Store over
-// it.
-func (e *storeEnv) newStore(t *testing.T) *SQLStore {
+// it with NoopHooks, built with whatever further options the case names.
+func (e *storeEnv) newStore(t *testing.T, opts ...SQLStoreOption) *SQLStore {
 	t.Helper()
 
-	store, err := NewSQLStore(e.client, WithTablePrefix(e.migrate(t)))
+	return e.newHookedStore(t, NoopHooks{}, opts...)
+}
+
+// newHookedStore is newStore with the hooks the case names.
+func (e *storeEnv) newHookedStore(t *testing.T, hooks Hooks, opts ...SQLStoreOption) *SQLStore {
+	t.Helper()
+
+	store, err := NewSQLStore(e.client, hooks, append([]SQLStoreOption{WithTablePrefix(e.migrate(t))}, opts...)...)
 	must.NoError(t, err)
 
 	return store
