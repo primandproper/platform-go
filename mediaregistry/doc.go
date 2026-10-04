@@ -71,6 +71,14 @@ which is the one row that still names the key once the archive commits. A hook's
 error fails the write it was called from, so the row and its companions commit
 together or not at all.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: each entry names the object by [ResourceTypeObject] and its
+owner only as the entry's subject, each event is one of the types [EventCatalog]
+describes, an archive's event carries the key the surviving bytes are at, and an
+erasure records how many objects it archived and not whose. Embed it to change
+one write's record and inherit the rest.
+
 # Tenancy
 
 Every read is scoped and there is no unscoped variant of any of them. The scope

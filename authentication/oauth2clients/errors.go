@@ -15,6 +15,9 @@ var (
 	// ErrNilStore is a service built over no store.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 client store")
 
+	// ErrNilRecorder is a RecordingHooks built over no recording.Recorder.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 client recorder")
+
 	// ErrNilService is a transport built over no service.
 	ErrNilService = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 client service")
 
