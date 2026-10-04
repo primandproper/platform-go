@@ -218,6 +218,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilExecutor":       {Err: billing.ErrNilExecutor, Is: Platform},
 		"ErrNilProduct":        {Err: billing.ErrNilProduct, Is: Platform},
 		"ErrNilPurchase":       {Err: billing.ErrNilPurchase, Is: Platform},
+		"ErrNilRecorder":       {Err: billing.ErrNilRecorder, Is: Platform},
 		"ErrNilSubscription":   {Err: billing.ErrNilSubscription, Is: Platform},
 		"ErrNilTransaction":    {Err: billing.ErrNilTransaction, Is: Platform},
 
