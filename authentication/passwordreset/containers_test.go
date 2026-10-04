@@ -249,6 +249,17 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		_, verifyErr = verify(t, namespaced, testScope(), issuance.Secret)
 		test.NoError(t, verifyErr)
 	})
+
+	// A hook's error has to roll back what the server already accepted, which
+	// SQLite's single file proves less convincingly than a server does.
+	runHooksSuite(t, func(t *testing.T, opts ...Option) *SQLStore {
+		t.Helper()
+
+		hooked, storeErr := NewSQLStore(&Config{}, client, append([]Option{WithClock(c)}, opts...)...)
+		must.NoError(t, storeErr)
+
+		return hooked
+	})
 }
 
 func TestPasswordReset_Postgres(T *testing.T) {

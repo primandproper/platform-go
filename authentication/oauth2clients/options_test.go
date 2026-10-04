@@ -189,6 +189,9 @@ func TestServiceOptions(T *testing.T) {
 		)
 		must.NotNil(t, configured.hooks)
 		must.NotNil(t, configured.generate)
+		test.True(t, configured.hooked)
+		test.False(t, applyServiceOptions().hooked,
+			test.Sprint("a Service nobody gave hooks to reads the row before every update"))
 
 		unset := applyServiceOptions(
 			WithHooks(NoopHooks{}),

@@ -45,6 +45,7 @@ type SQLStore struct {
 	q     issuereportsdb.Querier
 	o11y  observability.Observer
 	clock clock.Clock
+	hooks Hooks
 
 	// guardMissCounter counts transitions whose guard matched no row, which is
 	// the one number nothing above this layer can see.
@@ -57,17 +58,22 @@ type SQLStore struct {
 	// error somebody dismisses.
 	guardMissCounter metrics.Int64Counter
 
-	// guard is what a guarded write means in this package when it matches no
-	// row. See internal/sqlguard.
-	guard sqlguard.Guard
-
 	// What the options wrote, kept only until the observer is built from it.
 	// Read s.o11y.Logger() for the logger this store actually uses; this one may
 	// be nil, because supplying none is how a caller asks for no logging.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
-	prefix          string
+
+	// guard is what a guarded write means in this package when it matches no
+	// row. See internal/sqlguard.
+	guard sqlguard.Guard
+
+	prefix string
+	// hooked is whether WithHooks installed any, which decides whether an
+	// update or a transition pays for the read of the row it is about to
+	// overwrite.
+	hooked bool
 }
 
 // NewSQLStore builds an issue report store over the given database.
@@ -102,6 +108,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	s := &SQLStore{
 		clock:  clock.NewClock(),
 		prefix: DefaultTablePrefix,
+		hooks:  NoopHooks{},
 	}
 
 	for _, opt := range opts {

@@ -58,6 +58,7 @@ type SQLStore struct {
 	q      notificationsdb.Querier
 	o11y   observability.Observer
 	clock  clock.Clock
+	hooks  Hooks
 
 	// invalidatedTokensCounter counts the rows the provider feedback hook
 	// destroyed, which is the one number nothing above this layer can see.
@@ -77,6 +78,9 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+	// hooked is whether WithHooks installed any, which decides whether an
+	// update pays for the read of the row it is about to overwrite.
+	hooked bool
 }
 
 // NewSQLStore builds an inbox and a device registry over the given database.
@@ -111,6 +115,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		client: client,
 		clock:  clock.NewClock(),
 		prefix: DefaultTablePrefix,
+		hooks:  NoopHooks{},
 	}
 
 	for _, opt := range opts {

@@ -2,6 +2,7 @@ package oauth2clients
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
@@ -18,8 +19,13 @@ import (
 type recordingHooks struct {
 	err      error
 	created  []*Client
-	updated  []*Client
+	updated  []revision
 	archived []*Client
+}
+
+// revision is one AfterUpdateClient call: the row on either side of the write.
+type revision struct {
+	before, after *Client
 }
 
 var _ Hooks = (*recordingHooks)(nil)
@@ -33,9 +39,9 @@ func (h *recordingHooks) AfterCreateClient(
 }
 
 func (h *recordingHooks) AfterUpdateClient(
-	_ context.Context, _ database.Tx, _ tenancy.Scope, client *Client,
+	_ context.Context, _ database.Tx, _ tenancy.Scope, before, after *Client,
 ) error {
-	h.updated = append(h.updated, client)
+	h.updated = append(h.updated, revision{before: before, after: after})
 
 	return h.err
 }
@@ -46,6 +52,22 @@ func (h *recordingHooks) AfterArchiveClient(
 	h.archived = append(h.archived, client)
 
 	return h.err
+}
+
+// countingStore counts the reads a Service makes through its store, which is
+// how a test sees whether an update read the row it was about to overwrite.
+type countingStore struct {
+	Store
+
+	gets atomic.Int64
+}
+
+func (s *countingStore) GetClient(
+	ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string,
+) (*Client, error) {
+	s.gets.Add(1)
+
+	return s.Store.GetClient(ctx, q, scope, id)
 }
 
 // newService builds a service over a freshly migrated store.
@@ -196,7 +218,88 @@ func TestService_UpdateClient(T *testing.T) {
 			test.Sprint("the write's read-back ran outside the transaction that stamped the row"))
 
 		must.SliceLen(t, 1, hooks.updated)
-		test.EqOp(t, "renamed", hooks.updated[0].Name)
+		test.EqOp(t, "renamed", hooks.updated[0].after.Name)
+	})
+
+	T.Run("hands the hook the row as it stood before the revision", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		svc, store := newService(t, env, WithHooks(hooks))
+
+		client := env.seed(t, store, testScope, testOwner)
+
+		_, err := svc.UpdateClient(t.Context(), testScope, client.ID, &UpdateInput{
+			Name:         "renamed",
+			RedirectURIs: []string{testRedirect},
+		})
+		must.NoError(t, err)
+
+		// The before row is what a companion recording the revision diffs
+		// against, and once the statement has run nothing else can still see
+		// it.
+		must.SliceLen(t, 1, hooks.updated)
+		must.NotNil(t, hooks.updated[0].before)
+		test.EqOp(t, client.ID, hooks.updated[0].before.ID)
+		test.EqOp(t, "test client", hooks.updated[0].before.Name)
+		test.Nil(t, hooks.updated[0].before.LastUpdatedAt,
+			test.Sprint("the before row carries the revision's own stamp"))
+		test.EqOp(t, "renamed", hooks.updated[0].after.Name)
+	})
+
+	T.Run("a hook that fails takes the revision back", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{err: platformerrors.New("the audit entry was refused")}
+		svc, store := newService(t, env, WithHooks(hooks))
+
+		client := env.seed(t, store, testScope, testOwner)
+
+		updated, err := svc.UpdateClient(t.Context(), testScope, client.ID, &UpdateInput{
+			Name:         "renamed",
+			RedirectURIs: []string{testRedirect},
+		})
+		test.Error(t, err)
+		test.Nil(t, updated)
+
+		read, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "test client", read.Name)
+	})
+
+	T.Run("without hooks, the row is not read before it is written", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		counting := &countingStore{Store: store}
+
+		svc, err := NewService(env.client, counting)
+		must.NoError(t, err)
+
+		client := env.seed(t, store, testScope, testOwner)
+
+		_, err = svc.UpdateClient(t.Context(), testScope, client.ID, &UpdateInput{
+			Name:         "renamed",
+			RedirectURIs: []string{testRedirect},
+		})
+		must.NoError(t, err)
+
+		test.EqOp(t, int64(0), counting.gets.Load(),
+			test.Sprint("a Service with nothing to hand the before row to paid for reading it"))
+	})
+
+	T.Run("a refused revision calls no hook", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		svc, _ := newService(t, env, WithHooks(hooks))
+
+		_, err := svc.UpdateClient(t.Context(), testScope, "nobody", &UpdateInput{
+			Name:         "renamed",
+			RedirectURIs: []string{testRedirect},
+		})
+		test.ErrorIs(t, err, ErrClientNotFound)
+		test.SliceEmpty(t, hooks.updated)
 	})
 
 	T.Run("a registration that is not there is not found", func(t *testing.T) {

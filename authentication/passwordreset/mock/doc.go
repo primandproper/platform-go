@@ -6,4 +6,4 @@ package passwordresetmock
 
 // Regenerate via `go generate ./authentication/passwordreset/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out passwordreset_mock.go -pkg passwordresetmock -rm -fmt goimports .. Store:StoreMock
+//go:generate go tool github.com/matryer/moq -out passwordreset_mock.go -pkg passwordresetmock -rm -fmt goimports .. Store:StoreMock Hooks:HooksMock

@@ -4,7 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/audit"
+
 	"github.com/shoenig/test"
+	"github.com/shoenig/test/must"
 )
 
 func TestStatus(T *testing.T) {
@@ -102,4 +105,17 @@ func TestList_validate(T *testing.T) {
 		test.ErrorIs(t, (&List{Name: "Launch"}).validate(), ErrEmptyClosesAt)
 		test.NoError(t, (&List{Name: "Launch", ClosesAt: testNow}).validate())
 	})
+}
+
+func TestSignup_auditDiffOmitsContact(T *testing.T) {
+	T.Parallel()
+
+	before := &Signup{Notes: "before", Contact: "before@example.com"}
+	after := &Signup{Notes: "after", Contact: "after@example.com"}
+
+	changes, err := audit.Diff(before, after)
+	must.NoError(T, err)
+
+	test.MapContainsKey(T, changes, "notes")
+	test.MapNotContainsKey(T, changes, "contact")
 }

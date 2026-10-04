@@ -200,6 +200,18 @@ first does not merely mislead: no read on this interface reaches a cleared
 answer, so the value it returns is the last place that answer exists. See [Store]
 for the shape and its one exception.
 
+# Companions every write owes go in Hooks
+
+A consumer whose every write owes the same companions — an audit entry for each,
+an event for each — can write them beside each call, as the example above does,
+or hand the store a [Hooks] through [WithHooks] and have each write call it on
+the same transaction once its statements have landed. The second is what a
+consumer reaches for when the alternative is wrapping the Store: a wrapper has to
+reimplement every write to call through, read the definition an archive is about
+to hide before the store does, and has no way to see what an update replaced. A
+hook is handed those rows. A hook's error fails the write it was called from, so
+the row and its companions commit together or not at all.
+
 # The reads take the wider executor
 
 A read takes a database.SQLQueryExecutor, which a database.Tx satisfies. A caller

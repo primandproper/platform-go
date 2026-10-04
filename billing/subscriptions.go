@@ -68,6 +68,10 @@ func (s *SQLStore) CreateSubscription(
 		return nil, op.Error(err, "creating subscription")
 	}
 
+	if err := s.hooks.AfterCreateSubscription(ctx, tx, scope, &created); err != nil {
+		return nil, op.Error(err, "running the hook after creating subscription %q", created.ID)
+	}
+
 	return &created, nil
 }
 
@@ -386,6 +390,14 @@ func (s *SQLStore) UpdateSubscription(
 		return nil, op.Error(err, "updating subscription %q", updated.ID)
 	}
 
+	var before *Subscription
+	if s.hooked {
+		var err error
+		if before, err = s.readSubscription(ctx, tx, scope, updated.ID); err != nil {
+			return nil, op.Error(err, "updating subscription %q", updated.ID)
+		}
+	}
+
 	count, err := s.q.UpdateSubscription(ctx, tx, updateSubscriptionParams(&updated, scope))
 	if err = guardCount(count, err, ErrSubscriptionNotFound, "updating subscription"); err != nil {
 		return nil, op.Error(err, "updating subscription %q", updated.ID)
@@ -394,6 +406,10 @@ func (s *SQLStore) UpdateSubscription(
 	stored, err := s.readSubscription(ctx, tx, scope, updated.ID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the updated subscription %q", updated.ID)
+	}
+
+	if err = s.hooks.AfterUpdateSubscription(ctx, tx, scope, before, stored); err != nil {
+		return nil, op.Error(err, "running the hook after updating subscription %q", updated.ID)
 	}
 
 	return stored, nil
@@ -441,6 +457,14 @@ func (s *SQLStore) SetSubscriptionStatus(
 			"setting subscription %q status", subscriptionID)
 	}
 
+	var before *Subscription
+	if s.hooked {
+		var err error
+		if before, err = s.readSubscription(ctx, tx, scope, subscriptionID); err != nil {
+			return op.Error(err, "setting subscription %q status", subscriptionID)
+		}
+	}
+
 	count, err := s.q.SetSubscriptionStatus(ctx, tx, billingdb.SetSubscriptionStatusParams{
 		Status: string(status),
 		ID:     subscriptionID,
@@ -454,6 +478,20 @@ func (s *SQLStore) SetSubscriptionStatus(
 	if count == 0 {
 		return op.Error(s.refuseStatusWrite(ctx, tx, scope, subscriptionID),
 			"setting subscription %q status", subscriptionID)
+	}
+
+	if !s.hooked {
+		return nil
+	}
+
+	after, err := s.readSubscription(ctx, tx, scope, subscriptionID)
+	if err != nil {
+		return op.Error(platformerrors.Wrap(err, "reading back the moved subscription"),
+			"setting subscription %q status", subscriptionID)
+	}
+
+	if err = s.hooks.AfterSetSubscriptionStatus(ctx, tx, scope, before, after); err != nil {
+		return op.Error(err, "running the hook after setting subscription %q status", subscriptionID)
 	}
 
 	return nil
@@ -499,7 +537,13 @@ func (s *SQLStore) ArchiveSubscription(
 			"archiving subscription %q", subscriptionID)
 	}
 
-	return subscriptionFromArchivedRow(&row), nil
+	archived := subscriptionFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveSubscription(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving subscription %q", subscriptionID)
+	}
+
+	return archived, nil
 }
 
 // drainSubscriptions turns one list statement's rows into the paged result.

@@ -6,4 +6,4 @@ package notificationsmock
 
 // Regenerate via `go generate ./notifications/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out notifications_mock.go -pkg notificationsmock -rm -fmt goimports .. Store:StoreMock Inbox:InboxMock Registry:RegistryMock
+//go:generate go tool github.com/matryer/moq -out notifications_mock.go -pkg notificationsmock -rm -fmt goimports .. Store:StoreMock Inbox:InboxMock Registry:RegistryMock Hooks:HooksMock

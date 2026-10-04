@@ -49,6 +49,8 @@ type SQLStore struct {
 
 	resolutionsCounter metrics.Int64Counter
 
+	hooks Hooks
+
 	// What the options wrote, kept only until the observer is built from it.
 	// Read s.o11y.Logger() for the logger this store actually uses; this one may
 	// be nil, because supplying none is how a caller asks for no logging.
@@ -56,6 +58,9 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+	// hooked is whether WithHooks installed any, which decides whether a write
+	// pays for the read of a row only a hook is handed.
+	hooked bool
 }
 
 // NewSQLStore builds a Store over the given database.
@@ -85,7 +90,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "settings dialect %q", d)
 	}
 
-	s := &SQLStore{prefix: DefaultTablePrefix}
+	s := &SQLStore{prefix: DefaultTablePrefix, hooks: NoopHooks{}}
 
 	for _, opt := range opts {
 		if opt != nil {

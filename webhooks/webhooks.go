@@ -327,7 +327,10 @@ type Endpoint struct {
 	// subscribers that need a routing token or a tenant hint. The signature,
 	// timestamp, content type, and event headers this package sets are not
 	// overridable from here — see reservedHeaders.
-	Headers map[string]string `json:"headers,omitempty"`
+	//
+	// They are kept out of audit diffs, because a routing token is as often a
+	// credential, and an audit log is built to be the hardest place to erase one.
+	Headers map[string]string `audit:"-" json:"headers,omitempty"`
 	// Scope is whose endpoint this is. Required, and rejected at registration
 	// when unset: an endpoint that belongs to nobody in particular is one an
 	// application with tenants registered by accident, and it would receive

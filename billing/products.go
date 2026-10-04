@@ -76,6 +76,10 @@ func (s *SQLStore) CreateProduct(
 		return nil, op.Error(err, "creating product %q", created.Name)
 	}
 
+	if err := s.hooks.AfterCreateProduct(ctx, tx, scope, &created); err != nil {
+		return nil, op.Error(err, "running the hook after creating product %q", created.ID)
+	}
+
 	return &created, nil
 }
 
@@ -321,6 +325,14 @@ func (s *SQLStore) UpdateProduct(
 		return nil, op.Error(err, "updating product %q", updated.ID)
 	}
 
+	var before *Product
+	if s.hooked {
+		var err error
+		if before, err = s.readProduct(ctx, tx, scope, updated.ID); err != nil {
+			return nil, op.Error(err, "updating product %q", updated.ID)
+		}
+	}
+
 	count, err := s.q.UpdateProduct(ctx, tx, updateProductParams(&updated, scope))
 	if err = guardCount(count, err, ErrProductNotFound, "updating product"); err != nil {
 		return nil, op.Error(err, "updating product %q", updated.ID)
@@ -329,6 +341,10 @@ func (s *SQLStore) UpdateProduct(
 	stored, err := s.readProduct(ctx, tx, scope, updated.ID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the updated product %q", updated.ID)
+	}
+
+	if err = s.hooks.AfterUpdateProduct(ctx, tx, scope, before, stored); err != nil {
+		return nil, op.Error(err, "running the hook after updating product %q", updated.ID)
 	}
 
 	return stored, nil
@@ -374,7 +390,13 @@ func (s *SQLStore) ArchiveProduct(
 			"archiving product %q", productID)
 	}
 
-	return productFromArchivedRow(&row), nil
+	archived := productFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveProduct(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving product %q", productID)
+	}
+
+	return archived, nil
 }
 
 // readProduct is the read by id, through whatever executor the caller is

@@ -5,4 +5,4 @@ package billingmock
 
 // Regenerate via `go generate ./billing/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out billing_mock.go -pkg billingmock -rm -fmt goimports .. Store:StoreMock ProductStore:ProductStoreMock SubscriptionStore:SubscriptionStoreMock PurchaseStore:PurchaseStoreMock TransactionStore:TransactionStoreMock
+//go:generate go tool github.com/matryer/moq -out billing_mock.go -pkg billingmock -rm -fmt goimports .. Store:StoreMock ProductStore:ProductStoreMock SubscriptionStore:SubscriptionStoreMock PurchaseStore:PurchaseStoreMock TransactionStore:TransactionStoreMock Hooks:HooksMock

@@ -48,6 +48,7 @@ type SQLStore struct {
 	client database.Client
 	q      webhooksdb.Querier
 	o11y   observability.Observer
+	hooks  Hooks
 
 	// What the options wrote, kept only until the observer is built from it.
 	// Read s.o11y.Logger() for the logger this store actually uses; this one
@@ -55,6 +56,10 @@ type SQLStore struct {
 	logger         logging.Logger
 	tracerProvider tracing.Provider
 	prefix         string
+
+	// hooked is whether WithHooks installed any, which decides whether a write
+	// that may overwrite a row pays for the read of it first.
+	hooked bool
 }
 
 // NewSQLStore builds a Store over the given database.
@@ -97,6 +102,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	s := &SQLStore{
 		client: client,
 		prefix: DefaultTablePrefix,
+		hooks:  NoopHooks{},
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -222,6 +228,13 @@ func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenan
 		return nil, op.Error(err, "saving webhook endpoint %q", written.ID)
 	}
 
+	var before *Endpoint
+	if existed && s.hooked {
+		if before, err = s.readEndpointWithSubscriptions(ctx, tx, scope, written.ID); err != nil {
+			return nil, op.Error(err, "reading webhook endpoint %q before saving it", written.ID)
+		}
+	}
+
 	if err = s.q.UpsertEndpoint(ctx, tx, webhooksdb.UpsertEndpointParams{
 		ID:             written.ID,
 		Scope:          scope,
@@ -269,7 +282,33 @@ func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenan
 	saved.Subscriptions = live
 	saved.Created = !existed
 
+	if err = s.hooks.AfterSaveEndpoint(ctx, tx, scope, before, saved); err != nil {
+		return nil, op.Error(err, "running the hook after saving webhook endpoint %q", written.ID)
+	}
+
 	return saved, nil
+}
+
+// readEndpointWithSubscriptions is readEndpoint with the endpoint's live
+// subscriptions on it, which is the row as GetEndpoint and SaveEndpoint both
+// answer with. It is the before row a save hands its hook, and is read only when
+// there is a hook to hand it to.
+func (s *SQLStore) readEndpointWithSubscriptions(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	endpointID string,
+) (*Endpoint, error) {
+	endpoint, err := s.readEndpoint(ctx, q, scope, endpointID)
+	if err != nil {
+		return nil, err
+	}
+
+	if endpoint.Subscriptions, err = s.subscriptionsFor(ctx, q, endpointID); err != nil {
+		return nil, err
+	}
+
+	return endpoint, nil
 }
 
 // readEndpoint reads one endpoint row on the caller's executor, without its
@@ -557,6 +596,10 @@ func (s *SQLStore) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope te
 		return nil, op.Error(err, "reading back the archived webhook endpoint %q", endpointID)
 	}
 
+	if err = s.hooks.AfterArchiveEndpoint(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving webhook endpoint %q", endpointID)
+	}
+
 	return archived, nil
 }
 
@@ -613,6 +656,10 @@ func (s *SQLStore) RotateSecret(ctx context.Context, tx database.Tx, scope tenan
 			"rotating the secret of webhook endpoint %q", endpointID)
 	}
 
+	if err = s.hooks.AfterRotateSecret(ctx, tx, scope, endpointID); err != nil {
+		return op.Error(err, "running the hook after rotating the secret of webhook endpoint %q", endpointID)
+	}
+
 	op.Set(rotatedKey, true)
 
 	return nil
@@ -664,6 +711,14 @@ func (s *SQLStore) AddSubscription(ctx context.Context, tx database.Tx, scope te
 		)
 	}
 
+	var before *Subscription
+	if s.hooked {
+		var err error
+		if before, err = s.readSubscriptionByPair(ctx, tx, endpointID, eventType); err != nil {
+			return nil, op.Error(err, "reading webhook subscription before subscribing endpoint %q", endpointID)
+		}
+	}
+
 	if err := s.q.UpsertSubscription(ctx, tx, webhooksdb.UpsertSubscriptionParams{
 		ID:         identifiers.New(),
 		EndpointID: endpointID,
@@ -684,6 +739,42 @@ func (s *SQLStore) AddSubscription(ctx context.Context, tx database.Tx, scope te
 	subscription := columns.subscription()
 
 	op.Set(subscriptionIDKey, subscription.ID)
+
+	if err = s.hooks.AfterAddSubscription(ctx, tx, scope, before, &subscription); err != nil {
+		return nil, op.Error(err, "running the hook after subscribing webhook endpoint %q to %q", endpointID, eventType)
+	}
+
+	return &subscription, nil
+}
+
+// readSubscriptionByPair reads the subscription row for one (endpoint, event
+// type) pair, archived or not, and answers nil where the pair has none. It is
+// the before row AddSubscription hands its hook, and is read only when there is
+// a hook to hand it to.
+//
+// It takes no scope, for subscriptionsFor's reason: its one caller has just read
+// the endpoint within one.
+func (s *SQLStore) readSubscriptionByPair(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	endpointID string,
+	eventType EventType,
+) (*Subscription, error) {
+	row, err := s.q.GetSubscriptionByPair(ctx, q, webhooksdb.GetSubscriptionByPairParams{
+		EndpointID: endpointID,
+		EventType:  eventType.String(),
+	})
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		//nolint:nilnil // A pair with no row is the creation case, which the hook reads as a nil before.
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+
+	columns := subscriptionFromPair(&row)
+	subscription := columns.subscription()
 
 	return &subscription, nil
 }
@@ -825,6 +916,10 @@ func (s *SQLStore) ArchiveSubscription(ctx context.Context, tx database.Tx, scop
 
 	columns := subscriptionFromGet(&row)
 	archived := columns.subscription()
+
+	if err = s.hooks.AfterArchiveSubscription(ctx, tx, scope, &archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving webhook subscription %q", subscriptionID)
+	}
 
 	return &archived, nil
 }

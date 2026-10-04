@@ -5,4 +5,4 @@ package commentsmock
 
 // Regenerate via `go generate ./comments/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out comments_mock.go -pkg commentsmock -rm -fmt goimports .. Store:StoreMock
+//go:generate go tool github.com/matryer/moq -out comments_mock.go -pkg commentsmock -rm -fmt goimports .. Store:StoreMock Hooks:HooksMock

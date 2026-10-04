@@ -44,6 +44,19 @@ func WithTargets(targets Targets) SQLStoreOption {
 	}
 }
 
+// WithHooks runs hooks inside every write's transaction, once its statements
+// have landed. See Hooks.
+//
+// Absent, or nil, the hooks are NoopHooks: a consumer with nothing to commit
+// alongside a write configures nothing.
+func WithHooks(hooks Hooks) SQLStoreOption {
+	return func(s *SQLStore) {
+		if hooks != nil {
+			s.hooks, s.hooked = hooks, true
+		}
+	}
+}
+
 // WithStoreLogger attaches a logger. An absent logger logs nowhere.
 func WithStoreLogger(logger logging.Logger) SQLStoreOption {
 	return func(s *SQLStore) { s.logger = logger }

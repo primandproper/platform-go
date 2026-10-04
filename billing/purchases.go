@@ -76,6 +76,10 @@ func (s *SQLStore) CreatePurchase(
 		return nil, op.Error(err, "creating purchase")
 	}
 
+	if err := s.hooks.AfterCreatePurchase(ctx, tx, scope, &created); err != nil {
+		return nil, op.Error(err, "running the hook after creating purchase %q", created.ID)
+	}
+
 	return &created, nil
 }
 
@@ -341,6 +345,10 @@ func (s *SQLStore) CompletePurchase(
 			"completing purchase %q", purchaseID)
 	}
 
+	if err = s.hooks.AfterCompletePurchase(ctx, tx, scope, settled); err != nil {
+		return nil, op.Error(err, "running the hook after completing purchase %q", purchaseID)
+	}
+
 	return settled, nil
 }
 
@@ -384,7 +392,13 @@ func (s *SQLStore) ArchivePurchase(
 			"archiving purchase %q", purchaseID)
 	}
 
-	return purchaseFromArchivedRow(&row), nil
+	archived := purchaseFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchivePurchase(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving purchase %q", purchaseID)
+	}
+
+	return archived, nil
 }
 
 // drainPurchases turns one list statement's rows into the paged result.

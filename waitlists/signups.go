@@ -126,6 +126,10 @@ func (s *SQLStore) Join(
 
 	joined.CreatedAt = row.CreatedAt.UTC()
 
+	if err = s.hooks.AfterJoin(ctx, tx, scope, &joined); err != nil {
+		return nil, op.Error(err, "running the hook after joining waitlist %q", listID)
+	}
+
 	s.countSignups(ctx, joined.Status, 1)
 
 	return &joined, nil
@@ -346,6 +350,14 @@ func (s *SQLStore) UpdateSignupNotes(
 		return nil, op.Error(err, "updating waitlist signup %q", signupID)
 	}
 
+	var before *Signup
+	if s.hooked {
+		var err error
+		if before, err = s.readSignup(ctx, tx, scope, listID, signupID); err != nil {
+			return nil, op.Error(err, "updating waitlist signup %q", signupID)
+		}
+	}
+
 	count, err := s.q.UpdateSignupNotes(ctx, tx, waitlistsdb.UpdateSignupNotesParams{
 		Notes:      notes,
 		ID:         signupID,
@@ -359,6 +371,10 @@ func (s *SQLStore) UpdateSignupNotes(
 	updated, err := s.readSignup(ctx, tx, scope, listID, signupID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the updated waitlist signup %q", signupID)
+	}
+
+	if err = s.hooks.AfterUpdateSignupNotes(ctx, tx, scope, before, updated); err != nil {
+		return nil, op.Error(err, "running the hook after updating waitlist signup %q", signupID)
 	}
 
 	return updated, nil
@@ -388,7 +404,7 @@ func (s *SQLStore) Confirm(
 		return nil, op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusWaiting)
 	}
 
-	confirmed, err := s.transition(ctx, tx, scope, listID, signupID, StatusPending, StatusWaiting)
+	confirmed, err := s.transition(ctx, tx, scope, listID, signupID, StatusPending, StatusWaiting, s.hooks.AfterConfirm)
 	if err != nil {
 		return nil, op.Error(err, "moving waitlist signup %q to %s", signupID, StatusWaiting)
 	}
@@ -417,7 +433,7 @@ func (s *SQLStore) Invite(
 		return nil, op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusInvited)
 	}
 
-	invited, err := s.transition(ctx, tx, scope, listID, signupID, StatusWaiting, StatusInvited)
+	invited, err := s.transition(ctx, tx, scope, listID, signupID, StatusWaiting, StatusInvited, s.hooks.AfterInvite)
 	if err != nil {
 		return nil, op.Error(err, "moving waitlist signup %q to %s", signupID, StatusInvited)
 	}
@@ -447,7 +463,7 @@ func (s *SQLStore) Convert(
 		return nil, op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusConverted)
 	}
 
-	converted, err := s.transition(ctx, tx, scope, listID, signupID, StatusInvited, StatusConverted)
+	converted, err := s.transition(ctx, tx, scope, listID, signupID, StatusInvited, StatusConverted, s.hooks.AfterConvert)
 	if err != nil {
 		return nil, op.Error(err, "moving waitlist signup %q to %s", signupID, StatusConverted)
 	}
@@ -482,6 +498,7 @@ func (s *SQLStore) transition(
 	scope tenancy.Scope,
 	listID, signupID string,
 	from, to Status,
+	after func(context.Context, database.Tx, tenancy.Scope, *Signup) error,
 ) (*Signup, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
@@ -504,6 +521,10 @@ func (s *SQLStore) transition(
 	moved, err := s.readSignup(ctx, tx, scope, listID, signupID)
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "reading back the moved waitlist signup")
+	}
+
+	if err = after(ctx, tx, scope, moved); err != nil {
+		return nil, platformerrors.Wrapf(err, "running the hook after moving waitlist signup to %s", to)
 	}
 
 	s.countSignups(ctx, to, 1)
@@ -566,6 +587,10 @@ func (s *SQLStore) Withdraw(
 			"withdrawing waitlist signup %q", signupID)
 	}
 
+	if err = s.hooks.AfterWithdraw(ctx, tx, scope, withdrawn); err != nil {
+		return nil, op.Error(err, "running the hook after withdrawing waitlist signup %q", signupID)
+	}
+
 	s.countSignups(ctx, StatusWithdrawn, 1)
 
 	return withdrawn, nil
@@ -618,6 +643,10 @@ func (s *SQLStore) WithdrawSignupsForSubject(
 	}
 
 	op.Set(countKey, withdrawn)
+
+	if err = s.hooks.AfterWithdrawSignupsForSubject(ctx, tx, scope, subject, withdrawn); err != nil {
+		return 0, op.Error(err, "running the hook after erasing a subject's waitlist signups")
+	}
 
 	if withdrawn > 0 {
 		s.countSignups(ctx, StatusWithdrawn, withdrawn)
@@ -677,7 +706,13 @@ func (s *SQLStore) ArchiveSignup(
 			"reading back the archived waitlist signup %q", signupID)
 	}
 
-	return signupFromArchivedRow(&row), nil
+	archived := signupFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveSignup(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving waitlist signup %q", signupID)
+	}
+
+	return archived, nil
 }
 
 // explainLostTransition says why a guarded write matched nothing.

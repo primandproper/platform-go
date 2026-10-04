@@ -258,8 +258,11 @@ type Signup struct {
 	// mail client renders the capitalization somebody typed.
 	//
 	// It is empty for a withdrawn signup, which is the whole of what a
-	// withdrawal erases from this column.
-	Contact string `json:"contact"`
+	// withdrawal erases from this column. It is kept out of audit diffs for the
+	// same reason: an audit log is built to be the hardest place to erase
+	// anything, and a copy of the address there is one the withdrawal cannot
+	// reach.
+	Contact string `audit:"-" json:"contact"`
 
 	// ContactDigest is what the row is found by and what survives a withdrawal.
 	//

@@ -112,6 +112,10 @@ func (s *SQLStore) CreateComment(
 		return nil, op.Error(err, "reading back the created comment")
 	}
 
+	if err = s.hooks.AfterCreateComment(ctx, tx, scope, created); err != nil {
+		return nil, op.Error(err, "running the hook after writing comment %q", created.ID)
+	}
+
 	return created, nil
 }
 
@@ -291,6 +295,14 @@ func (s *SQLStore) UpdateComment(
 		return nil, op.Error(ErrEmptyBody, "editing comment %q", revision.ID)
 	}
 
+	var before *Comment
+	if s.hooked {
+		var err error
+		if before, err = s.commentOn(ctx, tx, scope, revision.ID); err != nil {
+			return nil, op.Error(err, "editing comment %q", revision.ID)
+		}
+	}
+
 	count, err := s.q.UpdateComment(ctx, tx, updateCommentParams(scope, &revision))
 	if err = guardCount(count, err, ErrCommentNotFound, "editing the comment"); err != nil {
 		return nil, op.Error(err, "editing comment %q", revision.ID)
@@ -299,6 +311,10 @@ func (s *SQLStore) UpdateComment(
 	revised, err := s.commentOn(ctx, tx, scope, revision.ID)
 	if err != nil {
 		return nil, op.Error(err, "reading back the revised comment")
+	}
+
+	if err = s.hooks.AfterUpdateComment(ctx, tx, scope, before, revised); err != nil {
+		return nil, op.Error(err, "running the hook after editing comment %q", revision.ID)
 	}
 
 	return revised, nil
@@ -359,7 +375,13 @@ func (s *SQLStore) ArchiveComment(
 		return nil, op.Error(err, "reading back the archived comment")
 	}
 
-	return commentFromArchivedRow(&row), nil
+	archived := commentFromArchivedRow(&row)
+
+	if err = s.hooks.AfterArchiveComment(ctx, tx, scope, archived); err != nil {
+		return nil, op.Error(err, "running the hook after archiving comment %q", commentID)
+	}
+
+	return archived, nil
 }
 
 // DeleteCommentsForTarget destroys every comment about one thing and reports how
@@ -407,6 +429,10 @@ func (s *SQLStore) DeleteCommentsForTarget(
 
 	op.Set(countKey, deleted)
 
+	if err = s.hooks.AfterDeleteCommentsForTarget(ctx, tx, scope, target, deleted); err != nil {
+		return 0, op.Error(err, "running the hook after sweeping a target's comments")
+	}
+
 	return deleted, nil
 }
 
@@ -447,6 +473,10 @@ func (s *SQLStore) DeleteCommentsByAuthor(
 	}
 
 	op.Set(countKey, deleted)
+
+	if err = s.hooks.AfterDeleteCommentsByAuthor(ctx, tx, scope, author, deleted); err != nil {
+		return 0, op.Error(err, "running the hook after erasing comments")
+	}
 
 	return deleted, nil
 }

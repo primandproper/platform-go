@@ -29,10 +29,12 @@ const serviceLayerName = serviceName + "_service"
 // it. And it owns the transaction, so a consumer's audit entry and outbox row
 // commit with the registration or not at all — which is what [Hooks] is for.
 //
-// What it no longer does is read a row back around a write. Every store write
-// answers with the row it moved, so each operation here is one store call and a
-// hook, and the value the hook is handed is what the statement left rather than
-// what a read on either side of it found.
+// What it no longer does is read a row back after a write. Every store write
+// answers with the row it moved, so the value a hook is handed is what the
+// statement left rather than what a later read found. The one read it does make
+// is before an update, and only when hooks are installed: the row as it stood is
+// the other half of what [Hooks.AfterUpdateClient] is handed, and nothing but
+// the transaction that is about to overwrite it can still see it.
 //
 // Reads are not here. They are one store call with no hook and no transaction to
 // own, so a service method over them would be a second name for the store's,
@@ -44,12 +46,16 @@ type Service struct {
 	generate CredentialGenerator
 	o11y     observability.Observer
 
-	instruments *metrics.OperationSet
-
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
+
+	instruments *metrics.OperationSet
+
+	// hooked is whether WithHooks installed any, which decides whether an
+	// update pays for the read of the row it is about to overwrite.
+	hooked bool
 }
 
 // NewService builds the orchestration layer over a Store.
@@ -198,10 +204,23 @@ func (s *Service) UpdateClient(
 	var updated *Client
 
 	err := s.run(ctx, op, "update", func(tx database.Tx) error {
-		// One store call rather than two. The write answers with the row it
-		// revised, read back on this transaction, so what the hook and the
-		// caller see is what the statement left — the last_updated_at it stamped
-		// included.
+		// The row as it stood, read on this transaction so that it is the row
+		// the write overwrites, and only when a hook will be handed it. A
+		// registration that is not there fails here exactly as the write would.
+		var before *Client
+
+		if s.hooked {
+			read, err := s.store.GetClient(ctx, tx, scope, id)
+			if err != nil {
+				return err
+			}
+
+			before = read
+		}
+
+		// The write answers with the row it revised, read back on this
+		// transaction, so what the hook and the caller see is what the statement
+		// left — the last_updated_at it stamped included.
 		client, err := s.store.UpdateClient(ctx, tx, scope, id, input)
 		if err != nil {
 			return err
@@ -209,7 +228,7 @@ func (s *Service) UpdateClient(
 
 		updated = client
 
-		return s.hooks.AfterUpdateClient(ctx, tx, scope, client)
+		return s.hooks.AfterUpdateClient(ctx, tx, scope, before, client)
 	})
 	if err != nil {
 		return nil, op.Error(err, "updating oauth2 client %q", id)

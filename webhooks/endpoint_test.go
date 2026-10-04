@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/webhooks/internal/webhooksdb"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
@@ -416,6 +417,21 @@ func TestEndpoint_applyHeaders(T *testing.T) {
 		test.EqOp(t, "", header.Get("Content-Type"))
 		test.EqOp(t, "acme", header.Get("X-Tenant"))
 	})
+}
+
+// A static header is as often a credential as a routing hint, so changing one is
+// recorded as nothing at all rather than written into the log built to outlast it.
+func TestEndpoint_auditDiffOmitsHeaders(T *testing.T) {
+	T.Parallel()
+
+	before := &Endpoint{Name: "before", Headers: map[string]string{"Authorization": "Bearer before"}}
+	after := &Endpoint{Name: "after", Headers: map[string]string{"Authorization": "Bearer after"}}
+
+	changes, err := audit.Diff(before, after)
+	must.NoError(T, err)
+
+	test.MapContainsKey(T, changes, "name")
+	test.MapNotContainsKey(T, changes, "headers")
 }
 
 func TestEndpoint_EnsureDefaults(T *testing.T) {

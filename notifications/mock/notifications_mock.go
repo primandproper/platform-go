@@ -1887,3 +1887,551 @@ func (mock *RegistryMock) RevokeDeviceCalls() []struct {
 	mock.lockRevokeDevice.RUnlock()
 	return calls
 }
+
+// Ensure, that HooksMock does implement notifications.Hooks.
+// If this is not the case, regenerate this file with moq.
+var _ notifications.Hooks = &HooksMock{}
+
+// HooksMock is a mock implementation of notifications.Hooks.
+//
+//	func TestSomethingThatUsesHooks(t *testing.T) {
+//
+//		// make and configure a mocked notifications.Hooks
+//		mockedHooks := &HooksMock{
+//			AfterArchiveNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error {
+//				panic("mock out the AfterArchiveNotification method")
+//			},
+//			AfterCreateNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error {
+//				panic("mock out the AfterCreateNotification method")
+//			},
+//			AfterDeleteDevicesForPrincipalFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deleted int64) error {
+//				panic("mock out the AfterDeleteDevicesForPrincipal method")
+//			},
+//			AfterDeleteNotificationsForPrincipalFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deleted int64) error {
+//				panic("mock out the AfterDeleteNotificationsForPrincipal method")
+//			},
+//			AfterMarkAllNotificationsReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, marked int64) error {
+//				panic("mock out the AfterMarkAllNotificationsRead method")
+//			},
+//			AfterMarkNotificationReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *notifications.Notification, after *notifications.Notification) error {
+//				panic("mock out the AfterMarkNotificationRead method")
+//			},
+//			AfterRegisterDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *notifications.Device, after *notifications.Device) error {
+//				panic("mock out the AfterRegisterDevice method")
+//			},
+//			AfterRevokeDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) error {
+//				panic("mock out the AfterRevokeDevice method")
+//			},
+//		}
+//
+//		// use mockedHooks in code that requires notifications.Hooks
+//		// and then make assertions.
+//
+//	}
+type HooksMock struct {
+	// AfterArchiveNotificationFunc mocks the AfterArchiveNotification method.
+	AfterArchiveNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error
+
+	// AfterCreateNotificationFunc mocks the AfterCreateNotification method.
+	AfterCreateNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error
+
+	// AfterDeleteDevicesForPrincipalFunc mocks the AfterDeleteDevicesForPrincipal method.
+	AfterDeleteDevicesForPrincipalFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deleted int64) error
+
+	// AfterDeleteNotificationsForPrincipalFunc mocks the AfterDeleteNotificationsForPrincipal method.
+	AfterDeleteNotificationsForPrincipalFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deleted int64) error
+
+	// AfterMarkAllNotificationsReadFunc mocks the AfterMarkAllNotificationsRead method.
+	AfterMarkAllNotificationsReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, marked int64) error
+
+	// AfterMarkNotificationReadFunc mocks the AfterMarkNotificationRead method.
+	AfterMarkNotificationReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *notifications.Notification, after *notifications.Notification) error
+
+	// AfterRegisterDeviceFunc mocks the AfterRegisterDevice method.
+	AfterRegisterDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *notifications.Device, after *notifications.Device) error
+
+	// AfterRevokeDeviceFunc mocks the AfterRevokeDevice method.
+	AfterRevokeDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// AfterArchiveNotification holds details about calls to the AfterArchiveNotification method.
+		AfterArchiveNotification []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Notification is the notification argument value.
+			Notification *notifications.Notification
+		}
+		// AfterCreateNotification holds details about calls to the AfterCreateNotification method.
+		AfterCreateNotification []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Notification is the notification argument value.
+			Notification *notifications.Notification
+		}
+		// AfterDeleteDevicesForPrincipal holds details about calls to the AfterDeleteDevicesForPrincipal method.
+		AfterDeleteDevicesForPrincipal []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterDeleteNotificationsForPrincipal holds details about calls to the AfterDeleteNotificationsForPrincipal method.
+		AfterDeleteNotificationsForPrincipal []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// Deleted is the deleted argument value.
+			Deleted int64
+		}
+		// AfterMarkAllNotificationsRead holds details about calls to the AfterMarkAllNotificationsRead method.
+		AfterMarkAllNotificationsRead []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// Marked is the marked argument value.
+			Marked int64
+		}
+		// AfterMarkNotificationRead holds details about calls to the AfterMarkNotificationRead method.
+		AfterMarkNotificationRead []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *notifications.Notification
+			// After is the after argument value.
+			After *notifications.Notification
+		}
+		// AfterRegisterDevice holds details about calls to the AfterRegisterDevice method.
+		AfterRegisterDevice []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Before is the before argument value.
+			Before *notifications.Device
+			// After is the after argument value.
+			After *notifications.Device
+		}
+		// AfterRevokeDevice holds details about calls to the AfterRevokeDevice method.
+		AfterRevokeDevice []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Device is the device argument value.
+			Device *notifications.Device
+		}
+	}
+	lockAfterArchiveNotification             sync.RWMutex
+	lockAfterCreateNotification              sync.RWMutex
+	lockAfterDeleteDevicesForPrincipal       sync.RWMutex
+	lockAfterDeleteNotificationsForPrincipal sync.RWMutex
+	lockAfterMarkAllNotificationsRead        sync.RWMutex
+	lockAfterMarkNotificationRead            sync.RWMutex
+	lockAfterRegisterDevice                  sync.RWMutex
+	lockAfterRevokeDevice                    sync.RWMutex
+}
+
+// AfterArchiveNotification calls AfterArchiveNotificationFunc.
+func (mock *HooksMock) AfterArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error {
+	if mock.AfterArchiveNotificationFunc == nil {
+		panic("HooksMock.AfterArchiveNotificationFunc: method is nil but Hooks.AfterArchiveNotification was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Notification *notifications.Notification
+	}{
+		Ctx:          ctx,
+		Tx:           tx,
+		Scope:        scope,
+		Notification: notification,
+	}
+	mock.lockAfterArchiveNotification.Lock()
+	mock.calls.AfterArchiveNotification = append(mock.calls.AfterArchiveNotification, callInfo)
+	mock.lockAfterArchiveNotification.Unlock()
+	return mock.AfterArchiveNotificationFunc(ctx, tx, scope, notification)
+}
+
+// AfterArchiveNotificationCalls gets all the calls that were made to AfterArchiveNotification.
+// Check the length with:
+//
+//	len(mockedHooks.AfterArchiveNotificationCalls())
+func (mock *HooksMock) AfterArchiveNotificationCalls() []struct {
+	Ctx          context.Context
+	Tx           database.Tx
+	Scope        tenancy.Scope
+	Notification *notifications.Notification
+} {
+	var calls []struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Notification *notifications.Notification
+	}
+	mock.lockAfterArchiveNotification.RLock()
+	calls = mock.calls.AfterArchiveNotification
+	mock.lockAfterArchiveNotification.RUnlock()
+	return calls
+}
+
+// AfterCreateNotification calls AfterCreateNotificationFunc.
+func (mock *HooksMock) AfterCreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error {
+	if mock.AfterCreateNotificationFunc == nil {
+		panic("HooksMock.AfterCreateNotificationFunc: method is nil but Hooks.AfterCreateNotification was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Notification *notifications.Notification
+	}{
+		Ctx:          ctx,
+		Tx:           tx,
+		Scope:        scope,
+		Notification: notification,
+	}
+	mock.lockAfterCreateNotification.Lock()
+	mock.calls.AfterCreateNotification = append(mock.calls.AfterCreateNotification, callInfo)
+	mock.lockAfterCreateNotification.Unlock()
+	return mock.AfterCreateNotificationFunc(ctx, tx, scope, notification)
+}
+
+// AfterCreateNotificationCalls gets all the calls that were made to AfterCreateNotification.
+// Check the length with:
+//
+//	len(mockedHooks.AfterCreateNotificationCalls())
+func (mock *HooksMock) AfterCreateNotificationCalls() []struct {
+	Ctx          context.Context
+	Tx           database.Tx
+	Scope        tenancy.Scope
+	Notification *notifications.Notification
+} {
+	var calls []struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Notification *notifications.Notification
+	}
+	mock.lockAfterCreateNotification.RLock()
+	calls = mock.calls.AfterCreateNotification
+	mock.lockAfterCreateNotification.RUnlock()
+	return calls
+}
+
+// AfterDeleteDevicesForPrincipal calls AfterDeleteDevicesForPrincipalFunc.
+func (mock *HooksMock) AfterDeleteDevicesForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deleted int64) error {
+	if mock.AfterDeleteDevicesForPrincipalFunc == nil {
+		panic("HooksMock.AfterDeleteDevicesForPrincipalFunc: method is nil but Hooks.AfterDeleteDevicesForPrincipal was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		Deleted   int64
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+		Deleted:   deleted,
+	}
+	mock.lockAfterDeleteDevicesForPrincipal.Lock()
+	mock.calls.AfterDeleteDevicesForPrincipal = append(mock.calls.AfterDeleteDevicesForPrincipal, callInfo)
+	mock.lockAfterDeleteDevicesForPrincipal.Unlock()
+	return mock.AfterDeleteDevicesForPrincipalFunc(ctx, tx, scope, principal, deleted)
+}
+
+// AfterDeleteDevicesForPrincipalCalls gets all the calls that were made to AfterDeleteDevicesForPrincipal.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteDevicesForPrincipalCalls())
+func (mock *HooksMock) AfterDeleteDevicesForPrincipalCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+	Deleted   int64
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		Deleted   int64
+	}
+	mock.lockAfterDeleteDevicesForPrincipal.RLock()
+	calls = mock.calls.AfterDeleteDevicesForPrincipal
+	mock.lockAfterDeleteDevicesForPrincipal.RUnlock()
+	return calls
+}
+
+// AfterDeleteNotificationsForPrincipal calls AfterDeleteNotificationsForPrincipalFunc.
+func (mock *HooksMock) AfterDeleteNotificationsForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deleted int64) error {
+	if mock.AfterDeleteNotificationsForPrincipalFunc == nil {
+		panic("HooksMock.AfterDeleteNotificationsForPrincipalFunc: method is nil but Hooks.AfterDeleteNotificationsForPrincipal was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		Deleted   int64
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+		Deleted:   deleted,
+	}
+	mock.lockAfterDeleteNotificationsForPrincipal.Lock()
+	mock.calls.AfterDeleteNotificationsForPrincipal = append(mock.calls.AfterDeleteNotificationsForPrincipal, callInfo)
+	mock.lockAfterDeleteNotificationsForPrincipal.Unlock()
+	return mock.AfterDeleteNotificationsForPrincipalFunc(ctx, tx, scope, principal, deleted)
+}
+
+// AfterDeleteNotificationsForPrincipalCalls gets all the calls that were made to AfterDeleteNotificationsForPrincipal.
+// Check the length with:
+//
+//	len(mockedHooks.AfterDeleteNotificationsForPrincipalCalls())
+func (mock *HooksMock) AfterDeleteNotificationsForPrincipalCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+	Deleted   int64
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		Deleted   int64
+	}
+	mock.lockAfterDeleteNotificationsForPrincipal.RLock()
+	calls = mock.calls.AfterDeleteNotificationsForPrincipal
+	mock.lockAfterDeleteNotificationsForPrincipal.RUnlock()
+	return calls
+}
+
+// AfterMarkAllNotificationsRead calls AfterMarkAllNotificationsReadFunc.
+func (mock *HooksMock) AfterMarkAllNotificationsRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, marked int64) error {
+	if mock.AfterMarkAllNotificationsReadFunc == nil {
+		panic("HooksMock.AfterMarkAllNotificationsReadFunc: method is nil but Hooks.AfterMarkAllNotificationsRead was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		Marked    int64
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+		Marked:    marked,
+	}
+	mock.lockAfterMarkAllNotificationsRead.Lock()
+	mock.calls.AfterMarkAllNotificationsRead = append(mock.calls.AfterMarkAllNotificationsRead, callInfo)
+	mock.lockAfterMarkAllNotificationsRead.Unlock()
+	return mock.AfterMarkAllNotificationsReadFunc(ctx, tx, scope, principal, marked)
+}
+
+// AfterMarkAllNotificationsReadCalls gets all the calls that were made to AfterMarkAllNotificationsRead.
+// Check the length with:
+//
+//	len(mockedHooks.AfterMarkAllNotificationsReadCalls())
+func (mock *HooksMock) AfterMarkAllNotificationsReadCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+	Marked    int64
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		Marked    int64
+	}
+	mock.lockAfterMarkAllNotificationsRead.RLock()
+	calls = mock.calls.AfterMarkAllNotificationsRead
+	mock.lockAfterMarkAllNotificationsRead.RUnlock()
+	return calls
+}
+
+// AfterMarkNotificationRead calls AfterMarkNotificationReadFunc.
+func (mock *HooksMock) AfterMarkNotificationRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *notifications.Notification, after *notifications.Notification) error {
+	if mock.AfterMarkNotificationReadFunc == nil {
+		panic("HooksMock.AfterMarkNotificationReadFunc: method is nil but Hooks.AfterMarkNotificationRead was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *notifications.Notification
+		After  *notifications.Notification
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterMarkNotificationRead.Lock()
+	mock.calls.AfterMarkNotificationRead = append(mock.calls.AfterMarkNotificationRead, callInfo)
+	mock.lockAfterMarkNotificationRead.Unlock()
+	return mock.AfterMarkNotificationReadFunc(ctx, tx, scope, before, after)
+}
+
+// AfterMarkNotificationReadCalls gets all the calls that were made to AfterMarkNotificationRead.
+// Check the length with:
+//
+//	len(mockedHooks.AfterMarkNotificationReadCalls())
+func (mock *HooksMock) AfterMarkNotificationReadCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *notifications.Notification
+	After  *notifications.Notification
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *notifications.Notification
+		After  *notifications.Notification
+	}
+	mock.lockAfterMarkNotificationRead.RLock()
+	calls = mock.calls.AfterMarkNotificationRead
+	mock.lockAfterMarkNotificationRead.RUnlock()
+	return calls
+}
+
+// AfterRegisterDevice calls AfterRegisterDeviceFunc.
+func (mock *HooksMock) AfterRegisterDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, before *notifications.Device, after *notifications.Device) error {
+	if mock.AfterRegisterDeviceFunc == nil {
+		panic("HooksMock.AfterRegisterDeviceFunc: method is nil but Hooks.AfterRegisterDevice was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *notifications.Device
+		After  *notifications.Device
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Before: before,
+		After:  after,
+	}
+	mock.lockAfterRegisterDevice.Lock()
+	mock.calls.AfterRegisterDevice = append(mock.calls.AfterRegisterDevice, callInfo)
+	mock.lockAfterRegisterDevice.Unlock()
+	return mock.AfterRegisterDeviceFunc(ctx, tx, scope, before, after)
+}
+
+// AfterRegisterDeviceCalls gets all the calls that were made to AfterRegisterDevice.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRegisterDeviceCalls())
+func (mock *HooksMock) AfterRegisterDeviceCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Before *notifications.Device
+	After  *notifications.Device
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Before *notifications.Device
+		After  *notifications.Device
+	}
+	mock.lockAfterRegisterDevice.RLock()
+	calls = mock.calls.AfterRegisterDevice
+	mock.lockAfterRegisterDevice.RUnlock()
+	return calls
+}
+
+// AfterRevokeDevice calls AfterRevokeDeviceFunc.
+func (mock *HooksMock) AfterRevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) error {
+	if mock.AfterRevokeDeviceFunc == nil {
+		panic("HooksMock.AfterRevokeDeviceFunc: method is nil but Hooks.AfterRevokeDevice was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Device *notifications.Device
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Device: device,
+	}
+	mock.lockAfterRevokeDevice.Lock()
+	mock.calls.AfterRevokeDevice = append(mock.calls.AfterRevokeDevice, callInfo)
+	mock.lockAfterRevokeDevice.Unlock()
+	return mock.AfterRevokeDeviceFunc(ctx, tx, scope, device)
+}
+
+// AfterRevokeDeviceCalls gets all the calls that were made to AfterRevokeDevice.
+// Check the length with:
+//
+//	len(mockedHooks.AfterRevokeDeviceCalls())
+func (mock *HooksMock) AfterRevokeDeviceCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Device *notifications.Device
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Device *notifications.Device
+	}
+	mock.lockAfterRevokeDevice.RLock()
+	calls = mock.calls.AfterRevokeDevice
+	mock.lockAfterRevokeDevice.RUnlock()
+	return calls
+}

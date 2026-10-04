@@ -5,4 +5,4 @@ package mediaregistrymock
 
 // Regenerate via `go generate ./mediaregistry/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out mediaregistry_mock.go -pkg mediaregistrymock -rm -fmt goimports .. Store:StoreMock
+//go:generate go tool github.com/matryer/moq -out mediaregistry_mock.go -pkg mediaregistrymock -rm -fmt goimports .. Store:StoreMock Hooks:HooksMock

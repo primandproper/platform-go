@@ -5,4 +5,4 @@ package waitlistsmock
 
 // Regenerate via `go generate ./waitlists/mock/`.
 
-//go:generate go tool github.com/matryer/moq -out waitlists_mock.go -pkg waitlistsmock -rm -fmt goimports .. Store:StoreMock ListStore:ListStoreMock SignupStore:SignupStoreMock
+//go:generate go tool github.com/matryer/moq -out waitlists_mock.go -pkg waitlistsmock -rm -fmt goimports .. Store:StoreMock ListStore:ListStoreMock SignupStore:SignupStoreMock Hooks:HooksMock
