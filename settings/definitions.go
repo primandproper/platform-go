@@ -469,10 +469,11 @@ func (s *SQLStore) rewriteDefinition(
 // meant two more statements — the archived row and its enumeration — charged to
 // every caller, including the ones that only wanted the setting retired.
 //
-// A store with hooks installed pays one of those statements anyway, before the
-// archive rather than after it: [Hooks.AfterArchiveDefinition] is handed the
-// row as it stood, and a consumer recording the retirement is exactly the
-// caller that wanted it. A store without hooks still pays nothing.
+// A store built with hooks other than NoopHooks pays one of those statements
+// anyway, before the archive rather than after it: [Hooks.AfterArchiveDefinition]
+// is handed the row as it stood, and a consumer recording the retirement is
+// exactly the caller that wanted it. A store built with NoopHooks still pays
+// nothing.
 func (s *SQLStore) ArchiveDefinition(
 	ctx context.Context,
 	tx database.Tx,
@@ -494,8 +495,9 @@ func (s *SQLStore) ArchiveDefinition(
 	}
 
 	// The row as it stands, for the hook alone: once the statement below lands
-	// no read here reaches it. A store without hooks skips the read, which is
-	// why the write answers with nothing — see the method's documentation.
+	// no read here reaches it. A store built with NoopHooks skips the read,
+	// which is why the write answers with nothing — see the method's
+	// documentation.
 	var retired *Definition
 	if s.hooked {
 		var err error

@@ -143,8 +143,8 @@ func TestNewService(T *testing.T) {
 		t.Parallel()
 
 		svc, err := NewService(t.Context(), &Config{}, newClient(dialect.Postgres), &oauth2clientsmock.StoreMock{},
+			oauth2clients.NoopHooks{},
 			WithPillars(&observability.Pillars{}),
-			WithHooks(oauth2clients.NoopHooks{}),
 			WithServiceOptions(oauth2clients.WithCredentialGenerator(func() (string, string, error) {
 				return "id", "secret", nil
 			})),
@@ -153,19 +153,19 @@ func TestNewService(T *testing.T) {
 		test.NotNil(t, svc)
 	})
 
-	T.Run("ignores a nil hooks", func(t *testing.T) {
+	T.Run("refuses nil hooks", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), &Config{}, newClient(dialect.Postgres), &oauth2clientsmock.StoreMock{},
-			WithHooks(nil))
-		must.NoError(t, err)
-		test.NotNil(t, svc)
+		svc, err := NewService(t.Context(), &Config{}, newClient(dialect.Postgres), &oauth2clientsmock.StoreMock{}, nil)
+		must.ErrorIs(t, err, oauth2clients.ErrNilHooks)
+		test.Nil(t, svc)
 	})
 
 	T.Run("refuses a nil config", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), nil, newClient(dialect.Postgres), &oauth2clientsmock.StoreMock{})
+		svc, err := NewService(t.Context(), nil, newClient(dialect.Postgres), &oauth2clientsmock.StoreMock{},
+			oauth2clients.NoopHooks{})
 		must.ErrorIs(t, err, errors.ErrNilInputParameter)
 		test.Nil(t, svc)
 	})
@@ -174,7 +174,7 @@ func TestNewService(T *testing.T) {
 		t.Parallel()
 
 		svc, err := NewService(t.Context(), &Config{TablePrefix: "has space"}, newClient(dialect.Postgres),
-			&oauth2clientsmock.StoreMock{})
+			&oauth2clientsmock.StoreMock{}, oauth2clients.NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, svc)
 	})
@@ -182,7 +182,7 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses a nil store", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), &Config{}, newClient(dialect.Postgres), nil)
+		svc, err := NewService(t.Context(), &Config{}, newClient(dialect.Postgres), nil, oauth2clients.NoopHooks{})
 		must.ErrorIs(t, err, oauth2clients.ErrNilStore)
 		test.Nil(t, svc)
 	})

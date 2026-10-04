@@ -43,6 +43,11 @@ var (
 	// either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset database client")
 
+	// ErrNilHooks indicates NewSQLStore was called without hooks. A store
+	// whose writes owe no companions is handed NoopHooks{} by name. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset hooks")
+
 	// ErrNilConfig indicates NewSQLStore was called without a config. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilConfig = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset store config")

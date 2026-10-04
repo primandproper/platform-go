@@ -123,12 +123,15 @@ type Service struct {
 // An enrollment gate is required — [WithEnrollmentGate], or
 // [AdmitEveryEnrollment] by name — and its absence is ErrNoEnrollmentGate. The
 // last-credential guard is on unless [WithoutLastCredentialGuard] says
-// otherwise. Hooks default to [NoopHooks], and observability to nothing.
+// otherwise. hooks run inside each write's transaction and are required; a
+// caller that commits nothing alongside these writes passes [NoopHooks] by
+// name. Observability defaults to nothing.
 func NewService(
 	client database.Client,
 	store Store,
 	rp *webauthn.RelyingParty,
 	users *UserSource,
+	hooks Hooks,
 	opts ...ServiceOption,
 ) (*Service, error) {
 	switch {
@@ -140,6 +143,8 @@ func NewService(
 		return nil, ErrNilRelyingParty
 	case users == nil:
 		return nil, ErrNilUserSource
+	case hooks == nil:
+		return nil, ErrNilHooks
 	}
 
 	s := &Service{
@@ -147,7 +152,7 @@ func NewService(
 		store:  store,
 		rp:     rp,
 		users:  users,
-		hooks:  NoopHooks{},
+		hooks:  hooks,
 	}
 
 	for _, opt := range opts {

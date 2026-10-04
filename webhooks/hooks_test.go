@@ -89,7 +89,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		saved := registerEndpoint(t, store, "endpoint-1", orderCreated)
 		call := hooks.last(t)
@@ -133,7 +133,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		first := registerEndpoint(t, store, "endpoint-1", orderCreated)
 
@@ -167,7 +167,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		saved := registerEndpoint(t, store, "endpoint-1", orderCreated, orderUpdated)
 		retired := subscriptionFor(t, saved, orderCreated)
@@ -192,7 +192,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		registerEndpoint(t, store, "endpoint-1", orderCreated)
 
@@ -211,7 +211,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		archivedEndpoint, err := archiveEndpoint(t, store, testScope, "never-registered")
 		must.NoError(t, err)
@@ -228,7 +228,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		registerScopedEndpoint(t, store, otherScope, "endpoint-1", orderCreated)
 		before := len(hooks.calls)
@@ -255,7 +255,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterSaveEndpoint"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		saved, err := saveEndpoint(t, store, testScope, &Endpoint{
 			ID:            "endpoint-1",
@@ -275,7 +275,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveSubscription"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		saved := registerEndpoint(t, store, "endpoint-1", orderCreated)
 		subscription := subscriptionFor(t, saved, orderCreated)
@@ -293,7 +293,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterRotateSecret"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		registerEndpoint(t, store, "endpoint-1", orderCreated)
 
@@ -305,24 +305,26 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		test.Eq(t, []byte("secret-endpoint-1"), read.Secret.Current)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
+		client, _ := env.database(t)
 
-		registerEndpoint(t, store, "endpoint-1", orderCreated)
+		store, err := NewSQLStore(client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		test.Nil(t, store)
 	})
 
 	t.Run("a write reads its before row only for hooks", func(t *testing.T) {
 		t.Parallel()
 
 		// Each runs one write on a fresh store and reports how many statements
-		// it sent. NoopHooks is installed hooks as far as the store can tell, so
+		// it sent. installedHooks does nothing either, but is not NoopHooks, so
 		// the difference is the before read and nothing else.
-		resave := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		resave := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			registerEndpoint(t, store, "endpoint-1", orderCreated)
 
 			return countStatements(t, store, func(tx database.Tx) error {
@@ -337,10 +339,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		subscribe := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		subscribe := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			registerEndpoint(t, store, "endpoint-1", orderCreated)
 
 			return countStatements(t, store, func(tx database.Tx) error {
@@ -349,10 +351,14 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, resave(t, WithHooks(NoopHooks{})), resave(t), test.Sprint("SaveEndpoint"))
-		test.Less(t, subscribe(t, WithHooks(NoopHooks{})), subscribe(t), test.Sprint("AddSubscription"))
+		test.Less(t, resave(t, installedHooks{}), resave(t, NoopHooks{}), test.Sprint("SaveEndpoint"))
+		test.Less(t, subscribe(t, installedHooks{}), subscribe(t, NoopHooks{}), test.Sprint("AddSubscription"))
 	})
 }
+
+// installedHooks does nothing, and is installed hooks as far as the store can
+// tell, because it is not NoopHooks.
+type installedHooks struct{ NoopHooks }
 
 // countStatements runs fn in a transaction of its own and reports how many
 // statements it sent through it.

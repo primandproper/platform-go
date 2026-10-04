@@ -221,13 +221,15 @@ change hands.
 
 A consumer whose every endpoint and subscription write owes the same companions
 — an audit entry for each, a data change event for each — can write them beside
-each call, or hand the store a [Hooks] through [WithHooks] and have each write
-call it on the same transaction once its statements have landed. The second is
-what a consumer reaches for when the alternative is wrapping the Store: a
-wrapper has to reimplement every write to call through, and cannot say what a
-re-registration changed without reading the row before the upsert does. A hook
-is handed that row. A hook's error fails the write it was called from, so the
-row and its companions commit together or not at all.
+each call, or hand [NewSQLStore] a [Hooks] and have each write call it on the
+same transaction once its statements have landed. The second is what a consumer
+reaches for when the alternative is wrapping the Store: a wrapper has to
+reimplement every write to call through, and cannot say what a re-registration
+changed without reading the row before the upsert does. A hook is handed that
+row. A hook's error fails the write it was called from, so the row and its
+companions commit together or not at all. The hooks are a required argument
+rather than an option, so a consumer with nothing to commit alongside a write
+passes [NoopHooks] by name and one that forgot to decide fails to compile.
 
 The hooks cover the consumer writes and nothing else: SaveEndpoint,
 ArchiveEndpoint, RotateSecret, AddSubscription and ArchiveSubscription. The

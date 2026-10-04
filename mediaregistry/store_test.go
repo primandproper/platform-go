@@ -27,7 +27,7 @@ func TestNewSQLStore(T *testing.T) {
 		t.Parallel()
 
 		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
-			store, err := NewSQLStore(newClient(d))
+			store, err := NewSQLStore(newClient(d), NoopHooks{})
 			must.NoError(t, err, must.Sprintf("dialect %s", d))
 			must.NotNil(t, store)
 		}
@@ -36,8 +36,17 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(nil)
+		store, err := NewSQLStore(nil, NoopHooks{})
 		must.ErrorIs(t, err, ErrNilDatabaseClient)
+		must.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
+		test.Nil(t, store)
+	})
+
+	T.Run("refuses nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		store, err := NewSQLStore(newClient(dialect.Postgres), nil)
+		must.ErrorIs(t, err, ErrNilHooks)
 		must.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 		test.Nil(t, store)
 	})
@@ -45,7 +54,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("refuses a dialect it has no statements for", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(newClient(dialect.Dialect("oracle")))
+		store, err := NewSQLStore(newClient(dialect.Dialect("oracle")), NoopHooks{})
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -56,7 +65,7 @@ func TestNewSQLStore(T *testing.T) {
 		// Vetted against the identifiers it actually produces, so a prefix that
 		// is legal alone and yields an over-long index name fails at
 		// construction rather than at the first query.
-		store, err := NewSQLStore(newClient(dialect.Postgres), WithTablePrefix("has space"))
+		store, err := NewSQLStore(newClient(dialect.Postgres), NoopHooks{}, WithTablePrefix("has space"))
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -64,7 +73,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("ignores a nil option", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(newClient(dialect.Postgres), nil)
+		store, err := NewSQLStore(newClient(dialect.Postgres), NoopHooks{}, nil)
 		must.NoError(t, err)
 		must.NotNil(t, store)
 	})

@@ -68,14 +68,15 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 }
 
 // NewStore builds the Store. client must be the database holding the billing
-// tables.
+// tables, and hooks run inside every write's transaction; a caller with nothing
+// to commit alongside a write passes billing.NoopHooks by name.
 //
 // The store is built into a variable and returned only once its error is known
 // to be nil. billing.NewSQLStore returns its own concrete type, so returning
 // it straight through would convert a nil *billing.SQLStore into a non-nil
 // billing.Store on the error path, and a caller testing the result against nil
 // would find a store that panics on first use.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (billing.Store, error) {
+func NewStore(ctx context.Context, cfg *Config, client database.Client, hooks billing.Hooks, opts ...Option) (billing.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -95,7 +96,7 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 		billing.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	store, storeErr := billing.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := billing.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}

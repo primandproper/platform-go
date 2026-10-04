@@ -222,8 +222,8 @@ func newHarnessWith(t *testing.T, srvOpts []passkeysgrpc.Option, svcOpts ...pass
 
 	signIns := &recordingSignInHooks{}
 
-	signInSvc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), &fakeTokens{}, []string{"owner"},
-		signin.WithTOTPIssuer("Example"), signin.WithHooks(signIns))
+	signInSvc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), &fakeTokens{}, []string{"owner"}, signIns,
+		signin.WithTOTPIssuer("Example"))
 	must.NoError(t, err)
 
 	credentials, err := passkeys.NewSQLStore(db, passkeys.WithTablePrefix(prefix))
@@ -247,7 +247,7 @@ func newHarnessWith(t *testing.T, srvOpts []passkeysgrpc.Option, svcOpts ...pass
 	})
 	must.NoError(t, err)
 
-	svc, err := passkeys.NewService(db, credentials, rp, users, append([]passkeys.ServiceOption{
+	svc, err := passkeys.NewService(db, credentials, rp, users, passkeys.NoopHooks{}, append([]passkeys.ServiceOption{
 		passkeys.WithEnrollmentGate(passkeys.AdmitEveryEnrollment),
 		passkeys.WithUsernameResolver(func(ctx context.Context, scope tenancy.Scope, username string) ([]byte, error) {
 			user, getErr := store.GetUserByUsername(ctx, db.Reader(), scope, username)
@@ -298,7 +298,7 @@ func newHarnessWith(t *testing.T, srvOpts []passkeysgrpc.Option, svcOpts ...pass
 func (h *harness) registerUser(t *testing.T, username string) *identity.User {
 	t.Helper()
 
-	identitySvc, err := identity.NewService(h.db, h.store)
+	identitySvc, err := identity.NewService(h.db, h.store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	registration, err := identitySvc.Register(t.Context(), testScope,

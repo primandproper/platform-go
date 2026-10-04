@@ -93,8 +93,9 @@ type Hooks interface {
 	AfterDeleteForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, deleted int64) error
 }
 
-// NoopHooks does nothing, and is what a store built without WithHooks runs. It is
-// also the type to embed in a Hooks that overrides some:
+// NoopHooks does nothing. It is what a caller passes NewSQLStore, by name, when
+// it commits nothing alongside these writes — a seed import, a bootstrap tool, a
+// test — and it is the type to embed in a Hooks that overrides some:
 //
 //	type recordingHooks struct {
 //		passwordreset.NoopHooks

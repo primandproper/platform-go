@@ -167,7 +167,7 @@ func TestObservabilityOptions(T *testing.T) {
 	T.Run("with none of them", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(&Config{}, newTestClient(t))
+		store, err := NewSQLStore(&Config{}, newTestClient(t), NoopHooks{})
 		must.NoError(t, err)
 		must.NotNil(t, store.o11y)
 		must.NotNil(t, store.sweptCounter)
@@ -247,7 +247,7 @@ func TestServiceOptions(T *testing.T) {
 
 		client := newTestClient(t)
 
-		store, err := NewSQLStore(&Config{}, client)
+		store, err := NewSQLStore(&Config{}, client, NoopHooks{})
 		must.NoError(t, err)
 
 		service, err := NewService(client, store, &testDirectory{}, &fakeAuthenticator{}, &recordingMailer{})

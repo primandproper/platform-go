@@ -87,6 +87,7 @@ func TestBothHalvesCloseTheFeedbackLoop(t *testing.T) {
 	i := do.New()
 	do.ProvideValue[context.Context](i, t.Context())
 	do.ProvideValue[database.Client](i, client)
+	do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
 	do.ProvideValue(i, &notificationscfg.Config{TablePrefix: wiringPrefix})
 	do.ProvideValue(i, &mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
 

@@ -91,14 +91,17 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 
 // NewStore builds the Store both halves share. client must be the database
 // holding the webhook tables — the same one the Dispatcher's transactions run
-// against.
+// against. hooks run inside every endpoint and subscription write's
+// transaction; the delivery machinery runs none, but it shares this store with
+// the consumer writes, so a caller with nothing to commit alongside them passes
+// webhooks.NoopHooks by name.
 //
 // Each provider is built into a variable and returned only once its error is
 // known to be nil. The provider constructors return their own concrete types,
 // so returning one straight through would convert a nil *webhooks.SQLStore into a
 // non-nil webhooks.Store on the error path, and a caller testing the result against
 // nil would find a store that panics on first use.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (webhooks.Store, error) {
+func NewStore(ctx context.Context, cfg *Config, client database.Client, hooks webhooks.Hooks, opts ...Option) (webhooks.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -121,7 +124,7 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 		webhooks.WithStoreTracerProvider(options.tracerProvider),
 	}
 
-	store, storeErr := webhooks.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := webhooks.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}

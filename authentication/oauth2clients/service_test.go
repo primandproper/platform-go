@@ -62,6 +62,10 @@ type countingStore struct {
 	gets atomic.Int64
 }
 
+// installedHooks are hooks that are not NoopHooks, so an update pays for its
+// before read.
+type installedHooks struct{ NoopHooks }
+
 func (s *countingStore) GetClient(
 	ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string,
 ) (*Client, error) {
@@ -70,13 +74,20 @@ func (s *countingStore) GetClient(
 	return s.Store.GetClient(ctx, q, scope, id)
 }
 
-// newService builds a service over a freshly migrated store.
+// newService builds a service over a freshly migrated store, running NoopHooks.
 func newService(tb testing.TB, env *storeEnv, opts ...ServiceOption) (*Service, *SQLStore) {
+	tb.Helper()
+
+	return newHookedService(tb, env, NoopHooks{}, opts...)
+}
+
+// newHookedService is newService running the hooks given.
+func newHookedService(tb testing.TB, env *storeEnv, hooks Hooks, opts ...ServiceOption) (*Service, *SQLStore) {
 	tb.Helper()
 
 	store := env.newStore(tb)
 
-	svc, err := NewService(env.client, store, opts...)
+	svc, err := NewService(env.client, store, hooks, opts...)
 	must.NoError(tb, err)
 
 	return svc, store
@@ -135,7 +146,7 @@ func TestService_CreateClient(T *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{err: platformerrors.New("the audit entry was refused")}
-		svc, store := newService(t, env, WithHooks(hooks))
+		svc, store := newHookedService(t, env, hooks)
 
 		issued, err := svc.CreateClient(t.Context(), testScope, testOwner, &CreationInput{
 			Name:         "a client",
@@ -203,7 +214,7 @@ func TestService_UpdateClient(T *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		svc, store := newService(t, env, WithHooks(hooks))
+		svc, store := newHookedService(t, env, hooks)
 
 		client := env.seed(t, store, testScope, testOwner)
 
@@ -225,7 +236,7 @@ func TestService_UpdateClient(T *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		svc, store := newService(t, env, WithHooks(hooks))
+		svc, store := newHookedService(t, env, hooks)
 
 		client := env.seed(t, store, testScope, testOwner)
 
@@ -251,7 +262,7 @@ func TestService_UpdateClient(T *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{err: platformerrors.New("the audit entry was refused")}
-		svc, store := newService(t, env, WithHooks(hooks))
+		svc, store := newHookedService(t, env, hooks)
 
 		client := env.seed(t, store, testScope, testOwner)
 
@@ -267,32 +278,44 @@ func TestService_UpdateClient(T *testing.T) {
 		test.EqOp(t, "test client", read.Name)
 	})
 
-	T.Run("without hooks, the row is not read before it is written", func(t *testing.T) {
+	T.Run("the row is read before it is written only for installed hooks", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t)
-		counting := &countingStore{Store: store}
+		for name, tc := range map[string]struct {
+			hooks Hooks
+			reads int64
+		}{
+			"NoopHooks":       {hooks: NoopHooks{}, reads: 0},
+			"*NoopHooks":      {hooks: &NoopHooks{}, reads: 0},
+			"installed hooks": {hooks: installedHooks{}, reads: 1},
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 
-		svc, err := NewService(env.client, counting)
-		must.NoError(t, err)
+				store := env.newStore(t)
+				counting := &countingStore{Store: store}
 
-		client := env.seed(t, store, testScope, testOwner)
+				svc, err := NewService(env.client, counting, tc.hooks)
+				must.NoError(t, err)
 
-		_, err = svc.UpdateClient(t.Context(), testScope, client.ID, &UpdateInput{
-			Name:         "renamed",
-			RedirectURIs: []string{testRedirect},
-		})
-		must.NoError(t, err)
+				client := env.seed(t, store, testScope, testOwner)
 
-		test.EqOp(t, int64(0), counting.gets.Load(),
-			test.Sprint("a Service with nothing to hand the before row to paid for reading it"))
+				_, err = svc.UpdateClient(t.Context(), testScope, client.ID, &UpdateInput{
+					Name:         "renamed",
+					RedirectURIs: []string{testRedirect},
+				})
+				must.NoError(t, err)
+
+				test.EqOp(t, tc.reads, counting.gets.Load())
+			})
+		}
 	})
 
 	T.Run("a refused revision calls no hook", func(t *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		svc, _ := newService(t, env, WithHooks(hooks))
+		svc, _ := newHookedService(t, env, hooks)
 
 		_, err := svc.UpdateClient(t.Context(), testScope, "nobody", &UpdateInput{
 			Name:         "renamed",
@@ -324,7 +347,7 @@ func TestService_ArchiveClient(T *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		svc, store := newService(t, env, WithHooks(hooks))
+		svc, store := newHookedService(t, env, hooks)
 
 		client := env.seed(t, store, testScope, testOwner)
 
@@ -367,11 +390,20 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses what it cannot be built from", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewService(nil, env.newStore(t))
+		_, err := NewService(nil, env.newStore(t), NoopHooks{})
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
 
-		_, err = NewService(env.client, nil)
+		_, err = NewService(env.client, nil, NoopHooks{})
 		test.ErrorIs(t, err, ErrNilStore)
+	})
+
+	T.Run("nil hooks are refused", func(t *testing.T) {
+		t.Parallel()
+
+		svc, err := NewService(env.client, env.newStore(t), nil)
+		test.Nil(t, svc)
+		test.ErrorIs(t, err, ErrNilHooks)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 	})
 }
 

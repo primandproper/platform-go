@@ -221,7 +221,7 @@ func newHarnessWithAuthorizer(
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := issuereports.NewSQLStore(db, issuereports.WithTablePrefix(prefix))
+	store, err := issuereports.NewSQLStore(db, issuereports.NoopHooks{}, issuereports.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
 	server, err := issuereportsgrpc.NewServer(store, db, extractPrincipal, targets,

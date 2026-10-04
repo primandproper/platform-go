@@ -53,8 +53,8 @@ type Service struct {
 
 	instruments *metrics.OperationSet
 
-	// hooked is whether WithHooks installed any, which decides whether an
-	// update pays for the read of the row it is about to overwrite.
+	// hooked is whether the hooks are anything but NoopHooks, which decides
+	// whether an update pays for the read of the row it is about to overwrite.
 	hooked bool
 }
 
@@ -66,10 +66,12 @@ type Service struct {
 // than *SQLStore so that a consumer whose registry is not this schema still gets
 // these operations.
 //
-// Hooks default to [NoopHooks] and credentials to crypto/rand, so a consumer
-// with nothing to commit alongside a registration configures neither.
+// hooks run inside each operation's transaction and are required; a consumer
+// with nothing to commit alongside a registration passes [NoopHooks] by name,
+// and its updates then skip the read of the row they are about to overwrite,
+// which only a hook has a use for. Credentials default to crypto/rand.
 // Observability is optional and defaults to nothing.
-func NewService(client database.Client, store Store, opts ...ServiceOption) (*Service, error) {
+func NewService(client database.Client, store Store, hooks Hooks, opts ...ServiceOption) (*Service, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
 	}
@@ -78,10 +80,15 @@ func NewService(client database.Client, store Store, opts ...ServiceOption) (*Se
 		return nil, ErrNilStore
 	}
 
+	if hooks == nil {
+		return nil, ErrNilHooks
+	}
+
 	s := &Service{
 		client:   client,
 		store:    store,
-		hooks:    NoopHooks{},
+		hooks:    hooks,
+		hooked:   !isNoop(hooks),
 		generate: generateCredentials,
 	}
 

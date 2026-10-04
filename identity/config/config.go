@@ -164,14 +164,15 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 // operations. A consumer using this package's own store passes what NewStore
 // returned.
 //
-// What commits alongside each operation is WithHooks, and it defaults to
-// identity.NoopHooks — so an application with nothing to write beside an
-// identity write configures nothing.
+// hooks are what commits alongside each operation — the audit entry, the
+// outbox row, the search stamp — and are required: an application with nothing
+// to write beside an identity write passes identity.NoopHooks{} by name.
 func NewService(
 	ctx context.Context,
 	cfg *Config,
 	client database.Client,
 	store identity.Store,
+	hooks identity.Hooks,
 	opts ...Option,
 ) (*identity.Service, error) {
 	if cfg == nil {
@@ -192,11 +193,7 @@ func NewService(
 		identity.WithServiceMetricsProvider(options.metricsProvider),
 	}
 
-	if options.hooks != nil {
-		base = append(base, identity.WithHooks(options.hooks))
-	}
-
-	return identity.NewService(client, store, append(base, options.service...)...)
+	return identity.NewService(client, store, hooks, append(base, options.service...)...)
 }
 
 // ServerOptions is the server half of the config, as the identitygrpc options

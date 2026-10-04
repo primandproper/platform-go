@@ -168,13 +168,17 @@ flows; they share no state and no table.
 # Companions every write owes go in Hooks
 
 A consumer whose every reset owes an audit entry — a link issued, a link spent
-— can write it beside each call, or hand the store a [Hooks] through
-[WithHooks] and have each write call it on the same transaction once its
-statements have landed. The second is what a consumer reaches for when the
-alternative is wrapping the Store, and it matters more here than for most
-tables: the sweeper deletes every row at its expiry, so the companion is the
-only record that a reset was ever asked for. A hook's error fails the write it
-was called from, so the token and its record commit together or not at all.
+— can write it beside each call, or hand [NewSQLStore] a [Hooks] and have each
+write call it on the same transaction once its statements have landed. The
+second is what a consumer reaches for when the alternative is wrapping the
+Store, and it matters more here than for most tables: the sweeper deletes every
+row at its expiry, so the companion is the only record that a reset was ever
+asked for. A hook's error fails the write it was called from, so the token and
+its record commit together or not at all.
+
+The hooks are a required argument. A caller that commits nothing alongside
+these writes passes [NoopHooks] by name, so a store whose writes go unrecorded
+is one somebody decided on rather than one somebody forgot to configure.
 
 A hook is handed the stored [Token], never the [Issuance]. The secret goes back
 to the caller of [Store.Issue] and nowhere else, so a hook that writes what it

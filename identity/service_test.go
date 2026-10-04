@@ -379,7 +379,7 @@ func (e *storeEnv) newService(t *testing.T, hooks Hooks) (*Service, *SQLStore) {
 
 	store := e.newStore(t)
 
-	service, err := NewService(e.client, store, WithHooks(hooks))
+	service, err := NewService(e.client, store, hooks)
 	must.NoError(t, err)
 
 	return service, store
@@ -981,7 +981,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return err
 		})
 
-		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		service, err := NewService(env.client, store, hooks, WithInvitationMailer(mailer))
 		must.NoError(t, err)
 
 		registration := registerAda(t, service, "ada")
@@ -1029,7 +1029,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return errMailerDown
 		})
 
-		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		service, err := NewService(env.client, store, hooks, WithInvitationMailer(mailer))
 		must.NoError(t, err)
 
 		registration := registerAda(t, service, "ada")
@@ -1061,7 +1061,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			return nil
 		})
 
-		service, err := NewService(env.client, store, WithHooks(hooks), WithInvitationMailer(mailer))
+		service, err := NewService(env.client, store, hooks, WithInvitationMailer(mailer))
 		must.NoError(t, err)
 
 		registration := registerAda(t, service, "ada")
@@ -2073,7 +2073,7 @@ func TestNewService(T *testing.T) {
 	T.Run("refuses a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		service, err := NewService(nil, &unusedStore{})
+		service, err := NewService(nil, &unusedStore{}, NoopHooks{})
 		must.ErrorIs(t, err, ErrNilDatabaseClient)
 		test.Nil(t, service)
 	})
@@ -2083,27 +2083,33 @@ func TestNewService(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		service, err := NewService(env.client, nil)
+		service, err := NewService(env.client, nil, NoopHooks{})
 		must.ErrorIs(t, err, ErrNilStore)
 		test.Nil(t, service)
 	})
 
-	T.Run("defaults to hooks that do nothing", func(t *testing.T) {
+	T.Run("refuses nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		service, err := NewService(env.client, env.newStore(t), nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		test.Nil(t, service)
+	})
+
+	T.Run("runs NoopHooks named by the caller", func(t *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		// A nil option is skipped, and WithHooks(nil) leaves the default in
-		// place rather than installing a nil interface nothing could call.
-		service, err := NewService(env.client, store, nil, WithHooks(nil))
+		// A nil option is skipped.
+		service, err := NewService(env.client, store, NoopHooks{}, nil)
 		must.NoError(t, err)
 		must.NotNil(t, service)
-		_, isNoop := service.hooks.(NoopHooks)
-		test.True(t, isNoop)
 
-		// The whole point of the default: an operation runs with no hooks
-		// configured at all.
+		// An operation runs with hooks that commit nothing.
 		_, err = service.Register(t.Context(), testScope,
 			newUser("ada"), newAccount("ada's account", ""), []string{"admin"})
 		must.NoError(t, err)

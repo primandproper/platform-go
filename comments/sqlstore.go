@@ -68,8 +68,8 @@ type SQLStore struct {
 	metricsProvider metrics.Provider
 	prefix          string
 
-	// hooked is whether WithHooks installed any, which decides whether an edit
-	// pays for the read of the row it is about to overwrite.
+	// hooked is whether the hooks are anything but NoopHooks, which decides whether
+	// an edit pays for the read of the row it is about to overwrite.
 	hooked bool
 }
 
@@ -94,11 +94,19 @@ type SQLStore struct {
 // without a catalog is a wiring mistake, and a wiring mistake that stores rows
 // under types nothing lists is worse than one that fails on the first write.
 //
+// hooks run inside every write's transaction, once its statements have landed;
+// see Hooks. They are required: a caller with nothing to commit alongside these
+// writes passes NoopHooks{} by name, and nil is refused with ErrNilHooks.
+//
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger, traces to a noop provider, and counts into a noop meter.
-func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
 	}
 
 	d := client.Dialect()
@@ -109,7 +117,15 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	s := &SQLStore{
 		prefix:  DefaultTablePrefix,
 		targets: Targets{},
-		hooks:   NoopHooks{},
+		hooks:   hooks,
+	}
+
+	// NoopHooks, by value or by pointer, is a caller saying it commits nothing
+	// alongside these writes, so no write reads a row only a hook would be handed.
+	switch hooks.(type) {
+	case NoopHooks, *NoopHooks:
+	default:
+		s.hooked = true
 	}
 
 	for _, opt := range opts {

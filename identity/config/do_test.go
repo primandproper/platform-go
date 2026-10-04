@@ -94,6 +94,7 @@ func container(t *testing.T) do.Injector {
 	do.ProvideValue[context.Context](i, t.Context())
 	do.ProvideValue[database.Client](i, testDBClient(t))
 	do.ProvideValue(i, &Config{})
+	do.ProvideValue[identity.Hooks](i, identity.NoopHooks{})
 
 	RegisterStore(i)
 	RegisterService(i)
@@ -113,48 +114,31 @@ func TestRegisterService(T *testing.T) {
 		test.NotNil(t, svc)
 	})
 
-	T.Run("resolves without hooks registered", func(t *testing.T) {
+	T.Run("needs hooks", func(t *testing.T) {
 		t.Parallel()
 
-		// The asymmetry with the principal extractor below, and the point of
-		// resolving Hooks softly: a container that registers none is an
-		// application with nothing to commit beside an identity write, which is
-		// a configuration rather than a hole.
-		i := container(t)
-
-		_, err := do.Invoke[identity.Hooks](i)
-		test.Error(t, err, test.Sprint("this case is only meaningful with no Hooks registered"))
-
-		svc, err := do.Invoke[*identity.Service](i)
-		must.NoError(t, err)
-		test.NotNil(t, svc)
-	})
-
-	T.Run("uses the hooks the container holds", func(t *testing.T) {
-		t.Parallel()
-
+		// An application with nothing to commit beside an identity write
+		// registers NoopHooks by name; one that registers nothing has forgotten.
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
 		do.ProvideValue(i, &Config{})
-		do.ProvideValue[identity.Hooks](i, identity.NoopHooks{})
 
 		RegisterStore(i)
 		RegisterService(i)
 
 		svc, err := do.Invoke[*identity.Service](i)
-		must.NoError(t, err)
-		test.NotNil(t, svc)
+		test.Nil(t, svc)
+		test.ErrorIs(t, err, do.ErrServiceNotFound)
+		test.StrContains(t, err.Error(), do.NameOf[identity.Hooks]())
 	})
 
 	T.Run("a hooks provider that fails to build fails the service", func(t *testing.T) {
 		t.Parallel()
 
-		// The other half of resolving Hooks softly. Absent is a configuration;
-		// registered-and-broken is not, and a Service that ran the noop in its
-		// place would commit every identity write with none of the audit and
-		// outbox companions the consumer registered hooks to get — silently,
-		// which is the failure InvokePillars draws the same line against.
+		// A Service that ran the noop in its place would commit every identity
+		// write with none of the audit and outbox companions the consumer
+		// registered hooks to get.
 		boom := errors.New("audit sink unreachable")
 
 		i := do.New()
@@ -174,13 +158,9 @@ func TestRegisterService(T *testing.T) {
 	T.Run("a hooks provider that needs an unregistered dependency fails the service", func(t *testing.T) {
 		t.Parallel()
 
-		// The same failure by a different route, and the one that used to slip
-		// through. A consumer's hooks provider invokes the audit recorder it
-		// was built to write to; when nothing registered one, do reports the
-		// miss with the same not-found sentinel an absent Hooks carries, and a
-		// lookup that read the sentinel as "nobody registered hooks" handed
-		// the Service the noop — the outcome this registration exists to
-		// refuse.
+		// The same failure by a different route: a consumer's hooks provider
+		// invokes the audit recorder it was built to write to, and nothing
+		// registered one.
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
@@ -273,6 +253,7 @@ func TestRegisterService_InvitationMailer(T *testing.T) {
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
 		do.ProvideValue(i, &Config{})
+		do.ProvideValue[identity.Hooks](i, identity.NoopHooks{})
 		do.Provide(i, func(do.Injector) (identity.InvitationMailer, error) { return nil, boom })
 		RegisterStore(i)
 		RegisterService(i)

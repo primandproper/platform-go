@@ -80,17 +80,17 @@ func hookUser() string { return "hooks_" + identifiers.New() }
 
 // runHooksSuite is every assertion about the hooks a write runs: that each write
 // calls its own, with the row it answers with, and that a hook's refusal is the
-// write's. newStore builds a store over the suite's database with the options
+// write's. newStore builds a store over the suite's database running the hooks
 // given; SQLite and both container servers run it.
 //
 // The subtests are sequential rather than parallel because the container suite
 // shares one clock and one table with the subtests around it.
-func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQLStore) {
+func runHooksSuite(t *testing.T, newStore func(t *testing.T, hooks Hooks) *SQLStore) {
 	t.Helper()
 
 	t.Run("every write calls its hook with the row it answers with", func(t *testing.T) {
 		hooks := &recordingHooks{}
-		store := newStore(t, WithHooks(hooks))
+		store := newStore(t, hooks)
 		userID := hookUser()
 
 		issuance, err := issueFor(t, store, testScope(), userID, time.Hour)
@@ -135,7 +135,7 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 
 	t.Run("the bulk writes' hooks are called with zero, too", func(t *testing.T) {
 		hooks := &recordingHooks{}
-		store := newStore(t, WithHooks(hooks))
+		store := newStore(t, hooks)
 		userID := hookUser()
 
 		_, err := revokeForUser(t, store, testScope(), userID)
@@ -153,7 +153,7 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 
 	t.Run("a refused write calls no hook", func(t *testing.T) {
 		hooks := &recordingHooks{}
-		store := newStore(t, WithHooks(hooks))
+		store := newStore(t, hooks)
 		userID := hookUser()
 
 		issuance, err := issueFor(t, store, testScope(), userID, time.Hour)
@@ -179,7 +179,7 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 
 	t.Run("a hook's error is the issuance's, and the row rolls back with it", func(t *testing.T) {
 		hooks := &recordingHooks{failOn: "AfterIssue"}
-		store := newStore(t, WithHooks(hooks))
+		store := newStore(t, hooks)
 		userID := hookUser()
 
 		issuance, err := issueFor(t, store, testScope(), userID, time.Hour)
@@ -193,7 +193,7 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 
 	t.Run("a hook's error is the redemption's, and the token stays live", func(t *testing.T) {
 		hooks := &recordingHooks{failOn: "AfterConsume"}
-		store := newStore(t, WithHooks(hooks))
+		store := newStore(t, hooks)
 
 		issuance, err := issueFor(t, store, testScope(), hookUser(), time.Hour)
 		must.NoError(t, err)
@@ -209,7 +209,7 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 
 	t.Run("a hook's error is the erasure's, and the rows survive it", func(t *testing.T) {
 		hooks := &recordingHooks{failOn: "AfterDeleteForUser"}
-		store := newStore(t, WithHooks(hooks))
+		store := newStore(t, hooks)
 		userID := hookUser()
 
 		_, err := issueFor(t, store, testScope(), userID, time.Hour)
@@ -223,13 +223,6 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 		must.NoError(t, err)
 		test.SliceLen(t, 1, held)
 	})
-
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
-		store := newStore(t, WithHooks(nil))
-
-		_, err := issueFor(t, store, testScope(), hookUser(), time.Hour)
-		must.NoError(t, err)
-	})
 }
 
 // TestSQLStore_Hooks runs runHooksSuite on SQLite.
@@ -238,10 +231,10 @@ func runHooksSuite(t *testing.T, newStore func(t *testing.T, opts ...Option) *SQ
 func TestSQLStore_Hooks(T *testing.T) {
 	T.Parallel()
 
-	runHooksSuite(T, func(t *testing.T, opts ...Option) *SQLStore {
+	runHooksSuite(T, func(t *testing.T, hooks Hooks) *SQLStore {
 		t.Helper()
 
-		store, _ := newTestStore(t, opts...)
+		store, _ := newHookedTestStore(t, hooks)
 
 		return store
 	})

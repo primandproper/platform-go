@@ -22,7 +22,7 @@ func TestNewService(T *testing.T) {
 
 		client := newTestClient(tb)
 
-		store, err := NewSQLStore(&Config{}, client)
+		store, err := NewSQLStore(&Config{}, client, NoopHooks{})
 		must.NoError(tb, err)
 
 		return client, store, &testDirectory{}, &fakeAuthenticator{}, &recordingMailer{}

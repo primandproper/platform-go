@@ -37,7 +37,7 @@ import (
 // what an update means is the difference between them and that is not readable
 // once the write has run. UpdateDefinition already reads the row it is about to
 // rewrite, so its before row is free; SetValue's costs one keyed read on the
-// transaction, which the store makes only when hooks are installed.
+// transaction, which the store makes only when the hooks are not NoopHooks.
 //
 // Every method is "After", and none is a veto. Whether somebody may define a
 // setting or change an answer is decided before the store is called; a hook
@@ -67,7 +67,7 @@ type Hooks interface {
 	// the row alone cannot. audit.Diff takes the pair.
 	//
 	// The before row is the one the update locked and checked the edit against,
-	// so it costs nothing a store without hooks does not already pay.
+	// so it costs nothing a store built with NoopHooks does not already pay.
 	AfterUpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, before, after *Definition) error
 
 	// AfterArchiveDefinition is called with the definition ArchiveDefinition
@@ -75,7 +75,7 @@ type Hooks interface {
 	// transaction ahead of the statement. ArchiveDefinition answers its caller
 	// with nothing, and no read on this package reaches an archived definition,
 	// so this is the one place the retired row is handed to anybody. The read is
-	// made only when hooks are installed.
+	// made only when the hooks are not NoopHooks.
 	AfterArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *Definition) error
 
 	// AfterSetValue is called with the definition the answer was checked
@@ -109,8 +109,9 @@ type Hooks interface {
 	AfterDeleteValuesForSubject(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject, deleted int64) error
 }
 
-// NoopHooks does nothing, and is what a store built without WithHooks runs. It is
-// also the type to embed in a Hooks that overrides some:
+// NoopHooks does nothing. It is what a caller passes, by name, when it commits
+// nothing alongside these writes — a seed import, a bootstrap tool, a test — and
+// it is still the type to embed in a Hooks that overrides some:
 //
 //	type recordingHooks struct {
 //		settings.NoopHooks

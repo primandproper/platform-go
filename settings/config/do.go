@@ -13,8 +13,9 @@ import (
 
 // RegisterStore registers a settings.Store with the injector.
 //
-// Prerequisites: *Config and database.Client must be registered in the injector
-// before the Store is invoked.
+// Prerequisites: *Config, database.Client and settings.Hooks must be registered in
+// the injector before the Store is invoked. A container that wants no hooks
+// registers settings.NoopHooks{} by name.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (settings.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -37,6 +38,11 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		hooks, err := do.Invoke[settings.Hooks](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, hooks, WithPillars(pillars))
 	})
 }

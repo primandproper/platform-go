@@ -120,14 +120,14 @@ func newExtractorHarness(t *testing.T) *extractorHarness {
 	signer, err := jwt.NewSigner("extractor", "extractor", []byte("a-signing-key-for-the-extractor-suite"))
 	must.NoError(t, err)
 
-	svc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), signer, []string{"owner"},
+	svc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), signer, []string{"owner"}, signin.NoopHooks{},
 		signin.WithAdminServiceRoles(serviceAdminRole),
 		signin.WithRefreshTokenStore(refreshStore),
 		signin.WithImpersonationPolicy(func(context.Context, *identity.User, *identity.User) error { return nil }),
 	)
 	must.NoError(t, err)
 
-	directory, err := identity.NewService(db, store)
+	directory, err := identity.NewService(db, store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	register := func(scope tenancy.Scope, name string, serviceRoles ...string) *identity.Registration {
@@ -463,7 +463,7 @@ func TestPrincipalExtractor_WithSignInCheck(T *testing.T) {
 	T.Run("a token its login has replaced names nobody, where the service refuses them", func(t *testing.T) {
 		t.Parallel()
 
-		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer, []string{"owner"},
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithRefreshTokenStore(h.refresh),
 			signin.WithSupersededTokenRefusal(),
 		)
@@ -927,7 +927,7 @@ func TestPrincipalExtractor_interceptor(T *testing.T) {
 	T.Run("a token with no ID, under a check refusing superseded tokens, is unauthenticated, not unavailable", func(t *testing.T) {
 		t.Parallel()
 
-		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer, []string{"owner"},
+		refusing, err := signin.NewService(h.db, h.store, argon2.NewArgon2Authenticator(), h.signer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithRefreshTokenStore(h.refresh),
 			signin.WithSupersededTokenRefusal(),
 		)

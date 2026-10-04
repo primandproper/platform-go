@@ -41,6 +41,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -60,6 +61,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "app"})
 
 		RegisterStore(i)
@@ -93,6 +95,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -131,6 +134,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[notifications.Hooks](i, notifications.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "has space"})
 
 		RegisterStore(i)
@@ -146,6 +150,20 @@ func TestRegisterStore(T *testing.T) {
 		store, err := do.Invoke[notifications.Store](i)
 		must.Error(t, err)
 		test.Nil(t, store)
+	})
+
+	T.Run("fails when no hooks are registered", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+
+		RegisterStore(i)
+
+		_, err := do.Invoke[notifications.Store](i)
+		test.Error(t, err)
 	})
 
 	T.Run("fails when the database client is not registered", func(t *testing.T) {

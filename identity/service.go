@@ -238,10 +238,13 @@ type Service struct {
 // than *SQLStore so that a consumer whose directory is not this schema still
 // gets these operations.
 //
-// Hooks default to NoopHooks, so a consumer with nothing to commit alongside an
-// identity write configures nothing. Observability is optional and defaults to
+// hooks are what every operation calls inside its transaction — the seam a
+// consumer's audit entry, data change event or search stamp commits with the
+// row; see Hooks for what belongs in one. They are required, and nil is
+// ErrNilHooks: a consumer with nothing to commit alongside an identity write
+// passes NoopHooks{} by name. Observability is optional and defaults to
 // nothing.
-func NewService(client database.Client, store Store, opts ...ServiceOption) (*Service, error) {
+func NewService(client database.Client, store Store, hooks Hooks, opts ...ServiceOption) (*Service, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
 	}
@@ -250,10 +253,14 @@ func NewService(client database.Client, store Store, opts ...ServiceOption) (*Se
 		return nil, ErrNilStore
 	}
 
+	if hooks == nil {
+		return nil, ErrNilHooks
+	}
+
 	s := &Service{
 		client: client,
 		store:  store,
-		hooks:  NoopHooks{},
+		hooks:  hooks,
 	}
 
 	for _, opt := range opts {

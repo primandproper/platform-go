@@ -78,8 +78,8 @@ type SQLStore struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
-	// hooked is whether WithHooks installed any, which decides whether an
-	// update pays for the read of the row it is about to overwrite.
+	// hooked is whether the hooks are anything but NoopHooks, which decides
+	// whether an update pays for the read of the row it is about to overwrite.
 	hooked bool
 }
 
@@ -99,11 +99,25 @@ type SQLStore struct {
 // that, and a mismatch surfaces as a missing table on the first query rather
 // than at construction.
 //
+// hooks run inside every consumer write's transaction, once its statements have
+// landed; see Hooks. They are required: a caller with nothing to commit
+// alongside a write passes NoopHooks by name, and a nil is refused with
+// ErrNilHooks.
+//
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger and traces to a noop provider.
-func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
+	}
+
+	_, noop := hooks.(NoopHooks)
+	if _, noopPtr := hooks.(*NoopHooks); noopPtr {
+		noop = true
 	}
 
 	d := client.Dialect()
@@ -115,7 +129,8 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		client: client,
 		clock:  clock.NewClock(),
 		prefix: DefaultTablePrefix,
-		hooks:  NoopHooks{},
+		hooks:  hooks,
+		hooked: !noop,
 	}
 
 	for _, opt := range opts {

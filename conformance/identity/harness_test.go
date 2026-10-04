@@ -106,7 +106,7 @@ func runDeployment(
 
 	invites := &invitationTokens{}
 
-	svc, err := identity.NewService(db, store, identity.WithHooks(invites))
+	svc, err := identity.NewService(db, store, invites)
 	must.NoError(t, err)
 
 	serverOpts := []identitygrpc.Option{identitygrpc.WithPermissionResolver(vocabularyPolicy)}

@@ -76,7 +76,7 @@ Neither needs a second method.
 
 A consumer whose every write owes the same companions — an audit entry for each,
 an event for each — can write them beside each call, as the example above does,
-or hand the store a [Hooks] through [WithHooks] and have each write call it on
+or put them in the [Hooks] the store is built with, which each write calls on
 the same transaction once its statements have landed. The second is what a
 consumer reaches for when the alternative is wrapping the Store: a wrapper has to
 reimplement every method to call through, and has to read the row a revision or
@@ -84,6 +84,11 @@ a decision is about to overwrite before the store does. A hook is handed the row
 from before the write and the row from after it. A hook's error fails the write
 it was called from, so the report and its companions commit together or not at
 all.
+
+The store takes its Hooks as a constructor argument rather than an option. A
+caller that writes its companions beside each call, or owes none, passes
+[NoopHooks] by name, so a store that records nothing is one somebody decided
+should not, rather than one somebody forgot to wire.
 
 # Tenancy
 

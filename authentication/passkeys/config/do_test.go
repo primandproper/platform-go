@@ -76,6 +76,7 @@ func TestRegisterService(T *testing.T) {
 
 		i := base(t, &Config{})
 		do.ProvideValue[passkeys.EnrollmentGate](i, passkeys.AdmitEveryEnrollment)
+		do.ProvideValue[passkeys.Hooks](i, passkeys.NoopHooks{})
 		RegisterStore(i)
 		RegisterService(i)
 
@@ -89,12 +90,27 @@ func TestRegisterService(T *testing.T) {
 
 		i := base(t, &Config{})
 		do.ProvideValue[passkeys.UserResolver](i, resolveNobody)
+		do.ProvideValue[passkeys.Hooks](i, passkeys.NoopHooks{})
 		RegisterStore(i)
 		RegisterService(i)
 
 		_, err := do.Invoke[*passkeys.Service](i)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), do.NameOf[passkeys.EnrollmentGate]())
+	})
+
+	T.Run("the application's hooks are required", func(t *testing.T) {
+		t.Parallel()
+
+		i := base(t, &Config{})
+		do.ProvideValue[passkeys.UserResolver](i, resolveNobody)
+		do.ProvideValue[passkeys.EnrollmentGate](i, passkeys.AdmitEveryEnrollment)
+		RegisterStore(i)
+		RegisterService(i)
+
+		_, err := do.Invoke[*passkeys.Service](i)
+		test.ErrorIs(t, err, do.ErrServiceNotFound)
+		test.StrContains(t, err.Error(), do.NameOf[passkeys.Hooks]())
 	})
 
 	T.Run("the relying party is required", func(t *testing.T) {
@@ -106,6 +122,7 @@ func TestRegisterService(T *testing.T) {
 		do.ProvideValue(i, &Config{})
 		do.ProvideValue[passkeys.UserResolver](i, resolveNobody)
 		do.ProvideValue[passkeys.EnrollmentGate](i, passkeys.AdmitEveryEnrollment)
+		do.ProvideValue[passkeys.Hooks](i, passkeys.NoopHooks{})
 		RegisterStore(i)
 		RegisterService(i)
 

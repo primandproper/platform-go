@@ -53,7 +53,7 @@ func TestNewService(T *testing.T) {
 	T.Run("nil client", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := signin.NewService(nil, nil, nil, nil, []string{"owner"})
+		svc, err := signin.NewService(nil, nil, nil, nil, []string{"owner"}, signin.NoopHooks{})
 		test.Nil(t, svc)
 		test.ErrorIs(t, err, signin.ErrNilDatabaseClient)
 		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
@@ -64,14 +64,17 @@ func TestNewService(T *testing.T) {
 
 		e := newEnv(t)
 
-		_, err := signin.NewService(e.client, nil, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"})
+		_, err := signin.NewService(e.client, nil, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, signin.NoopHooks{})
 		test.ErrorIs(t, err, signin.ErrNilDirectory)
 
-		_, err = signin.NewService(e.client, e.store, nil, e.issuer, []string{"owner"})
+		_, err = signin.NewService(e.client, e.store, nil, e.issuer, []string{"owner"}, signin.NoopHooks{})
 		test.ErrorIs(t, err, signin.ErrNilAuthenticator)
 
-		_, err = signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), nil, []string{"owner"})
+		_, err = signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), nil, []string{"owner"}, signin.NoopHooks{})
 		test.ErrorIs(t, err, signin.ErrNilTokenIssuer)
+
+		_, err = signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, nil)
+		test.ErrorIs(t, err, signin.ErrNilHooks)
 	})
 
 	// The library never picks a role name, so a service that was handed none
@@ -86,7 +89,7 @@ func TestNewService(T *testing.T) {
 			"empty":       {},
 			"a blank one": {"owner", ""},
 		} {
-			svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, roles)
+			svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, roles, signin.NoopHooks{})
 			test.Nil(t, svc, test.Sprintf("%s was accepted", name))
 			test.ErrorIs(t, err, signin.ErrNoDefaultOwnerRoles, test.Sprintf("%s", name))
 			test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter, test.Sprintf("%s", name))
@@ -290,7 +293,7 @@ func TestService_LoginForToken(T *testing.T) {
 
 		stub := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"})
+		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"}, signin.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = svc.LoginForToken(t.Context(), testScope,
@@ -311,7 +314,7 @@ func TestService_LoginForToken(T *testing.T) {
 
 		stub := &stubAuthenticator{hashErr: errors.New("hasher is unwell")}
 
-		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"})
+		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"}, signin.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = svc.LoginForToken(t.Context(), testScope,
@@ -330,7 +333,7 @@ func TestService_LoginForToken(T *testing.T) {
 		cause := errors.New("hash will not parse")
 		stub := &stubAuthenticator{matchErr: cause}
 
-		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"})
+		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"}, signin.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = svc.LoginForToken(t.Context(), testScope, e.credentials())
@@ -829,7 +832,7 @@ func TestService_Authenticate(T *testing.T) {
 
 		stub := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"})
+		svc, err := signin.NewService(e.client, e.store, stub, e.issuer, []string{"owner"}, signin.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = svc.Authenticate(t.Context(), testScope,

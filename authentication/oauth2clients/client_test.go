@@ -88,8 +88,8 @@ func TestAdministeredIsAValueAndNotAnAbsence(T *testing.T) {
 	test.False(T, (&oauth2clients.Client{BelongsToUser: "user_1"}).Administered())
 }
 
-// TestNoopHooksDoNothingToEveryOperation is what a Service built without
-// WithHooks runs.
+// TestNoopHooksDoNothingToEveryOperation is what a Service handed NoopHooks
+// runs.
 //
 // All three, because they are three methods and a consumer embedding NoopHooks
 // to implement one of them relies on the other two staying silent — a noop that

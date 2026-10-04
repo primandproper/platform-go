@@ -141,7 +141,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
 		before, row := lastAs[Product](t, hooks, "AfterCreateProduct")
@@ -240,7 +240,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		product := mustCreateProduct(t, env, store, testScope, oneTimeProduct("lifetime"))
 		purchase := mustCreatePurchase(t, env, store, testScope, outstandingPurchase(product.ID, testAccount))
@@ -279,7 +279,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterCreateProduct"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		proposed := recurringProduct("monthly")
 		proposed.ID = "doomed"
@@ -296,7 +296,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterSetSubscriptionStatus"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
 		subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
@@ -313,7 +313,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveTransaction"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		recorded := mustRecordTransaction(t, env, store, testScope, pendingTransaction(testAccount))
 
@@ -325,26 +325,24 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
-		subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
-		must.NoError(t, env.setSubscriptionStatus(t, store, testScope, subscription.ID, capitalism.SubscriptionStatusPastDue))
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		test.Nil(t, store)
 	})
 
 	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
 		t.Parallel()
 
 		// Each runs one update on a fresh store and reports how many statements
-		// it sent. NoopHooks is installed hooks as far as the store can tell, so
-		// the difference is the before read and nothing else.
-		updateProduct := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		// it sent. installedHooks commits nothing either, so the difference
+		// between it and NoopHooks is the before read and nothing else.
+		updateProduct := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
 			repriced := *product
 			repriced.AmountCents = product.AmountCents + 100
@@ -355,10 +353,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		updateSubscription := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		updateSubscription := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
 			subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
 			extended := *subscription
@@ -370,10 +368,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		setSubscriptionStatus := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		setSubscriptionStatus := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			product := mustCreateProduct(t, env, store, testScope, recurringProduct("monthly"))
 			subscription := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
 
@@ -382,10 +380,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		setTransactionStatus := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		setTransactionStatus := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			recorded := mustRecordTransaction(t, env, store, testScope, pendingTransaction(testAccount))
 
 			return countStatements(t, env, func(tx database.Tx) error {
@@ -393,17 +391,21 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, updateProduct(t, WithHooks(NoopHooks{})), updateProduct(t), test.Sprint("UpdateProduct"))
-		test.Less(t, updateSubscription(t, WithHooks(NoopHooks{})), updateSubscription(t), test.Sprint("UpdateSubscription"))
+		test.Less(t, updateProduct(t, installedHooks{}), updateProduct(t, NoopHooks{}), test.Sprint("UpdateProduct"))
+		test.Less(t, updateSubscription(t, installedHooks{}), updateSubscription(t, NoopHooks{}), test.Sprint("UpdateSubscription"))
 
-		// The two status writes return only an error, so with hooks installed they
+		// The two status writes return only an error, so with installed hooks they
 		// read the row after the write as well as before it. Both reads are the
 		// hooks', and a Less would still pass with one of them leaked to every
 		// store, so the difference is pinned at both.
-		test.EqOp(t, setSubscriptionStatus(t)+2, setSubscriptionStatus(t, WithHooks(NoopHooks{})), test.Sprint("SetSubscriptionStatus"))
-		test.EqOp(t, setTransactionStatus(t)+2, setTransactionStatus(t, WithHooks(NoopHooks{})), test.Sprint("SetTransactionStatus"))
+		test.EqOp(t, setSubscriptionStatus(t, NoopHooks{})+2, setSubscriptionStatus(t, installedHooks{}), test.Sprint("SetSubscriptionStatus"))
+		test.EqOp(t, setTransactionStatus(t, NoopHooks{})+2, setTransactionStatus(t, installedHooks{}), test.Sprint("SetTransactionStatus"))
 	})
 }
+
+// installedHooks is hooks that are not NoopHooks, and so pay for the before
+// read, while committing nothing of their own.
+type installedHooks struct{ NoopHooks }
 
 // countStatements runs fn in a transaction of its own and reports how many
 // statements it sent through it.

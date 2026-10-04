@@ -514,7 +514,7 @@ func newLiveEmitter(t *testing.T) (client database.Client, prefix string, emitte
 		must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := NewSQLStore(client, WithTablePrefix(prefix))
+	store, err := NewSQLStore(client, NoopHooks{}, WithTablePrefix(prefix))
 	must.NoError(t, err)
 
 	dispatcher, err := NewDispatcher(store, client.Reader(), WithCatalog(testCatalog))

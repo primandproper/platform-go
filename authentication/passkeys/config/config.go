@@ -81,8 +81,10 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 //
 // The relying party, the user resolver and the enrollment gate are parameters
 // for the reasons the package documentation gives; RegisterService resolves
-// all three from the injector. Options passed through WithServiceOptions apply
-// after the gate, so a caller can replace it.
+// all three from the injector. hooks are required too; a caller with nothing to
+// commit alongside a passkey write passes passkeys.NoopHooks{} by name. Options
+// passed through WithServiceOptions apply after the gate, so a caller can
+// replace it.
 func NewService(
 	ctx context.Context,
 	cfg *Config,
@@ -91,6 +93,7 @@ func NewService(
 	rp *webauthn.RelyingParty,
 	resolve passkeys.UserResolver,
 	gate passkeys.EnrollmentGate,
+	hooks passkeys.Hooks,
 	opts ...Option,
 ) (*passkeys.Service, error) {
 	if cfg == nil {
@@ -117,5 +120,5 @@ func NewService(
 		passkeys.WithServiceMetricsProvider(options.metricsProvider),
 	}
 
-	return passkeys.NewService(client, store, rp, users, append(base, options.service...)...)
+	return passkeys.NewService(client, store, rp, users, hooks, append(base, options.service...)...)
 }

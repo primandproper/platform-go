@@ -106,7 +106,7 @@ type env struct {
 func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, false, false, nil, opts...)
+	return buildEnv(t, false, false, nil, nil, opts...)
 }
 
 // newRefreshEnv is newEnv with a live refresh token store wired in, which is
@@ -119,7 +119,7 @@ func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 func newRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, true, false, nil, opts...)
+	return buildEnv(t, true, false, nil, nil, opts...)
 }
 
 // newPermissiveRefreshEnv is newRefreshEnv over a Directory that answers with a
@@ -134,7 +134,7 @@ func newPermissiveRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 
 	return buildEnv(t, true, false, func(d signin.Directory) signin.Directory {
 		return permissiveDirectory{Directory: d}
-	}, opts...)
+	}, nil, opts...)
 }
 
 // newMagicLinkEnv is newRefreshEnv with the passwordless door wired in: a real
@@ -147,7 +147,31 @@ func newPermissiveRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 func newMagicLinkEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, true, true, nil, opts...)
+	return buildEnv(t, true, true, nil, nil, opts...)
+}
+
+// envBuilder builds an env running the hooks given, for the suites whose
+// hooks are not the env's own recordingHooks.
+type envBuilder func(t *testing.T, hooks signin.Hooks, opts ...signin.ServiceOption) *env
+
+// hookedEnv, hookedRefreshEnv and hookedMagicLinkEnv are newEnv, newRefreshEnv
+// and newMagicLinkEnv running the hooks given.
+func hookedEnv(t *testing.T, hooks signin.Hooks, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, false, false, nil, hooks, opts...)
+}
+
+func hookedRefreshEnv(t *testing.T, hooks signin.Hooks, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, true, false, nil, hooks, opts...)
+}
+
+func hookedMagicLinkEnv(t *testing.T, hooks signin.Hooks, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, true, true, nil, hooks, opts...)
 }
 
 // permissiveDirectory is that Directory. Everything but the principal read is
@@ -178,11 +202,13 @@ func (d permissiveDirectory) GetPrincipal(
 
 // buildEnv is all three constructors. The refresh token store has to exist before
 // the service that is handed it and after the client it is built over, which is
-// the whole reason this is one function with a flag rather than two.
+// the whole reason this is one function with a flag rather than two. Nil hooks
+// are the env's own recordingHooks.
 func buildEnv(
 	t *testing.T,
 	withRefresh, withMagicLinks bool,
 	wrapDirectory func(signin.Directory) signin.Directory,
+	hooks signin.Hooks,
 	opts ...signin.ServiceOption,
 ) *env {
 	t.Helper()
@@ -213,7 +239,7 @@ func buildEnv(
 		password: "correct horse battery staple",
 	}
 
-	e.directory, err = identity.NewService(client, store)
+	e.directory, err = identity.NewService(client, store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	// The registrar and the verifications directory are wired for every env
@@ -221,8 +247,11 @@ func buildEnv(
 	// shapes of service in one file and a test that reaches the wrong one
 	// failing with "not configured" rather than with what it was asserting. The
 	// two tests that want a service without them build one of their own.
+	if hooks == nil {
+		hooks = e.hooks
+	}
+
 	opts = append([]signin.ServiceOption{
-		signin.WithHooks(e.hooks),
 		signin.WithTOTPIssuer("Example"),
 		signin.WithRegistrar(e.directory),
 		signin.WithVerifications(store),
@@ -279,7 +308,7 @@ func buildEnv(
 		directory = wrapDirectory(directory)
 	}
 
-	e.svc, err = signin.NewService(client, directory, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, opts...)
+	e.svc, err = signin.NewService(client, directory, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, hooks, opts...)
 	must.NoError(t, err)
 
 	e.register(t)

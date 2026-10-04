@@ -174,7 +174,7 @@ func TestNewServer_WithConfirmation(T *testing.T) {
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
 
-		store, err := waitlists.NewSQLStore(db)
+		store, err := waitlists.NewSQLStore(db, waitlists.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = waitlistsgrpc.NewServer(store, db, extractPrincipal, permitWithdrawals(), opt)

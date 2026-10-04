@@ -181,7 +181,7 @@ func newHarnessWithTargets(tb testing.TB, targets comments.Targets, opts ...comm
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := comments.NewSQLStore(db,
+	store, err := comments.NewSQLStore(db, comments.NoopHooks{},
 		comments.WithTablePrefix(prefix), comments.WithTargets(targets))
 	must.NoError(tb, err)
 

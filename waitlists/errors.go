@@ -12,6 +12,11 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil waitlist database client")
 
+	// ErrNilHooks indicates nil Hooks. They are required rather than defaulted, so
+	// a caller that wants none passes NoopHooks{} by name. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil waitlist hooks")
+
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, a database.SQLQueryExecutor
 	// for a read — so there is none of the store's own to fall back to. It wraps

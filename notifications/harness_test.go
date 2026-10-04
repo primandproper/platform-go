@@ -132,18 +132,26 @@ func newSQLiteEnv(tb testing.TB) *storeEnv {
 	return &storeEnv{client: client, dialect: dialect.SQLite}
 }
 
-// newStore migrates a uniquely prefixed table pair and returns a store over it.
+// newStore migrates a uniquely prefixed table pair and returns a store over it
+// with NoopHooks.
 func (e *storeEnv) newStore(tb testing.TB, opts ...SQLStoreOption) *SQLStore {
 	tb.Helper()
 
-	store, _ := e.newStoreWithPrefix(tb, opts...)
+	return e.newHookedStore(tb, NoopHooks{}, opts...)
+}
+
+// newHookedStore is newStore with the hooks the case names.
+func (e *storeEnv) newHookedStore(tb testing.TB, hooks Hooks, opts ...SQLStoreOption) *SQLStore {
+	tb.Helper()
+
+	store, _ := e.newStoreWithPrefix(tb, hooks, opts...)
 
 	return store
 }
 
-// newStoreWithPrefix is newStore, also handing back the prefix so a test can
-// query the tables directly.
-func (e *storeEnv) newStoreWithPrefix(tb testing.TB, opts ...SQLStoreOption) (store *SQLStore, prefix string) {
+// newStoreWithPrefix is newHookedStore, also handing back the prefix so a test
+// can query the tables directly.
+func (e *storeEnv) newStoreWithPrefix(tb testing.TB, hooks Hooks, opts ...SQLStoreOption) (store *SQLStore, prefix string) {
 	tb.Helper()
 
 	prefix = fmt.Sprintf("ntf_%d", prefixCounter.Add(1))
@@ -157,7 +165,7 @@ func (e *storeEnv) newStoreWithPrefix(tb testing.TB, opts ...SQLStoreOption) (st
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err = NewSQLStore(e.client, append([]SQLStoreOption{WithTablePrefix(prefix)}, opts...)...)
+	store, err = NewSQLStore(e.client, hooks, append([]SQLStoreOption{WithTablePrefix(prefix)}, opts...)...)
 	must.NoError(tb, err)
 
 	return store, prefix

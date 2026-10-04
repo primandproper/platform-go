@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/primandproper/platform-go/v14/billing"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -23,9 +24,9 @@ import (
 // Example_mount is what turning this domain on looks like, and it is written as
 // the acceptance test for the package's seams rather than as a tour.
 //
-// Everything a consumer supplies is something only they can: the database, how
-// somebody proved who they are, which accounts a caller has standing in, and
-// which of their roles may do what. Nothing in it is boilerplate this module
+// Everything a consumer supplies is something only they can: the database, what
+// each write commits beside it, how somebody proved who they are, which
+// accounts a caller has standing in, and which of their roles may do what. Nothing in it is boilerplate this module
 // could have written and did not — and there is deliberately no place in it to
 // say what a subscription status means, because that reading belongs in
 // billing/plans.
@@ -34,6 +35,7 @@ func Example_mount() {
 		ctx         context.Context
 		cfg         *billingcfg.Config                 // yours: a config block
 		client      database.Client                    //
+		hooks       billing.Hooks                      // yours: its companions, or NoopHooks{} by name
 		pillars     *observability.Pillars             //
 		serverCfg   *grpcserver.Config                 //
 		principals  callers.PrincipalExtractor         // yours: who is calling
@@ -43,7 +45,7 @@ func Example_mount() {
 	)
 
 	_ = func() error {
-		store, err := billingcfg.NewStore(ctx, cfg, client, billingcfg.WithPillars(pillars))
+		store, err := billingcfg.NewStore(ctx, cfg, client, hooks, billingcfg.WithPillars(pillars))
 		if err != nil {
 			return err
 		}

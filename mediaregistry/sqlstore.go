@@ -67,11 +67,19 @@ type SQLStore struct {
 // nothing here can check that, and a mismatch surfaces as a missing table on
 // the first query rather than at construction.
 //
+// hooks run inside every write's transaction, once its statements have landed;
+// see Hooks. They are required: a caller with nothing to commit alongside a
+// write passes NoopHooks by name, and a nil is refused with ErrNilHooks.
+//
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger, traces to a noop provider, and records to noop instruments.
-func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
 	}
 
 	d := client.Dialect()
@@ -79,7 +87,7 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "uploads registry dialect %q", d)
 	}
 
-	s := &SQLStore{prefix: DefaultTablePrefix, hooks: NoopHooks{}}
+	s := &SQLStore{prefix: DefaultTablePrefix, hooks: hooks}
 
 	for _, opt := range opts {
 		if opt != nil {

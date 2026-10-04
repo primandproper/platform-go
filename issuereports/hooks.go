@@ -38,7 +38,7 @@ import (
 // once the write has run. A transition counts: the status it left is the one
 // the caller named, but the note and the closing stamp it replaced are not
 // named anywhere. The before row costs the write one keyed read on the
-// transaction, which the store makes only when hooks are installed.
+// transaction, which the store makes only when the hooks are not NoopHooks.
 //
 // Every method is "After", and none is a veto. Whether somebody may file,
 // revise, decide or archive a report is decided before the store is called; a
@@ -94,8 +94,9 @@ type Hooks interface {
 	) error
 }
 
-// NoopHooks does nothing, and is what a store built without WithHooks runs. It is
-// also the type to embed in a Hooks that overrides some:
+// NoopHooks does nothing. It is what a caller passes, by name, when it commits
+// nothing alongside these writes — a seed import, a bootstrap tool, a test — and
+// it is still the type to embed in a Hooks that overrides some:
 //
 //	type recordingHooks struct {
 //		issuereports.NoopHooks

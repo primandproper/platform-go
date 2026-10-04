@@ -186,19 +186,21 @@ reach on the transaction that wrote it.
 # Companions every write owes go in Hooks
 
 A consumer whose every write owes the same companions — an audit entry for each,
-an event for each — can write them beside each call, or hand the store a [Hooks]
-through [WithHooks] and have each write call it on the same transaction once its
-statements have landed. The second is what a consumer reaches for when the
+an event for each — can write them beside each call, or hand [NewSQLStore] a
+[Hooks] and have each write call it on the same transaction once its statements
+have landed. The second is what a consumer reaches for when the
 alternative is wrapping the Store: a wrapper has to reimplement all thirteen
 writes to call through, and has to read the row an archive is about to hide or a
 status move is about to change before the store does. A hook is handed those
 rows, and an update or a status move is handed the row from before it as well. A
 hook's error fails the write it was called from, so the row and its companions
-commit together or not at all.
+commit together or not at all. The hooks are a required argument rather than an
+option, so a consumer with nothing to commit alongside a write passes
+[NoopHooks] by name and one that forgot to decide fails to compile.
 
 The two status moves still answer their caller with nothing; it is their hooks
-that are handed the rows, read only when hooks are installed, so the boundary in
-the section above holds for a store with none.
+that are handed the rows, read only when the hooks are anything but [NoopHooks],
+so the boundary in the section above holds for a store given those.
 
 # A price is a fact about a moment, not a lookup
 

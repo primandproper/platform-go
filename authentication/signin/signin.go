@@ -629,9 +629,12 @@ type TokenIssuer interface {
 // [ErrNoDefaultOwnerRoles], so a deployment that forgot fails here rather
 // than on its first sign-up. See [Registration.OwnerRoles] for how a
 // registration starts from them and a [RegistrationPolicy] may replace them.
+// And the hooks, because what a consumer commits alongside a sign-in is theirs
+// to decide and forgetting it must not look like deciding nothing: a consumer
+// that commits nothing passes [NoopHooks] by name, and nil is [ErrNilHooks].
 //
 // Everything else has a default, and each default is stated on the option that
-// replaces it: NoopHooks, this module's own TOTP verifier and generator,
+// replaces it: this module's own TOTP verifier and generator,
 // DefaultClaims, DefaultTokenTTL, DefaultAdminTokenTTL, and
 // SecondFactorWhenEnrolled. Observability is optional and defaults to nothing.
 //
@@ -643,6 +646,7 @@ func NewService(
 	authenticator authentication.Authenticator,
 	issuer TokenIssuer,
 	defaultOwnerRoles []string,
+	hooks Hooks,
 	opts ...ServiceOption,
 ) (*Service, error) {
 	if client == nil {
@@ -665,6 +669,10 @@ func NewService(
 		return nil, ErrNoDefaultOwnerRoles
 	}
 
+	if hooks == nil {
+		return nil, ErrNilHooks
+	}
+
 	s := &Service{
 		client:            client,
 		directory:         directory,
@@ -674,7 +682,7 @@ func NewService(
 		verifier:          totp.NewVerifier(),
 		secrets:           random.NewGenerator(),
 		generator:         totp.NewGenerator(),
-		hooks:             NoopHooks{},
+		hooks:             hooks,
 		clk:               clock.NewClock(),
 		claims:            DefaultClaims,
 		tokenTTL:          DefaultTokenTTL,

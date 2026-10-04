@@ -12,6 +12,10 @@ var (
 	// a transaction with.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
 
+	// ErrNilHooks is a service built with no hooks. A service whose writes owe
+	// no companions is handed NoopHooks{} by name.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 client hooks")
+
 	// ErrNilStore is a service built over no store.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 client store")
 

@@ -112,7 +112,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
 		call := hooks.last(t)
@@ -186,7 +186,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		test.EqOp(t, int64(0), env.erase(t, store, testScope, testSubject))
 
@@ -199,7 +199,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		declarations := []Declaration{digestDeclaration("digest")}
 
@@ -217,7 +217,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
 		mustSet(t, env, store, testScope, testSubject, "digest", "daily")
@@ -247,7 +247,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterCreateDefinition"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created, err := env.create(t, store, testScope, stringDefinition("digest"))
 		must.ErrorIs(t, err, errHook)
@@ -261,7 +261,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterUpdateDefinition"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
 
@@ -280,7 +280,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterSetValue"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		mustCreate(t, env, store, testScope, stringDefinition("digest"))
 
@@ -296,7 +296,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveDefinition"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
 
@@ -306,25 +306,24 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
-		mustArchive(t, env, store, testScope, created.ID)
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		must.Nil(t, store)
 	})
 
-	t.Run("a write reads the row for its hook only when hooks are installed", func(t *testing.T) {
+	t.Run("a write reads the row for its hook only when the hooks are not NoopHooks", func(t *testing.T) {
 		t.Parallel()
 
-		// Each runs one write on a fresh store and reports how many statements
-		// it sent. NoopHooks is installed hooks as far as the store can tell, so
-		// the difference is the read for the hook and nothing else.
-		archive := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		// Each runs one write on a fresh store and reports how many statements it
+		// sent. installedHooks adds nothing to NoopHooks but is not NoopHooks, so the
+		// difference is the read for the hook and nothing else.
+		archive := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
 
 			return countStatements(t, env, func(tx database.Tx) error {
@@ -332,10 +331,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		set := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		set := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			mustCreate(t, env, store, testScope, stringDefinition("digest"))
 			mustSet(t, env, store, testScope, testSubject, "digest", "daily")
 
@@ -345,8 +344,8 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, archive(t, WithHooks(NoopHooks{})), archive(t), test.Sprint("ArchiveDefinition"))
-		test.Less(t, set(t, WithHooks(NoopHooks{})), set(t), test.Sprint("SetValue"))
+		test.Less(t, archive(t, installedHooks{}), archive(t, NoopHooks{}), test.Sprint("ArchiveDefinition"))
+		test.Less(t, set(t, installedHooks{}), set(t, NoopHooks{}), test.Sprint("SetValue"))
 	})
 }
 
@@ -368,3 +367,8 @@ func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error
 
 // otherSubject is somebody who has answered nothing.
 func otherSubject() Subject { return Subject{Type: SubjectUser, ID: "user-nobody"} }
+
+// installedHooks embeds NoopHooks and overrides nothing. It is not NoopHooks,
+// so a store built with it is a store with hooks installed, and pays for the
+// reads only a hook is handed.
+type installedHooks struct{ NoopHooks }

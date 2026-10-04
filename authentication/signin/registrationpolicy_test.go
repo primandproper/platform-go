@@ -183,7 +183,7 @@ func TestRegistrationPolicy_refusal(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithRegistrar(e.directory),
 			signin.WithTOTPIssuer("Example"),
 			signin.WithRegistrationPolicy(p.policy),
@@ -359,10 +359,10 @@ func TestService_Register_agreements(T *testing.T) {
 		e := newEnv(t)
 		hooks := &agreementHooks{}
 
-		directory, err := identity.NewService(e.client, e.store, identity.WithHooks(hooks))
+		directory, err := identity.NewService(e.client, e.store, hooks)
 		must.NoError(t, err)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithRegistrar(directory),
 		)
 		must.NoError(t, err)
@@ -453,7 +453,7 @@ func TestService_Register_enrollTOTP(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithRegistrar(e.directory),
 		)
 		must.NoError(t, err)
@@ -493,7 +493,7 @@ func TestService_Register_defaultOwnerRoles(T *testing.T) {
 
 		e := newEnv(t)
 
-		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"founder"},
+		svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"founder"}, signin.NoopHooks{},
 			append([]signin.ServiceOption{signin.WithRegistrar(e.directory)}, opts...)...)
 		must.NoError(t, err)
 

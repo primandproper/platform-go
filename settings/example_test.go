@@ -155,7 +155,7 @@ func ExampleStore_SetValue() {
 		panic(err)
 	}
 
-	store, err := settings.NewSQLStore(client)
+	store, err := settings.NewSQLStore(client, settings.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -307,7 +307,7 @@ func ExampleDeclareDefinitions() {
 func exampleWiring(ctx context.Context) (database.Client, settings.Store) {
 	client := exampleDatabase(ctx)
 
-	store, err := settings.NewSQLStore(client)
+	store, err := settings.NewSQLStore(client, settings.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -336,7 +336,7 @@ func ExampleStore_ClearValue() {
 		panic(err)
 	}
 
-	store, err := settings.NewSQLStore(client)
+	store, err := settings.NewSQLStore(client, settings.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

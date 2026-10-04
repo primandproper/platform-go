@@ -465,9 +465,9 @@ var _ Hooks = NoopHooks{}
 
 // NoopHooks implements Hooks and does nothing.
 //
-// It is the Service's default, so a consumer with nothing to commit alongside
-// an identity write configures nothing. It is also what a consumer with one or
-// two hooks embeds:
+// It is what a caller passes NewService, by name, when it commits nothing
+// alongside these writes — a seed import, a bootstrap tool, a test — and it is
+// what a consumer with one or two hooks embeds:
 //
 //	type auditHooks struct {
 //		identity.NoopHooks

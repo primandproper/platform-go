@@ -57,8 +57,9 @@ type SQLStore struct {
 	tracerProvider tracing.Provider
 	prefix         string
 
-	// hooked is whether WithHooks installed any, which decides whether a write
-	// that may overwrite a row pays for the read of it first.
+	// hooked is whether the hooks are anything but NoopHooks, which decides
+	// whether a write that may overwrite a row pays for the read of the row it
+	// is about to overwrite.
 	hooked bool
 }
 
@@ -78,6 +79,12 @@ type SQLStore struct {
 // nothing here can check that, and a mismatch surfaces as a missing table on the
 // first query rather than at construction.
 //
+// hooks run inside every endpoint and subscription write's transaction, once its
+// statements have landed; see Hooks. They are required: a caller with nothing to
+// commit alongside a write passes NoopHooks by name, and its saves then pay for
+// no read of the row they are about to overwrite. A nil is refused with
+// ErrNilHooks.
+//
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger and traces to a noop provider.
 //
@@ -89,9 +96,13 @@ type SQLStore struct {
 // created_at and the filter window compared against it have to come from one
 // clock, or two application instances a second apart write rows a window
 // excludes at random.
-func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, hooks Hooks, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
 	}
 
 	d := client.Dialect()
@@ -99,10 +110,16 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "webhooks dialect %q", d)
 	}
 
+	_, noop := hooks.(NoopHooks)
+	if _, ptr := hooks.(*NoopHooks); ptr {
+		noop = true
+	}
+
 	s := &SQLStore{
 		client: client,
 		prefix: DefaultTablePrefix,
-		hooks:  NoopHooks{},
+		hooks:  hooks,
+		hooked: !noop,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -156,6 +173,12 @@ func webhooksdbDialect(d dialect.Dialect) (webhooksdb.Dialect, error) {
 // ErrNilDatabaseClient indicates a nil database.Client. It wraps
 // errors.ErrNilInputParameter, so a caller may check either.
 var ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks database client")
+
+// ErrNilHooks indicates nil Hooks. A store that commits nothing alongside its
+// writes is handed NoopHooks by name, so a nil is a caller that forgot rather
+// than one that decided. It wraps errors.ErrNilInputParameter, so a caller may
+// check either.
+var ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks hooks")
 
 // SaveEndpoint upserts the endpoint and reconciles its subscription set, both
 // through the caller's transaction, and answers with the stored row.

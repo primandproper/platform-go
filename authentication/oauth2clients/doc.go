@@ -128,8 +128,8 @@ plaintext if a caller wanted it to.
 # Companions every operation owes go in Hooks
 
 A consumer that records each registration, revision and withdrawal — an audit
-entry, an event — hands the [Service] a [Hooks] through [WithHooks] rather than
-wrapping the [Store]. Each operation calls its hook on the transaction it opened,
+entry, an event — hands [NewService] a [Hooks] rather than wrapping the
+[Store]; one with nothing to commit passes [NoopHooks] by name. Each operation calls its hook on the transaction it opened,
 once the write has landed, and a hook's error rolls the operation back. An update
 is handed the row as it stood before and as it stands after, so a companion can
 say what changed; the before row is a read the Service makes only when hooks are

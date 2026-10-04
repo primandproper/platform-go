@@ -90,7 +90,7 @@ func TestPasswordPolicy_Register(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithRegistrar(e.directory),
 			signin.WithPasswordPolicy(p.policy),
 		)
@@ -139,7 +139,7 @@ func TestPasswordPolicy_UpdatePassword(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{result: true}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithPasswordPolicy(p.policy),
 		)
 		must.NoError(t, err)
@@ -360,7 +360,7 @@ func TestAccountPasswordPolicy_UpdatePassword(T *testing.T) {
 		e := newEnv(t)
 		authenticator := &stubAuthenticator{result: true}
 
-		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"},
+		svc, err := signin.NewService(e.client, e.store, authenticator, e.issuer, []string{"owner"}, signin.NoopHooks{},
 			signin.WithAccountPasswordPolicy(func(context.Context, *signin.PasswordChange) error { return errSameAsCurrent }),
 		)
 		must.NoError(t, err)

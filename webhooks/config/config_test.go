@@ -142,7 +142,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), validConfig(), newTestClient(t))
+		store, err := NewStore(t.Context(), validConfig(), newTestClient(t), webhooks.NoopHooks{})
 		must.NoError(t, err)
 		test.NotNil(t, store)
 	})
@@ -150,21 +150,28 @@ func TestNewStore(T *testing.T) {
 	T.Run("nil config", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewStore(t.Context(), nil, newTestClient(t))
+		_, err := NewStore(t.Context(), nil, newTestClient(t), webhooks.NoopHooks{})
 		test.ErrorIs(t, err, errors.ErrNilInputParameter)
 	})
 
 	T.Run("nil client", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewStore(t.Context(), validConfig(), nil)
+		_, err := NewStore(t.Context(), validConfig(), nil, webhooks.NoopHooks{})
 		test.ErrorIs(t, err, webhooks.ErrNilDatabaseClient)
+	})
+
+	T.Run("nil hooks", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewStore(t.Context(), validConfig(), newTestClient(t), nil)
+		test.ErrorIs(t, err, webhooks.ErrNilHooks)
 	})
 
 	T.Run("invalid config", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewStore(t.Context(), invalidConfig(), newTestClient(t))
+		_, err := NewStore(t.Context(), invalidConfig(), newTestClient(t), webhooks.NoopHooks{})
 		test.Error(t, err)
 	})
 }
@@ -178,7 +185,7 @@ func TestNewDispatcher(T *testing.T) {
 		cfg := validConfig()
 		client := newTestClient(t)
 
-		store, err := NewStore(t.Context(), cfg, client)
+		store, err := NewStore(t.Context(), cfg, client, webhooks.NoopHooks{})
 		must.NoError(t, err)
 
 		dispatcher, err := NewDispatcher(t.Context(), cfg, client, store, testCatalog)
@@ -228,7 +235,7 @@ func TestNewWorker(T *testing.T) {
 
 		cfg := validConfig()
 
-		store, err := NewStore(t.Context(), cfg, newTestClient(t))
+		store, err := NewStore(t.Context(), cfg, newTestClient(t), webhooks.NoopHooks{})
 		must.NoError(t, err)
 
 		worker, err := NewWorker(t.Context(), cfg, store)
@@ -259,7 +266,7 @@ func TestNewWorker(T *testing.T) {
 		cfg.EnsureDefaults()
 		cfg.Worker.RequestTimeout = cfg.Worker.LeaseDuration
 
-		store, err := NewStore(t.Context(), validConfig(), newTestClient(t))
+		store, err := NewStore(t.Context(), validConfig(), newTestClient(t), webhooks.NoopHooks{})
 		must.NoError(t, err)
 
 		_, err = NewWorker(t.Context(), cfg, store)
@@ -327,7 +334,7 @@ func TestBreakerFactory(T *testing.T) {
 
 		cfg := validConfig()
 
-		store, err := NewStore(t.Context(), cfg, newTestClient(t))
+		store, err := NewStore(t.Context(), cfg, newTestClient(t), webhooks.NoopHooks{})
 		must.NoError(t, err)
 
 		worker, err := NewWorker(t.Context(), cfg, store)

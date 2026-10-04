@@ -103,7 +103,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 
 		hooks := &recordingHooks{}
 		c := newStubClock()
-		store := env.newStore(t, WithClock(c), WithHooks(hooks))
+		store := env.newHookedStore(t, hooks, WithClock(c))
 
 		n := env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 		call := hooks.last(t)
@@ -171,7 +171,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		first := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 		call := hooks.last(t)
@@ -222,7 +222,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		// The before read is scoped like every read a consumer reaches, so what the
 		// handset was in another tenant is not handed to this one.
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		elsewhere := newDevice(testPrincipal, PlatformIOS, "token-a")
 		elsewhere.Scope = otherScope
@@ -241,7 +241,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		n := env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 		before := len(hooks.calls)
@@ -265,7 +265,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterCreateNotification"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		filed, err := env.create(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 		must.ErrorIs(t, err, errHook)
@@ -280,7 +280,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterMarkNotificationRead"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		n := env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 
@@ -297,7 +297,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterRevokeDevice"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		d := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
@@ -314,7 +314,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterDeleteNotificationsForPrincipal"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 
@@ -327,25 +327,26 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		test.SliceLen(t, 1, inbox.Data)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
-		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		test.Nil(t, store)
 	})
 
 	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
 		t.Parallel()
 
 		// Each runs one write on a fresh store and reports how many statements
-		// it sent. NoopHooks is installed hooks as far as the store can tell, so
-		// the difference is the before read and nothing else.
-		markRead := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		// it sent. installedHooks does nothing either, so the difference is the
+		// before read and nothing else.
+		type installedHooks struct{ NoopHooks }
+
+		markRead := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			n := env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 
 			return countStatements(t, env, func(tx database.Tx) error {
@@ -356,10 +357,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 
 		// A re-registration, so the before row the hooked store reads is a real
 		// one rather than an absence.
-		registerDevice := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		registerDevice := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newHookedStore(t, hooks)
 			env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
 			return countStatements(t, env, func(tx database.Tx) error {
@@ -368,8 +369,8 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, markRead(t, WithHooks(NoopHooks{})), markRead(t), test.Sprint("MarkNotificationRead"))
-		test.Less(t, registerDevice(t, WithHooks(NoopHooks{})), registerDevice(t), test.Sprint("RegisterDevice"))
+		test.Less(t, markRead(t, installedHooks{}), markRead(t, NoopHooks{}), test.Sprint("MarkNotificationRead"))
+		test.Less(t, registerDevice(t, installedHooks{}), registerDevice(t, NoopHooks{}), test.Sprint("RegisterDevice"))
 	})
 }
 

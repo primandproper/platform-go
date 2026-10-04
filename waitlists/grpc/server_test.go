@@ -33,7 +33,7 @@ func TestNewServerRefusesEachMissingDependency(T *testing.T) {
 	must.NoError(T, err)
 	T.Cleanup(func() { _ = db.Close() })
 
-	store, err := waitlists.NewSQLStore(db)
+	store, err := waitlists.NewSQLStore(db, waitlists.NoopHooks{})
 	must.NoError(T, err)
 
 	T.Run("no store", func(t *testing.T) {

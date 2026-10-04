@@ -119,7 +119,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		list := mustCreateList(t, env, store, testScope, openList("Launch"))
 		call := hooks.last(t)
@@ -198,7 +198,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		// The reason the hook exists rather than a wrapper: after the statement the
 		// row holds a status and a digest, and the hook still has the person.
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		list := mustCreateList(t, env, store, testScope, openList("Launch"))
 		signup := mustJoin(t, env, store, testScope, list.ID, &Signup{
@@ -221,7 +221,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		list := mustCreateList(t, env, store, testScope, openList("Launch"))
 		mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com", Subject: testSubject})
@@ -244,7 +244,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		list := mustCreateList(t, env, store, testScope, openList("Launch"))
 		signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
@@ -264,7 +264,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterJoin"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		list := mustCreateList(t, env, store, testScope, openList("Launch"))
 
@@ -280,7 +280,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterInvite"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		list := mustCreateList(t, env, store, testScope, openList("Launch"))
 		signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
@@ -294,24 +294,24 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, StatusWaiting, read.Status)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		mustCreateList(t, env, store, testScope, openList("Launch"))
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		must.Nil(t, store)
 	})
 
 	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
 		t.Parallel()
 
-		// Each runs one update on a fresh store and reports how many statements
-		// it sent. NoopHooks is installed hooks as far as the store can tell, so
-		// the difference is the before read and nothing else.
-		updateList := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		// Each runs one update on a fresh store and reports how many statements it
+		// sent. installedHooks adds nothing to NoopHooks but is not NoopHooks, so the
+		// difference is the before read and nothing else.
+		updateList := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			list.Description = "rewritten"
 
@@ -321,10 +321,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		updateNotes := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		updateNotes := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{
 				Contact: "ada@example.com",
@@ -338,8 +338,8 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, updateList(t, WithHooks(NoopHooks{})), updateList(t), test.Sprint("UpdateList"))
-		test.Less(t, updateNotes(t, WithHooks(NoopHooks{})), updateNotes(t), test.Sprint("UpdateSignupNotes"))
+		test.Less(t, updateList(t, installedHooks{}), updateList(t, NoopHooks{}), test.Sprint("UpdateList"))
+		test.Less(t, updateNotes(t, installedHooks{}), updateNotes(t, NoopHooks{}), test.Sprint("UpdateSignupNotes"))
 	})
 }
 
@@ -358,3 +358,8 @@ func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error
 
 	return counted.Statements()
 }
+
+// installedHooks embeds NoopHooks and overrides nothing. It is not NoopHooks,
+// so a store built with it is a store with hooks installed, and pays for the
+// reads only a hook is handed.
+type installedHooks struct{ NoopHooks }

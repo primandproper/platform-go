@@ -31,6 +31,7 @@ func base(t *testing.T, cfg *Config) do.Injector {
 	do.ProvideValue[context.Context](i, t.Context())
 	do.ProvideValue[database.Client](i, testDBClient(t))
 	do.ProvideValue[identity.Store](i, &identitymock.StoreMock{})
+	do.ProvideValue[passwordreset.Hooks](i, passwordreset.NoopHooks{})
 	do.ProvideValue(i, cfg)
 
 	return i
@@ -67,6 +68,21 @@ func TestRegisterStore(T *testing.T) {
 		store, err := do.Invoke[passwordreset.Store](i)
 		must.Error(t, err)
 		test.Nil(t, store)
+	})
+
+	T.Run("needs hooks", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+		RegisterStore(i)
+
+		store, err := do.Invoke[passwordreset.Store](i)
+		test.Nil(t, store)
+		test.ErrorIs(t, err, do.ErrServiceNotFound)
+		test.StrContains(t, err.Error(), do.NameOf[passwordreset.Hooks]())
 	})
 }
 
@@ -166,6 +182,7 @@ func TestRegisterService(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[passwordreset.Hooks](i, passwordreset.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 		withApplication(i)
 		RegisterStore(i)

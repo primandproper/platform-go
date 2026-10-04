@@ -207,7 +207,7 @@ func exampleWiring() (waitlists.Store, database.Client) {
 		}
 	}
 
-	store, err := waitlists.NewSQLStore(client)
+	store, err := waitlists.NewSQLStore(client, waitlists.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

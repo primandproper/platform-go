@@ -527,8 +527,9 @@ type Hooks interface {
 	AfterSwitchAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, change *AccountSwitch) error
 }
 
-// NoopHooks is the Hooks a service runs when a consumer configures none, and the
-// type to embed in one that overrides some.
+// NoopHooks does nothing. It is what a caller passes NewService, by name, when it
+// commits nothing alongside a sign-in — a seed import, a bootstrap tool, a test —
+// and it is the type to embed in a Hooks that overrides some.
 //
 // Embedding it rather than implementing the interface is what makes a method
 // added here later additive: an embedder gains a no-op rather than a compile

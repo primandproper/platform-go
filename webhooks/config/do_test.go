@@ -38,6 +38,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[webhooks.Hooks](i, webhooks.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -45,6 +46,20 @@ func TestRegisterStore(T *testing.T) {
 		store, err := do.Invoke[webhooks.Store](i)
 		must.NoError(t, err)
 		test.NotNil(t, store)
+	})
+
+	T.Run("requires hooks", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+
+		RegisterStore(i)
+
+		_, err := do.Invoke[webhooks.Store](i)
+		must.Error(t, err)
 	})
 }
 
@@ -57,6 +72,7 @@ func TestRegisterDispatcher(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[webhooks.Hooks](i, webhooks.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 		do.ProvideValue(i, webhooks.Catalog{})
 
@@ -74,6 +90,7 @@ func TestRegisterDispatcher(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[webhooks.Hooks](i, webhooks.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -94,6 +111,7 @@ func TestRegisterWorker(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[webhooks.Hooks](i, webhooks.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)

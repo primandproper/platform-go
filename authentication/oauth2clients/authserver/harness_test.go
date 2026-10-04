@@ -171,10 +171,9 @@ func newSignInHarness(t *testing.T, scope tenancy.Scope, opts ...signin.ServiceO
 
 	issuer, hooks := &fakeIssuer{}, &recordingHooks{}
 
-	svc, err := signin.NewService(db, store, authenticator, issuer, []string{"owner"},
+	svc, err := signin.NewService(db, store, authenticator, issuer, []string{"owner"}, hooks,
 		append([]signin.ServiceOption{
 			signin.WithTOTPIssuer("Example"),
-			signin.WithHooks(hooks),
 		}, opts...)...)
 	must.NoError(t, err)
 
@@ -189,7 +188,7 @@ func newSignInHarness(t *testing.T, scope tenancy.Scope, opts ...signin.ServiceO
 	hashed, err := authenticator.HashPassword(t.Context(), h.password)
 	must.NoError(t, err)
 
-	identitySvc, err := identity.NewService(db, store)
+	identitySvc, err := identity.NewService(db, store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	registration, err := identitySvc.Register(t.Context(), scope,

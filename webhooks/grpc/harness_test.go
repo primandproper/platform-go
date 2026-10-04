@@ -198,7 +198,7 @@ func newHarness(tb testing.TB, opts ...webhooks.DispatcherOption) *harness {
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := webhooks.NewSQLStore(db, webhooks.WithTablePrefix(prefix))
+	store, err := webhooks.NewSQLStore(db, webhooks.NoopHooks{}, webhooks.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
 	dispatcher, err := webhooks.NewDispatcher(store, db.Reader(),

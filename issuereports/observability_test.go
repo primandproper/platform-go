@@ -127,7 +127,7 @@ func TestSQLStore_GuardMissCounter(T *testing.T) {
 			},
 		}
 
-		_, err := NewSQLStore(env.client, WithStoreMetricsProvider(provider))
+		_, err := NewSQLStore(env.client, NoopHooks{}, WithStoreMetricsProvider(provider))
 		test.ErrorIs(t, err, errCounterUnavailable)
 	})
 }

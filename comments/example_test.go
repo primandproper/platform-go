@@ -34,7 +34,7 @@ func Example() {
 
 	client := exampleClient(ctx)
 
-	store, err := comments.NewSQLStore(client,
+	store, err := comments.NewSQLStore(client, comments.NoopHooks{},
 		comments.WithTargets(comments.Targets{
 			articleTarget:    {Description: "an article"},
 			newsletterTarget: {Description: "a newsletter"},
@@ -111,7 +111,7 @@ func ExampleWithTargets() {
 
 	client := exampleClient(ctx)
 
-	store, err := comments.NewSQLStore(client,
+	store, err := comments.NewSQLStore(client, comments.NoopHooks{},
 		comments.WithTargets(comments.Targets{
 			articleTarget: {Description: "an article"},
 		}))
@@ -147,7 +147,7 @@ func ExampleStore_DeleteCommentsForTarget() {
 
 	client := exampleClient(ctx)
 
-	store, err := comments.NewSQLStore(client,
+	store, err := comments.NewSQLStore(client, comments.NoopHooks{},
 		comments.WithTargets(comments.Targets{articleTarget: {Description: "an article"}}))
 	if err != nil {
 		panic(err)
@@ -205,7 +205,7 @@ func ExampleStore_CreateComment() {
 		panic(err)
 	}
 
-	store, err := comments.NewSQLStore(client,
+	store, err := comments.NewSQLStore(client, comments.NoopHooks{},
 		comments.WithTargets(comments.Targets{articleTarget: {Description: "an article"}}))
 	if err != nil {
 		panic(err)

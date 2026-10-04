@@ -107,7 +107,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("nil client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(nil)
+		store, err := NewSQLStore(nil, NoopHooks{})
 		test.Nil(t, store)
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
 	})
@@ -120,7 +120,7 @@ func TestNewSQLStore(T *testing.T) {
 		// A prefix ending in '_' is the one database/ddl refuses, because the
 		// separator is the schema's to supply — the check runs against every
 		// identifier the DDL renders rather than against a pattern.
-		store, err := NewSQLStore(env.client, WithTablePrefix("trailing_"))
+		store, err := NewSQLStore(env.client, NoopHooks{}, WithTablePrefix("trailing_"))
 		test.Nil(t, store)
 		test.Error(t, err)
 	})
@@ -130,7 +130,7 @@ func TestNewSQLStore(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		store, err := NewSQLStore(env.client, nil, WithTablePrefix("nilopt"))
+		store, err := NewSQLStore(env.client, NoopHooks{}, nil, WithTablePrefix("nilopt"))
 		must.NoError(t, err)
 		test.EqOp(t, "nilopt", store.TablePrefix())
 	})
@@ -143,7 +143,7 @@ func TestNewSQLStore(T *testing.T) {
 		// Both options refuse a nil rather than installing one: a store whose
 		// clock is nil panics on the first read of a list, and one whose hasher
 		// is nil panics on the first signup.
-		store, err := NewSQLStore(env.client, WithClock(nil), WithHasher(nil))
+		store, err := NewSQLStore(env.client, NoopHooks{}, WithClock(nil), WithHasher(nil))
 		must.NoError(t, err)
 		must.NotNil(t, store)
 

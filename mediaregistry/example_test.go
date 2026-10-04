@@ -192,7 +192,7 @@ func exampleWiring() (database.Client, uploads.UploadManager, mediaregistry.Stor
 		}
 	}
 
-	store, err := mediaregistry.NewSQLStore(client)
+	store, err := mediaregistry.NewSQLStore(client, mediaregistry.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

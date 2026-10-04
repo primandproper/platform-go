@@ -66,10 +66,13 @@ What this package does not hold, and why:
     registration open and holds no *identity.Service, or that names a
     MagicLinks block and holds no signin.MagicLinkMailer, fails at boot naming
     what it wanted, rather than mounting a door that refuses every request.
-  - Hooks, a password policy and a claims builder. These are code rather than
-    configuration, so RegisterService uses whichever of them the application
-    registered and leaves the service's default in place otherwise, which is
-    the reading identitycfg takes of identity.Hooks.
+  - Hooks. These are code rather than configuration, and required: an
+    application whose sign-ins owe no companions registers signin.NoopHooks{}
+    by name, which is the reading identitycfg takes of identity.Hooks.
+  - A password policy and a claims builder. These are code rather than
+    configuration too, so RegisterService uses whichever of them the
+    application registered and leaves the service's default in place
+    otherwise.
 */
 package signincfg
 

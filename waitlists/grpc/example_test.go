@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
+	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 
@@ -31,6 +32,7 @@ import (
 func Example_mount() {
 	var (
 		ctx        context.Context
+		hooks      waitlists.Hooks                // yours: what each write commits with it
 		cfg        *waitlistscfg.Config           // yours: a config block
 		client     database.Client                //
 		pillars    *observability.Pillars         //
@@ -43,7 +45,7 @@ func Example_mount() {
 	)
 
 	_ = func() error {
-		store, err := waitlistscfg.NewStore(ctx, cfg, client, waitlistscfg.WithPillars(pillars))
+		store, err := waitlistscfg.NewStore(ctx, cfg, client, hooks, waitlistscfg.WithPillars(pillars))
 		if err != nil {
 			return err
 		}

@@ -157,7 +157,7 @@ func newHarness(tb testing.TB, opts ...notificationsgrpc.Option) *harness {
 		must.NoError(tb, execErr, must.Sprintf("executing %q", stmt))
 	}
 
-	store, err := notifications.NewSQLStore(db, notifications.WithTablePrefix(prefix))
+	store, err := notifications.NewSQLStore(db, notifications.NoopHooks{}, notifications.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
 	server, err := notificationsgrpc.NewServer(store, store, db, extractPrincipal,

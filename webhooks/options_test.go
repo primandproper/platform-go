@@ -245,7 +245,7 @@ func TestNilOptionsAreSkipped(T *testing.T) {
 		_, err = NewWorker(t.Context(), &WorkerConfig{}, &fakeStore{}, absentWorker)
 		test.NoError(t, err)
 
-		_, err = NewSQLStore(newSQLiteEnv(t).client, absentStore)
+		_, err = NewSQLStore(newSQLiteEnv(t).client, NoopHooks{}, absentStore)
 		test.NoError(t, err)
 	})
 }

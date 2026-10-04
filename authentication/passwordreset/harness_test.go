@@ -159,13 +159,20 @@ func createTable(tb testing.TB, client database.Client, d dialect.Dialect, prefi
 }
 
 // newTestStore builds a store over a fresh SQLite database and a clock the test
-// controls.
+// controls, running NoopHooks.
 func newTestStore(tb testing.TB, opts ...Option) (*SQLStore, *fakeClock) {
+	tb.Helper()
+
+	return newHookedTestStore(tb, NoopHooks{}, opts...)
+}
+
+// newHookedTestStore is newTestStore running the hooks given.
+func newHookedTestStore(tb testing.TB, hooks Hooks, opts ...Option) (*SQLStore, *fakeClock) {
 	tb.Helper()
 
 	c := newFakeClock()
 
-	store, err := NewSQLStore(&Config{}, newTestClient(tb), append([]Option{
+	store, err := NewSQLStore(&Config{}, newTestClient(tb), hooks, append([]Option{
 		WithClock(c),
 		WithLogger(loggingnoop.NewLogger()),
 		WithTracerProvider(tracingnoop.NewTracerProvider()),
@@ -612,7 +619,7 @@ func newTestService(tb testing.TB, opts ...ServiceOption) *serviceEnv {
 
 	storeClock := newFakeClock()
 
-	store, err := NewSQLStore(&Config{}, client,
+	store, err := NewSQLStore(&Config{}, client, NoopHooks{},
 		WithClock(storeClock),
 		WithLogger(loggingnoop.NewLogger()),
 		WithTracerProvider(tracingnoop.NewTracerProvider()),

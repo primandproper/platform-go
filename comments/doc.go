@@ -134,13 +134,18 @@ takes no executor and reads on whatever connection the consumer built it over.
 
 A consumer whose every write owes the same companions — an audit entry for each,
 an event for each — can write them beside each call, as the example above does,
-or hand the store a [Hooks] through [WithHooks] and have each write call it on
+or put them in the [Hooks] the store is built with, which each write calls on
 the same transaction once its statements have landed. The second is what a
 consumer reaches for when the alternative is wrapping the Store: a wrapper has to
 reimplement every method to call through, has to read the comment an edit is
 about to overwrite before the store does, and cannot reach the comment an archive
 hid at all. A hook is handed both. A hook's error fails the write it was called
 from, so the row and its companions commit together or not at all.
+
+The store takes its Hooks as a constructor argument rather than an option. A
+caller that writes its companions beside each call, or owes none, passes
+[NoopHooks] by name, so a store that records nothing is one somebody decided
+should not, rather than one somebody forgot to wire.
 
 The two sweeps call theirs too, with what they destroyed counted rather than
 listed: the count is the DELETE's own, so a companion written from it covers

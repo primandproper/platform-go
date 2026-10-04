@@ -39,11 +39,11 @@ import (
 // An update is handed two rows, the one before it and the one after, because
 // what an update means is the difference between them and that is not readable
 // once the write has run. The before row costs the update one keyed read on the
-// transaction, which the store makes only when hooks are installed. The two
-// status moves are updates in this sense — which status a subscription moved
-// from is the half of a churn event the provider's delivery does not carry — and
-// they are handed both rows too, read only when hooks are installed, so a store
-// with none still answers a status write without a read.
+// transaction, which the store makes only when its hooks are anything but
+// NoopHooks. The two status moves are updates in this sense — which status a
+// subscription moved from is the half of a churn event the provider's delivery
+// does not carry — and they are handed both rows too, read under the same rule,
+// so a store given NoopHooks still answers a status write without a read.
 //
 // Every method is "After", and none is a veto. Whether a sale may be recorded or
 // an agreement retired is decided before the store is called; a hook returning
@@ -127,8 +127,9 @@ type Hooks interface {
 	AfterArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transaction *Transaction) error
 }
 
-// NoopHooks does nothing, and is what a store built without WithHooks runs. It is
-// also the type to embed in a Hooks that overrides some:
+// NoopHooks does nothing. It is what a caller passes, by name, when it commits
+// nothing alongside these writes — a seed import, a bootstrap tool, a test. It
+// is also the type to embed in a Hooks that overrides some:
 //
 //	type recordingHooks struct {
 //		billing.NoopHooks

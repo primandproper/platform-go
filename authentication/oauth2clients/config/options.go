@@ -24,7 +24,6 @@ type options struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 
-	hooks   oauth2clients.Hooks
 	store   []oauth2clients.SQLStoreOption
 	service []oauth2clients.ServiceOption
 }
@@ -73,22 +72,6 @@ func WithPillars(p *observability.Pillars) Option {
 // prefix included.
 func WithStoreOptions(opts ...oauth2clients.SQLStoreOption) Option {
 	return func(o *options) { o.store = append(o.store, opts...) }
-}
-
-// WithHooks supplies what commits alongside each of the Service's operations —
-// the audit entry, the outbox row.
-//
-// It is an option rather than a parameter because it is the one dependency a
-// consumer legitimately has none of: oauth2clients.NoopHooks is the default,
-// and an application with nothing to commit beside a registration configures
-// nothing. A nil Hooks is ignored rather than installed, since installing one
-// would panic on the first operation.
-func WithHooks(hooks oauth2clients.Hooks) Option {
-	return func(o *options) {
-		if hooks != nil {
-			o.hooks = hooks
-		}
-	}
 }
 
 // WithServiceOptions passes opts to NewService, after the options it derives

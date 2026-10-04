@@ -13,8 +13,9 @@ import (
 
 // RegisterStore registers a billing.Store with the injector.
 //
-// Prerequisites: *Config and database.Client must be registered in the injector
-// before the Store is invoked.
+// Prerequisites: *Config, database.Client and billing.Hooks must be registered
+// in the injector before the Store is invoked. The hooks are required; a
+// container that wants none registers billing.NoopHooks{} by name.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (billing.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -37,6 +38,11 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		hooks, err := do.Invoke[billing.Hooks](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, hooks, WithPillars(pillars))
 	})
 }

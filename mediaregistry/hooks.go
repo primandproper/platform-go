@@ -75,8 +75,9 @@ type Hooks interface {
 	AfterArchiveObjectsForOwner(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string, archived int64) error
 }
 
-// NoopHooks does nothing, and is what a store built without WithHooks runs. It is
-// also the type to embed in a Hooks that overrides some:
+// NoopHooks does nothing. It is what a caller passes, by name, when it commits
+// nothing alongside these writes — a seed import, a bootstrap tool, a test. It
+// is also the type to embed in a Hooks that overrides some:
 //
 //	type recordingHooks struct {
 //		mediaregistry.NoopHooks

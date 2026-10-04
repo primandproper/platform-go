@@ -159,7 +159,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 }
 
 // NewStore builds the Store. client must be the database holding the token
-// table.
+// table, and hooks run inside every write's transaction; a caller with nothing
+// to commit alongside those writes passes passwordreset.NoopHooks{} by name.
 //
 // The sweeper, when the config starts one, is bound to ctx: it stops when
 // whatever scope owns this store does.
@@ -169,7 +170,13 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 // returning it straight through would convert a nil *passwordreset.SQLStore
 // into a non-nil passwordreset.Store on the error path, and a caller testing the
 // result against nil would find a store that panics on first use.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (passwordreset.Store, error) {
+func NewStore(
+	ctx context.Context,
+	cfg *Config,
+	client database.Client,
+	hooks passwordreset.Hooks,
+	opts ...Option,
+) (passwordreset.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -192,6 +199,7 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 	store, storeErr := passwordreset.NewSQLStore(
 		&passwordreset.Config{TablePrefix: cfg.TablePrefix},
 		client,
+		hooks,
 		append(base, options.store...)...,
 	)
 	if storeErr != nil {

@@ -438,6 +438,10 @@ var (
 	// ErrNilTokenIssuer indicates a nil tokens.Issuer.
 	ErrNilTokenIssuer = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil token issuer for the sign-in service")
 
+	// ErrNilHooks indicates nil Hooks. A service whose sign-ins owe no
+	// companions is handed NoopHooks{} by name.
+	ErrNilHooks = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil hooks for the sign-in service")
+
 	// ErrNoDefaultOwnerRoles indicates a service built with no default owner
 	// roles, or with one that is blank. A registration that mints an account
 	// starts with those roles, so a service without them could register

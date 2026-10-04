@@ -78,7 +78,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		recorded := env.mustRecord(t, store, testScope, newInput("avatars/ada.png", "user_1"))
 		call := hooks.last(t)
@@ -102,7 +102,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
 		env.mustRecord(t, store, testScope, newInput("b.png", "user_1"))
@@ -124,7 +124,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		env.mustRecord(t, store, testScope, newInput("taken.png", "user_1"))
 		before := len(hooks.calls)
@@ -142,7 +142,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterRecordObject"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		recorded, err := env.record(t, store, testScope, newInput("avatars/ada.png", "user_1"))
 		must.ErrorIs(t, err, errHook)
@@ -156,7 +156,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveObject"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		recorded := env.mustRecord(t, store, testScope, newInput("avatars/ada.png", "user_1"))
 
@@ -173,7 +173,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveObjectsForOwner"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newHookedStore(t, hooks)
 
 		recorded := env.mustRecord(t, store, testScope, newInput("avatars/ada.png", "user_1"))
 
@@ -185,11 +185,11 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		test.Nil(t, store)
 	})
 }

@@ -38,6 +38,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[comments.Hooks](i, comments.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 		do.ProvideValue(i, testTargets)
 
@@ -56,6 +57,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[comments.Hooks](i, comments.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "app"})
 		do.ProvideValue(i, testTargets)
 
@@ -77,6 +79,7 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[comments.Hooks](i, comments.NoopHooks{})
 		do.ProvideValue(i, &Config{})
 
 		RegisterStore(i)
@@ -91,7 +94,25 @@ func TestRegisterStore(T *testing.T) {
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue[comments.Hooks](i, comments.NoopHooks{})
 		do.ProvideValue(i, &Config{TablePrefix: "has space"})
+		do.ProvideValue(i, testTargets)
+
+		RegisterStore(i)
+
+		_, err := do.Invoke[comments.Store](i)
+		must.Error(t, err)
+	})
+
+	T.Run("requires hooks", func(t *testing.T) {
+		t.Parallel()
+
+		// A container that wants none registers comments.NoopHooks{} by name; one
+		// that registers nothing has forgotten, and the store is not built.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
 		do.ProvideValue(i, testTargets)
 
 		RegisterStore(i)

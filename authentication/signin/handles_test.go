@@ -79,7 +79,7 @@ func handleEnv(t *testing.T, opts ...signin.ServiceOption) (*env, *profileHooks,
 
 	hooks := &profileHooks{}
 
-	directory, err := identity.NewService(e.client, e.store, identity.WithHooks(hooks))
+	directory, err := identity.NewService(e.client, e.store, hooks)
 	must.NoError(t, err)
 
 	profiles.target = directory

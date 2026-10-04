@@ -22,7 +22,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(&Config{}, newTestClient(t))
+		store, err := NewSQLStore(&Config{}, newTestClient(t), NoopHooks{})
 		must.NoError(t, err)
 		must.NotNil(t, store)
 		must.NotNil(t, store.q)
@@ -31,7 +31,7 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("with a nil config", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(nil, newTestClient(t))
+		store, err := NewSQLStore(nil, newTestClient(t), NoopHooks{})
 		test.Nil(t, store)
 		test.ErrorIs(t, err, ErrNilConfig)
 		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
@@ -40,15 +40,24 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("with a nil client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(&Config{}, nil)
+		store, err := NewSQLStore(&Config{}, nil, NoopHooks{})
 		test.Nil(t, store)
 		test.ErrorIs(t, err, ErrNilDatabaseClient)
+	})
+
+	T.Run("nil hooks are refused", func(t *testing.T) {
+		t.Parallel()
+
+		store, err := NewSQLStore(&Config{}, newTestClient(t), nil)
+		test.Nil(t, store)
+		test.ErrorIs(t, err, ErrNilHooks)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 	})
 
 	T.Run("with an unusable table prefix", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(&Config{TablePrefix: "trailing_"}, newTestClient(t))
+		store, err := NewSQLStore(&Config{TablePrefix: "trailing_"}, newTestClient(t), NoopHooks{})
 		test.Nil(t, store)
 		test.Error(t, err)
 	})
@@ -63,7 +72,7 @@ func TestNewSQLStore(T *testing.T) {
 		client := newTestClient(t)
 		createTable(t, client, dialect.SQLite, "app")
 
-		store, err := NewSQLStore(&Config{TablePrefix: "app"}, client, WithClock(newFakeClock()))
+		store, err := NewSQLStore(&Config{TablePrefix: "app"}, client, NoopHooks{}, WithClock(newFakeClock()))
 		must.NoError(t, err)
 
 		issue(t, store, time.Hour)

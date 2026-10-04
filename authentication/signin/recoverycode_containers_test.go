@@ -95,7 +95,7 @@ func runConcurrentRecoverySignIns(t *testing.T, client database.Client, d dialec
 	store, err := identity.NewSQLStore(client, identity.WithTablePrefix(prefix))
 	must.NoError(t, err)
 
-	directory, err := identity.NewService(client, store)
+	directory, err := identity.NewService(client, store, identity.NoopHooks{})
 	must.NoError(t, err)
 
 	codes, err := recoverycodes.NewSQLStore(&recoverycodes.Config{TablePrefix: prefix}, client)
@@ -103,8 +103,7 @@ func runConcurrentRecoverySignIns(t *testing.T, client database.Client, d dialec
 
 	hooks := &recoveryHooks{}
 
-	svc, err := signin.NewService(client, store, argon2.NewArgon2Authenticator(), &fakeIssuer{}, []string{"owner"},
-		signin.WithHooks(hooks),
+	svc, err := signin.NewService(client, store, argon2.NewArgon2Authenticator(), &fakeIssuer{}, []string{"owner"}, hooks,
 		signin.WithRecoveryCodeStore(codes),
 	)
 	must.NoError(t, err)

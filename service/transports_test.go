@@ -178,6 +178,7 @@ func newTransportInjector(t *testing.T) do.Injector {
 
 	i := do.New()
 	do.ProvideValue[context.Context](i, t.Context())
+	provideNoopHooks(i)
 	Register(i, &Config{Name: "example"})
 
 	return i

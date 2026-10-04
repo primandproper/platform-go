@@ -118,7 +118,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		root := written(t, env, store, newComment(testAuthor, "first draft"))
 		call := hooks.last(t)
@@ -168,7 +168,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		written(t, env, store, newComment(testAuthor, "mine"))
 		written(t, env, store, newComment(otherAuthor, "theirs"))
@@ -192,7 +192,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		// The count is the DELETE's own, so it covers archived rows and replies
 		// alike — not a page of them read beforehand.
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		root := written(t, env, store, newComment(testAuthor, "root"))
 		written(t, env, store, reply(root.ID, otherAuthor, "child"))
@@ -210,7 +210,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		root := written(t, env, store, newComment(testAuthor, "root"))
 		child := written(t, env, store, reply(root.ID, otherAuthor, "child"))
@@ -238,7 +238,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterCreateComment"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created, err := env.create(t, store, testScope, newComment(testAuthor, "never lands"))
 		must.ErrorIs(t, err, errHook)
@@ -253,7 +253,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterUpdateComment"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		c := written(t, env, store, newComment(testAuthor, "original"))
 
@@ -272,7 +272,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveComment"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		c := written(t, env, store, newComment(testAuthor, "stays"))
 
@@ -288,7 +288,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterDeleteCommentsByAuthor"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		c := written(t, env, store, newComment(testAuthor, "survives"))
 
@@ -304,7 +304,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterDeleteCommentsForTarget"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		c := written(t, env, store, newComment(testAuthor, "survives"))
 
@@ -319,29 +319,24 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		c := written(t, env, store, newComment(testAuthor, "fine"))
-
-		edit := *c
-		edit.Body = "still fine"
-		_, err := env.update(t, store, testScope, &edit)
-		must.NoError(t, err)
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		must.Nil(t, store)
 	})
 
 	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
 		t.Parallel()
 
-		// It runs one edit on a fresh store and reports how many statements it
-		// sent. NoopHooks is installed hooks as far as the store can tell, so the
+		// It runs one edit on a fresh store and reports how many statements it sent.
+		// installedHooks adds nothing to NoopHooks but is not NoopHooks, so the
 		// difference is the before read and nothing else.
-		updateComment := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		updateComment := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			c := written(t, env, store, newComment(testAuthor, "fine"))
 			edit := *c
 			edit.Body = "still fine"
@@ -352,7 +347,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, updateComment(t, WithHooks(NoopHooks{})), updateComment(t), test.Sprint("UpdateComment"))
+		test.Less(t, updateComment(t, installedHooks{}), updateComment(t, NoopHooks{}), test.Sprint("UpdateComment"))
 	})
 }
 
@@ -371,3 +366,8 @@ func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error
 
 	return counted.Statements()
 }
+
+// installedHooks embeds NoopHooks and overrides nothing. It is not NoopHooks,
+// so a store built with it is a store with hooks installed, and pays for the
+// reads only a hook is handed.
+type installedHooks struct{ NoopHooks }

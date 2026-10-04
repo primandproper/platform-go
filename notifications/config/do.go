@@ -35,8 +35,10 @@ import (
 // package this one already builds on top of, and it means a sender never
 // depends on a store to reach a method that takes two strings.
 //
-// Prerequisites: *Config and database.Client must be registered in the injector
-// before the store is invoked.
+// Prerequisites: *Config, database.Client and notifications.Hooks must be
+// registered in the injector before the store is invoked. The hooks are
+// required; a container that wants none registers notifications.NoopHooks{} by
+// name.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (notifications.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -59,7 +61,12 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		hooks, err := do.Invoke[notifications.Hooks](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, hooks, WithPillars(pillars))
 	})
 
 	// The three narrowings, each returning only once the store's error is known

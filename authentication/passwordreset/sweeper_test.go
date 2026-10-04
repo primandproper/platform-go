@@ -159,7 +159,7 @@ func TestSQLStore_sweepEvery(T *testing.T) {
 	T.Run("starts nothing when it was not asked to", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewSQLStore(&Config{}, newTestClient(t), WithSweeper(nil, time.Minute), //nolint:staticcheck // the nil context is the case under test
+		store, err := NewSQLStore(&Config{}, newTestClient(t), NoopHooks{}, WithSweeper(nil, time.Minute), //nolint:staticcheck // the nil context is the case under test
 			WithLogger(loggingnoop.NewLogger()), WithTracerProvider(tracingnoop.NewTracerProvider()))
 		must.NoError(t, err)
 		must.NotNil(t, store)

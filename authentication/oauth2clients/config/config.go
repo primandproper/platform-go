@@ -115,11 +115,16 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 // Service is built from a validated block exactly as its Store is: a deployment
 // whose prefix cannot render hears about it from whichever of the two it
 // resolves first.
+//
+// hooks are what commits alongside each of the Service's operations — the
+// audit entry, the outbox row — and are required: an application with nothing
+// to commit beside a registration passes oauth2clients.NoopHooks{} by name.
 func NewService(
 	ctx context.Context,
 	cfg *Config,
 	client database.Client,
 	store oauth2clients.Store,
+	hooks oauth2clients.Hooks,
 	opts ...Option,
 ) (*oauth2clients.Service, error) {
 	if cfg == nil {
@@ -140,9 +145,5 @@ func NewService(
 		oauth2clients.WithServiceMetricsProvider(options.metricsProvider),
 	}
 
-	if options.hooks != nil {
-		base = append(base, oauth2clients.WithHooks(options.hooks))
-	}
-
-	return oauth2clients.NewService(client, store, append(base, options.service...)...)
+	return oauth2clients.NewService(client, store, hooks, append(base, options.service...)...)
 }

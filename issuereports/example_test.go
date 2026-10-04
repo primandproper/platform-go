@@ -27,7 +27,7 @@ func Example() {
 
 	client := exampleClient(ctx)
 
-	store, err := issuereports.NewSQLStore(client)
+	store, err := issuereports.NewSQLStore(client, issuereports.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -103,7 +103,7 @@ func ExampleStore_TransitionReport() {
 
 	client := exampleClient(ctx)
 
-	store, err := issuereports.NewSQLStore(client)
+	store, err := issuereports.NewSQLStore(client, issuereports.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}
@@ -174,7 +174,7 @@ func ExampleStore_TransitionReport_withAnAuditEntry() {
 		panic(err)
 	}
 
-	store, err := issuereports.NewSQLStore(client)
+	store, err := issuereports.NewSQLStore(client, issuereports.NoopHooks{})
 	if err != nil {
 		panic(err)
 	}

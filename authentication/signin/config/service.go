@@ -28,9 +28,10 @@ type Directory interface {
 // NewService builds the sign-in service, the refresh token and recovery code
 // stores, and the magic link store when its block is present.
 //
-// client, directory, authenticator and issuer are parameters, not fields. The
-// package documentation explains why, and RegisterService resolves all four
-// from the injector. Registration left open requires WithRegistrar, and a
+// client, directory, authenticator, issuer and hooks are parameters, not
+// fields. The package documentation explains why, and RegisterService resolves
+// all five from the injector; a caller that commits nothing alongside a
+// sign-in passes signin.NoopHooks{} by name. Registration left open requires WithRegistrar, and a
 // present MagicLinks block requires WithMagicLinkMailer. Either one missing is
 // refused here, so it is never discovered by a caller of a door that refuses
 // every request. WithHandleReminderMailer is optional, and the handle reminder
@@ -48,6 +49,7 @@ func NewService(
 	directory Directory,
 	authenticator authentication.Authenticator,
 	issuer signin.TokenIssuer,
+	hooks signin.Hooks,
 	opts ...Option,
 ) (svc *signin.Service, err error) {
 	if cfg == nil {
@@ -161,5 +163,5 @@ func NewService(
 		signin.WithRecoveryCodeCount(cfg.RecoveryCodes.Count),
 	)
 
-	return signin.NewService(client, directory, authenticator, issuer, cfg.DefaultOwnerRoles, append(serviceOpts, options.service...)...)
+	return signin.NewService(client, directory, authenticator, issuer, cfg.DefaultOwnerRoles, hooks, append(serviceOpts, options.service...)...)
 }

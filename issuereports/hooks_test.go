@@ -94,7 +94,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		created, err := env.create(t, store, testScope, newReport(testReporter, "bug", "the button does nothing"))
 		must.NoError(t, err)
@@ -153,7 +153,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		// The reason a transition gets a before row: the status it left is the one
 		// the caller named, and the resolution it threw away is named nowhere.
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		report := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
@@ -178,7 +178,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		filed(t, env, store, newReport(testReporter, "bug", "details"))
 
@@ -197,7 +197,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		report := filed(t, env, store, newReport(testReporter, "bug", "details"))
 		before := len(hooks.calls)
@@ -229,7 +229,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterCreateReport"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		r := newReport(testReporter, "bug", "details")
 		r.ID = "refused_by_the_hook"
@@ -246,7 +246,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterUpdateReport"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		report := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
@@ -265,7 +265,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterTransitionReport"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		report := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
@@ -283,7 +283,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterArchiveReport"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		report := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
@@ -299,7 +299,7 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		hooks := &recordingHooks{failOn: "AfterDeleteReportsByReporter"}
-		store := env.newStore(t, WithHooks(hooks))
+		store := env.newStoreWithHooks(t, hooks)
 
 		report := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
@@ -311,24 +311,24 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 	})
 
-	t.Run("nil hooks are no hooks", func(t *testing.T) {
+	t.Run("nil hooks are refused", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t, WithHooks(nil))
-
-		filed(t, env, store, newReport(testReporter, "bug", "details"))
+		store, err := NewSQLStore(env.client, nil)
+		must.ErrorIs(t, err, ErrNilHooks)
+		must.Nil(t, store)
 	})
 
 	t.Run("an update reads its before row only for hooks", func(t *testing.T) {
 		t.Parallel()
 
-		// Each runs one write on a fresh store and reports how many statements
-		// it sent. NoopHooks is installed hooks as far as the store can tell, so
-		// the difference is the before read and nothing else.
-		updateReport := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		// Each runs one write on a fresh store and reports how many statements it
+		// sent. installedHooks adds nothing to NoopHooks but is not NoopHooks, so the
+		// difference is the before read and nothing else.
+		updateReport := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			revision := *filed(t, env, store, newReport(testReporter, "bug", "the button does nothing"))
 			revision.Details = "the button does nothing, twice"
 
@@ -338,10 +338,10 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		transitionReport := func(t *testing.T, opts ...SQLStoreOption) int64 {
+		transitionReport := func(t *testing.T, hooks Hooks) int64 {
 			t.Helper()
 
-			store := env.newStore(t, opts...)
+			store := env.newStoreWithHooks(t, hooks)
 			report := filed(t, env, store, newReport(testReporter, "bug", "the button does nothing"))
 
 			return countStatements(t, env, func(tx database.Tx) error {
@@ -350,8 +350,8 @@ func runHooksSuite(t *testing.T, env *storeEnv) {
 			})
 		}
 
-		test.Less(t, updateReport(t, WithHooks(NoopHooks{})), updateReport(t), test.Sprint("UpdateReport"))
-		test.Less(t, transitionReport(t, WithHooks(NoopHooks{})), transitionReport(t), test.Sprint("TransitionReport"))
+		test.Less(t, updateReport(t, installedHooks{}), updateReport(t, NoopHooks{}), test.Sprint("UpdateReport"))
+		test.Less(t, transitionReport(t, installedHooks{}), transitionReport(t, NoopHooks{}), test.Sprint("TransitionReport"))
 	})
 }
 
@@ -370,3 +370,8 @@ func countStatements(tb testing.TB, env *storeEnv, fn func(tx database.Tx) error
 
 	return counted.Statements()
 }
+
+// installedHooks embeds NoopHooks and overrides nothing. It is not NoopHooks,
+// so a store built with it is a store with hooks installed, and pays for the
+// reads only a hook is handed.
+type installedHooks struct{ NoopHooks }

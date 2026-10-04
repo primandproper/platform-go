@@ -1,9 +1,9 @@
 // Package txcount counts the statements a store sends through a transaction,
 // and holds nothing else.
 //
-// It exists for one claim the store hooks make: that a store built without
-// hooks pays nothing for them, because the read of the row an update is about to
-// overwrite is made only when hooks are installed. That claim is a statement
+// It exists for one claim the store hooks make: that a store handed NoopHooks
+// pays nothing for them, because the read of the row an update is about to
+// overwrite is made only for hooks that might use it. That claim is a statement
 // count, and it is counted on the Tx rather than on a store's generated
 // querier because the Tx has four methods and the querier has dozens — a
 // counting querier that forgets to override one undercounts, and nothing says

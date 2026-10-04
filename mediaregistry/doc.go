@@ -62,14 +62,16 @@ opens one with database.Client.WithTransaction and passes the Tx it is handed.
 
 A consumer whose every write owes the same companions — an audit entry for each
 registration and each archive, an event for each — can write them beside each
-call, or hand the store a [Hooks] through [WithHooks] and have each write call it
-on the same transaction once its statements have landed. The second is what a
-consumer reaches for when the alternative is wrapping the Store: a wrapper has to
+call, or hand [NewSQLStore] a [Hooks] and have each write call it on the same
+transaction once its statements have landed. The second is what a consumer
+reaches for when the alternative is wrapping the Store: a wrapper has to
 reimplement every write to call through, and carry the reads along with it. A
 hook is handed the row the write already read back — the archive's included,
 which is the one row that still names the key once the archive commits. A hook's
 error fails the write it was called from, so the row and its companions commit
-together or not at all.
+together or not at all. The hooks are a required argument rather than an option,
+so a consumer with nothing to commit alongside a write passes [NoopHooks] by name
+and one that forgot to decide fails to compile.
 
 # Tenancy
 
@@ -85,7 +87,7 @@ behaves exactly as it would have without the column.
 
 # Usage
 
-	store, err := mediaregistry.NewSQLStore(client)
+	store, err := mediaregistry.NewSQLStore(client, mediaregistry.NoopHooks{})
 	// ...
 
 	input := mediaregistry.ObjectInput{

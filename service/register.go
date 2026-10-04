@@ -94,6 +94,14 @@ import (
 //     resolvers, and policies this package will never define. Each package's
 //     Register* documents the ones it needs.
 //
+// Among those are the Hooks of every package that records its writes —
+// billing, comments, identity, issuereports, mediaregistry, notifications,
+// oauth2clients, passkeys, passwordreset, settings, signin, waitlists and
+// webhooks. None has a default: a configured block whose Hooks were not
+// registered fails at startup naming the type, and an application that commits
+// nothing beside one package's writes registers that package's NoopHooks by
+// name, so the choice is in its main rather than in an omission.
+//
 // cfg itself is registered too, so an application hook can read the
 // configuration the service booted with off the same injector.
 //
@@ -492,9 +500,9 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 
 	// The store and the service both, because the registry's surface mounts over
 	// the pair and a table prefix is all either of them needs from the
-	// environment. oauth2clients.Hooks is the application's to register if it has
-	// anything to commit beside a registration; RegisterService resolves it
-	// optionally. oauth2clients/privacy's collector and eraser are the service's
+	// environment. oauth2clients.Hooks is the application's to register, as
+	// NoopHooks by name if it commits nothing beside a registration;
+	// RegisterService requires it. oauth2clients/privacy's collector and eraser are the service's
 	// to register, for the reason every registry in this file is: they need a
 	// mapping from a person to the tenants they belong to.
 	//

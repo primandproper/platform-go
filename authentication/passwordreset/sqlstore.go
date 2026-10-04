@@ -89,14 +89,22 @@ type SQLStore struct {
 // These rows are small, single-key, and live for an hour; they are not the
 // reads worth scaling out.
 //
+// hooks run inside every write's transaction, once its statements have landed;
+// see Hooks. They are required, and nil is refused: a caller with nothing to
+// commit alongside these writes passes NoopHooks{} by name.
+//
 // It does not create the table. Hand migrations.SQL to your own migration run.
-func NewSQLStore(cfg *Config, db database.Client, opts ...Option) (*SQLStore, error) {
+func NewSQLStore(cfg *Config, db database.Client, hooks Hooks, opts ...Option) (*SQLStore, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
 	}
 
 	if db == nil {
 		return nil, ErrNilDatabaseClient
+	}
+
+	if hooks == nil {
+		return nil, ErrNilHooks
 	}
 
 	d := db.Dialect()
@@ -115,7 +123,7 @@ func NewSQLStore(cfg *Config, db database.Client, opts ...Option) (*SQLStore, er
 		clock:       o.clock,
 		generator:   o.generator,
 		hasher:      o.hasher,
-		hooks:       o.hooks,
+		hooks:       hooks,
 		secretBytes: o.secretBytes,
 		o11y:        observability.NewObserver(serviceName, o.logger, o.tracerProvider),
 	}

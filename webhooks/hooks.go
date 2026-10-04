@@ -36,7 +36,7 @@ import (
 // before it and the one after, because what such a write means is the
 // difference between them and that is not readable once the write has run. The
 // before row costs the write one keyed read on the transaction, which the store
-// makes only when hooks are installed.
+// makes only when the hooks are anything but NoopHooks.
 //
 // Only the consumer writes have hooks. Enqueue is not here, although it takes a
 // Tx: its only caller is Dispatcher.Dispatch, and a consumer wanting a
@@ -106,8 +106,9 @@ type Hooks interface {
 	AfterArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *Subscription) error
 }
 
-// NoopHooks does nothing, and is what a store built without WithHooks runs. It is
-// also the type to embed in a Hooks that overrides some:
+// NoopHooks does nothing. It is what a caller passes, by name, when it commits
+// nothing alongside these writes — a seed import, a bootstrap tool, a test. It
+// is also the type to embed in a Hooks that overrides some:
 //
 //	type recordingHooks struct {
 //		webhooks.NoopHooks

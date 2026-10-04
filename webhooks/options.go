@@ -86,20 +86,6 @@ func WithTablePrefix(prefix string) SQLStoreOption {
 	}
 }
 
-// WithHooks runs hooks inside every endpoint and subscription write's
-// transaction, once its statements have landed. See Hooks.
-//
-// Absent, or nil, the hooks are NoopHooks: a consumer with nothing to commit
-// alongside a write configures nothing, and its saves pay for no read of the row
-// they are about to overwrite.
-func WithHooks(hooks Hooks) SQLStoreOption {
-	return func(s *SQLStore) {
-		if hooks != nil {
-			s.hooks, s.hooked = hooks, true
-		}
-	}
-}
-
 // WithStoreLogger attaches a logger.
 func WithStoreLogger(logger logging.Logger) SQLStoreOption {
 	return func(s *SQLStore) {

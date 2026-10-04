@@ -78,12 +78,21 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 // NewStore builds the Store. client must be the database holding the waitlist
 // tables.
 //
+// hooks are required, as they are by waitlists.NewSQLStore: a caller with nothing to
+// commit alongside the store's writes passes waitlists.NoopHooks{} by name.
+//
 // The store is built into a variable and returned only once its error is known
 // to be nil. waitlists.NewSQLStore returns its own concrete type, so returning
 // it straight through would convert a nil *waitlists.SQLStore into a non-nil
 // waitlists.Store on the error path, and a caller testing the result against nil
 // would find a store that panics on first use.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (waitlists.Store, error) {
+func NewStore(
+	ctx context.Context,
+	cfg *Config,
+	client database.Client,
+	hooks waitlists.Hooks,
+	opts ...Option,
+) (waitlists.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -103,7 +112,7 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 		waitlists.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	store, storeErr := waitlists.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := waitlists.NewSQLStore(client, hooks, append(base, options.store...)...)
 	if storeErr != nil {
 		return nil, storeErr
 	}
