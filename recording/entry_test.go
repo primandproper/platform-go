@@ -41,8 +41,7 @@ func TestEntryMirrorsAuditEntry(T *testing.T) {
 	T.Run("every caller-supplied audit field is on Entry, by name and type", func(t *testing.T) {
 		t.Parallel()
 
-		for i := range auditEntry.NumField() {
-			field := auditEntry.Field(i)
+		for field := range auditEntry.Fields() {
 			if why, owned := recorderOwned[field.Name]; owned {
 				test.NotEqOp(t, "", why)
 
@@ -61,8 +60,7 @@ func TestEntryMirrorsAuditEntry(T *testing.T) {
 	T.Run("every Entry field but SubjectID is an audit field", func(t *testing.T) {
 		t.Parallel()
 
-		for i := range entry.NumField() {
-			field := entry.Field(i)
+		for field := range entry.Fields() {
 			if field.Name == "SubjectID" {
 				continue
 			}
