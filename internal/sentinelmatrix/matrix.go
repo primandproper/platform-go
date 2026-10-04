@@ -1010,6 +1010,8 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyUserID":       {Err: passwordreset.ErrEmptyUserID, Is: Platform},
 		"ErrNilConfig":         {Err: passwordreset.ErrNilConfig, Is: Platform},
 		"ErrNilDatabaseClient": {Err: passwordreset.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilRecorder":       {Err: passwordreset.ErrNilRecorder, Is: Platform},
+		"ErrNilToken":          {Err: passwordreset.ErrNilToken, Is: Platform},
 
 		// A TTL of zero is an unset configuration field read at issuance. It
 		// reaches a client only through a service that shipped broken.
