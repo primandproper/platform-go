@@ -815,16 +815,17 @@ var Matrix = map[string]map[string]Decision{
 		"ErrTargetNotFound":    {Err: comments.ErrTargetNotFound, Is: Mapped},
 		"ErrUnknownTargetType": {Err: comments.ErrUnknownTargetType, Is: Mapped},
 
-		// The three that are somebody else's sentinel, answered by the platform
-		// mappers because that is the tier those sentinels belong to. All three
-		// wrap errors.ErrNilInputParameter, and all three are a nil argument
+		// The four that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to. All four
+		// wrap errors.ErrNilInputParameter, and all four are a nil argument
 		// inside the process rather than anything a request can express: no
-		// executor, no comment, no client. comments/grpc refuses a request whose
+		// executor, no comment, no client, no recorder. comments/grpc refuses a request whose
 		// comment field was never set with a sentinel of its own instead, where
 		// the answer is about that request rather than about the argument.
 		"ErrNilComment":        {Err: comments.ErrNilComment, Is: Platform},
 		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: comments.ErrNilRecorder, Is: Platform},
 	},
 
 	webhooksPkg: {
@@ -921,6 +922,7 @@ var Matrix = map[string]map[string]Decision{
 		// executor it holds.
 		"ErrNilDatabaseClient": {Err: issuereports.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: issuereports.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: issuereports.ErrNilRecorder, Is: Platform},
 		"ErrNilReport":         {Err: issuereports.ErrNilReport, Is: Platform},
 	},
 
@@ -971,7 +973,9 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient":      {Err: settings.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilDefinition":          {Err: settings.ErrNilDefinition, Is: Platform},
 		"ErrNilExecutor":            {Err: settings.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":            {Err: settings.ErrNilRecorder, Is: Platform},
 		"ErrNilStore":               {Err: settings.ErrNilStore, Is: Platform},
+		"ErrNilValue":               {Err: settings.ErrNilValue, Is: Platform},
 		"ErrMalformedValue":         {Err: settings.ErrMalformedValue, Is: Platform},
 		"ErrNotEnumerated":          {Err: settings.ErrNotEnumerated, Is: Platform},
 		"ErrSubjectValueTooLong":    {Err: settings.ErrSubjectValueTooLong, Is: Platform},

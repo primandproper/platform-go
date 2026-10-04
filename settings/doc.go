@@ -212,6 +212,14 @@ to hide before the store does, and has no way to see what an update replaced. A
 hook is handed those rows. A hook's error fails the write it was called from, so
 the row and its companions commit together or not at all.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: the entry names the row by [ResourceTypeDefinition] or
+[ResourceTypeValue], the event is one of the types [EventCatalog] describes, an
+answer is diffed against the one it replaced, and an erasure records its count
+and the kind of subject, never who. Embed it to change one write's record and
+inherit the rest.
+
 # The reads take the wider executor
 
 A read takes a database.SQLQueryExecutor, which a database.Tx satisfies. A caller
