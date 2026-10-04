@@ -91,6 +91,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | Package         | Purpose                                     | Implementations                  |
 |-----------------|---------------------------------------------|----------------------------------|
 | `audit`         | Tamper-evident audit log                    | postgres, mysql, sqlite (+ grpc) |
+| `recording`     | The audit entry and the outbox event a store write owes, written once on the write's transaction; each store's `RecordingHooks` is built over it | — |
 | `dataprivacy`   | Subject access & erasure requests           | postgres, mysql, sqlite          |
 | `shredding`     | Per-subject data keys that can be destroyed | postgres, mysql, sqlite          |
 | `retention`     | Policy-driven expiry deletion               | postgres, mysql, sqlite          |
@@ -159,7 +160,7 @@ checking it.
 | What it is                                     | Packages                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/phonecodes`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `series`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
-| a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| a domain flow over another domain's tables     | `authentication/signin`, `recording`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -188,6 +189,12 @@ second answer with nothing checking it. A service that names none of the stores
 still signs people in with a password and still owns nothing, which is what keeps
 this row's claim about `signin` itself rather than about everything under its
 path.
+
+`recording` is the same shape over two other nouns. It owns no schema: it is the
+audit entry and the outbox event every store write here owes, written once on the
+write's transaction through `audit`'s recorder and `webhooks`' emitter, so that each
+store's `RecordingHooks` is a decision about what to record rather than a copy of
+how. It is a domain because both halves are about a resource an application has.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
 owns no table either, and it is not a flow: it is the interface a consumer's

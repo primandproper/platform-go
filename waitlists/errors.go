@@ -12,6 +12,10 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil waitlist database client")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to NewRecordingHooks.
+	// It wraps errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil waitlist recorder")
+
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, a database.SQLQueryExecutor
 	// for a read — so there is none of the store's own to fall back to. It wraps

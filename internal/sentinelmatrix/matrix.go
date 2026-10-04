@@ -531,6 +531,7 @@ var Matrix = map[string]map[string]Decision{
 		// them. They are wiring failures rather than anything a client sent.
 		"ErrNilDatabaseClient": {Err: waitlists.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: waitlists.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: waitlists.ErrNilRecorder, Is: Platform},
 		"ErrNilList":           {Err: waitlists.ErrNilList, Is: Platform},
 		"ErrNilSignup":         {Err: waitlists.ErrNilSignup, Is: Platform},
 

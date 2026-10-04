@@ -83,6 +83,13 @@ var roster = map[string]entry{
 	// where a top-level package's tier is explained.
 	"callers": {tier: domain},
 
+	// A domain that owns no table: the audit entry and the outbox event every
+	// store write here owes, written once, on the write's transaction, over
+	// audit's and webhooks' stores. It is a domain because both halves are
+	// about a resource an application has; a deployment with nothing to record
+	// has nothing to compose. Each store's RecordingHooks is built over it.
+	"recording": {tier: domain},
+
 	// The straddles: a domain package under a path whose parent is a
 	// primitives-go package. There is one such parent left, and it is the one
 	// that groups rather than indirects — authentication/ holds eight related

@@ -176,6 +176,15 @@ about to blank before the store does, when the store has already read it. A hook
 is handed that row. A hook's error fails the write it was called from, so the
 row and its companions commit together or not at all.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder, and it records what this package knows about its own writes:
+the entry names the row by [ResourceTypeList] or [ResourceTypeSignup], the event
+is one of the types [EventCatalog] describes, and a withdrawal's event names the
+signup by digest and never by address. Embed it to change one write's record and
+inherit the rest; where an entry is filed and who made it are the Recorder's,
+through its ScopeResolver and the principal extractor it was built with.
+
 # Erasure is a withdrawal, and it is a separate package
 
 A signup holds an address and, where the person had an account, a reference to
