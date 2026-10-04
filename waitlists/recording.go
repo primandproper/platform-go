@@ -142,8 +142,16 @@ type SignupEvent struct {
 }
 
 // ErasureEvent is the payload of EventSignupsErased. It says how many signups an
-// erasure withdrew and what kind of subject they belonged to, and deliberately
-// not whose: the event outlives the erasure in every subscriber's logs.
+// erasure withdrew and what kind of subject they belonged to, and not whose.
+//
+// Not because the event outlives the erasure in a subscriber's logs: every
+// signup event here names its subject by opaque ID and outlives it the same
+// way, and must, since a joined event that names nobody tells a subscriber
+// nothing. The reason is grain. "Forget this person" is one signal per subject,
+// and a per-store erasure event naming them would be that signal repeated once
+// for every store the person touched. This event says only that an erasure
+// ran here and how much it found; the subject-level signal, when platform
+// ships one, is dataprivacy's to emit.
 type ErasureEvent struct {
 	_ struct{} `json:"-"`
 
