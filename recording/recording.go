@@ -77,7 +77,10 @@ type Entry struct {
 	ResourceID string
 	// SubjectID names the person or account the entry concerns, where there is
 	// one, for a ScopeResolver that files entries by subject. It is not written
-	// to the entry; a hook that wants it recorded puts it in Metadata.
+	// to the entry. Nor should a hook copy it into Metadata: audit.Erasure
+	// deletes a subject's scopes and counts the entries naming them as actor,
+	// resource or impersonator, and an identifier in metadata is none of those,
+	// so it would outlive the subject's erasure with nothing to report it.
 	SubjectID string
 	// EventType is the audit vocabulary's word for what happened.
 	EventType audit.EventType

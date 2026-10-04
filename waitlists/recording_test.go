@@ -198,7 +198,6 @@ func TestRecordingHooks(T *testing.T) {
 			metadataListID:      list.ID,
 			metadataStatus:      "pending",
 			metadataSubjectType: "user",
-			metadataSubjectID:   testSubject.ID,
 		}, entry.Metadata)
 		test.EqOp(t, EventSignupJoined, delivery.EventType)
 		test.EqOp(t, signup.ID, delivery.OrderingKey)
@@ -273,7 +272,7 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, audit.EventUpdated, entry.EventType)
 		test.EqOp(t, "withdrawn", entry.Metadata[metadataStatus])
 		test.EqOp(t, "waiting", entry.Metadata[metadataPreviousStatus])
-		test.EqOp(t, testSubject.ID, entry.Metadata[metadataSubjectID])
+		test.MapNotContainsValue(t, entry.Metadata, testSubject.ID)
 		test.MapEmpty(t, entry.Changes)
 
 		test.EqOp(t, EventSignupWithdrawn, delivery.EventType)

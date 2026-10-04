@@ -161,7 +161,6 @@ const (
 	metadataStatus         = "status"
 	metadataPreviousStatus = "previousStatus"
 	metadataSubjectType    = "subjectType"
-	metadataSubjectID      = "subjectID"
 	metadataWithdrawn      = "withdrawn"
 )
 
@@ -185,7 +184,9 @@ const lastUpdatedAtField = "lastUpdatedAt"
 // the Recorder's, through its ScopeResolver and its principal extractor. A
 // deployment that keeps its lists in tenancy.Global and wants a signup's entries
 // filed under the signup's subject gives the Recorder a resolver that reads
-// Entry.SubjectID, which every signup entry here sets.
+// Entry.SubjectID, which every signup entry here sets. That is also the only
+// way a signup's entries reach the subject: none of them names the subject in
+// its metadata, for the reason recordSignup gives.
 //
 // Nor does it redact. A Signup's Contact is tagged `audit:"-"` and never reaches
 // a diff; its Notes are not, because whether an operator's note about a person
@@ -316,14 +317,14 @@ func (h *RecordingHooks) AfterWithdraw(ctx context.Context, tx database.Tx, scop
 // signups it withdrew, and what kind of subject they were. Zero is recorded
 // too, because the erasure ran.
 //
-// It is the one entry here that names no subject, and the one that must not.
-// The ordinary signup entries carry the subject in their metadata, and that is
-// fine: an audit log is expected to mention subjects, and audit.Erasure is the
-// path that removes those mentions when the person is erased. This entry is
-// about the erasure itself, so it is filed under the write's scope and survives
-// that pass; a subject identifier on it would be the one reference the erasure
-// left behind. The count and the kind of subject are what a reader of the log
-// can be told.
+// It names no subject, and no entry here does. audit.Erasure deletes the
+// scopes that belong to the subject and counts the entries elsewhere whose
+// actor, resource or impersonator is the subject; a subject named in some other
+// entry's metadata is neither deleted nor counted, nor exported to the subject
+// by audit/privacy. This entry is about the erasure, so it is filed under the
+// write's scope and survives every scope deletion, and a subject identifier on
+// it would be the one reference the erasure left behind with nothing to say so.
+// The count and the kind of subject are what a reader of the log can be told.
 func (h *RecordingHooks) AfterWithdrawSignupsForSubject(
 	ctx context.Context,
 	tx database.Tx,
@@ -393,6 +394,14 @@ func (h *RecordingHooks) recordList(
 // recordSignup writes the entry and the event for a write to one signup. The
 // entry's SubjectID is the signup's subject, so a Recorder filing by subject
 // can.
+//
+// The subject's ID is not copied into the metadata. Filed by subject, the entry
+// is on the subject's own chain, which names them already and which
+// audit.Erasure deletes whole. Filed where the write ran, an ID in the metadata
+// would outlive the erasure that blanks it from the row, uncounted in what the
+// subject is told is retained and missing from their export, because neither
+// reads metadata. The signup's ID is the entry's resource, and after an erasure
+// it leads to a row that names nobody.
 func (h *RecordingHooks) recordSignup(
 	ctx context.Context,
 	tx database.Tx,
@@ -414,7 +423,6 @@ func (h *RecordingHooks) recordSignup(
 
 	if signup.Subject.ID != "" {
 		metadata[metadataSubjectType] = string(signup.Subject.Type)
-		metadata[metadataSubjectID] = signup.Subject.ID
 	}
 
 	entry := &recording.Entry{
