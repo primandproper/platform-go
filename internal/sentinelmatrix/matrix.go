@@ -870,7 +870,9 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilEnqueuer":       {Err: webhooks.ErrNilEnqueuer, Is: Platform},
 		"ErrNilEvent":          {Err: webhooks.ErrNilEvent, Is: Platform},
 		"ErrNilExecutor":       {Err: webhooks.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: webhooks.ErrNilRecorder, Is: Platform},
 		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
+		"ErrNilSubscription":   {Err: webhooks.ErrNilSubscription, Is: Platform},
 		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},
 
 		// The three nobody answers. ErrLeaseTooShort is a worker configured with a
