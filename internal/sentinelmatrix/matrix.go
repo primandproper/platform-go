@@ -631,6 +631,8 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDirectory":          {Err: signin.ErrNilDirectory, Is: Platform},
 		"ErrNilPasswordAttachment": {Err: signin.ErrNilPasswordAttachment, Is: Platform},
 		"ErrNilPasswordUpdate":     {Err: signin.ErrNilPasswordUpdate, Is: Platform},
+		"ErrNilHookArgument":       {Err: signin.ErrNilHookArgument, Is: Platform},
+		"ErrNilRecorder":           {Err: signin.ErrNilRecorder, Is: Platform},
 		"ErrNilRegistration":       {Err: signin.ErrNilRegistration, Is: Platform},
 		"ErrNilSecretRefresh":      {Err: signin.ErrNilSecretRefresh, Is: Platform},
 		"ErrNilTokenIssuer":        {Err: signin.ErrNilTokenIssuer, Is: Platform},

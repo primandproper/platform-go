@@ -526,6 +526,16 @@ var (
 	// ErrNilPasswordAttachment indicates a nil *PasswordAttachment.
 	ErrNilPasswordAttachment = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password attachment")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil sign-in recorder")
+
+	// ErrNilHookArgument indicates a RecordingHooks method handed nothing to
+	// record: a nil Authentication, Verification, Revocation or AccountSwitch,
+	// or an Authentication with no principal on it. Service never calls a hook
+	// that way, so it is a caller driving the hooks by hand.
+	ErrNilHookArgument = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "a sign-in hook was handed nothing to record")
+
 	// ErrEmptyVerificationToken indicates a door answered with no token at all.
 	//
 	// It is not ErrInvalidVerificationToken, for the reason ErrEmptyHandle is not

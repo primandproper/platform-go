@@ -50,6 +50,11 @@ var (
 	// ErrNilEntry indicates a nil *Entry among the entries to record.
 	ErrNilEntry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil recording entry")
 
+	// ErrEmptyActor indicates a RecordAs call naming an actor with no ID. An
+	// entry with no actor is one audit refuses, and a caller that meant
+	// "nobody" names audit.ActorUnattributed rather than leaving the field out.
+	ErrEmptyActor = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "a recording names an actor with no ID")
+
 	// ErrNothingToRecord indicates a Record call with no entries and no event.
 	// A hook that has decided to record nothing returns nil without calling
 	// Record; a call that reaches here with nothing is a hook that forgot.
@@ -212,6 +217,47 @@ func (r *Recorder) Record(
 	event *webhooks.Event,
 	entries ...*Entry,
 ) error {
+	return r.record(ctx, tx, scope, nil, event, entries)
+}
+
+// RecordAs is Record for the one write whose actor the context cannot know yet:
+// the write that establishes who is acting.
+//
+// A sign-in is that write. The request that proves a password carries no
+// principal, because the principal is what the proof produces, so the
+// extractor Record reads would file every login as unattributed; and an
+// operator's impersonation is filed under the subject with the operator in the
+// Impersonator slot, which is a pairing the operator's own request context does
+// not hold. The service that minted the principal is the party that knows both,
+// and it hands them over here.
+//
+// That is the whole of its reach. It is not how a store's hook attributes an
+// ordinary write — those read the context, so a hook cannot attribute a write to
+// anyone the request did not carry — and a caller reaching for it because the
+// context is missing a principal it should have has a wiring fault this would
+// hide. An actor with no ID is refused with ErrEmptyActor; a caller meaning
+// "nobody" names audit.ActorUnattributed.
+func (r *Recorder) RecordAs(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	actor audit.Actor,
+	event *webhooks.Event,
+	entries ...*Entry,
+) error {
+	return r.record(ctx, tx, scope, &actor, event, entries)
+}
+
+// record is Record and RecordAs: the actor is the one named when there is one,
+// and the context's otherwise.
+func (r *Recorder) record(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	named *audit.Actor,
+	event *webhooks.Event,
+	entries []*Entry,
+) error {
 	ctx, op := r.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
@@ -234,6 +280,14 @@ func (r *Recorder) Record(
 	}
 
 	actor := r.actor(ctx)
+	if named != nil {
+		if named.ID == "" {
+			return op.Error(ErrEmptyActor, "recording a write")
+		}
+
+		actor = *named
+	}
+
 	op.Set(actorKey, actor.ID)
 
 	batches, order, err := r.file(ctx, scope, actor, entries)
