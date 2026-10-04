@@ -781,6 +781,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDevice":         {Err: notifications.ErrNilDevice, Is: Platform},
 		"ErrNilExecutor":       {Err: notifications.ErrNilExecutor, Is: Platform},
 		"ErrNilNotification":   {Err: notifications.ErrNilNotification, Is: Platform},
+		"ErrNilRecorder":       {Err: notifications.ErrNilRecorder, Is: Platform},
 	},
 
 	commentsPkg: {

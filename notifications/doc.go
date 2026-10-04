@@ -104,6 +104,14 @@ error fails the write it was called from, so the row and its companions commit
 together or not at all. [Registry.InvalidateDeviceToken] has no hook, because it
 has no transaction for one to write on.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: the entry names the row by [ResourceTypeNotification] or
+[ResourceTypeDevice], the event is one of the types [EventCatalog] describes, a
+device's event names the registration and never its token, and the two mark-read
+writes record nothing, because ReadAt on the row is the record. Embed it to change
+one write's record and inherit the rest.
+
 # Tenancy, and the one method without it
 
 Every read and write here takes a tenancy.Scope, and the inbox takes a principal
