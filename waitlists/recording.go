@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/recording"
@@ -60,6 +61,10 @@ const (
 	EventSignupWithdrawn webhooks.EventType = "waitlists.signup.withdrawn"
 	// EventSignupArchived says a signup was retired administratively.
 	EventSignupArchived webhooks.EventType = "waitlists.signup.archived"
+	// EventSignupsErased says a subject's signups were withdrawn by an erasure.
+	// The payload carries the count and the kind of subject, and nothing that
+	// identifies them.
+	EventSignupsErased webhooks.EventType = "waitlists.signups.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -82,6 +87,7 @@ func EventCatalog() webhooks.Catalog {
 		EventSignupConverted:    {Description: "An invited signup took up its invitation."},
 		EventSignupWithdrawn:    {Description: "Somebody withdrew from a waitlist."},
 		EventSignupArchived:     {Description: "A waitlist signup was retired by an operator."},
+		EventSignupsErased:      {Description: "A subject's waitlist signups were withdrawn by an erasure."},
 	}
 }
 
@@ -133,6 +139,18 @@ type SignupEvent struct {
 	// Changed names the fields an update moved, sorted, and is empty for every
 	// other event. See ListEvent.Changed for what is left off.
 	Changed []string `json:"changed,omitempty"`
+}
+
+// ErasureEvent is the payload of EventSignupsErased. It says how many signups an
+// erasure withdrew and what kind of subject they belonged to, and deliberately
+// not whose: the event outlives the erasure in every subscriber's logs.
+type ErasureEvent struct {
+	_ struct{} `json:"-"`
+
+	// SubjectType is the kind of subject erased.
+	SubjectType SubjectType `json:"subjectType"`
+	// Withdrawn is how many signups the erasure withdrew, zero included.
+	Withdrawn int64 `json:"withdrawn"`
 }
 
 // The metadata keys an audit entry here carries. Strings rather than the
@@ -294,21 +312,40 @@ func (h *RecordingHooks) AfterWithdraw(ctx context.Context, tx database.Tx, scop
 	return h.recordSignup(ctx, tx, scope, signup, audit.EventUpdated, EventSignupWithdrawn, StatusWithdrawn, signup.Status, nil)
 }
 
-// AfterWithdrawSignupsForSubject records nothing, deliberately.
+// AfterWithdrawSignupsForSubject records an erasure: that it ran, how many
+// signups it withdrew, and what kind of subject they were. Zero is recorded
+// too, because the erasure ran.
 //
-// An erasure removes every reference a store holds to the subject, and an
-// audit entry naming the subject would put one back, somewhere the erasure
-// does not reach. The dataprivacy request that caused the erasure is the record
-// of it, filed where a subject access request is answered from. A deployment
-// that wants a count beside that record embeds this type and overrides here.
-func (*RecordingHooks) AfterWithdrawSignupsForSubject(
-	context.Context,
-	database.Tx,
-	tenancy.Scope,
-	Subject,
-	int64,
+// It is the one entry here that names no subject, and the one that must not.
+// The ordinary signup entries carry the subject in their metadata, and that is
+// fine: an audit log is expected to mention subjects, and audit.Erasure is the
+// path that removes those mentions when the person is erased. This entry is
+// about the erasure itself, so it is filed under the write's scope and survives
+// that pass; a subject identifier on it would be the one reference the erasure
+// left behind. The count and the kind of subject are what a reader of the log
+// can be told.
+func (h *RecordingHooks) AfterWithdrawSignupsForSubject(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	subject Subject,
+	withdrawn int64,
 ) error {
-	return nil
+	entry := &recording.Entry{
+		ResourceType: ResourceTypeSignup,
+		EventType:    audit.EventUpdated,
+		Metadata: map[string]string{
+			metadataSubjectType: string(subject.Type),
+			metadataWithdrawn:   strconv.FormatInt(withdrawn, 10),
+		},
+	}
+
+	event := &webhooks.Event{
+		EventType: EventSignupsErased,
+		Payload:   &ErasureEvent{SubjectType: subject.Type, Withdrawn: withdrawn},
+	}
+
+	return h.recorder.Record(ctx, tx, scope, event, entry)
 }
 
 // AfterArchiveSignup records a signup being retired administratively.
