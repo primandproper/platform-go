@@ -222,6 +222,21 @@ func (f ProviderMapperFunc) ProviderRefFor(ctx context.Context, subject, meter s
 	return f(ctx, subject, meter)
 }
 
+// Unbilled is the ProviderMapper for a deployment that meters and does not
+// post usage: every subject and meter is ErrNoProviderRef, so the Flusher marks
+// usage flushed and posts nothing. It is the mapper to start with and replace
+// when the provider has a meter to post against.
+//
+// It refuses rather than returning a zero ProviderRef so that the answer is the
+// one this package names. The Flusher happens to read a wholly zero ref the same
+// way, but a placeholder that invents any part of a ref posts usage against a
+// customer or meter the provider has never heard of.
+func Unbilled() ProviderMapper {
+	return ProviderMapperFunc(func(_ context.Context, subject, meter string) (ProviderRef, error) {
+		return ProviderRef{}, platformerrors.Wrapf(ErrNoProviderRef, "subject %q, meter %q: unbilled", subject, meter)
+	})
+}
+
 // sortedKeys projects a map's keys in sorted order.
 func sortedKeys[T any](m map[string]T) []string {
 	keys := make([]string, 0, len(m))

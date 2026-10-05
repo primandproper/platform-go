@@ -102,6 +102,10 @@ const (
 	metadataDeleted    = "deleted"
 )
 
+// authoredText is what an edit's diff hashes before it is recorded: the body,
+// which is what the person said. See RecordingHooks.
+var authoredText = audit.Redaction{Hash: []string{"body"}}
+
 // lastUpdatedAtField is the json name of the timestamp every edit stamps, which
 // a diff therefore always names and a changed-fields list should not.
 const lastUpdatedAtField = "lastUpdatedAt"
@@ -122,11 +126,13 @@ const lastUpdatedAtField = "lastUpdatedAt"
 // subject can; none names the author in its metadata, for the reason
 // waitlists.RecordingHooks gives.
 //
-// Nor does it redact. An edit's diff carries the body, old and new, under the
-// field name "body". Whether what somebody said is personal data is the
-// deployment's call, made with audit.WithRedaction for [ResourceTypeComment] on
-// the audit recorder — a deployment that treats it as personal text hashes it
-// there.
+// An edit's diff carries the body hashed, never as written: what somebody said
+// is theirs, comments/privacy's eraser deletes it, and a copy in the one table
+// built not to forget would outlive the comment. The digest still says the body
+// changed, which is the edit history an audit needs, and the field's name
+// survives into the event's Changed list. That is this type's obligation rather
+// than a deployment's policy, so it does not wait for an audit.WithRedaction;
+// see audit.Redaction.Apply.
 type RecordingHooks struct {
 	recorder *recording.Recorder
 }
@@ -152,7 +158,8 @@ func (h *RecordingHooks) AfterCreateComment(ctx context.Context, tx database.Tx,
 }
 
 // AfterUpdateComment records an edit. The entry carries the diff, the body old
-// and new; the event carries only the names of the fields that moved.
+// and new as digests; the event carries only the names of the fields that
+// moved.
 func (h *RecordingHooks) AfterUpdateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, before, after *Comment) error {
 	if before == nil || after == nil {
 		return ErrNilComment
@@ -161,6 +168,10 @@ func (h *RecordingHooks) AfterUpdateComment(ctx context.Context, tx database.Tx,
 	changes, err := audit.Diff(before, after)
 	if err != nil {
 		return platformerrors.Wrap(err, "diffing the updated comment")
+	}
+
+	if changes, err = authoredText.Apply(changes); err != nil {
+		return platformerrors.Wrap(err, "redacting the updated comment")
 	}
 
 	return h.record(ctx, tx, scope, after, audit.EventUpdated, EventCommentUpdated, changes)

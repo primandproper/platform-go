@@ -20,4 +20,22 @@ var (
 	// the failure names itself instead of surfacing later as a foreign-key
 	// violation on a grant.
 	ErrWrittenNameMissing = platformerrors.New("a role or permission written by name could not be read back")
+
+	// ErrPermissionInTwoTiers indicates a permission placed in more than one
+	// tier of a Tiers, or by two surfaces MergeTiers was handed.
+	ErrPermissionInTwoTiers = platformerrors.New("permission placed in more than one tier")
+	// ErrUntieredPermission indicates a permission a surface requires or
+	// consults that its Tiers places nowhere.
+	ErrUntieredPermission = platformerrors.New("permission a surface checks is in no tier")
+	// ErrUncheckedPermission indicates a permission a Tiers places that the
+	// surface neither requires on a method nor consults in a handler, so a
+	// role holding it is granted something nothing checks.
+	ErrUncheckedPermission = platformerrors.New("tiered permission is checked by nothing")
+	// ErrInvalidNarrowing indicates a narrowing that names a method requiring
+	// no permission, names no authorizer, is not below its permission's tier,
+	// or is stated two different ways.
+	ErrInvalidNarrowing = platformerrors.New("invalid tier narrowing")
+	// ErrUnknownTier indicates a Tier that is none of TierMember,
+	// TierTenantAdmin and TierOperator.
+	ErrUnknownTier = platformerrors.New("unknown permission tier")
 )

@@ -213,7 +213,11 @@ func TestRecordingHooks(T *testing.T) {
 		must.NoError(t, err)
 		entry, delivery = l.last(t)
 		test.EqOp(t, audit.EventUpdated, entry.EventType)
-		test.EqOp(t, "met at the conference", entry.Changes["notes"].New)
+		// The entry says the note changed, and never what it said.
+		hashed, err := audit.Redaction{Hash: []string{"notes"}}.Apply(map[string]audit.Change{"notes": {Old: "", New: "met at the conference"}})
+		must.NoError(t, err)
+		test.Eq(t, hashed["notes"], entry.Changes["notes"])
+		test.StrHasPrefix(t, "sha256:", entry.Changes["notes"].New.(string))
 		test.EqOp(t, EventSignupNotesUpdated, delivery.EventType)
 		test.Eq(t, []string{"notes"}, decodeSignup(t, delivery).Changed)
 
