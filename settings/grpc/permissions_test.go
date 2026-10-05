@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	settingsgrpc "github.com/primandproper/platform-go/v15/settings/grpc"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 

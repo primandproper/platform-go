@@ -11,12 +11,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/notifications/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/notifications/v1/notifications.proto=github.com/primandproper/platform-go/v14/notifications/notificationspb \
+//	    --go_opt=Mprimandproper/platform/notifications/v1/notifications.proto=github.com/primandproper/platform-go/v15/notifications/notificationspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -1318,7 +1318,7 @@ const file_primandproper_platform_notifications_v1_notifications_proto_rawDesc =
 	"\x13ArchiveNotification\x12C.primandproper.platform.notifications.v1.ArchiveNotificationRequest\x1aD.primandproper.platform.notifications.v1.ArchiveNotificationResponse\x12\x91\x01\n" +
 	"\x0eRegisterDevice\x12>.primandproper.platform.notifications.v1.RegisterDeviceRequest\x1a?.primandproper.platform.notifications.v1.RegisterDeviceResponse\x12\x88\x01\n" +
 	"\vListDevices\x12;.primandproper.platform.notifications.v1.ListDevicesRequest\x1a<.primandproper.platform.notifications.v1.ListDevicesResponse\x12\x8b\x01\n" +
-	"\fRevokeDevice\x12<.primandproper.platform.notifications.v1.RevokeDeviceRequest\x1a=.primandproper.platform.notifications.v1.RevokeDeviceResponseBXZVgithub.com/primandproper/platform-go/v14/notifications/notificationspb;notificationspbb\x06proto3"
+	"\fRevokeDevice\x12<.primandproper.platform.notifications.v1.RevokeDeviceRequest\x1a=.primandproper.platform.notifications.v1.RevokeDeviceResponseBXZVgithub.com/primandproper/platform-go/v15/notifications/notificationspb;notificationspbb\x06proto3"
 
 var (
 	file_primandproper_platform_notifications_v1_notifications_proto_rawDescOnce sync.Once

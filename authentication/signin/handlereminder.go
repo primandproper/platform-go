@@ -3,7 +3,7 @@ package signin
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -62,7 +62,7 @@ func (f HandleReminderMailerFunc) SendHandleReminder(ctx context.Context, mail *
 // # Who gets one
 //
 // Somebody whose standing admits a sign-in, and somebody still in
-// [github.com/primandproper/platform-go/v14/identity.StatusUnverified], which is
+// [github.com/primandproper/platform-go/v15/identity.StatusUnverified], which is
 // the reading the sign-in link door takes: a registrant who has forgotten the
 // handle they registered with a minute ago is still somebody the registration
 // mail already reached, and telling them what it was tells them nothing that

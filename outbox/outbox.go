@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
-	"github.com/primandproper/platform-go/v14/outbox/internal/queries"
+	"github.com/primandproper/platform-go/v15/outbox/internal/outboxdb"
+	"github.com/primandproper/platform-go/v15/outbox/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

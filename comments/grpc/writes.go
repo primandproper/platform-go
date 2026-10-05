@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/comments"
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
+	"github.com/primandproper/platform-go/v15/comments"
+	"github.com/primandproper/platform-go/v15/comments/commentspb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -211,7 +211,7 @@ func (s *Server) ArchiveComment(
 // intact — and handing it back to PrepareAndLogGRPCStatus a second time with
 // codes.Internal as the default would map the chain again, find nothing that
 // claims
-// [github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted], and
+// [github.com/primandproper/platform-go/v15/callers.ErrTargetNotPermitted], and
 // answer Internal to a caller who was refused. So it is captured and returned
 // as it stands, and only an error the transaction produced on its own is
 // prepared here.

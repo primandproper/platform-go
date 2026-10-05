@@ -3,7 +3,7 @@ package notifications
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/notifications/internal/notificationsdb"
+	"github.com/primandproper/platform-go/v15/notifications/internal/notificationsdb"
 
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"

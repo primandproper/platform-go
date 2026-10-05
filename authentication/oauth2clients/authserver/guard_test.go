@@ -3,8 +3,8 @@ package authserver_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/authserver"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/authserver"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	passkeysgrpc "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	passkeysgrpc "github.com/primandproper/platform-go/v15/authentication/passkeys/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

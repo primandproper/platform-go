@@ -7,12 +7,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/mediaregistry/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/mediaregistry/v1/mediaregistry.proto=github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb \
+//	    --go_opt=Mprimandproper/platform/mediaregistry/v1/mediaregistry.proto=github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -1136,7 +1136,7 @@ const file_primandproper_platform_mediaregistry_v1_mediaregistry_proto_rawDesc =
 	"\x10ListObjectsByIDs\x12@.primandproper.platform.mediaregistry.v1.ListObjectsByIDsRequest\x1aA.primandproper.platform.mediaregistry.v1.ListObjectsByIDsResponse\x12\x8e\x01\n" +
 	"\rListMyObjects\x12=.primandproper.platform.mediaregistry.v1.ListMyObjectsRequest\x1a>.primandproper.platform.mediaregistry.v1.ListMyObjectsResponse\x12\xa3\x01\n" +
 	"\x14ListObjectsBySubject\x12D.primandproper.platform.mediaregistry.v1.ListObjectsBySubjectRequest\x1aE.primandproper.platform.mediaregistry.v1.ListObjectsBySubjectResponse\x12\x8e\x01\n" +
-	"\rArchiveObject\x12=.primandproper.platform.mediaregistry.v1.ArchiveObjectRequest\x1a>.primandproper.platform.mediaregistry.v1.ArchiveObjectResponseBXZVgithub.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb;mediaregistrypbb\x06proto3"
+	"\rArchiveObject\x12=.primandproper.platform.mediaregistry.v1.ArchiveObjectRequest\x1a>.primandproper.platform.mediaregistry.v1.ArchiveObjectResponseBXZVgithub.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb;mediaregistrypbb\x06proto3"
 
 var (
 	file_primandproper_platform_mediaregistry_v1_mediaregistry_proto_rawDescOnce sync.Once

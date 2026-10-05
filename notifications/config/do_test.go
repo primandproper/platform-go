@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/notifications"
+	"github.com/primandproper/platform-go/v15/notifications"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"

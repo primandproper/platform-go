@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/sessions"
-	"github.com/primandproper/platform-go/v14/sessions/database/migrations"
+	"github.com/primandproper/platform-go/v15/sessions"
+	"github.com/primandproper/platform-go/v15/sessions/database/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

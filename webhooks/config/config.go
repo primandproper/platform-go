@@ -1,7 +1,8 @@
 /*
 Package webhookscfg assembles the webhook machinery from environment
 configuration: the Store both halves share, the Dispatcher applications write
-through, and the Worker that delivers.
+through, the Worker that delivers, and the Emitter that writes an event to the
+outbox and dispatches it in one call.
 
 All three read one Config, so the table prefix the Dispatcher writes to is by
 construction the one the Worker claims from. The dialect is not configured here
@@ -16,7 +17,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform-go/v14/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/circuitbreaking"
 	circuitbreakingcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/config"
@@ -30,9 +31,18 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// Config assembles a webhooks Store, Dispatcher, and Worker.
+// DefaultEmitterTopic is the outbox topic an Emitter built here publishes
+// under when the config names none.
+const DefaultEmitterTopic = "domain_events"
+
+// Config assembles a webhooks Store, Dispatcher, Worker, and Emitter.
 type Config struct {
 	_ struct{} `json:"-" yaml:"-"`
+
+	// EmitterTopic is the outbox topic every event the Emitter publishes is
+	// enqueued under, which is the destination the outbox relay resolves a
+	// publisher for. Defaults to DefaultEmitterTopic.
+	EmitterTopic string `env:"EMITTER_TOPIC" json:"emitterTopic,omitempty" yaml:"emitterTopic,omitempty"`
 
 	// TablePrefix names the five webhook tables. It must match the prefix the
 	// migrations were rendered with. Defaults to webhooks.DefaultTablePrefix.
@@ -63,6 +73,10 @@ var _ validation.ValidatableWithContext = (*Config)(nil)
 func (cfg *Config) EnsureDefaults() {
 	if cfg.TablePrefix == "" {
 		cfg.TablePrefix = webhooks.DefaultTablePrefix
+	}
+
+	if cfg.EmitterTopic == "" {
+		cfg.EmitterTopic = DefaultEmitterTopic
 	}
 
 	cfg.HTTPClient.EnsureDefaults()
@@ -194,6 +208,88 @@ func NewDispatcher(
 	}
 
 	return d, nil
+}
+
+// NewEmitter builds an Emitter from configuration: one that enqueues each event
+// on enqueuer under the configured topic and fans it out through a dispatcher
+// of its own.
+//
+// That dispatcher is built over a store of its own, with the configured prefix
+// and no hooks, rather than over the Store the rest of the deployment writes
+// endpoints through. The second store's hooks are what a recording.Recorder
+// writes through, the Recorder writes through this Emitter, and so an Emitter
+// dispatching through the hooked store would be a store that needs itself to be
+// built. The hookless one loses nothing by it: fan-out reads subscriptions and
+// writes the delivery queue, and neither has a hook. recordinghooks' package
+// documentation draws the same pair.
+//
+// The catalog is the same one NewDispatcher takes, so an event type the
+// deployment does not publish is enqueued and not dispatched, by
+// webhooks.Emitter.Emit's gate.
+//
+// The store passthrough options are not applied to the private store, since a
+// WithHooks among them would close the loop described above. The dispatcher
+// options are.
+func NewEmitter(
+	ctx context.Context,
+	cfg *Config,
+	client database.Client,
+	enqueuer webhooks.Enqueuer,
+	catalog webhooks.Catalog,
+	opts ...Option,
+) (*webhooks.Emitter, error) {
+	o := newOptions(opts)
+	logger, tracerProvider, metricsProvider := o.logger, o.tracerProvider, o.metricsProvider
+
+	if cfg == nil {
+		return nil, errors.ErrNilInputParameter
+	}
+
+	if client == nil {
+		return nil, webhooks.ErrNilDatabaseClient
+	}
+
+	cfg.EnsureDefaults()
+
+	if err := cfg.ValidateWithContext(ctx); err != nil {
+		return nil, errors.Wrap(err, "validating webhooks config")
+	}
+
+	fanout, err := webhooks.NewSQLStore(client,
+		webhooks.WithTablePrefix(cfg.TablePrefix),
+		webhooks.WithStoreLogger(logger),
+		webhooks.WithStoreTracerProvider(tracerProvider),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "building the emitter's fan-out store")
+	}
+
+	base := []webhooks.DispatcherOption{webhooks.WithCatalog(catalog)}
+	if logger != nil {
+		base = append(base, webhooks.WithDispatcherLogger(logger))
+	}
+	if tracerProvider != nil {
+		base = append(base, webhooks.WithDispatcherTracerProvider(tracerProvider))
+	}
+	if metricsProvider != nil {
+		base = append(base, webhooks.WithDispatcherMetricsProvider(metricsProvider))
+	}
+
+	dispatcher, err := webhooks.NewDispatcher(fanout, client.Reader(), append(base, o.dispatcher...)...)
+	if err != nil {
+		return nil, errors.Wrap(err, "building the emitter's dispatcher")
+	}
+
+	emitter, err := webhooks.NewEmitter(enqueuer, dispatcher, cfg.EmitterTopic,
+		webhooks.WithEmitterLogger(logger),
+		webhooks.WithEmitterTracerProvider(tracerProvider),
+		webhooks.WithEmitterMetricsProvider(metricsProvider),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return emitter, nil
 }
 
 // NewWorker builds a Worker from configuration, including the shared HTTP

@@ -1,9 +1,9 @@
 package grpc
 
 import (
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
-	"github.com/primandproper/platform-go/v14/rbac"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

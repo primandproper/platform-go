@@ -1,8 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/notifications"
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v15/notifications"
+	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

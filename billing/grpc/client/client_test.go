@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
-	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
+	billingclient "github.com/primandproper/platform-go/v15/billing/grpc/client"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

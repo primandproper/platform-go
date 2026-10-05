@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/identifiers"

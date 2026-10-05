@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/waitlists"
-	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	"github.com/primandproper/primitives-go/v2/observability"

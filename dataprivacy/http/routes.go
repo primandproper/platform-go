@@ -6,9 +6,9 @@ import (
 	"path"
 	"sync/atomic"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/internal/routeguard"
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/internal/routeguard"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	waitlistsclient "github.com/primandproper/platform-go/v14/waitlists/grpc/client"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	waitlistsclient "github.com/primandproper/platform-go/v15/waitlists/grpc/client"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

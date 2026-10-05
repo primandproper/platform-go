@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

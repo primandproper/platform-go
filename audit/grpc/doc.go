@@ -1,6 +1,6 @@
 /*
 Package grpc is the audit log on the wire: the gRPC service over
-[github.com/primandproper/platform-go/v14/audit]'s Reader, the converters
+[github.com/primandproper/platform-go/v15/audit]'s Reader, the converters
 between the generated messages and its types, a typed client, and the default
 permission fragment a consumer composes into its policy.
 

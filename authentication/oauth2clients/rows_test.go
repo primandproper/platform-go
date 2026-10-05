@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/internal/oauth2clientsdb"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/internal/oauth2clientsdb"
 
 	"github.com/primandproper/primitives-go/v2/filtering"
 

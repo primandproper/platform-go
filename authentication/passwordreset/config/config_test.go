@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	passwordresetmock "github.com/primandproper/platform-go/v15/authentication/passwordreset/mock"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/database"

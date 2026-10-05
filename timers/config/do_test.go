@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/timers"
+	"github.com/primandproper/platform-go/v15/timers"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

@@ -5,7 +5,7 @@ import (
 	nethttp "net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v15/operations"
 
 	httpx "github.com/primandproper/primitives-go/v2/errors/http"
 	"github.com/primandproper/primitives-go/v2/eventstream"

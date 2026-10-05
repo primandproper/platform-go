@@ -40,7 +40,7 @@ import (
 
 // assembledPackage is the package the assembled subject runs in, which is
 // where every suite's assertions are reported.
-const assembledPackage = "github.com/primandproper/platform-go/v14/conformance/assembled"
+const assembledPackage = "github.com/primandproper/platform-go/v15/conformance/assembled"
 
 // The test2json actions this reads.
 const (

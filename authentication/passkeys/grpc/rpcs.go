@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

@@ -8,11 +8,11 @@
 // module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as signin.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/passwordreset/proto \
-//	    --go_opt=Mprimandproper/platform/passwordreset/v1/passwordreset.proto=github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb \
+//	    --go_opt=Mprimandproper/platform/passwordreset/v1/passwordreset.proto=github.com/primandproper/platform-go/v15/authentication/passwordreset/passwordresetpb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform file deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -443,7 +443,7 @@ const file_primandproper_platform_passwordreset_v1_passwordreset_proto_rawDesc =
 	"\x14PasswordResetService\x12\xa3\x01\n" +
 	"\x14RequestPasswordReset\x12D.primandproper.platform.passwordreset.v1.RequestPasswordResetRequest\x1aE.primandproper.platform.passwordreset.v1.RequestPasswordResetResponse\x12\xaf\x01\n" +
 	"\x18VerifyPasswordResetToken\x12H.primandproper.platform.passwordreset.v1.VerifyPasswordResetTokenRequest\x1aI.primandproper.platform.passwordreset.v1.VerifyPasswordResetTokenResponse\x12\xa6\x01\n" +
-	"\x15CompletePasswordReset\x12E.primandproper.platform.passwordreset.v1.CompletePasswordResetRequest\x1aF.primandproper.platform.passwordreset.v1.CompletePasswordResetResponseBgZegithub.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb;passwordresetpbb\x06proto3"
+	"\x15CompletePasswordReset\x12E.primandproper.platform.passwordreset.v1.CompletePasswordResetRequest\x1aF.primandproper.platform.passwordreset.v1.CompletePasswordResetResponseBgZegithub.com/primandproper/platform-go/v15/authentication/passwordreset/passwordresetpb;passwordresetpbb\x06proto3"
 
 var (
 	file_primandproper_platform_passwordreset_v1_passwordreset_proto_rawDescOnce sync.Once

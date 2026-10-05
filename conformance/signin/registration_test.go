@@ -6,10 +6,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	domain "github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	domain "github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"

@@ -1,7 +1,7 @@
 package http
 
 import (
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

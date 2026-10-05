@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

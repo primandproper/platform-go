@@ -3,7 +3,7 @@ package series
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/series/internal/seriesdb"
+	"github.com/primandproper/platform-go/v15/series/internal/seriesdb"
 )
 
 // The typed seam between the generated package and the domain types.

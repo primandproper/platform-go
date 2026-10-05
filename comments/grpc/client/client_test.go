@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
-	commentsclient "github.com/primandproper/platform-go/v14/comments/grpc/client"
+	"github.com/primandproper/platform-go/v15/comments/commentspb"
+	commentsclient "github.com/primandproper/platform-go/v15/comments/grpc/client"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

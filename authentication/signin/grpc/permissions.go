@@ -1,8 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/rbac"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

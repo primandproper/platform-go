@@ -6,8 +6,8 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/rbac/internal/authorizationdb"
-	"github.com/primandproper/platform-go/v14/rbac/migrations"
+	"github.com/primandproper/platform-go/v15/rbac/internal/authorizationdb"
+	"github.com/primandproper/platform-go/v15/rbac/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"

@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/internal/archivegate"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/internal/archivegate"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"

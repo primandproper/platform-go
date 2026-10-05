@@ -4,7 +4,7 @@ account is stored with.
 
 [github.com/primandproper/primitives-go/v2/capitalism] hands a webhook handler a
 [capitalism.SubscriptionStatus], and
-[github.com/primandproper/platform-go/v14/identity] stores an
+[github.com/primandproper/platform-go/v15/identity] stores an
 [identity.BillingStatus]. Nothing joined the two, so every consumer wiring a
 processor callback wrote the join by hand — eight statuses onto four, in a
 switch next to its handler, which is the shape capitalism's own documentation
@@ -34,7 +34,7 @@ its answer down once, instead of once per handler.
 
 [Strict] is the answer most deployments want and none of them have to take:
 active is paid, trialing is a trial, and the other six leave the account unpaid.
-It is the same two statuses [github.com/primandproper/platform-go/v14/billing/plans.Entitled]
+It is the same two statuses [github.com/primandproper/platform-go/v15/billing/plans.Entitled]
 accepts, for the same reason — they are the two every reading agrees on.
 
 # Why nothing here returns a suspension
@@ -62,14 +62,14 @@ table, and until it lands the stored standing is stale rather than wrong.
 
 identity would otherwise import capitalism, which would put a payments
 dependency in front of every consumer that stores a user. It sits beside
-[github.com/primandproper/platform-go/v14/billing/plans] because that is the
+[github.com/primandproper/platform-go/v15/billing/plans] because that is the
 other place a deployment's payments judgement is written down, and because a
 handler recording a delivery is already holding both.
 */
 package standing
 
 import (
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 )
@@ -101,7 +101,7 @@ type Classify func(status capitalism.SubscriptionStatus) (identity.BillingStatus
 // It is a function here rather than the behavior a caller gets by default,
 // because passing it should be a deployment saying "yes, that is our rule"
 // rather than a deployment not having thought about it. That is the shape
-// [github.com/primandproper/platform-go/v14/billing/plans.Entitled] already
+// [github.com/primandproper/platform-go/v15/billing/plans.Entitled] already
 // takes.
 func Strict(status capitalism.SubscriptionStatus) (identity.BillingStatus, bool) {
 	switch status {

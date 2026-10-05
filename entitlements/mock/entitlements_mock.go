@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v14/entitlements"
+	"github.com/primandproper/platform-go/v15/entitlements"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/tenancy"

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	"github.com/primandproper/platform-go/v15/conformance"
+	dataprivacyhttp "github.com/primandproper/platform-go/v15/dataprivacy/http"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

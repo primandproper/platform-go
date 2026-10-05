@@ -1,7 +1,7 @@
 package passwordresetcfg
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

@@ -23,7 +23,7 @@ import (
 //
 // It is asked only where there is no principal. A request carrying one takes
 // its tenant from
-// [github.com/primandproper/platform-go/v14/callers.Principal.Scope], which is
+// [github.com/primandproper/platform-go/v15/callers.Principal.Scope], which is
 // a fact the consumer's authentication interceptor proved, and this is the
 // answer for a request where nothing was proved because nothing had to be. So
 // each call has exactly one source and the two never race; what a consumer

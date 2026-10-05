@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	notificationsclient "github.com/primandproper/platform-go/v14/notifications/grpc/client"
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	notificationsclient "github.com/primandproper/platform-go/v15/notifications/grpc/client"
+	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

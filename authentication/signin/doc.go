@@ -56,7 +56,7 @@ stolen token from a shared session nobody can see into a detected event that
 signs both parties out.
 
 Where those tokens live is
-[github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens],
+[github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens],
 and it is a subpackage rather than a table this package holds because it is
 optional: a service built without [WithRefreshTokenStore] mints one token per
 sign-in and owns no schema at all, which is what this package was before rotation
@@ -155,7 +155,7 @@ single-use codes, minted by [Service.ReplaceRecoveryCodes] behind the password
 and a second factor, shown once, and kept on paper.
 
 They live in
-[github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes],
+[github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes],
 a third optional store beside the other two, and the seam is
 [RecoveryCodeStore]. A service built without [WithRecoveryCodeStore] behaves
 exactly as it did before they existed. One built with it accepts a recovery code
@@ -276,7 +276,7 @@ proves nothing new about how it began.
 # What is not here
 
 No session. This package hands back tokens. What a consumer does with them — a
-cookie through [github.com/primandproper/platform-go/v14/sessions], an
+cookie through [github.com/primandproper/platform-go/v15/sessions], an
 Authorization header, a gRPC credential — is theirs. Nothing in this package
 reads a request.
 
@@ -296,7 +296,7 @@ gives.
 A family is not a counter-example to that, and the distinction is worth stating
 because the two are easy to confuse. A family is a group of credentials this
 package minted; a session is a record of a caller that something turns a request
-back into. [github.com/primandproper/platform-go/v14/sessions] has a store, an
+back into. [github.com/primandproper/platform-go/v15/sessions] has a store, an
 identifier and a revocation of its own, and it is a different mechanism for a
 different job — which is why the vocabulary here is "family" throughout, and why
 the one place the two spellings meet is [ClaimFamilyID], where a wire convention
@@ -305,8 +305,8 @@ is translated once.
 No passkeys and no password reset. Each is a flow of its own over an engine
 this module already ships —
 [github.com/primandproper/primitives-go/v2/authentication/webauthn],
-[github.com/primandproper/platform-go/v14/authentication/passwordreset],
-[github.com/primandproper/platform-go/v14/links] — and each is its own addition
+[github.com/primandproper/platform-go/v15/authentication/passwordreset],
+[github.com/primandproper/platform-go/v15/links] — and each is its own addition
 rather than a branch inside the password flow.
 
 # Registration, and the credential it carries
@@ -353,7 +353,7 @@ is refused for anybody who does.
 That refusal is what keeps the second one narrow. An outstanding link furnishes
 an account that has no password, once; against an account that has one it can do
 nothing, and somebody who has forgotten theirs goes through
-[github.com/primandproper/platform-go/v14/authentication/passwordreset] instead.
+[github.com/primandproper/platform-go/v15/authentication/passwordreset] instead.
 Attaching does not spend the link, so the same click can go on to verify — which
 is the order a consumer doing both from one page wants.
 

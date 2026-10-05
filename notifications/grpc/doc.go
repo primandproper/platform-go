@@ -29,9 +29,9 @@ from the client side, and silently is the one way this surface must not fail.
 
 # Who is calling
 
-Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+Who is calling is [github.com/primandproper/platform-go/v15/callers.Principal],
 which a consumer's own authentication interceptor puts on the context and
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor] reads
 back. Those are one package for the whole module rather than an interface per
 surface, because a deployment has one authentication interceptor and one notion
 of a caller, and that package's documentation is where the ruling that keeps the
@@ -44,7 +44,7 @@ authorization here — see the next section.
 
 # Row-level permission, and why there is no TargetAuthorizer
 
-identity/grpc grew [github.com/primandproper/platform-go/v14/identity/grpc.TargetAuthorizer]
+identity/grpc grew [github.com/primandproper/platform-go/v15/identity/grpc.TargetAuthorizer]
 because most of its RPCs take their target from the request, and whether the
 caller has standing in that row cannot be answered by an interceptor holding
 only the method name and the caller's grants.

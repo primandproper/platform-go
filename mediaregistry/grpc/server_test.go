@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v15/mediaregistry/grpc"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	mediaregistrymock "github.com/primandproper/platform-go/v15/mediaregistry/mock"
 
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

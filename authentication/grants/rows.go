@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/grants/internal/grantsdb"
-	"github.com/primandproper/platform-go/v14/authentication/grants/internal/queries"
+	"github.com/primandproper/platform-go/v15/authentication/grants/internal/grantsdb"
+	"github.com/primandproper/platform-go/v15/authentication/grants/internal/queries"
 )
 
 // The typed seam between the generated package and the domain type.

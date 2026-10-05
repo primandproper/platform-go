@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/audit/internal/queries"
+	"github.com/primandproper/platform-go/v15/audit/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/database/ddl"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

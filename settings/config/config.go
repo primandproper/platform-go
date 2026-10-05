@@ -30,8 +30,8 @@ package settingscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/settings"
-	"github.com/primandproper/platform-go/v14/settings/migrations"
+	"github.com/primandproper/platform-go/v15/settings"
+	"github.com/primandproper/platform-go/v15/settings/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/errors"

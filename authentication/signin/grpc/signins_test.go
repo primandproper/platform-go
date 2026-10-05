@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

@@ -15,7 +15,7 @@ import (
 // session type and never will — the whole reason a directory can be a library
 // is that it does not also decide how somebody proved they were themselves.
 //
-// It is deliberately not [github.com/primandproper/platform-go/v14/identity.Principal],
+// It is deliberately not [github.com/primandproper/platform-go/v15/identity.Principal],
 // which is a different thing with a confusingly similar name: that one is a
 // read a service performs — a user, their memberships, and the account a
 // request is against — and it is an answer, where this is the question.

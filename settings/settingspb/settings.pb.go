@@ -14,12 +14,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/settings/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/settings/v1/settings.proto=github.com/primandproper/platform-go/v14/settings/settingspb \
+//	    --go_opt=Mprimandproper/platform/settings/v1/settings.proto=github.com/primandproper/platform-go/v15/settings/settingspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -2345,7 +2345,7 @@ const file_primandproper_platform_settings_v1_settings_proto_rawDesc = "" +
 	"\x14ListValuesForSubject\x12?.primandproper.platform.settings.v1.ListValuesForSubjectRequest\x1a@.primandproper.platform.settings.v1.ListValuesForSubjectResponse\x12r\n" +
 	"\aResolve\x122.primandproper.platform.settings.v1.ResolveRequest\x1a3.primandproper.platform.settings.v1.ResolveResponse\x12{\n" +
 	"\n" +
-	"ResolveAll\x125.primandproper.platform.settings.v1.ResolveAllRequest\x1a6.primandproper.platform.settings.v1.ResolveAllResponseBIZGgithub.com/primandproper/platform-go/v14/settings/settingspb;settingspbb\x06proto3"
+	"ResolveAll\x125.primandproper.platform.settings.v1.ResolveAllRequest\x1a6.primandproper.platform.settings.v1.ResolveAllResponseBIZGgithub.com/primandproper/platform-go/v15/settings/settingspb;settingspbb\x06proto3"
 
 var (
 	file_primandproper_platform_settings_v1_settings_proto_rawDescOnce sync.Once

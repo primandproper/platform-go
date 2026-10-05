@@ -107,8 +107,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

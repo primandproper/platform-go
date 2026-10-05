@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
-	"github.com/primandproper/platform-go/v14/mediaregistry/privacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistrymock "github.com/primandproper/platform-go/v15/mediaregistry/mock"
+	"github.com/primandproper/platform-go/v15/mediaregistry/privacy"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"

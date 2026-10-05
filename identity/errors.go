@@ -16,6 +16,11 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity store")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks. It wraps errors.ErrNilInputParameter, so a caller may
+	// check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity recorder")
+
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, a database.SQLQueryExecutor
 	// for a read — so there is no method that can fall back to a connection of

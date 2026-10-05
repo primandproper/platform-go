@@ -6,12 +6,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/issuereports/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/issuereports/v1/issuereports.proto=github.com/primandproper/platform-go/v14/issuereports/issuereportspb \
+//	    --go_opt=Mprimandproper/platform/issuereports/v1/issuereports.proto=github.com/primandproper/platform-go/v15/issuereports/issuereportspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -115,7 +115,7 @@ package primandproper.platform.issuereports.v1;
 import "google/protobuf/timestamp.proto";
 import "primandproper/platform/filtering/v1/filtering.proto";
 
-option go_package = "github.com/primandproper/platform-go/v14/issuereports/issuereportspb;issuereportspb";
+option go_package = "github.com/primandproper/platform-go/v15/issuereports/issuereportspb;issuereportspb";
 
 // ReportStatus is where a report stands. It is this module's own closed set:
 // four states, and a table of which moves between them are admitted.

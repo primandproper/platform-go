@@ -3,7 +3,7 @@ package billingcfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v15/billing"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"
