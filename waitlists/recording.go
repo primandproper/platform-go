@@ -65,8 +65,10 @@ const (
 // EventCatalog is every event this package emits, described, for a consumer to
 // merge into the catalog its dispatcher is built with:
 //
-//	catalog := webhooks.Catalog{OrderCreated: {Description: "..."}}
-//	maps.Copy(catalog, waitlists.EventCatalog())
+//	catalog, err := webhooks.Merge(
+//		webhooks.Catalog{OrderCreated: {Description: "..."}},
+//		waitlists.EventCatalog(),
+//	)
 //
 // It is a function rather than a package-level map so that no caller can
 // mutate the one copy every other caller reads.

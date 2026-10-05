@@ -6,8 +6,14 @@ import (
 	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 )
 
-// ListEventTypes answers what a subscription may name: every event type in this
-// application's catalog, sorted, with the prose saying when each one fires.
+// ListEventTypes answers what a subscription may name: every subscribable event
+// type in this application's catalog, sorted, with the prose saying when each
+// one fires.
+//
+// The ones the catalog marks Internal are left out. SaveEndpoint and Subscribe
+// refuse them as unknown, and a list offering a value its own surface refuses
+// is the guessing this method exists to end — besides naming, to anybody with
+// this light grant, the credential events the application keeps to itself.
 //
 // # Why this is on the surface at all
 //
@@ -18,7 +24,7 @@ import (
 // refuses a write against a list and will not disclose the list leaves a client
 // guessing at the legal values of the field it just rejected.
 //
-// It is also what webhooks.Catalog.EventTypes says it is for, in those words:
+// It is also what webhooks.Catalog.SubscribableEventTypes says it is for, in those words:
 // "for rendering a subscription UI or an API response". Until this method there
 // was no API response it could reach, and every consumer serving a subscription
 // form wrote this RPC themselves over a value they had already handed this
@@ -50,8 +56,10 @@ func (s *Server) ListEventTypes(
 
 	catalog := s.dispatcher.Catalog()
 
-	results := make([]*webhookspb.EventTypeDefinition, 0, len(catalog))
-	for _, eventType := range catalog.EventTypes() {
+	eventTypes := catalog.SubscribableEventTypes()
+
+	results := make([]*webhookspb.EventTypeDefinition, 0, len(eventTypes))
+	for _, eventType := range eventTypes {
 		results = append(results, &webhookspb.EventTypeDefinition{
 			EventType:   string(eventType),
 			Description: catalog[eventType].Description,

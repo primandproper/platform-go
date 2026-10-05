@@ -217,6 +217,12 @@ func NewEmitter(enqueuer Enqueuer, dispatcher Dispatcher, topic string, opts ...
 // event type is still caught where a human types one, at Register and at
 // Subscribe.
 //
+// The two are told apart by EventDefinition.Internal. An event the catalog
+// lists as internal is a deliberate exclusion and is not counted; an event the
+// catalog does not list at all is counted on webhooks_events_unsubscribable,
+// where it is the only thing counted, so the counter climbing means a constant
+// has fallen out of the catalog and nothing else.
+//
 // The gate reads the dispatcher's own catalog rather than a second copy: a gate
 // that could disagree with Dispatch would either drop events the dispatcher
 // would have accepted or hand it ones it refuses, and the second of those is the
@@ -307,13 +313,20 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 	// as the two instruments it sits between do.
 	e.emittedCounter.Add(ctx, 1, eventTypeAttr(event.EventType))
 
-	if !e.dispatcher.Catalog().Known(event.EventType) {
-		// Worth an instrument of its own: an event type an application publishes
-		// and no subscriber may receive is either a deliberate exclusion or a
-		// constant that fell out of the catalog, and the counter climbing for a
-		// type nobody meant to exclude is the only signal that says which.
-		e.unsubscribableCounter.Add(ctx, 1, eventTypeAttr(event.EventType))
-		op.Set(subscribableKey, false)
+	catalog := e.dispatcher.Catalog()
+	if !catalog.Subscribable(event.EventType) {
+		// An event the catalog marks Internal is a deliberate exclusion, said
+		// out loud, and is not counted. Anything else that lands here is a
+		// constant that fell out of the catalog, and the counter climbing is
+		// the signal that says so — which it can only be while the deliberate
+		// exclusions are not mixed into it.
+		internal := catalog.Known(event.EventType)
+		if !internal {
+			e.unsubscribableCounter.Add(ctx, 1, eventTypeAttr(event.EventType))
+		}
+
+		op.Set(subscribableKey, false).
+			Set(internalKey, internal)
 
 		return nil
 	}

@@ -230,7 +230,8 @@ func WithEmitterTracerProvider(tracerProvider tracing.Provider) EmitterOption {
 
 // WithEmitterMetricsProvider attaches a metrics provider. Worth setting for
 // webhooks_events_unsubscribable alone: it is the only reading of how many of an
-// application's events no subscriber may ever receive.
+// application's events fell out of its catalog, the ones it marks Internal
+// excepted.
 func WithEmitterMetricsProvider(metricsProvider metrics.Provider) EmitterOption {
 	return func(e *Emitter) {
 		e.metricsProvider = metricsProvider

@@ -61,6 +61,23 @@ func TestListEventTypes(T *testing.T) {
 		}
 	})
 
+	// An internal event is in the catalog and refused by every write, so a list
+	// offering it would be offering a value its own surface refuses.
+	T.Run("leaves out the events the catalog marks internal", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		res, err := h.server.ListEventTypes(h.ctx(t), &webhookspb.ListEventTypesRequest{})
+		must.NoError(t, err)
+
+		for _, def := range res.GetResults() {
+			test.NotEqOp(t, string(orderAudited), def.GetEventType())
+		}
+
+		test.SliceLen(t, 2, res.GetResults())
+	})
+
 	T.Run("it is sorted, so a form renders in a stable order", func(t *testing.T) {
 		t.Parallel()
 
