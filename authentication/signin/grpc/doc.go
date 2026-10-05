@@ -54,8 +54,12 @@ For a token the sign-in service minted, that extractor is this package's:
 identity's directory, and confers service roles only on a token minted through
 the administrative door. [PrincipalExtractor.UnaryServerInterceptor] resolves
 each request's caller once, against an [AuthenticationRequirements] table that
-[RequireAuthentication] declares this service's methods onto. Tokens of any
-other kind reach it through [WithFallback]. [PrincipalExtractor.Extract] answers
+[RequireAuthentication] declares this service's methods onto. [WithAccessTokens]
+extends it to an OAuth2 access token oauth2server minted for this resource,
+whose subject is a user in the same directory, and answers the verifier's
+refusals with their own codes — a token lacking a required scope is
+PermissionDenied, not Unauthenticated. Tokens of any other kind reach it through
+[WithFallback]. [PrincipalExtractor.Extract] answers
 only for a request that interceptor or [PrincipalExtractor.HTTPMiddleware]
 resolved, so installing them is not optional: a server with neither sees
 nobody.

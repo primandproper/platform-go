@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -191,10 +192,11 @@ func (c *Caller) Identity() *identity.Principal { return c.principal }
 //
 // It is the interceptor every consumer of signin was writing, for the one case
 // this module defines end to end: a token signin minted, resolved through
-// identity's directory, for methods classified by the surfaces' own lists. A
-// deployment that also accepts another kind of token — an OAuth2 access token,
-// a legacy session — keeps its own extractor for those and chains it in with
-// WithFallback.
+// identity's directory, for methods classified by the surfaces' own lists.
+// WithAccessTokens extends it to the other token this module's directory is
+// the subject of — an OAuth2 access token oauth2server minted for this
+// resource. A deployment that also accepts a third kind, a legacy session,
+// keeps its own extractor for those and chains it in with WithFallback.
 //
 // # What it decides
 //
@@ -244,6 +246,10 @@ type PrincipalExtractor struct {
 	ordinary ServiceRolesPolicy
 	fallback callers.PrincipalExtractor
 	signIns  SignInChecker
+
+	accessTokens      *oauth2server.Verifier
+	accessTokenScope  AccessTokenScope
+	accessTokenScopes []string
 
 	gate *PasswordChangeGate
 
@@ -427,10 +433,11 @@ func NewPrincipalExtractor(
 	}
 
 	e := &PrincipalExtractor{
-		verifier:  verifier,
-		client:    client,
-		directory: directory,
-		ordinary:  keepNoServiceRoles,
+		verifier:         verifier,
+		client:           client,
+		directory:        directory,
+		ordinary:         keepNoServiceRoles,
+		accessTokenScope: globalAccessTokenScope,
 	}
 
 	for _, opt := range opts {
@@ -486,16 +493,22 @@ func (e *PrincipalExtractor) buildGate() (*PasswordChangeGate, error) {
 	)
 }
 
-// carriedPasswordChange reads the flag off a *Caller, which carries the user
-// the extractor read to resolve them. It is the default reading for an
-// extractor with no fallback, where every principal is one.
+// carriedPasswordChange reads the flag off a *Caller or an *AccessTokenCaller,
+// each of which carries the user the extractor read to resolve them. It is the
+// default reading for an extractor with no fallback, where every principal is
+// one of the two.
 func carriedPasswordChange(_ context.Context, principal callers.Principal) (bool, error) {
-	caller, ok := principal.(*Caller)
-	if !ok || caller.principal == nil || caller.principal.User == nil {
+	caller, ok := principal.(interface{ Identity() *identity.Principal })
+	if !ok {
 		return false, ErrNoPasswordChangeReading
 	}
 
-	return caller.principal.User.RequiresPasswordChange, nil
+	resolved := caller.Identity()
+	if resolved == nil || resolved.User == nil {
+		return false, ErrNoPasswordChangeReading
+	}
+
+	return resolved.User.RequiresPasswordChange, nil
 }
 
 // keepNoServiceRoles is the default ServiceRolesPolicy: an ordinary-door token
@@ -800,7 +813,9 @@ func (e *PrincipalExtractor) Grants(ctx context.Context) (authorization.Grants, 
 //
 // It returns a nil principal and a nil error for a request that carries nobody,
 // an error wrapping ErrUnauthenticated for a credential this module minted and
-// refuses, and any other error for a directory that could not be read.
+// refuses, one wrapping oauth2server.ErrInsufficientScope for an access token
+// lacking a scope WithAccessTokens requires, and any other error for a
+// directory or token store that could not be read.
 func (e *PrincipalExtractor) resolve(ctx context.Context, token string) (callers.Principal, error) {
 	if token == "" {
 		return e.fallBack(ctx), nil
@@ -815,9 +830,27 @@ func (e *PrincipalExtractor) resolve(ctx context.Context, token string) (callers
 		return nil, err
 	}
 
+	if refusesTheCaller(err) {
+		return nil, err
+	}
+
+	// A token that is not a sign-in token may be an access token, and only a
+	// token the authorization server does not hold goes on from here: one it
+	// holds is an access token, refused or not, and is answered as one.
+	if e.accessTokens != nil {
+		caller, accessErr := e.authenticateAccessToken(ctx, token)
+		if accessErr == nil {
+			return caller, nil
+		}
+
+		if !errors.Is(accessErr, oauth2server.ErrNotFound) {
+			return nil, accessErr
+		}
+	}
+
 	// A token that is not ours goes to the fallback. A token that is ours,
 	// naming somebody the directory refuses, does not.
-	if e.fallback != nil && !refusesTheCaller(err) {
+	if e.fallback != nil {
 		if principal := e.fallBack(ctx); principal != nil {
 			return principal, nil
 		}
@@ -848,7 +881,8 @@ func (e *PrincipalExtractor) fallBack(ctx context.Context) callers.Principal {
 // surface's decision, so a missing credential, and one that names nobody,
 // proceed as nobody. It answers two failures itself, because proceeding would
 // misreport them: a token naming somebody whose account status admits no
-// sign-in is a 403, and a directory that cannot be read is a 503.
+// sign-in is a 403, as is an access token lacking a scope WithAccessTokens
+// requires, and a directory that cannot be read is a 503.
 //
 // A caller who owes a forced password change is then held at the form, save
 // for the requests WithPasswordChangeAllowedRequests admits; see
@@ -864,6 +898,10 @@ func (e *PrincipalExtractor) HTTPMiddleware(next http.Handler) http.Handler {
 		principal, err := e.resolve(ctx, bearerToken(r.Header.Get(authorizationHeader)))
 
 		switch {
+		case errors.Is(err, oauth2server.ErrInsufficientScope):
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+
+			return
 		case err != nil && !errors.Is(err, ErrUnauthenticated):
 			http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 
