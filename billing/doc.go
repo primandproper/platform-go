@@ -200,6 +200,17 @@ The two status moves still answer their caller with nothing; it is their hooks
 that are handed the rows, read only when hooks are installed, so the boundary in
 the section above holds for a store with none.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: the entry names the row by one of the four resource types
+beginning [ResourceTypeProduct], the event is one of the types [EventCatalog]
+describes, an update's entry carries the diff while its event names only the
+fields that moved, and a status move records the status it left. An entry about
+a subscription, a purchase or a ledger row names the account it belongs to as
+its subject, so a Recorder filing by subject keeps an account's billing history
+on the account's own chain. Embed it to change one write's record and inherit
+the rest.
+
 # A price is a fact about a moment, not a lookup
 
 [Purchase] and [Transaction] each carry their own amount and currency rather than
