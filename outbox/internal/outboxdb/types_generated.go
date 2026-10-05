@@ -88,7 +88,6 @@ type ReleaseQuarantinedOutboxMessagesParams struct {
 type SelectClaimableOutboxMessagesParams struct {
 	Now            time.Time
 	LeaseExpiredBy *time.Time
-	ResultOffset   int64
 	ResultLimit    int64
 }
 

@@ -146,8 +146,8 @@ for what that costs and why it is the trade this package makes.
 
 What the mode decides is how the fleet divides the backlog, not whether it
 divides it. ClaimSkipLocked locks the candidates it reads by primary key,
-skipping the ones another relay holds and reading on until its batch is full, so
-a second relay selecting at the same instant takes a batch of its own. It locks
+skipping the ones another relay holds, so a second relay selecting at the same
+instant leaves those to the first, and its own batch may come back short. It locks
 by key rather than by range because a range lock on MySQL also locks the gap a
 new message is inserted into, and every writer enqueueing into the outbox would
 queue behind the claim, and deadlock with it. ClaimLease

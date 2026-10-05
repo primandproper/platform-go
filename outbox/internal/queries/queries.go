@@ -113,14 +113,6 @@ const (
 	BeforeArg = "before"
 	// IDsArg is the set of message ids a claim leases, reads back, and retires.
 	IDsArg = querygen.IDsArg
-	// LimitArg bounds a candidate read. It is querygen's name for a limit,
-	// which is the name unison.yaml renames MySQL's bare `limit` placeholder
-	// to, so the three engines converge on one argument.
-	LimitArg = querygen.LimitArg
-	// OffsetArg is how far into the claimable candidates a skip-locked claim's
-	// read resumes, for the reason LimitArg's MySQL spelling has: a bare
-	// placeholder there, named `offset`, renamed once in unison.yaml.
-	OffsetArg = "result_offset"
 	// HeldByArg is the claim a retirement or a failure says it is reporting on:
 	// the name the relay stamped when it took the rows, presented again when it
 	// comes back to say what happened to them.
@@ -383,9 +375,9 @@ func createInsert() *querygen.Query {
 // locks the record it finds and no gap beside it, so a claim locks the rows it
 // is going to lease and nothing an enqueue could need.
 //
-// The offset is how that claim fills its batch when some candidates turn out
-// to be held by another relay: it reads on from where the last page stopped
-// rather than from the top again. The lease mode reads one page from zero.
+// A candidate another relay already holds is skipped rather than replaced, so a
+// skip-locked batch can come back short. The next cycle picks up what this one
+// left, which is cheaper than paging past the held rows to fill the batch.
 func selectClaimable(g *querygen.Generator) *querygen.Query {
 	const (
 		claimed = "m"
@@ -421,7 +413,7 @@ ORDER BY %[1]s.%[12]s, %[1]s.%[3]s
 		PartitionKeyColumn,
 		earlier,
 		querygen.CreatedAtColumn,
-		page(g.Dialect()),
+		g.LimitClause(),
 	)
 
 	return &querygen.Query{
@@ -499,19 +491,6 @@ func byKey(d dialect.Dialect) string {
 	}
 
 	return " FORCE INDEX (PRIMARY)"
-}
-
-// page is a candidate read's bound and where it resumes.
-//
-// MySQL's spelling is the two-argument LIMIT, offset first, because it takes
-// only bare placeholders there; unison.yaml renames them to the names the
-// other two engines spell out.
-func page(d dialect.Dialect) string {
-	if d == dialect.MySQL {
-		return "LIMIT ?, ?"
-	}
-
-	return fmt.Sprintf("LIMIT sqlc.arg(%s) OFFSET sqlc.arg(%s)", LimitArg, OffsetArg)
 }
 
 // SkipLockedName is the locked form's name, derived from the unlocked one.

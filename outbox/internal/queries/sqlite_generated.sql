@@ -34,7 +34,7 @@ WHERE m.published_at IS NULL
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
-LIMIT sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
+LIMIT COALESCE(sqlc.narg(result_limit), 50);
 
 -- name: SelectClaimableOutboxMessagesSkipLocked :many
 SELECT id
