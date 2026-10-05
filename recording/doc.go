@@ -70,10 +70,27 @@ webhooks.Emitter.Emit for the gate.
 The event names and the entries' shape for a store's own writes belong to that
 store's package, beside its Hooks, which is where each RecordingHooks lives. A
 consumer's own nouns are recorded through Record directly, with event types the
-consumer names, exactly as webhooks.Emitter documents. Redaction is the audit
-recorder's: a field that must never be audited carries an `audit:"-"` tag on the
-row type, and a policy that belongs to one deployment is an audit.WithRedaction
-on the recorder this type is handed.
+consumer names, exactly as webhooks.Emitter documents.
+
+# Redaction: the module's obligation and the deployment's policy
+
+Two different things decide what an entry may not carry, and they live in two
+different places.
+
+A field the module's own privacy adapter treats as the subject's — a comment's
+body, an operator's note on a signup, what somebody wrote in an issue report —
+is the module's obligation. The adapter erases it, and a copy in the one table
+built not to forget is a copy the erasure cannot reach, so the store's
+RecordingHooks redacts it before the entry reaches Record: the diff passes
+through an audit.Redaction the hooks own, through audit.Redaction.Apply, and the
+value is hashed while its name survives. A deployment that installs the hooks
+and never heard of audit.WithRedaction is still right. A field that must never
+be audited at all, not even as a digest, carries an `audit:"-"` tag on the row
+type instead.
+
+A field a deployment considers sensitive for its own reasons is that
+deployment's policy, and is an audit.WithRedaction on the recorder this type is
+handed. It applies on top of whatever the hooks already did.
 
 # Which tier this is
 

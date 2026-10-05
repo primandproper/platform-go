@@ -172,8 +172,8 @@ func TestRecordingHooks(T *testing.T) {
 		must.NoError(t, err)
 		entry, delivery = l.last(t)
 		test.EqOp(t, audit.EventUpdated, entry.EventType)
-		test.EqOp(t, "the button does nothing", entry.Changes["details"].Old)
-		test.EqOp(t, "the button does nothing, twice", entry.Changes["details"].New)
+		// The entry says the details changed, and never what they said.
+		test.Eq(t, hashedChange(t, "details", "the button does nothing", "the button does nothing, twice"), entry.Changes["details"])
 		test.MapNotContainsKey(t, entry.Changes, "status")
 		test.MapNotContainsKey(t, entry.Metadata, metadataPreviousStatus)
 		test.EqOp(t, EventReportUpdated, delivery.EventType)
@@ -194,12 +194,12 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, StatusOpen, resolved.PreviousStatus)
 		test.Eq(t, []string{"closedAt", "resolution", "status"}, resolved.Changed)
 
-		// Who resolved it and what it said is answerable after a reopen clears
-		// both from the row.
+		// Who resolved it, and that its note changed, is answerable after a
+		// reopen clears both from the row; what the note said is not.
 		_, err = env.transition(t, store, testScope, created.ID, StatusResolved, StatusOpen, "")
 		must.NoError(t, err)
 		entry, _ = l.last(t)
-		test.EqOp(t, "fixed", entry.Changes["resolution"].Old)
+		test.Eq(t, hashedChange(t, "resolution", "fixed", ""), entry.Changes["resolution"])
 		test.EqOp[any](t, StatusResolved, entry.Changes["status"].Old)
 		test.NotNil(t, entry.Changes["closedAt"].Old)
 		test.EqOp(t, "triager-1", entry.Actor.ID)
@@ -253,4 +253,17 @@ func TestRecordingHooks(T *testing.T) {
 		test.ErrorIs(t, hooks.AfterTransitionReport(t.Context(), recordingTx(), testScope, &Report{}, nil), ErrNilReport)
 		test.ErrorIs(t, hooks.AfterArchiveReport(t.Context(), recordingTx(), testScope, nil), ErrNilReport)
 	})
+}
+
+// hashedChange is the change a write records for a field RecordingHooks hashes:
+// the digests audit writes for a Hash rule, never the text.
+func hashedChange(t *testing.T, field, old, updated string) audit.Change {
+	t.Helper()
+
+	hashed, err := audit.Redaction{Hash: []string{field}}.Apply(map[string]audit.Change{field: {Old: old, New: updated}})
+	must.NoError(t, err)
+
+	test.StrHasPrefix(t, "sha256:", hashed[field].Old.(string))
+
+	return hashed[field]
 }

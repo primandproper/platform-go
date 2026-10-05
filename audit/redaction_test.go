@@ -237,6 +237,70 @@ func TestRedaction(T *testing.T) {
 	})
 }
 
+func TestRedaction_Apply(T *testing.T) {
+	T.Parallel()
+
+	T.Run("hashes a named field as the recorder would", func(t *testing.T) {
+		t.Parallel()
+
+		changes := map[string]Change{
+			"body":   {Old: "first draft", New: "second draft"},
+			"status": {Old: "open", New: "closed"},
+		}
+
+		redacted, err := Redaction{Hash: []string{"body"}}.Apply(changes)
+		must.NoError(t, err)
+
+		wantOld, err := hashValue("first draft")
+		must.NoError(t, err)
+		wantNew, err := hashValue("second draft")
+		must.NoError(t, err)
+
+		must.MapLen(t, 2, redacted)
+		test.Eq(t, Change{Old: wantOld, New: wantNew}, redacted["body"])
+		test.Eq(t, changes["status"], redacted["status"])
+	})
+
+	T.Run("leaves an absent half absent", func(t *testing.T) {
+		t.Parallel()
+
+		redacted, err := Redaction{Hash: []string{"body"}}.Apply(map[string]Change{"body": {New: "hello"}})
+		must.NoError(t, err)
+
+		test.Nil(t, redacted["body"].Old)
+		test.StrHasPrefix(t, "sha256:", redacted["body"].New.(string))
+	})
+
+	T.Run("drops a field named in both lists", func(t *testing.T) {
+		t.Parallel()
+
+		redacted, err := Redaction{Hash: []string{"body"}, Drop: []string{"body"}}.Apply(map[string]Change{"body": {Old: "a", New: "b"}})
+		must.NoError(t, err)
+
+		test.MapNotContainsKey(t, redacted, "body")
+	})
+
+	T.Run("does not mutate what it was given", func(t *testing.T) {
+		t.Parallel()
+
+		changes := map[string]Change{"body": {Old: "a", New: "b"}}
+
+		_, err := Redaction{Hash: []string{"body"}}.Apply(changes)
+		must.NoError(t, err)
+
+		test.Eq(t, Change{Old: "a", New: "b"}, changes["body"])
+	})
+
+	T.Run("passes nothing through as nothing", func(t *testing.T) {
+		t.Parallel()
+
+		redacted, err := Redaction{Hash: []string{"body"}}.Apply(nil)
+		must.NoError(t, err)
+
+		test.Nil(t, redacted)
+	})
+}
+
 func TestRedaction_merge(T *testing.T) {
 	T.Parallel()
 

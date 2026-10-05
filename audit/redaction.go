@@ -35,6 +35,42 @@ func (r Redaction) merge(other Redaction) Redaction {
 	}
 }
 
+// Apply returns changes with r's rules applied, for a writer whose redaction
+// travels with the type rather than with a deployment's recorder.
+//
+// A store's RecordingHooks is that writer. A field its own privacy adapter
+// treats as the subject's — what somebody wrote, what an operator wrote about
+// them — is the module's obligation and not a deployment's policy, so the hook
+// redacts it before the entry reaches any recorder, and a deployment that never
+// heard of WithRedaction still keeps it out of the log. Hashing there rather
+// than tagging the field audit:"-" keeps its name in the diff: the entry still
+// says the field changed, and so does an event built from the same diff.
+//
+// The digest is the one the recorder writes for a Hash rule, so a value is
+// spelled the same whichever of the two redacted it. A recorder rule naming the
+// same field afterwards applies to the digest: Hash digests it again and Drop
+// removes it, which is still the stricter disposition winning. changes itself
+// is never mutated.
+func (r Redaction) Apply(changes map[string]Change) (map[string]Change, error) {
+	return redactChanges(changes, r.rules())
+}
+
+// rules resolves one Redaction into a lookup. Hash is applied first and Drop
+// second, so a field named in both ends up dropped.
+func (r Redaction) rules() map[string]disposition {
+	out := make(map[string]disposition, len(r.Hash)+len(r.Drop))
+
+	for _, field := range r.Hash {
+		out[field] = hashField
+	}
+
+	for _, field := range r.Drop {
+		out[field] = dropField
+	}
+
+	return out
+}
+
 // disposition is what happens to one field.
 type disposition uint8
 
@@ -68,21 +104,7 @@ func (r *ChainRecorder) dispositions(resourceType string) map[string]disposition
 		return nil
 	}
 
-	out := make(map[string]disposition, len(global.Hash)+len(global.Drop)+len(specific.Hash)+len(specific.Drop))
-
-	// Hash first, then Drop, so a field named in both ends up dropped.
-	for _, fields := range [][]string{global.Hash, specific.Hash} {
-		for _, field := range fields {
-			out[field] = hashField
-		}
-	}
-	for _, fields := range [][]string{global.Drop, specific.Drop} {
-		for _, field := range fields {
-			out[field] = dropField
-		}
-	}
-
-	return out
+	return global.merge(specific).rules()
 }
 
 // redact applies the entry's resource type's rules to its changes and metadata,
