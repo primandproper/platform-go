@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
 
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )

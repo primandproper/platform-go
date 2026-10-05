@@ -2,13 +2,13 @@
 Package plans answers entitlements' plan question and metering's billing-period
 question from the billing store.
 
-[github.com/primandproper/platform-go/v14/entitlements] names PlanSource as the
+[github.com/primandproper/platform-go/v15/entitlements] names PlanSource as the
 one seam it cannot fill, on the grounds that the join between an account and a
 purchased plan is application data. It is — and it is application data this
 module now owns a table for, which is what this package is: the read, plus the
 one decision that genuinely stays the consumer's.
 
-[github.com/primandproper/platform-go/v14/metering] refuses PeriodBillingPeriod
+[github.com/primandproper/platform-go/v15/metering] refuses PeriodBillingPeriod
 without a resolver for exactly the same reason, and the same row answers it:
 Subscription.CurrentPeriodStart and CurrentPeriodEnd are the window the provider
 says is paid for, which is the window an invoice will be drawn against.
@@ -77,8 +77,8 @@ package plans
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/entitlements"
+	"github.com/primandproper/platform-go/v15/billing"
+	"github.com/primandproper/platform-go/v15/entitlements"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"

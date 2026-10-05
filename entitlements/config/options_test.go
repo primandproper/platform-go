@@ -3,7 +3,7 @@ package entitlementscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/entitlements"
+	"github.com/primandproper/platform-go/v15/entitlements"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"

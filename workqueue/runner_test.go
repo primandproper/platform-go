@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
+	"github.com/primandproper/platform-go/v15/workqueue/internal/workqueuedb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

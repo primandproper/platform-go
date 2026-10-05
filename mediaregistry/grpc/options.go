@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

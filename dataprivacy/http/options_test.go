@@ -3,7 +3,7 @@ package http
 import (
 	"testing"
 
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"

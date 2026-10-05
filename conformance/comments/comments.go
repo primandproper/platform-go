@@ -3,8 +3,8 @@ package comments
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
-	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v15/comments/commentspb"
+	"github.com/primandproper/platform-go/v15/conformance"
 )
 
 // surface is this suite's name, and the key a subject's per-surface scope is

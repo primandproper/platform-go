@@ -6,8 +6,8 @@ import (
 	stderrors "errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/internal/passwordresetdb"
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset/internal/passwordresetdb"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing"

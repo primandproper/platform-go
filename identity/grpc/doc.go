@@ -1,6 +1,6 @@
 /*
 Package grpc is identity on the wire: the gRPC service over
-[github.com/primandproper/platform-go/v14/identity]'s Service and Store, the
+[github.com/primandproper/platform-go/v15/identity]'s Service and Store, the
 converters between the generated messages and its types, a typed client, and the
 default permission fragment a consumer composes into its policy.
 
@@ -25,7 +25,7 @@ request field.
 
 What stays the consumer's is what was always genuinely theirs, and each is a
 seam here rather than a decision: who is calling
-([github.com/primandproper/platform-go/v14/callers.Principal]), what each method
+([github.com/primandproper/platform-go/v15/callers.Principal]), what each method
 requires ([Permissions], declared in one call by [Require]), which rows a caller
 may name ([TargetAuthorizer], which unlike the other three has a real default),
 what else happens on a write (identity.Hooks, inside the transaction), and
@@ -64,7 +64,7 @@ the two permissions, and nothing in this module grants either. It holds
 whichever authorizer is installed, the default or a consumer's own, so a rule
 of their own need not re-derive the operator carve-out.
 
-[github.com/primandproper/platform-go/v14/identity/config] assembles all three
+[github.com/primandproper/platform-go/v15/identity/config] assembles all three
 layers from environment configuration and registers them with an injector, which
 is the shorter of the two mounts below.
 
@@ -81,7 +81,7 @@ banned user.
 
 Every other method here takes the caller as given, and that is where the
 obligation actually sits: these handlers read
-[github.com/primandproper/platform-go/v14/callers.Principal] off the context and
+[github.com/primandproper/platform-go/v15/callers.Principal] off the context and
 whoever put it there is who they answer for. A consumer whose interceptor resolves
 that principal through GetPrincipal — directly, or through
 authentication/signin, which does — inherits the refusal on every method at once.
@@ -156,7 +156,7 @@ The errormappers.Register call is not optional and is not made here. Without it
 every sentinel this service returns arrives as codes.Unknown — a taken username
 included — because the mapping lives beside the sentinels in identity and
 nothing installs itself into a process-wide registry by being linked in. See
-[github.com/primandproper/platform-go/v14/errormappers].
+[github.com/primandproper/platform-go/v15/errormappers].
 
 # What is absent
 
@@ -270,7 +270,7 @@ the scope and the owner together — rather than in a guard ahead of it.
 
 # The two seams grow in opposite directions
 
-[github.com/primandproper/platform-go/v14/callers.Principal]'s method set is
+[github.com/primandproper/platform-go/v15/callers.Principal]'s method set is
 final: three methods, and there will not be a fourth. Every gRPC surface in this
 module names the type, so it is not this package's interface and is no longer
 declared here — it lives in a leaf package of its own, which is what stops a
@@ -290,7 +290,7 @@ which a consumer whose type has the method satisfies by having it, and one whose
 type does not keeps compiling through. The precedent is
 [github.com/primandproper/primitives-go/v2/notifications/async.ConnectionAcceptor]
 and the standard library's http.Flusher. That ruling is stated once, in
-[github.com/primandproper/platform-go/v14/callers.Principal]'s own
+[github.com/primandproper/platform-go/v15/callers.Principal]'s own
 documentation, and the surfaces that name the type point at it rather than
 restating it.
 

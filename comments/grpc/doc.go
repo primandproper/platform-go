@@ -1,6 +1,6 @@
 /*
 Package grpc is comments on the wire: the gRPC service over
-[github.com/primandproper/platform-go/v14/comments]'s Store, the converters
+[github.com/primandproper/platform-go/v15/comments]'s Store, the converters
 between the generated messages and its types, a typed client, and the default
 permission fragment a consumer composes into their policy.
 
@@ -26,9 +26,9 @@ comments.Store, which says it on each of the two methods.
 
 # Four seams, and two of them have a default
 
-Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+Who is calling is [github.com/primandproper/platform-go/v15/callers.Principal],
 which a consumer's own authentication interceptor puts on the context and
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor] reads
 back. Those are one package for the whole module rather than an interface per
 surface: a deployment has one authentication interceptor and one notion of a
 caller.
@@ -150,7 +150,7 @@ The errormappers.Register call is not optional and is not made here. Without it
 every sentinel this service returns arrives as codes.Unknown — a reply to a
 reply included — because the mapping lives beside the sentinels in comments and
 nothing installs itself into a process-wide registry by being linked in. See
-[github.com/primandproper/platform-go/v14/errormappers].
+[github.com/primandproper/platform-go/v15/errormappers].
 */
 package grpc
 

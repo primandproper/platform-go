@@ -19,7 +19,7 @@ package retentioncfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/retention"
+	"github.com/primandproper/platform-go/v15/retention"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/errors"

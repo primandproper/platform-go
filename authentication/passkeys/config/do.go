@@ -3,7 +3,9 @@ package passkeyscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/recording"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	"github.com/primandproper/primitives-go/v2/config/injection"
@@ -56,8 +58,10 @@ func RegisterStore(i do.Injector) {
 // Both are required and neither has a default; a container missing either fails
 // when the Service is invoked — at boot, for a service built through
 // service.New — with an error naming the one it wanted. A registered
-// passkeys.UsernameResolver, passkeys.AlternativeSignIn or passkeys.Hooks is
-// attached, and an absent one is left off.
+// passkeys.UsernameResolver or passkeys.AlternativeSignIn is attached, and an
+// absent one is left off. passkeys.Hooks is resolved through
+// recordingcfg.InvokeHooks: one the application registered, then a
+// passkeys.RecordingHooks when a *recording.Recorder is registered, then none.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*passkeys.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -139,9 +143,11 @@ func optionalServiceOptions(i do.Injector) ([]passkeys.ServiceOption, error) {
 		opts = append(opts, passkeys.WithAlternativeSignIn(alternative))
 	}
 
-	hooks, err := injection.InvokeOptional[passkeys.Hooks](i)
+	hooks, err := recordingcfg.InvokeHooks(i, func(r *recording.Recorder) (passkeys.Hooks, error) {
+		return passkeys.NewRecordingHooks(r)
+	})
 	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking passkey hooks")
+		return nil, err
 	}
 
 	if hooks != nil {

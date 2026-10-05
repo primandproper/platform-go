@@ -46,7 +46,7 @@ retry costs is a duplicate write, not a duplicate row.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

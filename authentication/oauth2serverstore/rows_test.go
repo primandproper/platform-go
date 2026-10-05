@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/internal/oauth2serverdb"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2serverstore/internal/oauth2serverdb"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 

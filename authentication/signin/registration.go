@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/totp"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -25,7 +25,7 @@ import (
 // skipping the fourth. What this package adds is the credential, which is the
 // part identity may not do.
 //
-// [github.com/primandproper/platform-go/v14/identity.Service] satisfies it. A
+// [github.com/primandproper/platform-go/v15/identity.Service] satisfies it. A
 // consumer whose directory is not that one implements the interface.
 type Registrar interface {
 	// Register creates the user, the first account they own and the membership
@@ -99,11 +99,11 @@ func Password(plaintext string) Credential { return passwordCredential{plaintext
 // NoPassword names a registrant who will hold no password.
 //
 // It is a supported arrival rather than an unfinished one — identity says as
-// much of [github.com/primandproper/platform-go/v14/identity.User.HashedPassword]
+// much of [github.com/primandproper/platform-go/v15/identity.User.HashedPassword]
 // — and it is how a great deal of the world signs in now. What it costs is
 // stated rather than left to be discovered: the ways back in for such a person
 // are a passkey ceremony
-// ([github.com/primandproper/platform-go/v14/authentication/passkeys]) or
+// ([github.com/primandproper/platform-go/v15/authentication/passkeys]) or
 // attaching a password later through [Service.AttachPassword], which is what
 // the verification mail's link is good for. This package's four doors all prove
 // a password, so registering with none and doing neither of those produces

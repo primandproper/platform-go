@@ -22,7 +22,7 @@ package sagacfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/saga"
+	"github.com/primandproper/platform-go/v15/saga"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/distributedlock"

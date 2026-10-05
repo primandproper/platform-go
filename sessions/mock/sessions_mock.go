@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v15/sessions"
 )
 
 // Ensure, that StoreMock does implement sessions.Store.

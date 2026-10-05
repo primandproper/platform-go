@@ -43,8 +43,8 @@ multi-tenant one that forgot — a sign-in that refuses everybody rather than on
 that signs them into somebody else's tenant.
 
 The authenticated RPCs read the caller off a
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor], which
-resolves a [github.com/primandproper/platform-go/v14/callers.Principal]. Those
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor], which
+resolves a [github.com/primandproper/platform-go/v15/callers.Principal]. Those
 are one package for the whole module rather than an interface per surface: a
 consumer writes one extractor and every service here uses it, where two would be
 two chances to disagree about who is calling.

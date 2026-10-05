@@ -72,7 +72,7 @@ const (
 	ActorIPColumn = "actor_ip"
 	// ActorImpersonatorColumn is who was really acting when the actor was
 	// acting through somebody else's identity, and empty otherwise. It arrived
-	// in the schema's second version; see audit/migrations.
+	// in v14's second schema version; see audit/migrations.
 	ActorImpersonatorColumn = "actor_impersonator"
 	// ChangeSetColumn holds the encoded per-field before/after, and is NULL for
 	// an entry that carries none.

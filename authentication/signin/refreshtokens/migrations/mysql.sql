@@ -21,6 +21,26 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}signin_refresh_tokens (
     purge_after       DATETIME(6)  NOT NULL,
     redeemed_at       DATETIME(6),
     revoked_at        DATETIME(6),
+    -- The columns from here on are the ones postgres.sql explains, in the order
+    -- it explains why they are in.
+    --
+    -- They are VARCHAR although none is a key or indexed. successor_hash holds
+    -- what hash holds and is bound the way hash is bound, so a second width for
+    -- one value would be a width free to disagree; redeemed_with_key is
+    -- compared in the re-mint claim's predicate, and a bound comparison against
+    -- an off-row TEXT column buys nothing over an inline one. 255 is also the
+    -- ceiling the store rejects an over-long key at, so a key MySQL would
+    -- silently truncate is refused in Go first — see
+    -- MaximumIdempotencyKeyLength. access_token_id, actor_id and
+    -- credential_kind are projected on a listing or compared on the check a
+    -- consumer may make on every request, and 255 is well past any identifier
+    -- an issuer mints or any name a kind is given.
+    redeemed_with_key VARCHAR(255),
+    successor_hash    VARCHAR(255),
+    signed_in_at      DATETIME(6)  NOT NULL,
+    access_token_id   VARCHAR(255),
+    actor_id          VARCHAR(255),
+    credential_kind   VARCHAR(255),
 
     KEY {{PREFIX}}signin_refresh_tokens_family_idx (scope, family_id),
     KEY {{PREFIX}}signin_refresh_tokens_subject_idx (scope, subject_id),

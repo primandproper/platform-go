@@ -3,8 +3,8 @@ package sessionscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/sessions"
-	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
+	"github.com/primandproper/platform-go/v15/sessions"
+	sessionshttp "github.com/primandproper/platform-go/v15/sessions/http"
 
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/cookies"

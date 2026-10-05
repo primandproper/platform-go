@@ -3,8 +3,8 @@ package notifications
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

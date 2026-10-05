@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
-	"github.com/primandproper/platform-go/v14/errormappers"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	dataprivacymock "github.com/primandproper/platform-go/v15/dataprivacy/mock"
+	"github.com/primandproper/platform-go/v15/errormappers"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"

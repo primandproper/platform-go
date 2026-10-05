@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
+	"github.com/primandproper/platform-go/v15/internal/sentinelmatrix"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

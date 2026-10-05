@@ -1,8 +1,8 @@
 package sync
 
 import (
-	"github.com/primandproper/platform-go/v14/billing/standing"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/billing/standing"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
@@ -24,7 +24,7 @@ type Option func(*Syncer)
 //
 // The writer is [identity.BillingWriter], which identity.Store satisfies, and
 // classify is the deployment's reading of what a processor status means —
-// [github.com/primandproper/platform-go/v14/billing/standing.Strict] is the one
+// [github.com/primandproper/platform-go/v15/billing/standing.Strict] is the one
 // most of them want and none of them have to take.
 //
 // Both or neither. A writer with no reading, or a reading with nowhere to write

@@ -36,7 +36,7 @@ const (
 	thisPackage = "internal/archivegate"
 
 	// gatePath is this package's import path, as a handler imports it.
-	gatePath = "github.com/primandproper/platform-go/v14/internal/archivegate"
+	gatePath = "github.com/primandproper/platform-go/v15/internal/archivegate"
 
 	// fromProtoPath is the converter's import path.
 	fromProtoPath = "github.com/primandproper/primitives-go/v2/filtering/grpc"

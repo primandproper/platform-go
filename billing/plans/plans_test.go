@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/billing"
-	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
-	"github.com/primandproper/platform-go/v14/entitlements"
+	"github.com/primandproper/platform-go/v15/billing"
+	billingmock "github.com/primandproper/platform-go/v15/billing/mock"
+	"github.com/primandproper/platform-go/v15/entitlements"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"

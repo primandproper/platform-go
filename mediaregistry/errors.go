@@ -25,6 +25,14 @@ var (
 	// ErrNilStore indicates a nil Store handed to StoreAndRecord.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil registry store")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil upload registry recorder")
+
+	// ErrNilObject indicates a nil Object handed to a RecordingHooks method. The
+	// store never does this; a consumer calling a hook by hand can.
+	ErrNilObject = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil upload registry object")
+
 	// ErrNilReader indicates a nil io.Reader handed to StoreAndRecord.
 	ErrNilReader = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil reader")
 

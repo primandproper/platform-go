@@ -3,7 +3,7 @@ package entitlements
 import (
 	"maps"
 
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	"github.com/primandproper/primitives-go/v2/cache"
 	"github.com/primandproper/primitives-go/v2/featureflags"

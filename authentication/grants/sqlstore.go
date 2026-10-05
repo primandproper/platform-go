@@ -6,9 +6,9 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/authentication/grants/internal/grantsdb"
-	"github.com/primandproper/platform-go/v14/authentication/grants/internal/queries"
-	"github.com/primandproper/platform-go/v14/authentication/grants/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/grants/internal/grantsdb"
+	"github.com/primandproper/platform-go/v15/authentication/grants/internal/queries"
+	"github.com/primandproper/platform-go/v15/authentication/grants/migrations"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/database"

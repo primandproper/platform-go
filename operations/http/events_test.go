@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations"
-	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+	"github.com/primandproper/platform-go/v15/operations"
+	operationsmock "github.com/primandproper/platform-go/v15/operations/mock"
 
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
