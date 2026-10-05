@@ -25,6 +25,13 @@ const ResourceTypeUser = "identity.user"
 // [EventCatalog] is the fragment to merge into that catalog; an event type left
 // out of it is still published to the outbox and dispatched to nobody, which is
 // how a deployment keeps a credential event internal.
+//
+// The password, second-factor and recovery-code events are credential events,
+// and EventCatalog leaves them out: they are recorded and published to the
+// outbox, where a deployment's own consumers may read them, and offered to no
+// webhook subscriber. passkeys' credential events are gated the same way, for
+// the reason its EventCatalog gives. A deployment that does want a third party
+// told when somebody's sign-in methods change adds them to its catalog by name.
 const (
 	// EventUserAuthenticated says somebody proved a credential, through any
 	// door. The payload says which kind, whether the door was administrative,
@@ -64,8 +71,9 @@ const (
 	EventSignInAccountSwitched webhooks.EventType = "signin.sign_in.account_switched"
 )
 
-// EventCatalog is every event this package emits, described, for a consumer to
-// merge into the catalog its dispatcher is built with:
+// EventCatalog is every event this package emits that a webhook subscriber may
+// receive, described, for a consumer to merge into the catalog its dispatcher is
+// built with. It leaves out the credential events, as the constants' block says:
 //
 //	catalog := webhooks.Catalog{OrderCreated: {Description: "..."}}
 //	maps.Copy(catalog, signin.EventCatalog())
@@ -75,15 +83,9 @@ const (
 func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
 		EventUserAuthenticated:          {Description: "Somebody proved a credential and signed in, or an operator was issued a token to act as them."},
-		EventPasswordUpdated:            {Description: "A user changed their password."},
-		EventPasswordAttached:           {Description: "A user who held no password was given one."},
-		EventTOTPSecretRefreshed:        {Description: "A user was issued a new second-factor secret."},
-		EventTOTPSecretVerified:         {Description: "A user proved the second-factor secret they hold."},
 		EventEmailAddressVerified:       {Description: "A user answered the verification link mailed to their address."},
 		EventVerificationEmailRequested: {Description: "A user was minted a fresh email verification link."},
 		EventMagicLinkRequested:         {Description: "A user was minted a sign-in link."},
-		EventRecoveryCodeUsed:           {Description: "A user spent one of their recovery codes."},
-		EventRecoveryCodesReplaced:      {Description: "A user was issued a fresh set of recovery codes."},
 		EventSignInsRevoked:             {Description: "One or more of a user's logins were ended."},
 		EventSignInAccountSwitched:      {Description: "A login moved to another of its user's accounts."},
 	}

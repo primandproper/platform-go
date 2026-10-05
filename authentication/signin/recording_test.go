@@ -44,10 +44,35 @@ func noCaller(context.Context) (callers.Principal, bool) { return nil, false }
 
 // recordingLedger is everything the two halves were handed, in order.
 type recordingLedger struct {
-	refuse     error
+	refuse error
+	// catalog is the dispatcher's, and nil means a deployment that has opted
+	// every event in, credential events included; see optedIn.
+	catalog    webhooks.Catalog
 	scopes     []tenancy.Scope
 	entries    []*audit.Entry
+	published  []outbox.Message
 	deliveries []*webhooks.Delivery
+}
+
+// credentialEvents are the events EventCatalog leaves out.
+var credentialEvents = []webhooks.EventType{
+	signin.EventPasswordUpdated,
+	signin.EventPasswordAttached,
+	signin.EventTOTPSecretRefreshed,
+	signin.EventTOTPSecretVerified,
+	signin.EventRecoveryCodeUsed,
+	signin.EventRecoveryCodesReplaced,
+}
+
+// optedIn is the catalog of a deployment that added the credential events to
+// EventCatalog by name, so every hook's event reaches a subscriber.
+func optedIn() webhooks.Catalog {
+	catalog := signin.EventCatalog()
+	for _, eventType := range credentialEvents {
+		catalog[eventType] = webhooks.EventDefinition{Description: "opted in by name"}
+	}
+
+	return catalog
 }
 
 func newSignInRecordingHooks(
@@ -72,11 +97,21 @@ func newSignInRecordingHooks(
 	}
 
 	enqueuer := &webhooksmock.EnqueuerMock{
-		EnqueueFunc: func(context.Context, database.Tx, ...outbox.Message) error { return nil },
+		EnqueueFunc: func(_ context.Context, _ database.Tx, msgs ...outbox.Message) error {
+			l.published = append(l.published, msgs...)
+
+			return nil
+		},
 	}
 
 	dispatcher := &webhooksmock.DispatcherMock{
-		CatalogFunc: signin.EventCatalog,
+		CatalogFunc: func() webhooks.Catalog {
+			if l.catalog != nil {
+				return l.catalog
+			}
+
+			return optedIn()
+		},
 		DispatchFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, delivery *webhooks.Delivery) error {
 			l.deliveries = append(l.deliveries, delivery)
 
@@ -147,30 +182,33 @@ func TestNewRecordingHooks(T *testing.T) {
 func TestEventCatalog(T *testing.T) {
 	T.Parallel()
 
-	T.Run("knows every event this package emits, each described", func(t *testing.T) {
+	T.Run("knows every event a subscriber may receive, each described", func(t *testing.T) {
 		t.Parallel()
 
-		emitted := []webhooks.EventType{
+		subscribable := []webhooks.EventType{
 			signin.EventUserAuthenticated,
-			signin.EventPasswordUpdated,
-			signin.EventPasswordAttached,
-			signin.EventTOTPSecretRefreshed,
-			signin.EventTOTPSecretVerified,
 			signin.EventEmailAddressVerified,
 			signin.EventVerificationEmailRequested,
 			signin.EventMagicLinkRequested,
-			signin.EventRecoveryCodeUsed,
-			signin.EventRecoveryCodesReplaced,
 			signin.EventSignInsRevoked,
 			signin.EventSignInAccountSwitched,
 		}
 
 		catalog := signin.EventCatalog()
-		test.MapLen(t, len(emitted), catalog)
+		test.MapLen(t, len(subscribable), catalog)
 
-		for _, eventType := range emitted {
+		for _, eventType := range subscribable {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
+		}
+	})
+
+	T.Run("makes no credential event subscribable", func(t *testing.T) {
+		t.Parallel()
+
+		catalog := signin.EventCatalog()
+		for _, eventType := range credentialEvents {
+			test.False(t, catalog.Known(eventType), test.Sprintf("%s is subscribable", eventType))
 		}
 	})
 
@@ -355,6 +393,29 @@ func TestRecordingHooks_CredentialWrites(T *testing.T) {
 			test.SliceEmpty(t, l.entries)
 		})
 	}
+}
+
+func TestRecordingHooks_CredentialEventsReachNoSubscriber(T *testing.T) {
+	T.Parallel()
+
+	T.Run("under EventCatalog a credential write is recorded and published, and delivered to nobody", func(t *testing.T) {
+		t.Parallel()
+
+		l := &recordingLedger{catalog: signin.EventCatalog()}
+		hooks := newSignInRecordingHooks(t, l, aCaller)
+		tx := database.NewTxForTesting(nil)
+
+		must.NoError(t, hooks.AfterUpdatePassword(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterAttachPassword(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterRefreshTOTPSecret(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterVerifyTOTPSecret(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterReplaceRecoveryCodes(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterRecoveryCodeUsed(t.Context(), tx, recordingScope, recordedUser(), 3))
+
+		test.SliceLen(t, len(credentialEvents), l.entries)
+		test.SliceLen(t, len(credentialEvents), l.published)
+		test.SliceEmpty(t, l.deliveries)
+	})
 }
 
 func TestRecordingHooks_AfterVerify(T *testing.T) {
