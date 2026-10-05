@@ -155,7 +155,9 @@ func New(i do.Injector, opts ...Option) (*Service, error) {
 		return nil, r.err
 	}
 
-	svc.noteRecording(i, cfg)
+	if err = svc.noteRecording(i, cfg); err != nil {
+		return nil, err
+	}
 
 	// Application loops go last, so they stop first: one that writes outbox
 	// rows or enqueues jobs has to be finished before the relay and the pool it
@@ -178,15 +180,22 @@ func New(i do.Injector, opts ...Option) (*Service, error) {
 //
 // A warning and not a refusal, because a service that writes its own entries
 // through audit.Recorder and none of platform's stores' is configured
-// correctly, and New cannot tell it from one that forgot.
-func (s *Service) noteRecording(i do.Injector, cfg *Config) {
+// correctly, and New cannot tell it from one that forgot. The one refusal is a
+// Recorder that is registered and does not build: that is a deployment that
+// asked to record and cannot, and the stores it feeds would have failed New
+// with the same error had any of them been resolved first.
+func (s *Service) noteRecording(i do.Injector, cfg *Config) error {
 	if cfg.Audit == nil {
-		return
+		return nil
 	}
 
 	recorder, err := injection.InvokeOptional[*recording.Recorder](i)
-	if err == nil && recorder != nil {
-		return
+	if err != nil {
+		return platformerrors.Wrap(err, "building the recording.Recorder audit records through")
+	}
+
+	if recorder != nil {
+		return nil
 	}
 
 	s.logger.WithValues(map[string]any{
@@ -194,6 +203,8 @@ func (s *Service) noteRecording(i do.Injector, cfg *Config) {
 		"outbox_configured":   cfg.Outbox != nil,
 	}).Warn("audit is configured and platform store writes record no audit entry: " +
 		"recording is on only when webhooks and outbox are configured beside audit")
+
+	return nil
 }
 
 // resolver walks the injector and remembers the first failure, so a startup
