@@ -1,21 +1,24 @@
 /*
 Package migrations supplies the audit tables' DDL, rendered for a dialect and
-table prefix, as the versions it has shipped in.
+table prefix.
 
-# Versions
+# One schema, and what it replaced
 
-The entries table has changed since it first shipped, and a database that
-already created it is not going to run a CREATE TABLE IF NOT EXISTS again to
-find out. So the schema is a sequence — a database/ddl Migrations — and each
-version holds only its own change:
+v14 shipped these tables as a run of two versions — the tables as v14.0.0
+created them, then actor_impersonator and its index — because a table that has
+shipped is created by CREATE TABLE IF NOT EXISTS, and an edit to that CREATE
+reaches a fresh install and no database that already has the table. A new major
+is the one place that run may be reset, so this is one schema again: the final
+shape the v14 run produced, column order, defaults and index names included,
+and the first version of whatever run this package grows next.
 
-  - Version 1 is the two tables as they shipped in v14.0.0.
-  - Version 2 adds actor_impersonator, the operator behind an entry recorded
-    under somebody else's identity, and the index that answers "what did this
-    operator do as somebody else".
+A database still on the v14 run must be at that run's latest version, 2, before
+it takes this one. The schema here is a no-op on a table that already exists and
+does not alter one that is behind, so a database at version 1 would keep a table
+with no actor_impersonator column and fail on the first write that names it.
 
-A shipped version is never edited. A change to these tables is a new version
-appended here, which is what Latest then reports.
+A change to these tables from here on is a new version in a database/ddl
+Migrations, under the same rule as before: a shipped version is never edited.
 
 # A fresh install
 
@@ -36,27 +39,7 @@ repository, nothing to keep in sync as this package evolves:
 
 Statements is the same DDL split into individually executable statements, for
 callers running it some other way — a different migration tool, or a test that
-just wants the tables. Both render the whole sequence, version 1 onwards.
-
-# A database that already has the tables
-
-A consumer that created the tables from an earlier release does not edit the
-migration that did it. They add a migration of their own holding what SQLSince
-renders from the version their database is at:
-
-	// Created from v14.0.0 through the release before version 2: owes version 2.
-	owed, err := migrations.SQLSince(dialect.Postgres, audit.DefaultTablePrefix, 1)
-	// ...
-	migrate.WithGeneratedMigration(47, "upgrade_audit_tables", owed)
-
-A database already at Latest owes nothing, and SQLSince says so with an empty
-body rather than an error. The sequence itself stays unexported, for the reason
-authentication/signin/refreshtokens/migrations gives: a value a consumer holds is
-one they can append to before rendering it.
-
-Version 2 is safe to run under the append-only triggers below. Adding a column
-with a constant default rewrites no row through an UPDATE on any of the three
-engines, so the triggers have nothing to refuse.
+just wants the tables.
 
 Two tables are rendered from one prefix rather than two configurable names.
 Record writes both in one transaction and Verify reads both, so a consumer who
@@ -109,67 +92,44 @@ import (
 const component = "audit"
 
 //go:embed postgres.sql
-var postgresV1 string
+var postgresSchema string
 
 //go:embed mysql.sql
-var mysqlV1 string
+var mysqlSchema string
 
 //go:embed sqlite.sql
-var sqliteV1 string
-
-//go:embed postgres_v2.sql
-var postgresV2 string
-
-//go:embed mysql_v2.sql
-var mysqlV2 string
-
-//go:embed sqlite_v2.sql
-var sqliteV2 string
+var sqliteSchema string
 
 // prefixPlaceholder is the token each .sql file uses for the table prefix.
 const prefixPlaceholder = ddl.Placeholder
 
-// sequence is this package's schema over time, in the order it runs. Rendering
-// and prefix vetting go through it, as they do for every other schema-shipping
-// package; what stays local is the append-only triggers, which are built in Go
-// rather than embedded and must not be re-split on semicolons.
-//
-// It is unexported so that nothing outside this file can append to it or
-// overwrite a version that has shipped; see the package doc.
-var sequence = ddl.Migrations{
-	{Version: 1, Schema: ddl.Schema{Component: component, Postgres: postgresV1, MySQL: mysqlV1, SQLite: sqliteV1}},
-	{Version: 2, Schema: ddl.Schema{Component: component, Postgres: postgresV2, MySQL: mysqlV2, SQLite: sqliteV2}},
+// schema is this package's DDL. Rendering and prefix vetting go through it, as
+// they do for every other schema-shipping package; what stays local is the
+// append-only triggers, which are built in Go rather than embedded and must not
+// be re-split on semicolons.
+var schema = ddl.Schema{
+	Component: component,
+	Postgres:  postgresSchema,
+	MySQL:     mysqlSchema,
+	SQLite:    sqliteSchema,
 }
 
 // ErrInvalidPrefix indicates a prefix that is not a plain SQL identifier
 // fragment.
 var ErrInvalidPrefix = platformerrors.New("invalid audit migration table prefix")
 
-// Latest is the version a database is at once it has run everything this
-// package ships — what a consumer records beside the migration that ran it, and
-// passes to StatementsSince or SQLSince the next time this package adds one.
-func Latest() uint64 {
-	return sequence.Latest()
-}
-
-// Statements renders every version's DDL for the dialect against the given
-// table prefix, in version order and each table ahead of its indexes, split
-// into individually executable statements. It is a fresh install:
-// StatementsSince from version 0.
+// Statements renders the DDL for the dialect against the given table prefix,
+// each table ahead of its indexes, split into individually executable
+// statements.
+//
+// The local prefix check runs first so a malformed prefix reports this
+// package's own ErrInvalidPrefix.
 func Statements(d dialect.Dialect, prefix string) ([]string, error) {
-	return StatementsSince(d, prefix, 0)
-}
-
-// StatementsSince renders what a database at version still owes, in version
-// order, as individually executable statements. A database already at Latest
-// owes nothing and gets no statements.
-func StatementsSince(d dialect.Dialect, prefix string, version uint64) ([]string, error) {
-	owed, err := since(d, prefix, version)
-	if err != nil {
+	if err := ValidatePrefix(prefix); err != nil {
 		return nil, err
 	}
 
-	return owed.Statements(d, prefix)
+	return schema.Statements(d, prefix)
 }
 
 // SQL renders the same DDL as Statements, joined back into one migration body.
@@ -187,45 +147,11 @@ func StatementsSince(d dialect.Dialect, prefix string, version uint64) ([]string
 // into statements on semicolons, and a '--' comment containing one would be torn
 // in half.
 func SQL(d dialect.Dialect, prefix string) (string, error) {
-	return SQLSince(d, prefix, 0)
-}
-
-// SQLSince renders the same DDL as StatementsSince, joined back into one
-// migration body — what a consumer whose database already has the tables hands
-// to WithGeneratedMigration as a migration of their own. A database already at
-// Latest gets the empty body.
-func SQLSince(d dialect.Dialect, prefix string, version uint64) (string, error) {
-	owed, err := since(d, prefix, version)
-	if err != nil {
+	if err := ValidatePrefix(prefix); err != nil {
 		return "", err
 	}
 
-	return owed.SQL(d, prefix)
-}
-
-// since is the part of a splice that can be refused before anything renders:
-// the prefix, the dialect, and a version this package has never shipped.
-//
-// The local prefix check runs first so a malformed prefix reports this
-// package's own ErrInvalidPrefix. A version past Latest is an error rather than
-// an empty result: a database claiming one was migrated by a newer release than
-// the one running now, and "nothing to do" would let an older binary go on
-// writing a table whose shape it does not know.
-func since(d dialect.Dialect, prefix string, version uint64) (ddl.Migrations, error) {
-	if err := ValidatePrefix(prefix); err != nil {
-		return nil, err
-	}
-
-	if !d.Valid() {
-		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "%s migration dialect %q", component, d)
-	}
-
-	if latest := sequence.Latest(); version > latest {
-		return nil, platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue,
-			"%s migration version %d is past the latest this package ships, %d", component, version, latest)
-	}
-
-	return sequence.Since(version)
+	return schema.SQL(d, prefix)
 }
 
 // appendOnlyMessage is what the database reports when something tries to edit a
@@ -326,12 +252,11 @@ func AppendOnlyStatements(d dialect.Dialect, prefix string) ([]string, error) {
 }
 
 // ValidatePrefix reports whether prefix yields a legal SQL identifier for every
-// table and index any version of this package creates. Every version is vetted
-// rather than the latest, since a consumer runs all of them.
+// table and index this package creates.
 func ValidatePrefix(prefix string) error {
 	if !ddl.ValidNamespace(prefix) {
 		return platformerrors.Wrapf(ErrInvalidPrefix, "audit table prefix %q", prefix)
 	}
 
-	return sequence.ValidatePrefix(prefix)
+	return schema.ValidatePrefix(prefix)
 }

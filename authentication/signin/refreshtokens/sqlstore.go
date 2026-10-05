@@ -98,8 +98,7 @@ type SQLStore struct {
 // hands them, and nothing in this package reaches for Client.Reader() on its
 // own.
 //
-// It does not create the table. Hand migrations.SQL to your own migration run,
-// or migrations.SQLSince if an earlier release already created it.
+// It does not create the table. Hand migrations.SQL to your own migration run.
 func NewSQLStore(cfg *Config, db database.Client, opts ...Option) (*SQLStore, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
@@ -689,7 +688,7 @@ func (s *SQLStore) ListActiveSignIns(
 // It is the listing's three guards read by family rather than by subject, and
 // against this store's own clock for the reason the exchange's deadline is, so
 // the row it answers is the row an exchange would still accept. The family index
-// version 1 created serves it, which matters because a consumer may make this
+// serves it, which matters because a consumer may make this
 // read on every request.
 //
 // A family unknown in scope reads exactly as one that ended, because from here

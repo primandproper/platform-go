@@ -287,8 +287,9 @@ audit/migrations renders the DDL for a dialect and table prefix. If you already
 run database/migrate, pass migrations.SQL to WithGeneratedMigration and the
 tables are created by your normal migration run at a version you choose — no DDL
 copied into your repository. Statements returns the same DDL pre-split for
-callers using something else. The schema is versioned, and a database created
-by an earlier release takes what SQLSince renders from the version it is at.
+callers using something else. A database created on v14's versioned run must
+be at that run's latest version before it takes this schema; see
+audit/migrations.
 
 The library owns the schema rather than defining a repository interface for the
 application to implement, and the hash chain is why: the uniqueness constraint

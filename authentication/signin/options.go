@@ -521,7 +521,7 @@ func WithRefreshTokenStore(store RefreshTokenStore) ServiceOption {
 // refreshes while a request carrying its previous access token is in flight
 // has that request refused, and has to retry it with the token the refresh
 // handed back. A login whose current refresh token was minted before its table
-// recorded access tokens — see the refreshtokens migrations' version 4 —
+// recorded access tokens — the column arrived in v14's fourth schema version —
 // records none, so every access token it minted is refused until its next
 // exchange mints a successor that does; that is one refresh, forced, for a login
 // that predates the column.

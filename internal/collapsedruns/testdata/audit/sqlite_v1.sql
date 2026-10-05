@@ -36,10 +36,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}audit_log_entries (
     change_set    BLOB,
     metadata      BLOB,
     prev_hash     TEXT NOT NULL DEFAULT '',
-    hash          TEXT NOT NULL,
-    -- See postgres.sql for why it is a column, why its default is the empty
-    -- string, and why it is last.
-    actor_impersonator TEXT NOT NULL DEFAULT ''
+    hash          TEXT NOT NULL
 );
 
 -- See postgres.sql for what each of these is for; the definitions are the same.
@@ -54,9 +51,6 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}audit_log_entries_actor_idx
 
 CREATE INDEX IF NOT EXISTS {{PREFIX}}audit_log_entries_resource_idx
     ON {{PREFIX}}audit_log_entries (resource_type, resource_id, recorded_at);
-
-CREATE INDEX IF NOT EXISTS {{PREFIX}}audit_log_entries_impersonator_idx
-    ON {{PREFIX}}audit_log_entries (actor_impersonator, recorded_at);
 
 -- Mutable, unlike the entries — appends advance the head, retention moves the
 -- prune marker — so the exemption above does not reach it and it carries the
