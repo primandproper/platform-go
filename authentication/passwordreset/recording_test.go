@@ -3,7 +3,6 @@ package passwordreset
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"testing"
 	"time"
 
@@ -121,12 +120,12 @@ func TestEventCatalog(T *testing.T) {
 		t.Parallel()
 
 		catalog := EventCatalog()
-		for _, eventType := range []webhooks.EventType{EventTokenIssued, EventTokenRedeemed, EventTokensErased} {
+		for _, eventType := range []webhooks.EventType{EventTokenIssued, EventTokenRedeemed} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 
-		test.MapLen(t, 3, catalog)
+		test.MapLen(t, 2, catalog)
 	})
 
 	T.Run("hands out a fresh copy each time", func(t *testing.T) {
@@ -221,7 +220,7 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, EventTokenRedeemed, delivery.EventType)
 	})
 
-	T.Run("an erasure records its count and never the principal, zero included", func(t *testing.T) {
+	T.Run("an erasure records nothing, because dataprivacy records the request once", func(t *testing.T) {
 		t.Parallel()
 
 		l := &ledger{}
@@ -235,27 +234,16 @@ func TestRecordingHooks(T *testing.T) {
 			deleted, deleteErr := deleteForUser(t, store, testScope(), userID)
 			must.NoError(t, deleteErr)
 			test.EqOp(t, want, deleted)
-
-			entry, delivery := l.last(t)
-			test.EqOp(t, ResourceTypeToken, entry.ResourceType)
-			test.EqOp(t, "", entry.ResourceID)
-			test.EqOp(t, audit.EventDeleted, entry.EventType)
-			test.EqOp(t, testScope(), entry.Scope)
-			test.Eq(t, map[string]string{metadataDeleted: strconv.FormatInt(want, 10)}, entry.Metadata)
-
-			test.EqOp(t, EventTokensErased, delivery.EventType)
-			var erased ErasureEvent
-			must.NoError(t, json.Unmarshal(delivery.Payload, &erased))
-			test.EqOp(t, want, erased.Deleted)
-			test.StrNotContains(t, string(delivery.Payload), userID)
 		}
 
-		// One issuance, two erasures.
-		test.SliceLen(t, 3, l.entries)
-		test.SliceLen(t, 3, l.deliveries)
+		// The issuance, and nothing for either erasure.
+		test.SliceLen(t, 1, l.entries)
+		test.SliceLen(t, 1, l.deliveries)
+		_, delivery := l.last(t)
+		test.EqOp(t, EventTokenIssued, delivery.EventType)
 	})
 
-	T.Run("a recorder filing by subject puts a token's entries on its principal's chain and an erasure's where the write ran", func(t *testing.T) {
+	T.Run("a recorder filing by subject puts a token's entries on its principal's chain", func(t *testing.T) {
 		t.Parallel()
 
 		bySubject := func(_ context.Context, scope tenancy.Scope, entry *recording.Entry) tenancy.Scope {
@@ -272,12 +260,9 @@ func TestRecordingHooks(T *testing.T) {
 
 		_, err := issueFor(t, store, testScope(), userID, time.Hour)
 		must.NoError(t, err)
-		_, err = deleteForUser(t, store, testScope(), userID)
-		must.NoError(t, err)
 
-		must.SliceLen(t, 2, l.entries)
+		must.SliceLen(t, 1, l.entries)
 		test.EqOp(t, tenancy.Of(userID), l.entries[0].Scope)
-		test.EqOp(t, testScope(), l.entries[1].Scope)
 	})
 
 	T.Run("a refused recording fails the write, and the row with it", func(t *testing.T) {

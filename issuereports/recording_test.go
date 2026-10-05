@@ -116,13 +116,13 @@ func TestEventCatalog(T *testing.T) {
 
 		catalog := EventCatalog()
 		for _, eventType := range []webhooks.EventType{
-			EventReportCreated, EventReportUpdated, EventReportTransitioned, EventReportArchived, EventReportsErased,
+			EventReportCreated, EventReportUpdated, EventReportTransitioned, EventReportArchived,
 		} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 
-		test.MapLen(t, 5, catalog)
+		test.MapLen(t, 4, catalog)
 	})
 
 	T.Run("hands out a fresh copy each time", func(t *testing.T) {
@@ -218,7 +218,7 @@ func TestRecordingHooks(T *testing.T) {
 		}
 	})
 
-	T.Run("an erasure records the count and nothing that identifies the reporter, zero included", func(t *testing.T) {
+	T.Run("an erasure records nothing, because dataprivacy records the request once", func(t *testing.T) {
 		t.Parallel()
 
 		l := &ledger{}
@@ -232,16 +232,11 @@ func TestRecordingHooks(T *testing.T) {
 			deleted, eraseErr := env.erase(t, store, testScope, testReporter)
 			must.NoError(t, eraseErr)
 			test.EqOp(t, want, deleted)
-
-			entry, delivery := l.last(t)
-			test.EqOp(t, ResourceTypeReport, entry.ResourceType)
-			test.EqOp(t, "", entry.ResourceID)
-			test.EqOp(t, audit.EventDeleted, entry.EventType)
-			test.Eq(t, map[string]string{metadataDeleted: map[int64]string{0: "0", 1: "1"}[want]}, entry.Metadata)
-			test.EqOp(t, EventReportsErased, delivery.EventType)
-			test.Eq(t, &ErasureEvent{Deleted: want}, decodeEvent[ErasureEvent](t, delivery))
-			test.StrNotContains(t, string(delivery.Payload), testReporter)
 		}
+
+		// Nothing for either erasure.
+		test.SliceLen(t, 0, l.entries)
+		test.SliceLen(t, 0, l.deliveries)
 	})
 
 	T.Run("a nil row is refused by name", func(t *testing.T) {

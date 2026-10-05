@@ -182,11 +182,12 @@ was handed somewhere durable writes no reset link into it.
 
 A deployment that owes every write the ordinary pair, an audit entry and a domain
 event, does not write that Hooks itself. [RecordingHooks] is it, built over a
-recording.Recorder: an issuance, a redemption and an erasure each record an entry
-naming [ResourceTypeToken] and emit one of the types [EventCatalog] describes,
-and a revocation records nothing, because the only revocation this package makes
-is the second half of a redemption already recorded. Embed it to change one
-write's record and inherit the rest.
+recording.Recorder: an issuance and a redemption each record an entry naming
+[ResourceTypeToken] and emit one of the types [EventCatalog] describes. A
+revocation records nothing, because the only revocation this package makes is
+the second half of a redemption already recorded, and nor does an erasure,
+because it is one table of a request dataprivacy.Fulfiller records once. Embed
+it to change one write's record and inherit the rest.
 
 # Tenancy
 

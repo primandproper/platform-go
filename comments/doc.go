@@ -150,10 +150,11 @@ A deployment that owes every write the ordinary pair, an audit entry and a domai
 event, does not write that Hooks itself. [RecordingHooks] is it, built over a
 recording.Recorder: the entry names the comment by [ResourceTypeComment] and is
 attributed to whoever wrote or removed it, the event is one of the types
-[EventCatalog] describes and never carries the body, and an author's erasure
-records its count and never who. A target's sweep records nothing, because the
-consumer's write that removed the target is the record of it. Embed it to change
-one write's record and inherit the rest.
+[EventCatalog] describes and never carries the body. A target's sweep records
+nothing, because the consumer's write that removed the target is the record of
+it, and an author's erasure records nothing, because dataprivacy.Fulfiller
+records the erasure request once rather than once per store it reached. Embed it
+to change one write's record and inherit the rest.
 
 # Tenancy
 

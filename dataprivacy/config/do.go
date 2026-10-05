@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v15/dataprivacy"
 	"github.com/primandproper/platform-go/v15/operations"
 	"github.com/primandproper/platform-go/v15/shredding"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/compression"
 	"github.com/primandproper/primitives-go/v2/config/injection"
@@ -178,7 +179,10 @@ func RegisterService(i do.Injector) {
 // A registered dataprivacy.Notifier is who the Fulfiller tells when a request
 // finishes, and it is the only way an export's link reaches the subject: with
 // none, the export is produced and nobody is told. A registered audit.Recorder
-// and dataprivacy.ActorResolver are attached, as they are to the Service.
+// and dataprivacy.ActorResolver are attached, as they are to the Service. A
+// registered *webhooks.Emitter is what an erasure's one
+// dataprivacy.EventErasureFulfilled is published through; with none, the
+// erasure is recorded in the audit log and announced to nobody.
 //
 // Prerequisites: *Config, dataprivacy.Store (see RegisterStore),
 // *dataprivacy.Registry (the application's collectors and erasers),
@@ -230,6 +234,15 @@ func RegisterFulfiller(i do.Injector) {
 		}
 		if actor != nil {
 			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerActorResolver(actor))
+		}
+
+		emitter, err := injection.InvokeOptional[*webhooks.Emitter](i)
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "invoking the webhooks emitter")
+		}
+
+		if emitter != nil {
+			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerEventEmitter(emitter))
 		}
 
 		ctx, err := do.Invoke[context.Context](i)

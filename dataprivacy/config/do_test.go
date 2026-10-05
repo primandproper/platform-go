@@ -12,6 +12,8 @@ import (
 	"github.com/primandproper/platform-go/v15/dataprivacy"
 	dataprivacymock "github.com/primandproper/platform-go/v15/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v15/operations"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	webhooksmock "github.com/primandproper/platform-go/v15/webhooks/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
@@ -289,6 +291,9 @@ func TestRegisterFulfiller_OptionalRegistrations(T *testing.T) {
 		"actor resolver": func(i do.Injector, err error) {
 			do.Provide(i, func(do.Injector) (dataprivacy.ActorResolver, error) { return nil, err })
 		},
+		"webhooks emitter": func(i do.Injector, err error) {
+			do.Provide(i, func(do.Injector) (*webhooks.Emitter, error) { return nil, err })
+		},
 	} {
 		T.Run("a registered "+name+" that fails to build fails it", func(t *testing.T) {
 			t.Parallel()
@@ -313,6 +318,11 @@ func TestRegisterFulfiller_OptionalRegistrations(T *testing.T) {
 		do.ProvideValue[dataprivacy.Notifier](i, dataprivacy.NotifierFunc(func(context.Context, *dataprivacy.Notification) error { return nil }))
 		do.ProvideValue[audit.Recorder](i, &auditmock.RecorderMock{})
 		do.ProvideValue(i, dataprivacy.ActorResolver(func(context.Context) audit.Actor { return audit.Actor{ID: "system"} }))
+
+		emitter, err := webhooks.NewEmitter(&webhooksmock.EnqueuerMock{}, &webhooksmock.DispatcherMock{}, "events")
+		must.NoError(t, err)
+		do.ProvideValue(i, emitter)
+
 		RegisterStore(i)
 		RegisterFulfiller(i)
 

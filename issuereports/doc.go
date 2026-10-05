@@ -90,8 +90,8 @@ event, does not write that Hooks itself. [RecordingHooks] is it, built over a
 recording.Recorder: the entry names the report by [ResourceTypeReport], the event
 is one of the types [EventCatalog] describes, a transition's entry keeps the
 status, note and closing stamp it moved away from, and a reporter's erasure
-records its count and never who. Embed it to change one write's record and
-inherit the rest.
+records nothing, because dataprivacy.Fulfiller records the erasure request once.
+Embed it to change one write's record and inherit the rest.
 
 # Tenancy
 

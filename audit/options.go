@@ -145,6 +145,19 @@ func WithRedaction(resourceType string, redaction Redaction) RecorderOption {
 	}
 }
 
+// WithoutCredentialRedaction stops NewRecorder installing CredentialRedaction
+// under the empty resource type, leaving only what WithRedaction registers.
+//
+// It is the one way to record a field CredentialRedaction names, and it is
+// spelled out because that is a decision rather than a default: a deployment
+// whose rows have a "token" that is not a credential registers the rest of the
+// list by hand, under its own WithRedaction, and says so here.
+func WithoutCredentialRedaction() RecorderOption {
+	return func(r *ChainRecorder) {
+		r.withoutCredentialRedaction = true
+	}
+}
+
 // There are no PruneTarget options. It is a value with exported fields, like
 // retention.Table, and it carries no observability of its own: the sweep that
 // drives it is a retention.Sweeper's, and so are the spans, the logger, and the

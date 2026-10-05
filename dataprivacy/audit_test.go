@@ -372,6 +372,32 @@ func TestFulfiller_AuditRecording(T *testing.T) {
 		test.EqOp(t, "1", entry.Metadata["retained"])
 	})
 
+	T.Run("a completed erasure's one entry carries every section's counts", func(t *testing.T) {
+		t.Parallel()
+
+		recorder := newRecordingAudit()
+
+		env := newFulfillerEnv(t, func(r *Registry) {
+			must.NoError(t, r.RegisterEraser("identity", countingEraser(9, 2, nil, nil)))
+			must.NoError(t, r.RegisterEraser("passwordreset", countingEraser(0, 0, nil, nil)))
+		}, WithFulfillerAuditRecorder(recorder))
+
+		req := env.submitAndRun(t, RequestErasure)
+		must.EqOp(t, StatusCompleted, req.Status)
+
+		// One entry for the request, however many stores it reached.
+		entries := recorder.all()
+		must.SliceLen(t, 1, entries)
+
+		entry := entries[0]
+		test.EqOp(t, req.ID, entry.ResourceID)
+		test.EqOp(t, "9", entry.Metadata["deleted"])
+		test.EqOp(t, "9", entry.Metadata["section.identity.deleted"])
+		test.EqOp(t, "2", entry.Metadata["section.identity.anonymized"])
+		test.EqOp(t, "0", entry.Metadata["section.passwordreset.deleted"])
+		test.EqOp(t, "0", entry.Metadata["section.passwordreset.anonymized"])
+	})
+
 	T.Run("a failing recorder rolls the erasure back", func(t *testing.T) {
 		t.Parallel()
 

@@ -30,9 +30,6 @@ const (
 	// EventObjectArchived says an upload was hidden. The bytes are still in the
 	// bucket, and the payload carries the key they are at.
 	EventObjectArchived webhooks.EventType = "mediaregistry.object.archived"
-	// EventObjectsErased says an owner's uploads were archived by an erasure.
-	// The payload carries the count and nothing that identifies the owner.
-	EventObjectsErased webhooks.EventType = "mediaregistry.objects.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -46,7 +43,6 @@ func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
 		EventObjectRecorded: {Description: "An uploaded object was registered."},
 		EventObjectArchived: {Description: "A registered object was archived; its bytes remain until retention removes them."},
-		EventObjectsErased:  {Description: "An owner's registered objects were archived by an erasure."},
 	}
 }
 
@@ -73,35 +69,19 @@ type ObjectEvent struct {
 	Size int64 `json:"size"`
 }
 
-// ErasureEvent is the payload of EventObjectsErased. It says how many objects an
-// erasure archived, and not whose: "forget this person" is one signal per
-// subject, and a per-store erasure event naming them would repeat it once for
-// every store they touched. See waitlists.ErasureEvent, which makes the same
-// call for the same reason.
-//
-// Unlike that one it names no kind of subject, because the registry has none to
-// name: an owner is whatever the consumer's authorization model calls a
-// principal, and the column says nothing about which.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// Archived is how many objects the erasure archived, zero included.
-	Archived int64 `json:"archived"`
-}
-
 // The metadata keys an audit entry here carries, read back by whoever reads the
 // log.
 const (
 	metadataContentType   = "contentType"
 	metadataSize          = "size"
 	metadataBelongsToType = "belongsToType"
-	metadataArchived      = "archived"
 )
 
 // RecordingHooks is the Hooks a deployment that keeps an audit log and
-// publishes events installs with WithHooks. Every write records an audit entry
-// and emits the event above for it, both on the write's transaction, through
-// the recording.Recorder it is built with.
+// publishes events installs with WithHooks. A registration and an archive each
+// record an audit entry and emit the event above for it, both on the write's
+// transaction, through the recording.Recorder it is built with. An erasure
+// records nothing, for the reason AfterArchiveObjectsForOwner gives.
 //
 // It implements Hooks outright rather than embedding NoopHooks, so a write
 // added to Store later fails to compile here until somebody decides what it
@@ -156,33 +136,20 @@ func (h *RecordingHooks) AfterArchiveObject(ctx context.Context, tx database.Tx,
 	return h.recordObject(ctx, tx, scope, object, audit.EventArchived, EventObjectArchived)
 }
 
-// AfterArchiveObjectsForOwner records an erasure: that it ran, and how many
-// objects it archived. Zero is recorded too, because the erasure ran.
+// AfterArchiveObjectsForOwner records nothing, deliberately.
 //
-// It names no owner, and the reason is waitlists' AfterWithdrawSignupsForSubject's:
-// this entry is about the erasure, so it is filed under the write's scope and
-// survives every scope deletion, and an owner identifier on it would be the one
-// reference the erasure left behind with nothing to say so. The count is what a
-// reader of the log can be told.
-func (h *RecordingHooks) AfterArchiveObjectsForOwner(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	_ string,
-	archived int64,
-) error {
-	entry := &recording.Entry{
-		ResourceType: ResourceTypeObject,
-		EventType:    audit.EventArchived,
-		Metadata:     map[string]string{metadataArchived: strconv.FormatInt(archived, 10)},
-	}
-
-	event := &webhooks.Event{
-		EventType: EventObjectsErased,
-		Payload:   &ErasureEvent{Archived: archived},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
+// Store.ArchiveObjectsForOwner is an erasure's write, one table of the many a
+// single erasure request reaches, and dataprivacy.Fulfiller records that request
+// once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls Store.ArchiveObjectsForOwner outside an erasure has an
+// archive nothing else recorded, and embeds this type to override the method.
+func (h *RecordingHooks) AfterArchiveObjectsForOwner(context.Context, database.Tx, tenancy.Scope, string, int64) error {
+	return nil
 }
 
 // recordObject writes the entry and the event for a write to one object.
