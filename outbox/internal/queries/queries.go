@@ -503,9 +503,12 @@ func byKey(d dialect.Dialect) string {
 
 // page is a candidate read's bound and where it resumes.
 //
-// MySQL's spelling is the two-argument LIMIT, offset first, because it takes
-// only bare placeholders there; unison.yaml renames them to the names the
-// other two engines spell out.
+// MySQL's spelling is the two-argument LIMIT, offset first, rather than LIMIT
+// and OFFSET, and not for style: sqlc hands SQLite's two arguments to the
+// generated querier offset first, and unison converges a query only when its
+// arguments come in one order on both engines. The two-argument form is the
+// one that puts MySQL's in the same order. It is timers' split claim's page,
+// for the same reason; querygen renders neither.
 func page(d dialect.Dialect) string {
 	if d == dialect.MySQL {
 		return "LIMIT ?, ?"

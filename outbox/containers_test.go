@@ -182,6 +182,73 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.Eq(t, []string{`{"id":"fresh"}`}, rec.payloads())
 	})
 
+	// What the skip-locked mode is for. Relays a NOTIFY wakes together read the
+	// same oldest candidates, and a claim that kept only what it could lock of
+	// those would hand every relay but the first an empty batch — the lease
+	// mode's contention under another name. The claim reads on past the rows
+	// another relay holds, so the second relay takes a batch of its own.
+	t.Run("a second relay claims past a batch another holds", func(t *testing.T) {
+		t.Parallel()
+
+		if env.claimMode != ClaimSkipLocked {
+			t.Skip("only the skip-locked claim reads past held rows")
+		}
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+
+		pairs := func(cfg *RelayConfig) {
+			cfg.ClaimMode = env.claimMode
+			cfg.TablePrefix = table
+			cfg.BatchSize = 2
+		}
+
+		holder, _ := newTestRelay(t, env.client, c, pairs)
+		second, rec := newTestRelay(t, env.client, c, pairs)
+
+		for _, id := range []string{"held-a", "held-b", "next-a", "next-b"} {
+			must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				return w.Enqueue(t.Context(), q, Message{Topic: "orders", Payload: map[string]any{"id": id}})
+			}))
+			c.advance(time.Millisecond)
+		}
+
+		var (
+			held    = make(chan []string, 1)
+			release = make(chan struct{})
+			done    = make(chan error, 1)
+		)
+
+		go func() {
+			done <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				ids, err := holder.selectClaimable(t.Context(), q, c.Now().UTC())
+				held <- ids
+				if err != nil {
+					return err
+				}
+
+				<-release
+
+				return nil
+			})
+		}()
+
+		select {
+		case ids := <-held:
+			must.SliceLen(t, 2, ids)
+		case err := <-done:
+			t.Fatalf("the holding claim ended before it held anything: %v", err)
+		}
+
+		second.cycle(t.Context())
+
+		close(release)
+		must.NoError(t, <-done)
+
+		test.Eq(t, []string{`{"id":"next-a"}`, `{"id":"next-b"}`}, rec.payloads())
+	})
+
 	t.Run("publishes committed messages", func(t *testing.T) {
 		t.Parallel()
 
