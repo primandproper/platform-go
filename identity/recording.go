@@ -354,8 +354,10 @@ const lastUpdatedAtField = "lastUpdatedAt"
 //
 // What it does not decide is where an entry is filed or who made it; both are
 // the Recorder's, through its ScopeResolver and its principal extractor. Every
-// entry about a person sets Entry.SubjectID — the user, or the member — so a
-// resolver filing by subject can; an account's entries name none.
+// entry about a person sets Entry.SubjectID — the user, or the member — and
+// every entry about an account names the account, so a resolver filing by
+// subject puts an account's own history on the account's chain, which is the
+// one a member asking about their account reads.
 //
 // Nor does it revoke anything. Hooks.AfterUpdateUserAccountStatus names the two
 // calls that end a suspended user's sessions and refresh-token families, and
@@ -517,7 +519,11 @@ func (h *RecordingHooks) AfterCreateAccount(
 }
 
 // AfterTransferAccountOwnership records the account under its new owner, with
-// the previous one in the metadata, since the column holds the new one now.
+// the previous one in the metadata, since the column holds the new one now. A
+// transfer is about the account and about the two people it moved between, so
+// it records the account's entry and one more naming each of them as its
+// subject: a Recorder filing by subject puts the change on all three chains,
+// and one filing by write puts all three on the write's.
 func (h *RecordingHooks) AfterTransferAccountOwnership(
 	ctx context.Context,
 	tx database.Tx,
@@ -529,15 +535,24 @@ func (h *RecordingHooks) AfterTransferAccountOwnership(
 		return ErrNilAccount
 	}
 
+	metadata := map[string]string{metadataPreviousOwnerUserID: previousOwnerUserID}
+	entries := []*recording.Entry{accountEntry(account, audit.EventUpdated, nil, metadata)}
+
+	for _, owner := range []string{account.OwnerUserID, previousOwnerUserID} {
+		if owner == "" {
+			continue
+		}
+
+		entry := accountEntry(account, audit.EventUpdated, nil, maps.Clone(metadata))
+		entry.SubjectID = owner
+		entries = append(entries, entry)
+	}
+
 	return h.record(ctx, tx, scope, EventAccountOwnershipTransferred, account.ID, &AccountEvent{
 		AccountID:           account.ID,
 		OwnerUserID:         account.OwnerUserID,
 		PreviousOwnerUserID: previousOwnerUserID,
-	},
-		accountEntry(account, audit.EventUpdated, nil, map[string]string{
-			metadataPreviousOwnerUserID: previousOwnerUserID,
-		}),
-	)
+	}, entries...)
 }
 
 // AfterSetDefaultAccount records the membership that is now the default, with
@@ -970,13 +985,18 @@ func userEntry(user *User, eventType audit.EventType, changes map[string]audit.C
 	}
 }
 
-// accountEntry is an entry about an account. It names no subject: an account
-// is not a person, and the people on it are named by their memberships'
-// entries.
+// accountEntry is an entry about an account, naming the account as its
+// subject. An account is not a person, but it is what the entry concerns and
+// it owns a chain of its own: filed by subject, its creation, its edits and its
+// archival land where its members read its history, rather than on whichever
+// chain the directory's writes run in. The people on it are named by their
+// memberships' entries, so the account's chain is never one a member's
+// erasure resolves to.
 func accountEntry(account *Account, eventType audit.EventType, changes map[string]audit.Change, metadata map[string]string) *recording.Entry {
 	return &recording.Entry{
 		ResourceType: ResourceTypeAccount,
 		ResourceID:   account.ID,
+		SubjectID:    account.ID,
 		EventType:    eventType,
 		Changes:      changes,
 		Metadata:     metadata,

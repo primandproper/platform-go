@@ -88,6 +88,7 @@ type ReleaseQuarantinedOutboxMessagesParams struct {
 type SelectClaimableOutboxMessagesParams struct {
 	Now            time.Time
 	LeaseExpiredBy *time.Time
+	ResultOffset   int64
 	ResultLimit    int64
 }
 
@@ -100,7 +101,7 @@ type SelectClaimableOutboxMessagesRow struct {
 type SelectClaimableOutboxMessagesSkipLockedParams struct {
 	Now            time.Time
 	LeaseExpiredBy *time.Time
-	ResultLimit    int64
+	IDs            []string
 }
 
 // SelectClaimableOutboxMessagesSkipLockedRow is one row of SelectClaimableOutboxMessagesSkipLocked's result.

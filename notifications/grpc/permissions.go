@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -134,4 +135,24 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// Every grant here is a member's: each RPC takes its subject from the principal
+// on the connection, so none of them reaches another person's inbox or
+// handsets.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Member: []authorization.Permission{
+			PermissionReadInbox,
+			PermissionMarkInboxRead,
+			PermissionArchiveInbox,
+			PermissionRegisterDevices,
+			PermissionReadDevices,
+			PermissionRevokeDevices,
+		},
+	}
 }

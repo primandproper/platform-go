@@ -180,8 +180,8 @@ func TestRecordingHooks(T *testing.T) {
 		must.NoError(t, err)
 		entry, delivery = l.last(t)
 		test.EqOp(t, audit.EventUpdated, entry.EventType)
-		test.EqOp(t, "first draft", entry.Changes["body"].Old)
-		test.EqOp(t, "second draft", entry.Changes["body"].New)
+		// The entry says the body changed, and never what it said.
+		test.Eq(t, hashedChange(t, "first draft", "second draft"), entry.Changes["body"])
 		test.MapContainsKey(t, entry.Changes, lastUpdatedAtField)
 		test.EqOp(t, EventCommentUpdated, delivery.EventType)
 		test.Eq(t, []string{"body"}, decodeEvent[CommentEvent](t, delivery).Changed)
@@ -243,4 +243,18 @@ func TestRecordingHooks(T *testing.T) {
 		test.ErrorIs(t, hooks.AfterUpdateComment(t.Context(), recordingTx(), testScope, nil, &Comment{}), ErrNilComment)
 		test.ErrorIs(t, hooks.AfterArchiveComment(t.Context(), recordingTx(), testScope, nil), ErrNilComment)
 	})
+}
+
+// hashedChange is the change an edit records for a field RecordingHooks hashes:
+// the digests audit writes for a Hash rule, never the text.
+func hashedChange(t *testing.T, old, updated string) audit.Change {
+	t.Helper()
+
+	hashed, err := audit.Redaction{Hash: []string{"field"}}.Apply(map[string]audit.Change{"field": {Old: old, New: updated}})
+	must.NoError(t, err)
+
+	test.StrHasPrefix(t, "sha256:", hashed["field"].Old.(string))
+	test.NotEq(t, hashed["field"].Old, hashed["field"].New)
+
+	return hashed["field"]
 }

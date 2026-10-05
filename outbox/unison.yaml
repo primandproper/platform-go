@@ -26,11 +26,13 @@ options:
   rename_params:
     mysql:
       limit: result_limit
+      offset: result_offset
 
   type_overrides:
     # Both engines resolve no type for these: SQLite for most arguments,
     # Postgres for a COALESCE'd LIMIT.
     - {column: "*.result_limit", go_type: int64}
+    - {column: "*.result_offset", go_type: int64}
     # The integer column, whose width the three engines do not agree on:
     # Postgres and MySQL resolve INTEGER to a 32-bit Go type and SQLite to a
     # 64-bit one, which is a divergence unison refuses rather than reconciles.

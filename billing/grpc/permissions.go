@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v15/billing/billingpb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -151,4 +152,39 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// The catalog is what the deployment sells, so stocking, repricing and
+// withdrawing it are an operator's, and reading it is everybody's. So is every
+// read that answers to no account — the ListAll grants — and every
+// administrative archive, none of which a customer makes about their own rows.
+//
+// Reading an account's subscriptions, purchases and ledger is its admin's.
+// [AccountAuthorizer] keeps those reads to the caller's accounts, but what they
+// disclose is the account's money rather than the caller's own, so they are
+// placed above a member.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator: []authorization.Permission{
+			PermissionCreateProducts,
+			PermissionUpdateProducts,
+			PermissionArchiveProducts,
+			PermissionListAllSubscriptions,
+			PermissionArchiveSubscriptions,
+			PermissionListAllPurchases,
+			PermissionArchivePurchases,
+			PermissionListAllTransactions,
+			PermissionArchiveTransactions,
+		},
+		TenantAdmin: []authorization.Permission{
+			PermissionReadSubscriptions,
+			PermissionReadPurchases,
+			PermissionReadTransactions,
+		},
+		Member: []authorization.Permission{PermissionReadProducts},
+	}
 }
