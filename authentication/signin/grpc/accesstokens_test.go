@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/identity"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
+	signinclient "github.com/primandproper/platform-go/v15/authentication/signin/grpc/client"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authorization"
