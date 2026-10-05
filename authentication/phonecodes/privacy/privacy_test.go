@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
-	phonecodesmock "github.com/primandproper/platform-go/v14/authentication/phonecodes/mock"
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes/privacy"
-	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes"
+	phonecodesmock "github.com/primandproper/platform-go/v15/authentication/phonecodes/mock"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes/privacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"

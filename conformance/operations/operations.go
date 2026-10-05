@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/conformance/internal/httpcall"
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/conformance/internal/httpcall"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

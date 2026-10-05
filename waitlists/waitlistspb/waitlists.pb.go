@@ -15,12 +15,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/waitlists/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/waitlists/v1/waitlists.proto=github.com/primandproper/platform-go/v14/waitlists/waitlistspb \
+//	    --go_opt=Mprimandproper/platform/waitlists/v1/waitlists.proto=github.com/primandproper/platform-go/v15/waitlists/waitlistspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -2659,7 +2659,7 @@ const file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc = "" +
 	"\bWithdraw\x124.primandproper.platform.waitlists.v1.WithdrawRequest\x1a5.primandproper.platform.waitlists.v1.WithdrawResponse\x12\x80\x01\n" +
 	"\vUnsubscribe\x127.primandproper.platform.waitlists.v1.UnsubscribeRequest\x1a8.primandproper.platform.waitlists.v1.UnsubscribeResponse\x12\xaa\x01\n" +
 	"\x19WithdrawSignupsForSubject\x12E.primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest\x1aF.primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse\x12\x86\x01\n" +
-	"\rArchiveSignup\x129.primandproper.platform.waitlists.v1.ArchiveSignupRequest\x1a:.primandproper.platform.waitlists.v1.ArchiveSignupResponseBLZJgithub.com/primandproper/platform-go/v14/waitlists/waitlistspb;waitlistspbb\x06proto3"
+	"\rArchiveSignup\x129.primandproper.platform.waitlists.v1.ArchiveSignupRequest\x1a:.primandproper.platform.waitlists.v1.ArchiveSignupResponseBLZJgithub.com/primandproper/platform-go/v15/waitlists/waitlistspb;waitlistspbb\x06proto3"
 
 var (
 	file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescOnce sync.Once

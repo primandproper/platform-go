@@ -6,9 +6,9 @@ import (
 	stderrors "errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/internal/magiclinkdb"
-	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/magiclinks/internal/magiclinkdb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/magiclinks/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing"

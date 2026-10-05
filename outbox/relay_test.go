@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
+	"github.com/primandproper/platform-go/v15/outbox/internal/outboxdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

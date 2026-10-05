@@ -3,7 +3,7 @@ package http
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
 
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

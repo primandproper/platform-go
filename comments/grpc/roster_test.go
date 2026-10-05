@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/comments"
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
+	"github.com/primandproper/platform-go/v15/comments"
+	"github.com/primandproper/platform-go/v15/comments/commentspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

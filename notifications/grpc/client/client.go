@@ -46,7 +46,7 @@ this package will not put one in front of an inbox on its own.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

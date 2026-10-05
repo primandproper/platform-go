@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -58,7 +58,7 @@ type RefreshToken struct {
 	// ended as a unit when a spent token is presented again.
 	//
 	// It is deliberately not called a session.
-	// [github.com/primandproper/platform-go/v14/sessions] is a different package
+	// [github.com/primandproper/platform-go/v15/sessions] is a different package
 	// with its own store and its own revocation, and one mechanism answering to
 	// one name in two places is the drift a shared vocabulary exists to prevent.
 	FamilyID string `json:"familyID"`
@@ -277,7 +277,7 @@ func (e *RefreshTokenReusedError) Unwrap() error { return ErrRefreshTokenReused 
 // RefreshTokenStore is where a sign-in's refresh tokens live.
 //
 // This module ships a SQL implementation together with the DDL it needs —
-// [github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens]
+// [github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens]
 // — so adopting rotation does not mean writing this. The interface exists
 // because the flow and its storage are genuinely separable, and because a
 // service that names none of it mints no refresh tokens at all: rotation is
@@ -593,7 +593,7 @@ type RefreshTokenStore interface {
 // row, so a user banned, terminated or removed from the account since they
 // signed in is refused here rather than carried by a family for as long as it
 // lives. On this module's directory that refusal is
-// [github.com/primandproper/platform-go/v14/identity.ErrSignInNotAdmitted], which
+// [github.com/primandproper/platform-go/v15/identity.ErrSignInNotAdmitted], which
 // identity.Store.GetPrincipal returns instead of a Principal; [ErrUserBanned],
 // [ErrUserTerminated] and [ErrUserUnverified] are what a [Directory] that does not
 // enforce status of its own produces here. Either way the exchange refuses and

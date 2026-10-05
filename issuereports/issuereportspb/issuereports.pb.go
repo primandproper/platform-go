@@ -6,12 +6,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/issuereports/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/issuereports/v1/issuereports.proto=github.com/primandproper/platform-go/v14/issuereports/issuereportspb \
+//	    --go_opt=Mprimandproper/platform/issuereports/v1/issuereports.proto=github.com/primandproper/platform-go/v15/issuereports/issuereportspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -2011,7 +2011,7 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\x1fListReportsByStatusAcrossScopes\x12N.primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest\x1aO.primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse\x12\x89\x01\n" +
 	"\fUpdateReport\x12;.primandproper.platform.issuereports.v1.UpdateReportRequest\x1a<.primandproper.platform.issuereports.v1.UpdateReportResponse\x12\x95\x01\n" +
 	"\x10TransitionReport\x12?.primandproper.platform.issuereports.v1.TransitionReportRequest\x1a@.primandproper.platform.issuereports.v1.TransitionReportResponse\x12\x8c\x01\n" +
-	"\rArchiveReport\x12<.primandproper.platform.issuereports.v1.ArchiveReportRequest\x1a=.primandproper.platform.issuereports.v1.ArchiveReportResponseBUZSgithub.com/primandproper/platform-go/v14/issuereports/issuereportspb;issuereportspbb\x06proto3"
+	"\rArchiveReport\x12<.primandproper.platform.issuereports.v1.ArchiveReportRequest\x1a=.primandproper.platform.issuereports.v1.ArchiveReportResponseBUZSgithub.com/primandproper/platform-go/v15/issuereports/issuereportspb;issuereportspbb\x06proto3"
 
 var (
 	file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescOnce sync.Once

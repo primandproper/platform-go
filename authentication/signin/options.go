@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/totp"
 	"github.com/primandproper/primitives-go/v2/clock"
@@ -495,7 +495,7 @@ func WithAdminRefreshTokenTTL(ttl time.Duration) ServiceOption {
 // is about: a sign-in that outlives its access token without a password, and a
 // stolen refresh token that becomes a detected event rather than a shared
 // session. This module's implementation is
-// [github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens].
+// [github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens].
 //
 // SignIn.FamilyID is set either way, because it names a login rather than a row.
 func WithRefreshTokenStore(store RefreshTokenStore) ServiceOption {
@@ -737,7 +737,7 @@ const DefaultMagicLinkRequestFloor = 500 * time.Millisecond
 // that quietly did nothing would be worse than one that says it is not
 // configured.
 //
-// github.com/primandproper/platform-go/v14/authentication/signin/magiclinks is
+// github.com/primandproper/platform-go/v15/authentication/signin/magiclinks is
 // the SQL implementation this module ships, with the DDL it needs.
 func WithMagicLinkStore(store MagicLinkStore) ServiceOption {
 	return func(s *Service) {
@@ -957,7 +957,7 @@ const DefaultRecoveryCodeCount = 8
 // password rather than the second factor itself, and a person who has lost their
 // authenticator re-enrolls one before anything else.
 //
-// github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes
+// github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes
 // is the SQL implementation this module ships, with the DDL it needs.
 func WithRecoveryCodeStore(store RecoveryCodeStore) ServiceOption {
 	return func(s *Service) {

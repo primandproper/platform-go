@@ -3,7 +3,7 @@ package grantscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/grants"
+	"github.com/primandproper/platform-go/v15/authentication/grants"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption/aes"

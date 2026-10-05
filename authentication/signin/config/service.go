@@ -3,10 +3,10 @@ package signincfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks"
-	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes"
-	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/magiclinks"
+	"github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes"
+	"github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/database"

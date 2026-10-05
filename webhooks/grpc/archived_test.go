@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"

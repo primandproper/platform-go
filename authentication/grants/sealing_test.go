@@ -3,7 +3,7 @@ package grants
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/grants/internal/queries"
+	"github.com/primandproper/platform-go/v15/authentication/grants/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/tenancy"

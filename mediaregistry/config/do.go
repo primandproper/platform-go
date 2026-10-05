@@ -3,9 +3,9 @@ package mediaregistrycfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	"github.com/primandproper/platform-go/v14/recording"
-	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	"github.com/primandproper/platform-go/v15/recording"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/observability"

@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	webhooksclient "github.com/primandproper/platform-go/v14/webhooks/grpc/client"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	webhooksclient "github.com/primandproper/platform-go/v15/webhooks/grpc/client"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset/passwordresetpb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )

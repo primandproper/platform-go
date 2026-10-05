@@ -1,8 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

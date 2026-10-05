@@ -3,7 +3,7 @@ Package magiclinks is where a sign-in link's tokens live: a digest-keyed,
 single-use credential mailed to an address and spent for a session.
 
 It is the SQL implementation of
-[github.com/primandproper/platform-go/v14/authentication/signin.MagicLinkStore],
+[github.com/primandproper/platform-go/v15/authentication/signin.MagicLinkStore],
 and it ships the DDL it needs, so adopting a passwordless door is a table and
 two options rather than a package somebody writes. The seam is in the parent
 because the flow and its storage are genuinely separable; the implementation is
@@ -23,7 +23,7 @@ of that flow's storage.
 
 # Why this is not links
 
-[github.com/primandproper/platform-go/v14/links] is a general-purpose link
+[github.com/primandproper/platform-go/v15/links] is a general-purpose link
 minter over the same shape — a token digest, an action, a subject, an expiry, a
 single-use resolution — and its own documentation names "magic_login" as an
 example action. It was the obvious home and it is not this one, for a reason

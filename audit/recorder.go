@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/audit/internal/auditdb"
+	"github.com/primandproper/platform-go/v15/audit/internal/auditdb"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

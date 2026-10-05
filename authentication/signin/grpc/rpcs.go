@@ -3,10 +3,10 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/callers"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/callers"
+	identitygrpc "github.com/primandproper/platform-go/v15/identity/grpc"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/idempotency"
@@ -160,7 +160,7 @@ func (s *Server) ExchangeRefreshToken(
 // the words a dead token gets, so the answer says nothing about the account; the
 // presented token is left unspent. An empty account answers InvalidArgument
 // through the platform mapper. See
-// [github.com/primandproper/platform-go/v14/authentication/signin.Service.SwitchAccount].
+// [github.com/primandproper/platform-go/v15/authentication/signin.Service.SwitchAccount].
 //
 // It reads no idempotency key, and the client stamps none on it — the service
 // documents what a lost answer costs.
@@ -191,7 +191,7 @@ func (s *Server) SwitchAccount(
 // make the button work only for people who did not need it.
 //
 // Every refusal a presented token can draw is a success here — see
-// [github.com/primandproper/platform-go/v14/authentication/signin.Service.SignOut],
+// [github.com/primandproper/platform-go/v15/authentication/signin.Service.SignOut],
 // which collapses them — so this method answers an error only when the deployment
 // is unwell or mints no refresh tokens at all.
 func (s *Server) SignOut(
@@ -217,7 +217,7 @@ func (s *Server) SignOut(
 // It requires a caller and takes the subject from the principal, so there is no
 // field that could name anybody else: an operator ending somebody else's sessions
 // is a different act, and it is [Server.EndAllSignInsForUser] — which calls
-// [github.com/primandproper/platform-go/v14/authentication/signin.Service.RevokeRefreshTokensForSubject]
+// [github.com/primandproper/platform-go/v15/authentication/signin.Service.RevokeRefreshTokensForSubject]
 // behind a permission — rather than this RPC. The two
 // are told apart in the hooks as well — this one is reported as the person's own
 // sign-out — which is why it calls SignOutEverywhere rather than that.
@@ -634,7 +634,7 @@ func (s *Server) RequestVerificationEmail(
 //
 // It is anonymous because the person it is for cannot sign in yet: a registrant
 // is refused at the password door until they answer a link. See
-// [github.com/primandproper/platform-go/v14/authentication/signin.Service.RequestVerificationEmailByAddress]
+// [github.com/primandproper/platform-go/v15/authentication/signin.Service.RequestVerificationEmailByAddress]
 // for why every answer is the same and held to the same floor.
 //
 // Rate limiting is the consumer's, in front of it: anybody can reach it.

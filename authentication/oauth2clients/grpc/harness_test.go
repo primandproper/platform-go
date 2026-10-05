@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/errormappers"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	oauth2clientsgrpc "github.com/primandproper/platform-go/v15/authentication/oauth2clients/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/errormappers"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

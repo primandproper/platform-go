@@ -12,12 +12,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/webhooks/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/webhooks/v1/webhooks.proto=github.com/primandproper/platform-go/v14/webhooks/webhookspb \
+//	    --go_opt=Mprimandproper/platform/webhooks/v1/webhooks.proto=github.com/primandproper/platform-go/v15/webhooks/webhookspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -1915,7 +1915,7 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\x11ListSubscriptions\x12<.primandproper.platform.webhooks.v1.ListSubscriptionsRequest\x1a=.primandproper.platform.webhooks.v1.ListSubscriptionsResponse\x12\x96\x01\n" +
 	"\x13ArchiveSubscription\x12>.primandproper.platform.webhooks.v1.ArchiveSubscriptionRequest\x1a?.primandproper.platform.webhooks.v1.ArchiveSubscriptionResponse\x12\x81\x01\n" +
 	"\fListAttempts\x127.primandproper.platform.webhooks.v1.ListAttemptsRequest\x1a8.primandproper.platform.webhooks.v1.ListAttemptsResponse\x12\x87\x01\n" +
-	"\x0eListEventTypes\x129.primandproper.platform.webhooks.v1.ListEventTypesRequest\x1a:.primandproper.platform.webhooks.v1.ListEventTypesResponseBIZGgithub.com/primandproper/platform-go/v14/webhooks/webhookspb;webhookspbb\x06proto3"
+	"\x0eListEventTypes\x129.primandproper.platform.webhooks.v1.ListEventTypesRequest\x1a:.primandproper.platform.webhooks.v1.ListEventTypesResponseBIZGgithub.com/primandproper/platform-go/v15/webhooks/webhookspb;webhookspbb\x06proto3"
 
 var (
 	file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescOnce sync.Once

@@ -6,8 +6,8 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/searchsync"
-	syncsource "github.com/primandproper/platform-go/v14/searchsync/source"
+	"github.com/primandproper/platform-go/v15/searchsync"
+	syncsource "github.com/primandproper/platform-go/v15/searchsync/source"
 )
 
 // orderRepository stands in for the application's repository. Both of the

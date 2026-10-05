@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 

@@ -9,10 +9,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/sessions"
-	sessionsdatabase "github.com/primandproper/platform-go/v14/sessions/database"
-	"github.com/primandproper/platform-go/v14/sessions/database/migrations"
-	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
+	"github.com/primandproper/platform-go/v15/sessions"
+	sessionsdatabase "github.com/primandproper/platform-go/v15/sessions/database"
+	"github.com/primandproper/platform-go/v15/sessions/database/migrations"
+	sessionshttp "github.com/primandproper/platform-go/v15/sessions/http"
 
 	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
 	"github.com/primandproper/primitives-go/v2/clock"

@@ -3,7 +3,7 @@ Package grpc serves passkeys over gRPC: enrolling one, signing in with one,
 and the list and archive a settings page offers.
 
 It is imported as passkeysgrpc, and it serves
-[github.com/primandproper/platform-go/v14/authentication/passkeys.Service].
+[github.com/primandproper/platform-go/v15/authentication/passkeys.Service].
 Each method converts, calls the service, and converts back. The one thing it
 adds is the reason it exists: a finished login goes on to a token.
 
@@ -35,7 +35,7 @@ totp_code for that, read as a password sign-in reads it.
 The login half is anonymous, so the scope comes off a [ScopeResolver] as it
 does for authentication/signin/grpc, and a deployment running both gives them
 the same one. The self-service half reads the caller off a
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor], and
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor], and
 takes its subject from nowhere else.
 
 The third is the [UserHandle]: the WebAuthn handle a signed-in user enrolls

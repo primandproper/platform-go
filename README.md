@@ -1,10 +1,10 @@
 # platform-go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v14.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v14) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
+[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v15.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v15) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
 
 A Go library of the things a product has: a noun with a table, its lifecycle, its transport, its permissions and its privacy obligations. Identity, billing, audit, webhooks, sagas and the rest ship a `Store`, the DDL for the dialects they serve, a mock, and — for the ones that have crossed — a gRPC or HTTP surface over them. The infrastructure they are built from is [`primitives-go`](https://github.com/primandproper/primitives-go/v2), which this module requires; [Primitives and Domains](#primitives-and-domains) is the rule that says which is which.
 
-**Module:** `github.com/primandproper/platform-go/v14`
+**Module:** `github.com/primandproper/platform-go/v15`
 **Go:** 1.27
 
 ## Project Status & Stability
@@ -23,7 +23,7 @@ If you depend on this library, pin to a released tag — and note that `@latest`
 ## Installation
 
 ```bash
-go get github.com/primandproper/platform-go/v14@latest
+go get github.com/primandproper/platform-go/v15@latest
 ```
 
 Because breaking changes ride the major-version import path, upgrading across majors is an explicit, opt-in edit to your import paths — never a surprise from `go get -u`.

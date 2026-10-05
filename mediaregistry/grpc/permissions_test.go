@@ -3,9 +3,9 @@ package grpc_test
 import (
 	"testing"
 
-	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v15/mediaregistry/grpc"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 

@@ -3,11 +3,11 @@ package webhookscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/outbox"
-	"github.com/primandproper/platform-go/v14/recording"
-	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
-	"github.com/primandproper/platform-go/v14/webhooks"
-	"github.com/primandproper/platform-go/v14/webhooks/recordinghooks"
+	"github.com/primandproper/platform-go/v15/outbox"
+	"github.com/primandproper/platform-go/v15/recording"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks/recordinghooks"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/observability"

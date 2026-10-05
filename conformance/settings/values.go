@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

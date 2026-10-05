@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
-	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
-	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
-	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
+	auditcfg "github.com/primandproper/platform-go/v15/audit/config"
+	outboxcfg "github.com/primandproper/platform-go/v15/outbox/config"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
+	webhookscfg "github.com/primandproper/platform-go/v15/webhooks/config"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/encoding"

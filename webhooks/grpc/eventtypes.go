@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 )
 
 // ListEventTypes answers what a subscription may name: every event type in this

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/internal/signindb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens/internal/signindb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"

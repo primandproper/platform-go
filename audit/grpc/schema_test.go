@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

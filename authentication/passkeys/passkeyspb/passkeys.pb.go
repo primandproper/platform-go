@@ -6,19 +6,19 @@
 // itself that is shipped, as signin.proto is. A consumer puts the module's
 // proto directories on protoc's path and imports it by its canonical name:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/passkeys/proto \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/signin/proto \
 //	    --proto_path $(PLATFORM_PROTO)/identity/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/passkeys/v1/passkeys.proto=github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb \
-//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v14/authentication/signin/signinpb \
+//	    --go_opt=Mprimandproper/platform/passkeys/v1/passkeys.proto=github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb \
+//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v15/authentication/signin/signinpb \
 //	    $(CONSUMER_PROTO_FILES)
 //
 // Go links against the bindings in
-// github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb.
+// github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb.
 //
 // Field numbers are the compatibility promise. Numbers are never reused and
 // never repurposed: a field that goes away is reserved.
@@ -79,7 +79,7 @@ import (
 	sync "sync"
 	unsafe "unsafe"
 
-	signinpb "github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	signinpb "github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -814,7 +814,7 @@ const file_primandproper_platform_passkeys_v1_passkeys_proto_rawDesc = "" +
 	"BeginLogin\x125.primandproper.platform.passkeys.v1.BeginLoginRequest\x1a6.primandproper.platform.passkeys.v1.BeginLoginResponse\x12~\n" +
 	"\vFinishLogin\x126.primandproper.platform.passkeys.v1.FinishLoginRequest\x1a7.primandproper.platform.passkeys.v1.FinishLoginResponse\x12\x81\x01\n" +
 	"\fListPasskeys\x127.primandproper.platform.passkeys.v1.ListPasskeysRequest\x1a8.primandproper.platform.passkeys.v1.ListPasskeysResponse\x12\x87\x01\n" +
-	"\x0eArchivePasskey\x129.primandproper.platform.passkeys.v1.ArchivePasskeyRequest\x1a:.primandproper.platform.passkeys.v1.ArchivePasskeyResponseBXZVgithub.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb;passkeyspbb\x06proto3"
+	"\x0eArchivePasskey\x129.primandproper.platform.passkeys.v1.ArchivePasskeyRequest\x1a:.primandproper.platform.passkeys.v1.ArchivePasskeyResponseBXZVgithub.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb;passkeyspbb\x06proto3"
 
 var (
 	file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescOnce sync.Once

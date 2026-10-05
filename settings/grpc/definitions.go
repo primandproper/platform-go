@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/settings"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v15/settings"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

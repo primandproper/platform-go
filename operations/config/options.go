@@ -1,8 +1,8 @@
 package operationscfg
 
 import (
-	"github.com/primandproper/platform-go/v14/operations"
-	"github.com/primandproper/platform-go/v14/workqueue"
+	"github.com/primandproper/platform-go/v15/operations"
+	"github.com/primandproper/platform-go/v15/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

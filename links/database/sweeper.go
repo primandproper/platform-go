@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/links/database/internal/linksdb"
+	"github.com/primandproper/platform-go/v15/links/database/internal/linksdb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"

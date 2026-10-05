@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/notifications"
-	"github.com/primandproper/platform-go/v14/notifications/push"
+	"github.com/primandproper/platform-go/v15/notifications"
+	"github.com/primandproper/platform-go/v15/notifications/push"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
