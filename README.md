@@ -195,6 +195,9 @@ audit entry and the outbox event every store write here owes, written once on th
 write's transaction through `audit`'s recorder and `webhooks`' emitter, so that each
 store's `RecordingHooks` is a decision about what to record rather than a copy of
 how. It is a domain because both halves are about a resource an application has.
+`recording/config` is what makes it the default: a service built from
+`service.Config` with audit, webhooks and an outbox configured records every
+platform write without registering a hook.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
 owns no table either, and it is not a flow: it is the interface a consumer's

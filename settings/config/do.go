@@ -3,6 +3,8 @@ package settingscfg
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/recording"
+	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
 	"github.com/primandproper/platform-go/v14/settings"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -15,6 +17,11 @@ import (
 //
 // Prerequisites: *Config and database.Client must be registered in the injector
 // before the Store is invoked.
+//
+// settings.Hooks is resolved through recordingcfg.InvokeHooks: one the
+// application registered, then a settings.RecordingHooks when a
+// *recording.Recorder is registered, then none, which leaves the store's
+// NoopHooks default.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (settings.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -37,6 +44,19 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		opts := []Option{WithPillars(pillars)}
+
+		hooks, err := recordingcfg.InvokeHooks(i, func(r *recording.Recorder) (settings.Hooks, error) {
+			return settings.NewRecordingHooks(r)
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if hooks != nil {
+			opts = append(opts, WithStoreOptions(settings.WithHooks(hooks)))
+		}
+
+		return NewStore(ctx, cfg, client, opts...)
 	})
 }

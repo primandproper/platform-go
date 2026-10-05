@@ -43,6 +43,7 @@ import (
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billingclient "github.com/primandproper/platform-go/v14/billing/grpc/client"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	commentsclient "github.com/primandproper/platform-go/v14/comments/grpc/client"
@@ -78,6 +79,9 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
+	"github.com/primandproper/platform-go/v14/outbox"
+	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
+	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
 	"github.com/primandproper/platform-go/v14/service"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
@@ -105,6 +109,7 @@ import (
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
+	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
 	routingcfg "github.com/primandproper/primitives-go/v2/routing/config"
@@ -198,6 +203,16 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		Waitlists:     &waitlistscfg.Config{TablePrefix: prefix},
 		Webhooks:      &webhookscfg.Config{TablePrefix: prefix},
 
+		// The outbox, which with Audit and Webhooks above is what turns
+		// recording on: every write a platform store makes records an entry
+		// and an event, through the RecordingHooks each config package
+		// defaults to, so every suite below runs against stores that record.
+		// The relay publishes nowhere, which is the noop provider's whole job.
+		Outbox: &outboxcfg.Config{
+			Queue: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
+			Relay: outbox.RelayConfig{TablePrefix: prefix},
+		},
+
 		// Sign-in with every door the suites knock on. Rotation, recovery codes
 		// and registration are on by default. The passwordless door is the
 		// one a block switches on.
@@ -245,6 +260,12 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 	do.ProvideValue(i, t.Context())
 
 	service.Register(i, cfg)
+
+	// Who is writing, for the recorder every store's hooks write through. It
+	// is the sign-in extractor's own reading, registered as a function rather
+	// than as the extractor built below, because that extractor is built over
+	// the sign-in service whose hooks need this to be built.
+	do.ProvideValue[callers.PrincipalExtractor](i, signingrpc.PrincipalFromContext)
 
 	// What a consumer's main adds beyond the config: the declarations and
 	// services Register does not build, the interceptors the gRPC server
@@ -789,6 +810,7 @@ func migrate(t *testing.T, db database.Client, d dialect.Dialect, prefix string,
 		"settings":       settingsmigrations.Statements,
 		"waitlists":      waitlistsmigrations.Statements,
 		"webhooks":       webhooksmigrations.Statements,
+		"outbox":         outboxmigrations.Statements,
 		"media registry": mediaregistrymigrations.Statements,
 		"magic links":    magiclinkmigrations.Statements,
 		"refresh tokens": refreshtokenmigrations.Statements,

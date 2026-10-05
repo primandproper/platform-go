@@ -26,6 +26,7 @@ import (
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
+	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	seriescfg "github.com/primandproper/platform-go/v14/series/config"
@@ -189,6 +190,7 @@ func zeroValueCases() []zeroValueCase {
 		{name: "operations", cfg: &operationscfg.Config{}, why: "every interval and worker count has a default"},
 		{name: "outbox", cfg: &outboxcfg.Config{}, why: "the relay's batch size and intervals all have defaults"},
 		{name: "ratelimiting", cfg: &ratelimitingcfg.Config{}, needs: "provider"},
+		{name: "recording", cfg: &recordingcfg.Config{}, why: "the filing rule is the only field, and it defaults to the scope the write ran in"},
 		{name: "retention", cfg: &retentioncfg.Config{}, why: "the sweeper's interval and batch size have defaults"},
 		{name: "routing", cfg: &routingcfg.Config{}, needs: "provider"},
 		{name: "saga", cfg: &sagacfg.Config{}, why: "the worker's poll interval and backoff have defaults"},

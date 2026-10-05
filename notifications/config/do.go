@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/primandproper/platform-go/v14/notifications"
+	"github.com/primandproper/platform-go/v14/recording"
+	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/notifications/mobile"
@@ -37,6 +39,11 @@ import (
 //
 // Prerequisites: *Config and database.Client must be registered in the injector
 // before the store is invoked.
+//
+// notifications.Hooks is resolved through recordingcfg.InvokeHooks: one the
+// application registered, then a notifications.RecordingHooks when a
+// *recording.Recorder is registered, then none, which leaves the store's
+// NoopHooks default.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (notifications.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -59,7 +66,20 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		opts := []Option{WithPillars(pillars)}
+
+		hooks, err := recordingcfg.InvokeHooks(i, func(r *recording.Recorder) (notifications.Hooks, error) {
+			return notifications.NewRecordingHooks(r)
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if hooks != nil {
+			opts = append(opts, WithStoreOptions(notifications.WithHooks(hooks)))
+		}
+
+		return NewStore(ctx, cfg, client, opts...)
 	})
 
 	// The three narrowings, each returning only once the store's error is known
