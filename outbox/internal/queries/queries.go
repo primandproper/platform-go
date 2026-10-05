@@ -113,6 +113,14 @@ const (
 	BeforeArg = "before"
 	// IDsArg is the set of message ids a claim leases, reads back, and retires.
 	IDsArg = querygen.IDsArg
+	// LimitArg bounds a candidate read. It is querygen's name for a limit,
+	// which is the name unison.yaml renames MySQL's bare `limit` placeholder
+	// to, so the three engines converge on one argument.
+	LimitArg = querygen.LimitArg
+	// OffsetArg is how far into the claimable candidates a skip-locked claim's
+	// read resumes, for the reason LimitArg's MySQL spelling has: a bare
+	// placeholder there, named `offset`, renamed once in unison.yaml.
+	OffsetArg = "result_offset"
 	// HeldByArg is the claim a retirement or a failure says it is reporting on:
 	// the name the relay stamped when it took the rows, presented again when it
 	// comes back to say what happened to them.
@@ -254,8 +262,8 @@ func Render(d dialect.Dialect) string {
 
 	return querygen.RenderFile([]*querygen.Query{
 		createInsert(),
-		selectClaimable(g, false),
-		selectClaimable(g, true),
+		selectClaimable(g),
+		lockClaimable(g),
 		claimMessages(g),
 		fetchClaimed(g),
 		markPublished(g),
@@ -313,8 +321,9 @@ func createInsert() *querygen.Query {
 	}
 }
 
-// selectClaimable renders the statement that picks the next batch of message
-// ids to lease, in the two forms the claim modes are.
+// selectClaimable renders the read that picks the next message ids to lease:
+// the whole of the lease mode's selection, and the candidate half of the
+// skip-locked mode's. It takes no lock.
 //
 // It is written out because it reads the outbox table through itself, and a
 // correlated NOT EXISTS over a self-join is a shape querygen does not render
@@ -353,23 +362,31 @@ func createInsert() *querygen.Query {
 // lease horizon binds under its own name, and the Relay passes the same moment
 // to both; see the arguments' declarations.
 //
-// # Why there are two of them
+// # Why it takes no lock
 //
-// The lock clause is statement text rather than a bound value, so a relay
-// configured for one mode or the other picks between two generated methods the
-// way a paged read picks between its two directions. Rendering one statement
-// and appending the clause at run time would put the outbox back to composing
-// SQL in Go, over the one predicate whose exactness a fleet's disjointness
-// depends on.
+// A locking read over this predicate is a range over the claim index, and
+// InnoDB, at its default isolation, locks a range by next-key: every record it
+// scans and the gap before each, through the first record past the end. A new
+// message's index entry is (NULL, NULL, created_at, created_at) — the newest
+// thing in the unpublished range — so it lands in exactly the gap the range's
+// last lock covers, and every enqueue in the fleet waits on a claim for as
+// long as the claim's transaction runs. That alone is latency. It becomes a
+// deadlock once the claim waits on anybody: an enqueue holds whatever its own
+// transaction already took — an audit chain head, a refresh token, a row the
+// recording hooks wrote — and waits on the claim's gap, while the transaction
+// that wants those locks has already enqueued a row of its own the claim is
+// waiting to lock. Recording put an enqueue inside nearly every store write,
+// which is what turned that from possible into common.
 //
-// The locked form carries FOR UPDATE SKIP LOCKED only where the dialect has it,
-// which on SQLite is nowhere: one writer at a time is that engine's whole
-// storage model, so there is nothing to skip. Both statements are rendered on
-// all three dialects regardless, so that the roster of names does not vary by
-// dialect — RelayConfig narrows a skip-locked relay to the lease mode before it
-// can reach the statement there, which is where the unreachability is decided
-// rather than here.
-func selectClaimable(g *querygen.Generator, skipLocked bool) *querygen.Query {
+// So the skip-locked mode reads its candidates here and locks them by primary
+// key in lockClaimable, the way timers' split claim does: a unique lookup
+// locks the record it finds and no gap beside it, so a claim locks the rows it
+// is going to lease and nothing an enqueue could need.
+//
+// The offset is how that claim fills its batch when some candidates turn out
+// to be held by another relay: it reads on from where the last page stopped
+// rather than from the top again. The lease mode reads one page from zero.
+func selectClaimable(g *querygen.Generator) *querygen.Query {
 	const (
 		claimed = "m"
 		earlier = "prior"
@@ -391,7 +408,7 @@ WHERE %[1]s.%[4]s IS NULL
 				OR (%[11]s.%[12]s = %[1]s.%[12]s AND %[11]s.%[3]s < %[1]s.%[3]s))
 	))
 ORDER BY %[1]s.%[12]s, %[1]s.%[3]s
-%[13]s`,
+%[13]s;`,
 		claimed,
 		OutboxTable,
 		querygen.IDColumn,
@@ -404,23 +421,97 @@ ORDER BY %[1]s.%[12]s, %[1]s.%[3]s
 		PartitionKeyColumn,
 		earlier,
 		querygen.CreatedAtColumn,
-		g.LimitClause(),
+		page(g.Dialect()),
 	)
 
-	name := "SelectClaimableOutboxMessages"
+	return &querygen.Query{
+		Annotation: querygen.QueryAnnotation{Name: "SelectClaimableOutboxMessages", Type: querygen.ManyType},
+		Content:    statement,
+	}
+}
 
-	if skipLocked {
-		name = SkipLockedName(name)
+// lockClaimable renders the skip-locked mode's lock: the candidates
+// selectClaimable read, locked by primary key where nobody else holds them, and
+// tested again while held.
+//
+// The row-state test is repeated because the candidates came from a snapshot
+// and this reads the rows as they are now: one another relay leased or retired
+// in between is locked here and no longer claimable. The ordering subquery is
+// not repeated, for claimMessages' reason — this can only narrow the set, and a
+// row whose predecessor is unpublished was never a candidate.
+//
+// The lock clause is statement text rather than a bound value, and only the
+// dialects with SKIP LOCKED carry it. SQLite has one writer, so there is
+// nothing to skip; RelayConfig narrows a skip-locked relay to the lease mode
+// there before it can reach this statement, and it is rendered on all three so
+// that the roster of names does not vary by dialect. See byKey for the MySQL
+// hint.
+//
+// The set binds last, as every set predicate in this module does.
+func lockClaimable(g *querygen.Generator) *querygen.Query {
+	statement := fmt.Sprintf("SELECT %s\nFROM %s%s\nWHERE %s\n\tAND %s",
+		querygen.IDColumn,
+		OutboxTable, byKey(g.Dialect()),
+		claimableRowState(),
+		g.SetCondition(querygen.IDColumn, IDsArg),
+	)
 
-		if g.Dialect().SupportsSkipLocked() {
-			statement += "\nFOR UPDATE SKIP LOCKED"
-		}
+	if g.Dialect().SupportsSkipLocked() {
+		statement += "\nFOR UPDATE SKIP LOCKED"
 	}
 
 	return &querygen.Query{
-		Annotation: querygen.QueryAnnotation{Name: name, Type: querygen.ManyType},
+		Annotation: querygen.QueryAnnotation{Name: SkipLockedName("SelectClaimableOutboxMessages"), Type: querygen.ManyType},
 		Content:    statement + ";",
 	}
+}
+
+// claimableRowState is the row-state half of selectClaimable's test, unqualified,
+// as every statement that acts on its candidates repeats it: unpublished, not
+// quarantined, due, and either unleased or leased by a claim that has lapsed.
+//
+// One rendering for lockClaimable and claimMessages both, because the two have
+// to agree with the select on every column and a second spelling is a second
+// chance to drop one — which is how the claim once guarded only the lease.
+func claimableRowState() string {
+	return fmt.Sprintf(`%[1]s IS NULL
+	AND %[2]s IS NULL
+	AND %[3]s <= sqlc.arg(%[4]s)
+	AND (%[5]s IS NULL OR %[5]s <= sqlc.arg(%[6]s))`,
+		PublishedAtColumn,
+		QuarantinedAtColumn,
+		NextAttemptColumn, NowArg,
+		ClaimedUntilColumn, LeaseExpiredByArg,
+	)
+}
+
+// byKey keeps a statement addressed by id on the primary key, on MySQL.
+//
+// Naming the ids is not choosing the key. The claim's statements also carry
+// the claimable test, which is a range over the claim index that an optimizer
+// may cost as the cheaper path — a small table, drifted statistics — and a
+// statement that took it would lock by range: the gap every enqueue inserts
+// into, held by a statement that then waits on an enqueue's row. The hint
+// takes the choice away. See selectClaimable.
+func byKey(d dialect.Dialect) string {
+	if d != dialect.MySQL {
+		return ""
+	}
+
+	return " FORCE INDEX (PRIMARY)"
+}
+
+// page is a candidate read's bound and where it resumes.
+//
+// MySQL's spelling is the two-argument LIMIT, offset first, because it takes
+// only bare placeholders there; unison.yaml renames them to the names the
+// other two engines spell out.
+func page(d dialect.Dialect) string {
+	if d == dialect.MySQL {
+		return "LIMIT ?, ?"
+	}
+
+	return fmt.Sprintf("LIMIT sqlc.arg(%s) OFFSET sqlc.arg(%s)", LimitArg, OffsetArg)
 }
 
 // SkipLockedName is the locked form's name, derived from the unlocked one.
@@ -482,23 +573,17 @@ func SkipLockedName(name string) string {
 func claimMessages(g *querygen.Generator) *querygen.Query {
 	return &querygen.Query{
 		Annotation: querygen.QueryAnnotation{Name: "ClaimOutboxMessages", Type: querygen.ExecType},
-		Content: fmt.Sprintf(`UPDATE %s SET
+		Content: fmt.Sprintf(`UPDATE %s%s SET
 	%s = sqlc.arg(%s),
 	%s = sqlc.arg(%s),
 	%s = %s + 1
-WHERE %s IS NULL
-	AND %s IS NULL
-	AND %s <= sqlc.arg(%s)
-	AND (%s IS NULL OR %s <= sqlc.arg(%s))
+WHERE %s
 	AND %s;`,
-			OutboxTable,
+			OutboxTable, byKey(g.Dialect()),
 			ClaimedUntilColumn, ClaimedUntilColumn,
 			ClaimedByColumn, ClaimedByColumn,
 			AttemptsColumn, AttemptsColumn,
-			PublishedAtColumn,
-			QuarantinedAtColumn,
-			NextAttemptColumn, NowArg,
-			ClaimedUntilColumn, ClaimedUntilColumn, LeaseExpiredByArg,
+			claimableRowState(),
 			g.SetCondition(querygen.IDColumn, IDsArg),
 		),
 	}

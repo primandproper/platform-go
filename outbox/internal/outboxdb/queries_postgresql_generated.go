@@ -125,25 +125,15 @@ WHERE m.published_at IS NULL
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
-LIMIT COALESCE($3, 50)`
+LIMIT $4 OFFSET $3`
 
-const selectClaimableOutboxMessagesSkipLockedPostgreSQL = `SELECT m.id
-FROM {{prefix}}outbox_messages AS m
-WHERE m.published_at IS NULL
-	AND m.quarantined_at IS NULL
-	AND m.next_attempt <= $1
-	AND (m.claimed_until IS NULL OR m.claimed_until <= $2)
-	AND (m.partition_key = '' OR NOT EXISTS (
-		SELECT 1
-		FROM {{prefix}}outbox_messages AS prior
-		WHERE prior.partition_key = m.partition_key
-			AND prior.published_at IS NULL
-			AND prior.quarantined_at IS NULL
-			AND (prior.created_at < m.created_at
-				OR (prior.created_at = m.created_at AND prior.id < m.id))
-	))
-ORDER BY m.created_at, m.id
-LIMIT COALESCE($3, 50)
+const selectClaimableOutboxMessagesSkipLockedPostgreSQL = `SELECT id
+FROM {{prefix}}outbox_messages
+WHERE published_at IS NULL
+	AND quarantined_at IS NULL
+	AND next_attempt <= $1
+	AND (claimed_until IS NULL OR claimed_until <= $2)
+	AND id = ANY($3::text[])
 FOR UPDATE SKIP LOCKED`
 
 const selectQuarantinedOutboxMessagesPostgreSQL = `SELECT
@@ -358,6 +348,7 @@ func (q *postgresqlQueries) SelectClaimableOutboxMessages(ctx context.Context, d
 	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessages,
 		arg.Now,
 		arg.LeaseExpiredBy,
+		arg.ResultOffset,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -392,7 +383,7 @@ func (q *postgresqlQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.
 	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessagesSkipLocked,
 		arg.Now,
 		arg.LeaseExpiredBy,
-		arg.ResultLimit,
+		arg.IDs,
 	)
 	if err != nil {
 		return nil, err
@@ -558,6 +549,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
+		ResultOffset   int64
 		ResultLimit    int64
 	}(SelectClaimableOutboxMessagesParams{})
 	_ = struct {
@@ -566,7 +558,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
-		ResultLimit    int64
+		IDs            []string
 	}(SelectClaimableOutboxMessagesSkipLockedParams{})
 	_ = struct {
 		ID string
