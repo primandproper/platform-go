@@ -409,6 +409,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilInvitation":     {Err: identity.ErrNilInvitation, Is: Platform},
 		"ErrNilMembership":     {Err: identity.ErrNilMembership, Is: Platform},
 		"ErrNilProfileUpdate":  {Err: identity.ErrNilProfileUpdate, Is: Platform},
+		"ErrNilRecorder":       {Err: identity.ErrNilRecorder, Is: Platform},
 		"ErrNilStore":          {Err: identity.ErrNilStore, Is: Platform},
 		"ErrNilUser":           {Err: identity.ErrNilUser, Is: Platform},
 
