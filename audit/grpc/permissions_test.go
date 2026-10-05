@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
-	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
+	auditgrpc "github.com/primandproper/platform-go/v15/audit/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

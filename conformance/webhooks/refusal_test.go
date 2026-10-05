@@ -8,10 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	conformancewebhooks "github.com/primandproper/platform-go/v14/conformance/webhooks"
-	domain "github.com/primandproper/platform-go/v14/webhooks"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	conformancewebhooks "github.com/primandproper/platform-go/v15/conformance/webhooks"
+	domain "github.com/primandproper/platform-go/v15/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"

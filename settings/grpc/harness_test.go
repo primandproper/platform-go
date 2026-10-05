@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/errormappers"
-	"github.com/primandproper/platform-go/v14/settings"
-	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
-	"github.com/primandproper/platform-go/v14/settings/migrations"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/errormappers"
+	"github.com/primandproper/platform-go/v15/settings"
+	settingsgrpc "github.com/primandproper/platform-go/v15/settings/grpc"
+	"github.com/primandproper/platform-go/v15/settings/migrations"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

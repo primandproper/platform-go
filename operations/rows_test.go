@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
-	"github.com/primandproper/platform-go/v14/operations/internal/queries"
+	"github.com/primandproper/platform-go/v15/operations/internal/operationsdb"
+	"github.com/primandproper/platform-go/v15/operations/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/pointer"

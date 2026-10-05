@@ -7,12 +7,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/mediaregistry/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/mediaregistry/v1/mediaregistry.proto=github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb \
+//	    --go_opt=Mprimandproper/platform/mediaregistry/v1/mediaregistry.proto=github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -69,7 +69,7 @@ package primandproper.platform.mediaregistry.v1;
 import "google/protobuf/timestamp.proto";
 import "primandproper/platform/filtering/v1/filtering.proto";
 
-option go_package = "github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb;mediaregistrypb";
+option go_package = "github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb;mediaregistrypb";
 
 // Subject is what an object hangs off, in the consumer's own words: a type and
 // an id, both or neither.

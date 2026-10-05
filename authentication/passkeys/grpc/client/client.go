@@ -32,7 +32,7 @@ retried ArchivePasskey finds the passkey already gone.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

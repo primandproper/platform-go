@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/shredding/internal/queries"
-	"github.com/primandproper/platform-go/v14/shredding/migrations"
+	"github.com/primandproper/platform-go/v15/shredding/internal/queries"
+	"github.com/primandproper/platform-go/v15/shredding/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"

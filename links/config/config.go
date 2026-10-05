@@ -20,8 +20,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/links"
-	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
+	"github.com/primandproper/platform-go/v15/links"
+	linksdatabase "github.com/primandproper/platform-go/v15/links/database"
 
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/database"

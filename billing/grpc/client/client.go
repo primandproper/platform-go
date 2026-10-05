@@ -44,7 +44,7 @@ archived, which the store answers the same way twice.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

@@ -19,6 +19,11 @@ var (
 	// so a caller may check either.
 	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil notifications query executor")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks. It wraps errors.ErrNilInputParameter, so a caller may
+	// check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil notifications recorder")
+
 	// ErrScopeMismatch indicates a write whose entity names a different scope
 	// than the write does.
 	//

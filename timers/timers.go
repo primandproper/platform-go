@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/timers/internal/timersdb"
-	"github.com/primandproper/platform-go/v14/timers/internal/timerssplitdb"
+	"github.com/primandproper/platform-go/v15/timers/internal/timersdb"
+	"github.com/primandproper/platform-go/v15/timers/internal/timerssplitdb"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

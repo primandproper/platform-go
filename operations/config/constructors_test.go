@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations"
-	"github.com/primandproper/platform-go/v14/workqueue"
-	workqueuecfg "github.com/primandproper/platform-go/v14/workqueue/config"
+	"github.com/primandproper/platform-go/v15/operations"
+	"github.com/primandproper/platform-go/v15/workqueue"
+	workqueuecfg "github.com/primandproper/platform-go/v15/workqueue/config"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

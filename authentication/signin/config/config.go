@@ -77,12 +77,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
-	recoverycodemigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
-	refreshtokenmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
-	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
+	magiclinkmigrations "github.com/primandproper/platform-go/v15/authentication/signin/magiclinks/migrations"
+	recoverycodemigrations "github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/migrations"
+	refreshtokenmigrations "github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v15/internal/scheduledjob"
 
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/errors"

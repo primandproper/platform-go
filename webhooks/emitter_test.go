@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/outbox"
-	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
+	"github.com/primandproper/platform-go/v15/outbox"
+	outboxmigrations "github.com/primandproper/platform-go/v15/outbox/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

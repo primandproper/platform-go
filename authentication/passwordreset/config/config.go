@@ -42,9 +42,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
-	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset/migrations"
+	"github.com/primandproper/platform-go/v15/internal/scheduledjob"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"

@@ -3,8 +3,8 @@ package signin_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

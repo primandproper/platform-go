@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

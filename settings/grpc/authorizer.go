@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/settings"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 

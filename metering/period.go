@@ -110,7 +110,7 @@ type CalendarResolver struct {
 // bug rather than a metering one.
 //
 // What this module ships for the argument is
-// [github.com/primandproper/platform-go/v14/billing/plans.PeriodResolver],
+// [github.com/primandproper/platform-go/v15/billing/plans.PeriodResolver],
 // which reads the window off the subscription row a deployment storing its
 // subscriptions in billing already has. One whose subscriptions live elsewhere
 // writes the same shape over its own table: the seam is one method, and what it

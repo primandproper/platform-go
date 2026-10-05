@@ -13,10 +13,12 @@ CREATE TABLE IF NOT EXISTS audit_log_entries (
     metadata      LONGBLOB     NULL,
     prev_hash     VARCHAR(64)  NOT NULL DEFAULT '',
     hash          VARCHAR(64)  NOT NULL,
+    actor_impersonator VARCHAR(255) NOT NULL DEFAULT '',
     UNIQUE KEY audit_log_entries_chain_idx (scope, seq),
     KEY audit_log_entries_scope_time_idx (scope, recorded_at),
     KEY audit_log_entries_actor_idx (actor_id, recorded_at),
-    KEY audit_log_entries_resource_idx (resource_type, resource_id, recorded_at)
+    KEY audit_log_entries_resource_idx (resource_type, resource_id, recorded_at),
+    KEY audit_log_entries_impersonator_idx (actor_impersonator, recorded_at)
 );
 
 CREATE TABLE IF NOT EXISTS audit_log_chains (
@@ -29,8 +31,4 @@ CREATE TABLE IF NOT EXISTS audit_log_chains (
     last_updated_at     DATETIME(6),
     archived_at         DATETIME(6)
 );
-
-ALTER TABLE audit_log_entries
-    ADD COLUMN actor_impersonator VARCHAR(255) NOT NULL DEFAULT '',
-    ADD KEY audit_log_entries_impersonator_idx (actor_impersonator, recorded_at);
 

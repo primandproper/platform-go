@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
-	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
-	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	"github.com/primandproper/platform-go/v15/audit"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
+	auditgrpc "github.com/primandproper/platform-go/v15/audit/grpc"
+	auditmock "github.com/primandproper/platform-go/v15/audit/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"

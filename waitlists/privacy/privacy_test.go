@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/waitlists"
-	waitlistsmock "github.com/primandproper/platform-go/v14/waitlists/mock"
-	"github.com/primandproper/platform-go/v14/waitlists/privacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	waitlistsmock "github.com/primandproper/platform-go/v15/waitlists/mock"
+	"github.com/primandproper/platform-go/v15/waitlists/privacy"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"

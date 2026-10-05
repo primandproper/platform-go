@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/routing"

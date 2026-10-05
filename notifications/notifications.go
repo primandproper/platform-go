@@ -144,8 +144,10 @@ type Device struct {
 	ID string `json:"id"`
 	// Principal is whose handset it is.
 	Principal string `json:"principal"`
-	// Token is the provider's device token.
-	Token string `json:"token"`
+	// Token is the provider's device token. It is a credential — whoever holds
+	// it can address a push to this handset — so it is tagged out of every
+	// audit diff.
+	Token string `audit:"-" json:"token"`
 	// Platform is which provider the token is addressed through.
 	Platform Platform `json:"platform"`
 	// Scope is whose data this is.

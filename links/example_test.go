@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/links"
-	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
-	"github.com/primandproper/platform-go/v14/links/database/migrations"
+	"github.com/primandproper/platform-go/v15/links"
+	linksdatabase "github.com/primandproper/platform-go/v15/links/database"
+	"github.com/primandproper/platform-go/v15/links/database/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

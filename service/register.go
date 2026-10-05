@@ -3,33 +3,34 @@ package service
 import (
 	"slices"
 
-	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
-	oauth2clientscfg "github.com/primandproper/platform-go/v14/authentication/oauth2clients/config"
-	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	passkeyscfg "github.com/primandproper/platform-go/v14/authentication/passkeys/config"
-	passwordresetcfg "github.com/primandproper/platform-go/v14/authentication/passwordreset/config"
-	signincfg "github.com/primandproper/platform-go/v14/authentication/signin/config"
-	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
-	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
-	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
-	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
-	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
-	"github.com/primandproper/platform-go/v14/errormappers"
-	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
-	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
-	linkscfg "github.com/primandproper/platform-go/v14/links/config"
-	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
-	meteringcfg "github.com/primandproper/platform-go/v14/metering/config"
-	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
-	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
-	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
-	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
-	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
-	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
-	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
-	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
-	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
-	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
+	auditcfg "github.com/primandproper/platform-go/v15/audit/config"
+	oauth2clientscfg "github.com/primandproper/platform-go/v15/authentication/oauth2clients/config"
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v15/authentication/oauth2serverstore/config"
+	passkeyscfg "github.com/primandproper/platform-go/v15/authentication/passkeys/config"
+	passwordresetcfg "github.com/primandproper/platform-go/v15/authentication/passwordreset/config"
+	signincfg "github.com/primandproper/platform-go/v15/authentication/signin/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v15/authentication/webauthnsessions/config"
+	billingcfg "github.com/primandproper/platform-go/v15/billing/config"
+	commentscfg "github.com/primandproper/platform-go/v15/comments/config"
+	dataprivacycfg "github.com/primandproper/platform-go/v15/dataprivacy/config"
+	entitlementscfg "github.com/primandproper/platform-go/v15/entitlements/config"
+	"github.com/primandproper/platform-go/v15/errormappers"
+	identitycfg "github.com/primandproper/platform-go/v15/identity/config"
+	issuereportscfg "github.com/primandproper/platform-go/v15/issuereports/config"
+	linkscfg "github.com/primandproper/platform-go/v15/links/config"
+	mediaregistrycfg "github.com/primandproper/platform-go/v15/mediaregistry/config"
+	meteringcfg "github.com/primandproper/platform-go/v15/metering/config"
+	notificationscfg "github.com/primandproper/platform-go/v15/notifications/config"
+	operationscfg "github.com/primandproper/platform-go/v15/operations/config"
+	outboxcfg "github.com/primandproper/platform-go/v15/outbox/config"
+	rbaccfg "github.com/primandproper/platform-go/v15/rbac/config"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
+	retentioncfg "github.com/primandproper/platform-go/v15/retention/config"
+	sagacfg "github.com/primandproper/platform-go/v15/saga/config"
+	settingscfg "github.com/primandproper/platform-go/v15/settings/config"
+	shreddingcfg "github.com/primandproper/platform-go/v15/shredding/config"
+	waitlistscfg "github.com/primandproper/platform-go/v15/waitlists/config"
+	webhookscfg "github.com/primandproper/platform-go/v15/webhooks/config"
 
 	analyticscfg "github.com/primandproper/primitives-go/v2/analytics/config"
 	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"
@@ -492,9 +493,8 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 
 	// The store and the service both, because the registry's surface mounts over
 	// the pair and a table prefix is all either of them needs from the
-	// environment. oauth2clients.Hooks is the application's to register if it has
-	// anything to commit beside a registration; RegisterService resolves it
-	// optionally. oauth2clients/privacy's collector and eraser are the service's
+	// environment. oauth2clients.Hooks is resolved the way every package's is,
+	// which is recordingcfg.InvokeHooks' order. oauth2clients/privacy's collector and eraser are the service's
 	// to register, for the reason every registry in this file is: they need a
 	// mapping from a person to the tenants they belong to.
 	//
@@ -731,6 +731,38 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 		webhookscfg.RegisterStore(i)
 		webhookscfg.RegisterDispatcher(i)
 		webhookscfg.RegisterWorker(i)
+
+		// The emitter is the seam between the two packages, as the saga's
+		// outbox publisher is above, so it is registered only when both ends
+		// were configured. It needs the webhooks.Catalog the dispatcher already
+		// resolves, and nothing else the application owes.
+		if cfg.Outbox != nil {
+			webhookscfg.RegisterEmitter(i)
+		}
+	}
+
+	// Recording is on wherever it can be: a service that keeps an audit log and
+	// publishes events records an entry and an event beside every write a
+	// platform store makes, through each config package's RecordingHooks,
+	// without registering a hook. A package the application wants silent is one
+	// whose NoopHooks it registers by name; see recordingcfg.InvokeHooks for the
+	// order every package resolves its hooks in.
+	//
+	// The Recorder resolves a callers.PrincipalExtractor, which is the
+	// application's. A service that configured all three blocks and registered
+	// no extractor fails at boot naming it, rather than recording every write as
+	// unattributed.
+	//
+	// A service that configured Audit without the other two records nothing,
+	// and New says so when it starts. The Recording block only says where
+	// entries are filed, and Config refuses one set without the three it would
+	// file them through.
+	if cfg.Recording != nil {
+		do.ProvideValue(i, cfg.Recording)
+	}
+
+	if cfg.records() {
+		recordingcfg.Register(i)
 	}
 }
 

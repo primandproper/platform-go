@@ -1,7 +1,7 @@
 package webhookscfg
 
 import (
-	"github.com/primandproper/platform-go/v14/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/subtle"
 
-	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
-	"github.com/primandproper/platform-go/v14/identity/internal/queries"
+	"github.com/primandproper/platform-go/v15/identity/internal/identitydb"
+	"github.com/primandproper/platform-go/v15/identity/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

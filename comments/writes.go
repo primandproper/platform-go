@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/comments/internal/commentsdb"
+	"github.com/primandproper/platform-go/v15/comments/internal/commentsdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

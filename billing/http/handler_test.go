@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/billing"
-	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
-	billingsync "github.com/primandproper/platform-go/v14/billing/sync"
+	"github.com/primandproper/platform-go/v15/billing"
+	billingmock "github.com/primandproper/platform-go/v15/billing/mock"
+	billingsync "github.com/primandproper/platform-go/v15/billing/sync"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	capitalismmock "github.com/primandproper/primitives-go/v2/capitalism/mock"

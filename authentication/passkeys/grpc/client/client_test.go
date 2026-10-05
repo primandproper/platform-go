@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	passkeysclient "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc/client"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	passkeysclient "github.com/primandproper/platform-go/v15/authentication/passkeys/grpc/client"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

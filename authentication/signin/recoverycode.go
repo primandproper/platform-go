@@ -3,7 +3,7 @@ package signin
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -16,7 +16,7 @@ import (
 // two recovery code doors refuse with [ErrRecoveryCodesNotConfigured].
 //
 // This module ships a SQL implementation,
-// [github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes],
+// [github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes],
 // together with the DDL it needs.
 //
 // What an implementation owes its callers is not "these methods". It is the

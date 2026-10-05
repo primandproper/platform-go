@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	"github.com/primandproper/platform-go/v14/operations"
-	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
-	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v15/authentication/oauth2serverstore/config"
+	"github.com/primandproper/platform-go/v15/operations"
+	operationscfg "github.com/primandproper/platform-go/v15/operations/config"
+	operationsmock "github.com/primandproper/platform-go/v15/operations/mock"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/jobs"

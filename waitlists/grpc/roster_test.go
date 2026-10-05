@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/waitlists"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

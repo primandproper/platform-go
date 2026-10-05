@@ -4,7 +4,7 @@ the webhook handler every consumer writes, with the two things they get wrong.
 
 [github.com/primandproper/primitives-go/v2/capitalism] hands a verified webhook
 endpoint a [capitalism.Event], and
-[github.com/primandproper/platform-go/v14/billing] stores a
+[github.com/primandproper/platform-go/v15/billing] stores a
 [billing.Subscription]. Joining the two is a couple of hundred lines — look the
 agreement up by the provider's identifier, open one if this is the first time
 anybody has heard of it, move its status if it changed, leave it alone if the
@@ -76,7 +76,7 @@ find.
 [identity.BillingStatus], written through [identity.BillingWriter] on the same
 transaction as the subscription row, with the deployment's own reading of what a
 processor status means supplied as a
-[github.com/primandproper/platform-go/v14/billing/standing.Classify].
+[github.com/primandproper/platform-go/v15/billing/standing.Classify].
 
 It is optional because a deployment that gates on billing/plans reads the
 subscription table directly and stores no coarse standing at all. It is not

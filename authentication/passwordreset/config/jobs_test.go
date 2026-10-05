@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	passwordresetmock "github.com/primandproper/platform-go/v15/authentication/passwordreset/mock"
 
 	"github.com/primandproper/primitives-go/v2/jobs"
 	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
