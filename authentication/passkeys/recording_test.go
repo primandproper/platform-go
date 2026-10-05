@@ -2,7 +2,6 @@ package passkeys
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -93,10 +92,12 @@ func (l *ledger) last(t *testing.T) (*audit.Entry, *CredentialEvent) {
 	must.SliceNotEmpty(t, l.entries)
 	must.SliceNotEmpty(t, l.published)
 
-	var event CredentialEvent
-	must.NoError(t, json.Unmarshal(l.published[len(l.published)-1].Payload.(json.RawMessage), &event))
+	// The emitter hands the outbox the payload as the hook built it, so a side
+	// effect registered on the writer can read it by type; so can this.
+	event, ok := l.published[len(l.published)-1].Payload.(*CredentialEvent)
+	must.True(t, ok, must.Sprintf("payload is %T", l.published[len(l.published)-1].Payload))
 
-	return l.entries[len(l.entries)-1], &event
+	return l.entries[len(l.entries)-1], event
 }
 
 func TestNewRecordingHooks(T *testing.T) {
