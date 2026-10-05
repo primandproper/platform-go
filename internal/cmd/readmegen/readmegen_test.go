@@ -287,7 +287,7 @@ func TestADirectiveOutlivingItsTransportFails(T *testing.T) {
 	tr := aTransport(T)
 	tr.pkg("billing", "//platform:transport middleware: a header, checked")
 
-	test.StrContains(T, tr.fails(), "billing carries a //platform:transport directive and ships no http or grpc subpackage")
+	test.StrContains(T, tr.fails(), "billing carries a //platform:transport directive and ships no http, grpc or mcp subpackage")
 }
 
 // TestAReasonOutlivingItsStoreFails is the same for the matrix.

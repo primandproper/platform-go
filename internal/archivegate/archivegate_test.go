@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/internal/archivegate"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/observability"
 
@@ -137,5 +138,45 @@ func TestFilter(T *testing.T) {
 		must.Error(t, err)
 		test.Nil(t, filter)
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+	})
+}
+
+func TestNarrow(T *testing.T) {
+	T.Parallel()
+
+	include := true
+
+	T.Run("honors the field for a caller holding the archive grant", func(t *testing.T) {
+		t.Parallel()
+
+		o := observability.NewRecordingObserver()
+		ctx, op := o.Begin(t.Context())
+
+		filter := archivegate.Narrow(ctx, op, &filtering.QueryFilter{IncludeArchived: &include},
+			granting(archiveGrant), archiveGrant, clearedKey)
+		must.NotNil(t, filter.IncludeArchived)
+		test.True(t, *filter.IncludeArchived)
+		test.False(t, cleared(o))
+	})
+
+	T.Run("clears the field for a caller without it, and records that", func(t *testing.T) {
+		t.Parallel()
+
+		o := observability.NewRecordingObserver()
+		ctx, op := o.Begin(t.Context())
+
+		filter := archivegate.Narrow(ctx, op, &filtering.QueryFilter{IncludeArchived: &include},
+			granting(readGrant), archiveGrant, clearedKey)
+		test.Nil(t, filter.IncludeArchived)
+		test.True(t, cleared(o))
+	})
+
+	T.Run("passes a nil filter through", func(t *testing.T) {
+		t.Parallel()
+
+		o := observability.NewRecordingObserver()
+		ctx, op := o.Begin(t.Context())
+
+		test.Nil(t, archivegate.Narrow(ctx, op, nil, granting(archiveGrant), archiveGrant, clearedKey))
 	})
 }

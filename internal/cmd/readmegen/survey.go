@@ -44,7 +44,7 @@ var dialectColumns = map[string]string{
 // package is one because it ships one of these, not because it says so
 // anywhere, which is what makes a package that has quietly grown handlers the
 // one this walk catches.
-var transportDirs = []string{"http", "grpc"}
+var transportDirs = []string{"http", "grpc", "mcp"}
 
 // kinds are the closed set a transport directive may name, in the order the
 // table groups them. Closed on purpose, for the reason the command's doc gives.
@@ -192,7 +192,7 @@ func readTransports(pkgs []string, directives map[string]map[string][]string) ([
 
 	for pkg, byName := range directives {
 		if _, ok := byName[transportDirective]; ok && !slices.Contains(pkgs, pkg) {
-			return nil, fmt.Errorf("%s carries a %s directive and ships no http or grpc subpackage", pkg, transportDirective)
+			return nil, fmt.Errorf("%s carries a %s directive and ships no http, grpc or mcp subpackage", pkg, transportDirective)
 		}
 	}
 

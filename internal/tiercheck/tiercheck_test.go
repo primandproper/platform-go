@@ -121,12 +121,13 @@ var roster = map[string]entry{
 	// internal/ is not in the README's table, because a consumer cannot import
 	// any of it. It is classified here anyway, so that the completeness check
 	// covers the whole tree rather than the part of it a consumer can see.
-	"internal/archivegate":      {tier: domain, why: "the archive grant the domain gRPC surfaces narrow include_archived by"},
+	"internal/archivegate":      {tier: domain, why: "the archive grant the domain gRPC and MCP surfaces narrow include_archived by"},
 	"internal/cmd":              {tier: root, why: "generators run by make, over the whole tree"},
 	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
 	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},
 	"internal/directrequires":   {tier: root, why: "a convention test over go.mod's account of what the module imports"},
 	"internal/hookroster":       {tier: root, why: "a convention test pairing every store write with the hook it owes"},
+	"internal/mcptool":          {tier: domain, why: "the schema and the grant check the domain MCP tool surfaces share"},
 	"internal/protoconvention":  {tier: root, why: "a convention test over every .proto the module ships"},
 	"internal/routeguard":       {tier: domain, why: "the permission check the domain HTTP surfaces put in front of their guarded routes"},
 	"internal/scheduledjob":     {tier: domain, why: "the defaulting and rendering every self-scheduling store's job config shares"},
