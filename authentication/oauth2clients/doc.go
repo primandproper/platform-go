@@ -135,6 +135,12 @@ is handed the row as it stood before and as it stands after, so a companion can
 say what changed; the before row is a read the Service makes only when hooks are
 installed.
 
+A deployment that owes each operation an audit entry and a domain event installs
+[RecordingHooks], built over a recording.Recorder, rather than writing one. An
+update's entry carries the diff and its event the names of the fields that
+moved; the secret's digest is in neither, and a withdrawal is recorded from the
+row the archive left, since no ordinary read reaches it afterwards.
+
 # Privacy
 
 A registration is one person's: belongs_to_user names them, and the name and the
