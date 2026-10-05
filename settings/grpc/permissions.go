@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"github.com/primandproper/platform-go/v14/rbac"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
@@ -161,4 +162,35 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// The catalog is the deployment's, so writing it is an operator's and reading
+// it is everybody's. A subject's own answers are a member's, and
+// [SubjectAuthorizer] is what keeps them to the caller's. Reading everybody's
+// answers to one setting, and answering a setting the catalog reserved, are
+// the tenant's admin's: both reach other subjects in the scope.
+//
+// [PermissionWriteAdminValues] gates no method and is tiered anyway — it is
+// asked inside the handler, and a principal holds it like any other grant.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator: []authorization.Permission{
+			PermissionCreateDefinitions,
+			PermissionUpdateDefinitions,
+			PermissionArchiveDefinitions,
+		},
+		TenantAdmin: []authorization.Permission{
+			PermissionReadAllValues,
+			PermissionWriteAdminValues,
+		},
+		Member: []authorization.Permission{
+			PermissionReadDefinitions,
+			PermissionReadValues,
+			PermissionWriteValues,
+		},
+	}
 }

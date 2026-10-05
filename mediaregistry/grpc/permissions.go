@@ -3,6 +3,7 @@ package grpc
 import (
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v14/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -71,4 +72,21 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// Every grant here is a member's. Which objects a holder may read is the
+// Entitlement's, per row, and an archive is the owner's, so none of them
+// reaches past what the caller may already have.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Member: []authorization.Permission{
+			PermissionCreateObjects,
+			PermissionReadObjects,
+			PermissionArchiveObjects,
+		},
+	}
 }

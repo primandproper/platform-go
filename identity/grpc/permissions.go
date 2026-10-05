@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v14/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -298,5 +299,53 @@ func SelfServiceMethods() []string {
 		identitypb.IdentityService_RejectInvitation_FullMethodName,
 		identitypb.IdentityService_ListInvitationsFromUser_FullMethodName,
 		identitypb.IdentityService_ListInvitationsForEmailAddress_FullMethodName,
+	}
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// The directory is an operator's: reading or searching a user who is not the
+// caller, the four writes on somebody's standing, and paging every account.
+// So are [PermissionOperatorRead] and [PermissionOperatorAct], which gate no
+// method and are tiered anyway — they are asked inside the handler, and a
+// principal holds them like any other grant. Renaming them with
+// [WithOperatorPermission] renames them here too only if the deployment edits
+// the value this returns.
+//
+// An account is the tenant. Changing one — renaming it, moving its ownership,
+// closing it, writing its roster, inviting into it — is its admin's, and
+// [TargetAuthorizer] is what keeps each of those to the accounts the caller
+// administers. Reading one, reading an invitation, and opening a second
+// account the caller will own are a member's: the first two are confined to
+// the caller's own accounts and invitations by the same authorizer, and the
+// third has no row but the caller's.
+//
+// [SelfServiceMethods] hold no permission and are in no tier.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator: []authorization.Permission{
+			PermissionReadUsers,
+			PermissionArchiveUsers,
+			PermissionUpdateUserStatus,
+			PermissionUpdateUserServiceRoles,
+			PermissionRequirePasswordChange,
+			PermissionListAllAccounts,
+			PermissionOperatorRead,
+			PermissionOperatorAct,
+		},
+		TenantAdmin: []authorization.Permission{
+			PermissionUpdateAccounts,
+			PermissionTransferAccountOwnership,
+			PermissionArchiveAccounts,
+			PermissionManageMembers,
+			PermissionInviteMembers,
+		},
+		Member: []authorization.Permission{
+			PermissionReadAccounts,
+			PermissionCreateAccounts,
+			PermissionReadInvitations,
+		},
 	}
 }

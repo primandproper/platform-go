@@ -195,3 +195,14 @@ func TestRequireToleratesANilBuilder(T *testing.T) {
 
 	test.Nil(T, billinggrpc.Require(nil))
 }
+
+// TestTiers_PartitionsPermissions holds Tiers to what this surface checks:
+// every permission it requires is in exactly one tier, every tiered permission
+// is one it requires, and a narrowing names a permissioned method. A grant
+// added to Permissions later and sorted nowhere fails here, rather than being
+// absent from every deployment's roles until somebody reads a release note.
+func TestTiers_PartitionsPermissions(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, billinggrpc.Tiers().Partitions(billinggrpc.Permissions()))
+}
