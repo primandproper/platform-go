@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes/internal/phonecodesdb"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes/internal/phonecodesdb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"

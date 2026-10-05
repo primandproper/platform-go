@@ -3,8 +3,8 @@ package oauth2serverstorecfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore"
-	"github.com/primandproper/platform-go/v14/internal/scheduledjob"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2serverstore"
+	"github.com/primandproper/platform-go/v15/internal/scheduledjob"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"

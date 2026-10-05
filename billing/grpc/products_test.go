@@ -3,8 +3,8 @@ package grpc_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
+	"github.com/primandproper/platform-go/v15/billing"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

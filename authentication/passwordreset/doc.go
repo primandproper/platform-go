@@ -84,7 +84,7 @@ two commits avoids both. One commit does.
 The paragraph above says what a correct caller does, and [Service] is that
 caller. It is the store's sibling rather than a package of its own — the package
 that owns the tokens is the one that should own the sequence that spends them —
-and it mirrors [github.com/primandproper/platform-go/v14/authentication/signin]'s
+and it mirrors [github.com/primandproper/platform-go/v15/authentication/signin]'s
 Service-beside-Store split, which is the shape the README promises password
 reset in.
 
@@ -109,7 +109,7 @@ vulnerability the paragraph above names, reached by the one route that paragraph
 does not close.
 
 What it needs from the directory is [Directory], and one of its methods is
-[github.com/primandproper/platform-go/v14/identity.CredentialStore]'s. It is
+[github.com/primandproper/platform-go/v15/identity.CredentialStore]'s. It is
 reached as a store rather than through identity's Service because that Service
 opens a transaction of its own, which is the one thing this sequence cannot
 afford.
@@ -124,7 +124,7 @@ a [Mailer].
 
 # This is not links, and the difference is the table
 
-[github.com/primandproper/platform-go/v14/links] mints single-use, expiring URLs
+[github.com/primandproper/platform-go/v15/links] mints single-use, expiring URLs
 for four flows and names password reset as one of them. It digests its token,
 refuses a replay, and separates Inspect from Redeem exactly as this package
 separates Verify from Consume, so the question of which one an application wants
@@ -133,7 +133,7 @@ is a fair one and the answer is not "whichever you find first".
 links mints whole URLs from a registry of action policies, so one primitive
 serves magic login, unsubscribe, and verification without knowing what any of
 them means. Its records live behind a
-[github.com/primandproper/platform-go/v14/links.Store], and links/database — a
+[github.com/primandproper/platform-go/v15/links.Store], and links/database — a
 table of its own — is the one implementation. So "which one runs on my
 infrastructure" is not the question that separates them: both packages want a
 database and nothing else, and links/database buys single use the same way this
@@ -204,7 +204,7 @@ deployment, and it deletes by deadline rather than answering a read.
 
 # The table is yours to create
 
-[github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations]
+[github.com/primandproper/platform-go/v15/authentication/passwordreset/migrations]
 renders the DDL for a dialect and prefix. Nothing here creates a table on its
 own: a library that ran DDL against a caller's database would be a library that
 decided when a deployment's schema changed.

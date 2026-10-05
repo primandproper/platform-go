@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
+	"github.com/primandproper/platform-go/v15/outbox/internal/outboxdb"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/issuereports/internal/issuereportsdb"
-	"github.com/primandproper/platform-go/v14/issuereports/migrations"
+	"github.com/primandproper/platform-go/v15/issuereports/internal/issuereportsdb"
+	"github.com/primandproper/platform-go/v15/issuereports/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

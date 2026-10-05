@@ -4,12 +4,12 @@ import (
 	"slices"
 	"testing"
 
-	passkeysgrpc "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc"
-	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/conformance/internal/services"
-	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	passkeysgrpc "github.com/primandproper/platform-go/v15/authentication/passkeys/grpc"
+	passwordresetgrpc "github.com/primandproper/platform-go/v15/authentication/passwordreset/grpc"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/conformance/internal/services"
+	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

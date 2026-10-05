@@ -17,7 +17,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform-go/v14/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/circuitbreaking"
 	circuitbreakingcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/config"

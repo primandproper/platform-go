@@ -3,7 +3,7 @@ package callers_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/callers"
+	"github.com/primandproper/platform-go/v15/callers"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

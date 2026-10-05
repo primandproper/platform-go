@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/billing/internal/billingdb"
-	"github.com/primandproper/platform-go/v14/billing/migrations"
+	"github.com/primandproper/platform-go/v15/billing/internal/billingdb"
+	"github.com/primandproper/platform-go/v15/billing/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

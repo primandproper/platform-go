@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy/internal/dataprivacydb"
+	"github.com/primandproper/platform-go/v15/dataprivacy/internal/dataprivacydb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"

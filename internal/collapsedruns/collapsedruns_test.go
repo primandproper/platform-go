@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
-	refreshtokensmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	auditmigrations "github.com/primandproper/platform-go/v15/audit/migrations"
+	refreshtokensmigrations "github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/ddl"

@@ -13,12 +13,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/oauth2clients/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/oauth2clients/v1/oauth2clients.proto=github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb \
+//	    --go_opt=Mprimandproper/platform/oauth2clients/v1/oauth2clients.proto=github.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -795,7 +795,7 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"\x12CreateOAuth2Client\x12B.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest\x1aC.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse\x12\x94\x01\n" +
 	"\x0fGetOAuth2Client\x12?.primandproper.platform.oauth2clients.v1.GetOAuth2ClientRequest\x1a@.primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse\x12\x9a\x01\n" +
 	"\x11ListOAuth2Clients\x12A.primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest\x1aB.primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse\x12\xa0\x01\n" +
-	"\x13ArchiveOAuth2Client\x12C.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest\x1aD.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponseBgZegithub.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb;oauth2clientspbb\x06proto3"
+	"\x13ArchiveOAuth2Client\x12C.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest\x1aD.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponseBgZegithub.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb;oauth2clientspbb\x06proto3"
 
 var (
 	file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescOnce sync.Once

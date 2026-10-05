@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes/internal/phonecodesdb"
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes/internal/phonecodesdb"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing"

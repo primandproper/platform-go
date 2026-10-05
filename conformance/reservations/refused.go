@@ -3,9 +3,9 @@ package reservations
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

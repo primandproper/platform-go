@@ -3,7 +3,7 @@ package waitlistscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/waitlists"
+	"github.com/primandproper/platform-go/v15/waitlists"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing/sha512"

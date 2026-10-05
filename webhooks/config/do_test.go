@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
-	"github.com/primandproper/platform-go/v14/webhooks"
+	outboxcfg "github.com/primandproper/platform-go/v15/outbox/config"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"

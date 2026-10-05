@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/billing"
-	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
-	"github.com/primandproper/platform-go/v14/billing/standing"
-	"github.com/primandproper/platform-go/v14/identity"
-	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
+	"github.com/primandproper/platform-go/v15/billing"
+	billingmock "github.com/primandproper/platform-go/v15/billing/mock"
+	"github.com/primandproper/platform-go/v15/billing/standing"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitymock "github.com/primandproper/platform-go/v15/identity/mock"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"

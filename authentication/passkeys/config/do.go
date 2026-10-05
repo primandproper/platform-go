@@ -3,9 +3,9 @@ package passkeyscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
-	"github.com/primandproper/platform-go/v14/recording"
-	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/recording"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	"github.com/primandproper/primitives-go/v2/config/injection"

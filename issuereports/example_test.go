@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/issuereports"
-	"github.com/primandproper/platform-go/v14/issuereports/migrations"
+	"github.com/primandproper/platform-go/v15/issuereports"
+	"github.com/primandproper/platform-go/v15/issuereports/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

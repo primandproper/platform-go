@@ -6,19 +6,19 @@
 // itself that is shipped, as signin.proto is. A consumer puts the module's
 // proto directories on protoc's path and imports it by its canonical name:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/passkeys/proto \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/signin/proto \
 //	    --proto_path $(PLATFORM_PROTO)/identity/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/passkeys/v1/passkeys.proto=github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb \
-//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v14/authentication/signin/signinpb \
+//	    --go_opt=Mprimandproper/platform/passkeys/v1/passkeys.proto=github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb \
+//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v15/authentication/signin/signinpb \
 //	    $(CONSUMER_PROTO_FILES)
 //
 // Go links against the bindings in
-// github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb.
+// github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb.
 //
 // Field numbers are the compatibility promise. Numbers are never reused and
 // never repurposed: a field that goes away is reserved.

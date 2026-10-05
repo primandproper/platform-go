@@ -1,8 +1,8 @@
 package sagacfg
 
 import (
-	"github.com/primandproper/platform-go/v14/retention"
-	"github.com/primandproper/platform-go/v14/saga"
+	"github.com/primandproper/platform-go/v15/retention"
+	"github.com/primandproper/platform-go/v15/saga"
 
 	"github.com/primandproper/primitives-go/v2/idempotency"
 	"github.com/primandproper/primitives-go/v2/observability"

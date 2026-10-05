@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/identity"
-	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitymock "github.com/primandproper/platform-go/v15/identity/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"

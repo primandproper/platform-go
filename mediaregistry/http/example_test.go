@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	mediaregistrymock "github.com/primandproper/platform-go/v15/mediaregistry/mock"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"

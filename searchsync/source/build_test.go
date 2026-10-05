@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/searchsync"
+	"github.com/primandproper/platform-go/v15/searchsync"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	nooplogging "github.com/primandproper/primitives-go/v2/observability/logging/noop"

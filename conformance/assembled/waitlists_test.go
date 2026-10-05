@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/links"
-	linkscfg "github.com/primandproper/platform-go/v14/links/config"
-	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
-	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/links"
+	linkscfg "github.com/primandproper/platform-go/v15/links/config"
+	linksdatabase "github.com/primandproper/platform-go/v15/links/database"
+	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"

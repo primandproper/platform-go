@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy/migrations"
-	"github.com/primandproper/platform-go/v14/operations"
-	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+	"github.com/primandproper/platform-go/v15/dataprivacy/migrations"
+	"github.com/primandproper/platform-go/v15/operations"
+	operationsmock "github.com/primandproper/platform-go/v15/operations/mock"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"

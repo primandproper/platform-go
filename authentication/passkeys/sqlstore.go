@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/internal/passkeysdb"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/internal/passkeysdb"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/ddl"

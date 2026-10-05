@@ -5,8 +5,8 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/links"
-	"github.com/primandproper/platform-go/v14/waitlists"
+	"github.com/primandproper/platform-go/v15/links"
+	"github.com/primandproper/platform-go/v15/waitlists"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

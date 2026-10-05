@@ -45,7 +45,7 @@ idempotency's interceptor with [DefaultInterceptors].
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v15/issuereports/issuereportspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

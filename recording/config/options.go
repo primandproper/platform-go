@@ -1,7 +1,7 @@
 package recordingcfg
 
 import (
-	"github.com/primandproper/platform-go/v14/recording"
+	"github.com/primandproper/platform-go/v15/recording"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/outbox"
+	"github.com/primandproper/platform-go/v15/outbox"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

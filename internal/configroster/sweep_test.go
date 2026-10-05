@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/rbac"
-	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
+	"github.com/primandproper/platform-go/v15/rbac"
+	rbaccfg "github.com/primandproper/platform-go/v15/rbac/config"
 
 	analyticscfg "github.com/primandproper/primitives-go/v2/analytics/config"
 	analyticsposthog "github.com/primandproper/primitives-go/v2/analytics/posthog"

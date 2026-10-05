@@ -3,8 +3,8 @@ package billing
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
-	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
+	"github.com/primandproper/platform-go/v15/conformance"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/identifiers"

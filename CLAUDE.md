@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Go library (`github.com/primandproper/platform-go/v14`) shipping the domain tier
+Go library (`github.com/primandproper/platform-go/v15`) shipping the domain tier
 of a cloud-native service: identity, authorization tables, billing, audit,
 webhooks, notifications, sagas, work queues, data privacy and the rest — each a
 noun with a table, its lifecycle, its transport, its permissions and its privacy
@@ -56,7 +56,7 @@ builds itself.)
 Import ordering uses `gci` with four sections, separated by blank lines:
 
 1. Standard library
-2. `github.com/primandproper/platform-go/v14` (this module)
+2. `github.com/primandproper/platform-go/v15` (this module)
 3. `github.com/primandproper` (org-level packages — primitives-go lands here)
 4. Everything else (third-party)
 
@@ -65,7 +65,7 @@ the section that already existed for org-level packages, and it is why the split
 needed no gci change: `github.com/primandproper/primitives-go/v2/database` matches
 `prefix(github.com/primandproper)` and sorts with the org.
 
-The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform-go/v14`). `format_imports.sh` derives the org prefix from it by stripping any trailing major-version suffix (e.g. `/v2`) and then taking `dirname`, yielding `github.com/primandproper`. If `THIS` is too short, the org prefix collapses toward `github.com`, creating a spurious `prefix(github.com)` gci section.
+The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform-go/v15`). `format_imports.sh` derives the org prefix from it by stripping any trailing major-version suffix (e.g. `/v2`) and then taking `dirname`, yielding `github.com/primandproper`. If `THIS` is too short, the org prefix collapses toward `github.com`, creating a spurious `prefix(github.com)` gci section.
 
 ## Architecture Patterns
 

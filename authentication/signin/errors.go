@@ -214,7 +214,7 @@ var (
 	// reset. An outstanding link can furnish an account that holds no password,
 	// once; against an account that holds one it can do nothing, and somebody who
 	// has forgotten theirs goes through
-	// github.com/primandproper/platform-go/v14/authentication/passwordreset,
+	// github.com/primandproper/platform-go/v15/authentication/passwordreset,
 	// which is the flow with an expiry, a redemption stamp and a revocation.
 	//
 	// It is the specific answer rather than the collapsed one because the caller

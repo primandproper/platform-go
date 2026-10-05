@@ -3,9 +3,9 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
-	"github.com/primandproper/platform-go/v14/internal/archivegate"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v15/internal/archivegate"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"

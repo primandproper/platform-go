@@ -3,7 +3,7 @@ package webauthnsessionscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions"
+	"github.com/primandproper/platform-go/v15/authentication/webauthnsessions"
 
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	webauthncache "github.com/primandproper/primitives-go/v2/authentication/webauthn/cache"

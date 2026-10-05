@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	signinclient "github.com/primandproper/platform-go/v15/authentication/signin/grpc/client"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	"github.com/primandproper/primitives-go/v2/idempotency"
 	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"

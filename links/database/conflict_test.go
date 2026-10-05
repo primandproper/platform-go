@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v15/links"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"

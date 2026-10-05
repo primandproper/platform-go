@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/comments"
-	commentsmock "github.com/primandproper/platform-go/v14/comments/mock"
-	"github.com/primandproper/platform-go/v14/comments/privacy"
-	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v15/comments"
+	commentsmock "github.com/primandproper/platform-go/v15/comments/mock"
+	"github.com/primandproper/platform-go/v15/comments/privacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
