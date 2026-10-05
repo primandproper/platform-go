@@ -2,7 +2,6 @@ package passwordreset
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -31,9 +30,6 @@ const (
 	EventTokenIssued webhooks.EventType = "passwordreset.token.issued"
 	// EventTokenRedeemed says a link was spent.
 	EventTokenRedeemed webhooks.EventType = "passwordreset.token.redeemed"
-	// EventTokensErased says a principal's tokens were deleted by an erasure.
-	// The payload carries the count, and nothing that identifies whose.
-	EventTokensErased webhooks.EventType = "passwordreset.tokens.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -48,7 +44,6 @@ func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
 		EventTokenIssued:   {Description: "A password reset was asked for, and a link minted for it."},
 		EventTokenRedeemed: {Description: "A password reset link was spent."},
-		EventTokensErased:  {Description: "A principal's password reset tokens were deleted by an erasure."},
 	}
 }
 
@@ -77,29 +72,12 @@ type TokenEvent struct {
 	UserID string `json:"userID"`
 }
 
-// ErasureEvent is the payload of EventTokensErased. It says how many tokens an
-// erasure deleted and not whose.
-//
-// The reason is the one waitlists.ErasureEvent gives: "forget this person" is
-// one signal per subject, and a per-store erasure event naming them would be
-// that signal repeated once for every store the person touched. This event
-// says only that an erasure ran here and how much it found.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// Deleted is how many tokens the erasure deleted, zero included.
-	Deleted int64 `json:"deleted"`
-}
-
-// metadataDeleted is the audit metadata key an erasure's entry carries its count
-// under.
-const metadataDeleted = "deleted"
-
 // RecordingHooks is the Hooks a deployment that keeps an audit log and
-// publishes events installs with WithHooks. An issuance, a redemption and an
-// erasure each record an audit entry and emit the event above for it, both on
-// the write's transaction, through the recording.Recorder it is built with. A
-// revocation records nothing, for the reason AfterRevokeForUser gives.
+// publishes events installs with WithHooks. An issuance and a redemption each
+// record an audit entry and emit the event above for it, both on the write's
+// transaction, through the recording.Recorder it is built with. A revocation
+// and an erasure record nothing, for the reasons AfterRevokeForUser and
+// AfterDeleteForUser give.
 //
 // The entries matter more here than for most tables: the sweeper deletes every
 // row at its expiry, so "was a link issued before the takeover, and was it
@@ -170,28 +148,20 @@ func (h *RecordingHooks) AfterRevokeForUser(context.Context, database.Tx, tenanc
 	return nil
 }
 
-// AfterDeleteForUser records an erasure: that it ran, and how many tokens it
-// deleted. Zero is recorded too, because the erasure ran.
+// AfterDeleteForUser records nothing, deliberately.
 //
-// It names no principal, neither as the entry's subject nor in its metadata
-// nor on the event. The entry is about the erasure, so it is filed under the
-// write's scope and survives audit.Erasure's deletion of the subject's own
-// scopes; a principal's identifier on it would be the one reference the erasure
-// left behind, uncounted in what the subject is told is retained. The count is
-// what a reader of the log can be told.
-func (h *RecordingHooks) AfterDeleteForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, _ string, deleted int64) error {
-	entry := &recording.Entry{
-		ResourceType: ResourceTypeToken,
-		EventType:    audit.EventDeleted,
-		Metadata:     map[string]string{metadataDeleted: strconv.FormatInt(deleted, 10)},
-	}
-
-	event := &webhooks.Event{
-		EventType: EventTokensErased,
-		Payload:   &ErasureEvent{Deleted: deleted},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
+// Store.DeleteForUser is an erasure's write, one table of the many a single
+// erasure request reaches, and dataprivacy.Fulfiller records that request once:
+// one audit entry naming it, with this table's count among the per-section
+// counts in its metadata, and one dataprivacy.EventErasureFulfilled. An entry
+// and an event here as well would be the request's fan-out across stores
+// written down as a separate fact per store, none of which says which erasure
+// it belonged to.
+//
+// A consumer that calls Store.DeleteForUser outside an erasure has a deletion
+// nothing else recorded, and embeds this type to override the method.
+func (h *RecordingHooks) AfterDeleteForUser(context.Context, database.Tx, tenancy.Scope, string, int64) error {
+	return nil
 }
 
 // recordToken writes the entry and the event for a write to one token. The

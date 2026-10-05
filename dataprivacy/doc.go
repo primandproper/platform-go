@@ -433,6 +433,16 @@ as the state change it describes. "Who exported this person's data" is itself
 sensitive, and a system that can produce an export without leaving a record of
 who asked has a data exfiltration path with no alarm on it.
 
+An erasure is recorded here once, and only here. It reaches every store the
+subject touched, and each of those stores' RecordingHooks records nothing for
+its part, so that one request is one entry rather than one per store, none of
+which could say which erasure it belonged to. The completion entry carries each
+section's counts in its metadata, as "section.<key>.deleted" and
+"section.<key>.anonymized", and a Fulfiller given an emitter with
+WithFulfillerEventEmitter publishes one EventErasureFulfilled on the same
+transaction, carrying the same counts. [EventCatalog] is the fragment to merge
+into the dispatcher's catalog.
+
 The audit entries carry the subject's ID and nothing else about them. An audit
 log is durable by design, and copying a person's data into the log that records
 the request to export it would defeat both. The operation carries even less: its

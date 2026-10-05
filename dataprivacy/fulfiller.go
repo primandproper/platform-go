@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/operations"
 	"github.com/primandproper/platform-go/v15/shredding"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -119,6 +120,11 @@ const panicStackKey = "dataprivacy.panic_stack"
 // "<eraserKey>.<what>" and always contain a dot, and this deliberately does not.
 const shredRetentionKey = "encryption_keys"
 
+// sectionMetadataPrefix namespaces an erasure entry's per-section counts, as
+// "section.<eraserKey>.deleted" and "section.<eraserKey>.anonymized", so they
+// cannot collide with the entry's totals, which carry no dot.
+const sectionMetadataPrefix = "section."
+
 // Fulfiller does the work behind this package's two operation kinds.
 //
 // It is not a loop and owns no goroutine. That is the whole of what the port
@@ -147,6 +153,7 @@ type Fulfiller struct {
 	uploader uploads.UploadManager
 	notifier Notifier
 	recorder audit.Recorder
+	events   *webhooks.Emitter
 	actor    ActorResolver
 	shredder shredding.Shredder
 	signer   func(ctx context.Context, req *Request) (string, time.Time)
@@ -892,6 +899,14 @@ func (f *Fulfiller) erase(
 			"retained":   itoa(int64(len(retained))),
 		}
 
+		// What each section destroyed, which is the one place it is written
+		// down: the stores' own hooks record nothing for an erasure's part in
+		// them, so that one request is one entry rather than one per store.
+		for i, key := range keys {
+			metadata[sectionMetadataPrefix+key+".deleted"] = itoa(outcomes[i].Deleted)
+			metadata[sectionMetadataPrefix+key+".anonymized"] = itoa(outcomes[i].Anonymized)
+		}
+
 		// The one fact in this entry that cannot be established any other way
 		// afterwards. Deleted rows can be counted from what is missing; a
 		// destroyed key leaves no trace in the data it protected, because that
@@ -900,7 +915,11 @@ func (f *Fulfiller) erase(
 			metadata["key_shredded_at"] = req.KeyShreddedAt.Format(time.RFC3339Nano)
 		}
 
-		return f.record(ctx, tx, req, metadata)
+		if txErr := f.record(ctx, tx, req, metadata); txErr != nil {
+			return txErr
+		}
+
+		return f.emitErasure(ctx, tx, req, keys, outcomes)
 	})
 	if err != nil {
 		return nil, err
@@ -1187,6 +1206,40 @@ func (f *Fulfiller) record(
 		Actor:        f.actor(ctx),
 		Metadata:     fields,
 		RecordedAt:   f.clock.Now().UTC(),
+	})
+}
+
+// emitErasure publishes EventErasureFulfilled inside the erasure's transaction,
+// so the event and the erasure it describes commit together or not at all.
+//
+// It is filed under the same scope as the completion entry, for the reason
+// auditScope gives: an unconfined request belongs to no single tenant.
+func (f *Fulfiller) emitErasure(
+	ctx context.Context,
+	tx database.Tx,
+	req *Request,
+	keys []string,
+	outcomes []ErasureOutcome,
+) error {
+	if f.events == nil {
+		return nil
+	}
+
+	sections := make(map[string]ErasureSection, len(keys))
+	for i, key := range keys {
+		sections[key] = ErasureSection{Deleted: outcomes[i].Deleted, Anonymized: outcomes[i].Anonymized}
+	}
+
+	return f.events.Emit(ctx, tx, auditScope(req.Scope), &webhooks.Event{
+		EventType: EventErasureFulfilled,
+		Payload: &ErasureEvent{
+			RequestID:   req.ID,
+			Subject:     req.Subject,
+			Deleted:     req.Deleted,
+			Anonymized:  req.Anonymized,
+			KeyShredded: req.KeyShreddedAt != nil,
+			Sections:    sections,
+		},
 	})
 }
 

@@ -76,8 +76,9 @@ event, does not write that Hooks itself. [RecordingHooks] is it, built over a
 recording.Recorder: each entry names the object by [ResourceTypeObject] and its
 owner only as the entry's subject, each event is one of the types [EventCatalog]
 describes, an archive's event carries the key the surviving bytes are at, and an
-erasure records how many objects it archived and not whose. Embed it to change
-one write's record and inherit the rest.
+owner's erasure records nothing, because dataprivacy.Fulfiller records the
+erasure request once. Embed it to change one write's record and inherit the
+rest.
 
 # Tenancy
 

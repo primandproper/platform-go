@@ -216,9 +216,10 @@ A deployment that owes every write the ordinary pair, an audit entry and a domai
 event, does not write that Hooks itself. [RecordingHooks] is it, built over a
 recording.Recorder: the entry names the row by [ResourceTypeDefinition] or
 [ResourceTypeValue], the event is one of the types [EventCatalog] describes, an
-answer is diffed against the one it replaced, and an erasure records its count
-and the kind of subject, never who. Embed it to change one write's record and
-inherit the rest.
+answer is diffed against the one it replaced, and an erasure records nothing,
+because dataprivacy.Fulfiller records the erasure request once rather than once
+per store it reached. Embed it to change one write's record and inherit the
+rest.
 
 # The reads take the wider executor
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/shredding"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/compression"
@@ -327,6 +328,17 @@ func WithFulfillerAuditRecorder(recorder audit.Recorder) FulfillerOption {
 	return func(f *Fulfiller) {
 		if recorder != nil {
 			f.recorder = recorder
+		}
+	}
+}
+
+// WithFulfillerEventEmitter attaches the emitter an erasure's
+// EventErasureFulfilled is published through, on the erasure's own
+// transaction. Without one, no event is emitted.
+func WithFulfillerEventEmitter(emitter *webhooks.Emitter) FulfillerOption {
+	return func(f *Fulfiller) {
+		if emitter != nil {
+			f.events = emitter
 		}
 	}
 }
