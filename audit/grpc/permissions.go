@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v15/audit/auditpb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -108,4 +109,19 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	b.RequireAll(Permissions())
 
 	return b
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// Reading a tenant's log is its admin's, because the log is what everybody in
+// the tenant did. Verifying the chain is too: it carries no entry's content,
+// but it is a question about the whole tenant's log rather than about the
+// caller. Reading any tenant's log is an operator's.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator:    []authorization.Permission{PermissionReadAnyEntries},
+		TenantAdmin: []authorization.Permission{PermissionReadEntries, PermissionVerifyChain},
+	}
 }
