@@ -117,6 +117,20 @@ type ListLiveRefreshTokenFamiliesRow struct {
 	CredentialKind  *string
 }
 
+// LockLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockLiveRefreshTokenFamiliesForSubject.
+type LockLiveRefreshTokenFamiliesForSubjectParams struct {
+	Scope       tenancy.Scope
+	SubjectID   string
+	Now         time.Time
+	ResultLimit int64
+}
+
+// LockLiveRefreshTokenFamiliesForSubjectRow is one row of LockLiveRefreshTokenFamiliesForSubject's result.
+type LockLiveRefreshTokenFamiliesForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
 // LockLiveRefreshTokenFamilyParams are the arguments to LockLiveRefreshTokenFamily.
 type LockLiveRefreshTokenFamilyParams struct {
 	Scope       tenancy.Scope
@@ -131,37 +145,34 @@ type LockLiveRefreshTokenFamilyRow struct {
 	FamilyID  string
 }
 
-// LockRefreshTokensParams are the arguments to LockRefreshTokens.
-type LockRefreshTokensParams struct {
-	Scope  tenancy.Scope
-	Hashes []string
-}
-
-// LockRefreshTokensRow is one row of LockRefreshTokens's result.
-type LockRefreshTokensRow struct {
-	Hash            string
-	ExpiresAt       time.Time
-	RedeemedAt      *time.Time
-	RevokedAt       *time.Time
-	RedeemedWithKey *string
-	SuccessorHash   *string
-}
-
-// ReadRefreshTokenFamilyRowsParams are the arguments to ReadRefreshTokenFamilyRows.
-type ReadRefreshTokenFamilyRowsParams struct {
+// LockLiveRefreshTokenFamilyForSubjectParams are the arguments to LockLiveRefreshTokenFamilyForSubject.
+type LockLiveRefreshTokenFamilyForSubjectParams struct {
 	Scope       tenancy.Scope
+	SubjectID   string
 	FamilyID    string
+	Now         time.Time
 	ResultLimit int64
 }
 
-// ReadRefreshTokenFamilyRowsRow is one row of ReadRefreshTokenFamilyRows's result.
-type ReadRefreshTokenFamilyRowsRow struct {
-	Hash            string
-	ExpiresAt       time.Time
-	RedeemedAt      *time.Time
-	RevokedAt       *time.Time
-	RedeemedWithKey *string
-	SuccessorHash   *string
+// LockLiveRefreshTokenFamilyForSubjectRow is one row of LockLiveRefreshTokenFamilyForSubject's result.
+type LockLiveRefreshTokenFamilyForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
+}
+
+// LockOtherLiveRefreshTokenFamiliesForSubjectParams are the arguments to LockOtherLiveRefreshTokenFamiliesForSubject.
+type LockOtherLiveRefreshTokenFamiliesForSubjectParams struct {
+	Scope        tenancy.Scope
+	SubjectID    string
+	KeepFamilyID string
+	Now          time.Time
+	ResultLimit  int64
+}
+
+// LockOtherLiveRefreshTokenFamiliesForSubjectRow is one row of LockOtherLiveRefreshTokenFamiliesForSubject's result.
+type LockOtherLiveRefreshTokenFamiliesForSubjectRow struct {
+	SubjectID string
+	FamilyID  string
 }
 
 // RecordRefreshTokenSuccessorParams are the arguments to RecordRefreshTokenSuccessor.
@@ -199,75 +210,6 @@ type RevokeRefreshTokenParams struct {
 type RevokeRefreshTokenFamilyParams struct {
 	RevokedAt *time.Time
 	Scope     tenancy.Scope
-	FamilyID  string
-}
-
-// RevokeRefreshTokensParams are the arguments to RevokeRefreshTokens.
-type RevokeRefreshTokensParams struct {
-	RevokedAt *time.Time
-	Scope     tenancy.Scope
-	Hashes    []string
-}
-
-// SelectLiveRefreshTokenFamiliesForSubjectParams are the arguments to SelectLiveRefreshTokenFamiliesForSubject.
-type SelectLiveRefreshTokenFamiliesForSubjectParams struct {
-	Scope        tenancy.Scope
-	SubjectID    string
-	Now          time.Time
-	ResultOffset int64
-	ResultLimit  int64
-}
-
-// SelectLiveRefreshTokenFamiliesForSubjectRow is one row of SelectLiveRefreshTokenFamiliesForSubject's result.
-type SelectLiveRefreshTokenFamiliesForSubjectRow struct {
-	SubjectID string
-	FamilyID  string
-}
-
-// SelectLiveRefreshTokenFamilyParams are the arguments to SelectLiveRefreshTokenFamily.
-type SelectLiveRefreshTokenFamilyParams struct {
-	Scope        tenancy.Scope
-	FamilyID     string
-	Now          time.Time
-	ResultOffset int64
-	ResultLimit  int64
-}
-
-// SelectLiveRefreshTokenFamilyRow is one row of SelectLiveRefreshTokenFamily's result.
-type SelectLiveRefreshTokenFamilyRow struct {
-	SubjectID string
-	FamilyID  string
-}
-
-// SelectLiveRefreshTokenFamilyForSubjectParams are the arguments to SelectLiveRefreshTokenFamilyForSubject.
-type SelectLiveRefreshTokenFamilyForSubjectParams struct {
-	Scope        tenancy.Scope
-	SubjectID    string
-	FamilyID     string
-	Now          time.Time
-	ResultOffset int64
-	ResultLimit  int64
-}
-
-// SelectLiveRefreshTokenFamilyForSubjectRow is one row of SelectLiveRefreshTokenFamilyForSubject's result.
-type SelectLiveRefreshTokenFamilyForSubjectRow struct {
-	SubjectID string
-	FamilyID  string
-}
-
-// SelectOtherLiveRefreshTokenFamiliesForSubjectParams are the arguments to SelectOtherLiveRefreshTokenFamiliesForSubject.
-type SelectOtherLiveRefreshTokenFamiliesForSubjectParams struct {
-	Scope        tenancy.Scope
-	SubjectID    string
-	KeepFamilyID string
-	Now          time.Time
-	ResultOffset int64
-	ResultLimit  int64
-}
-
-// SelectOtherLiveRefreshTokenFamiliesForSubjectRow is one row of SelectOtherLiveRefreshTokenFamiliesForSubject's result.
-type SelectOtherLiveRefreshTokenFamiliesForSubjectRow struct {
-	SubjectID string
 	FamilyID  string
 }
 

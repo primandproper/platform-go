@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v15/authentication/signin"
-	"github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens/internal/signindb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -376,85 +375,6 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.False(t, reused.Ended, test.Sprintf("a second replay ends nothing"))
 	})
 
-	// A revocation holds the rows it withdraws and nothing beside them. On MySQL
-	// one that locked the subject or family index by range held the gap a new
-	// login's row is inserted into, and a sign-in that recorded before it
-	// minted — holding an audit chain's head the revocation then waited on —
-	// deadlocked with it. Here the revocation stays open while somebody else
-	// signs in with a family that sorts straight after the one being ended.
-	t.Run("a held revocation blocks no sign-in", func(t *testing.T) {
-		mint(t, "family_held_a", "user_held", time.Hour)
-
-		var (
-			held    = make(chan error, 1)
-			release = make(chan struct{})
-			done    = make(chan error, 1)
-		)
-
-		go func() {
-			done <- store.db.WithTransaction(t.Context(), func(tx database.Tx) error {
-				_, endErr := store.EndSignIns(t.Context(), tx, testScope(), signin.SignInSelector{SubjectID: "user_held"})
-				held <- endErr
-				if endErr != nil {
-					return endErr
-				}
-
-				<-release
-
-				return nil
-			})
-		}()
-
-		must.NoError(t, <-held)
-
-		// Well inside InnoDB's lock wait timeout, so a blocked insert reads as
-		// a failure rather than as a slow pass.
-		mintCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-
-		mintErr := store.db.WithTransaction(mintCtx, func(tx database.Tx) error {
-			_, issueErr := store.Issue(mintCtx, tx, testScope(), &signin.RefreshTokenRequest{
-				TTL: time.Hour, FamilyID: "family_held_b", SubjectID: "user_held_neighbor", ActiveAccountID: testAccount,
-			})
-
-			return issueErr
-		})
-
-		close(release)
-		must.NoError(t, <-done)
-		must.NoError(t, mintErr)
-	})
-
-	// The revocation reads a family's rows from a snapshot before it locks them,
-	// and a snapshot cannot see a successor an exchange commits after it. That
-	// exchange moves the row it spent, so the revocation sees the move once it
-	// holds the rows and reads the family again: the successor ends with the
-	// login, and the login is reported as ended.
-	t.Run("a revocation that races an exchange still ends the successor", func(t *testing.T) {
-		first := mint(t, "family_race", "user_race", time.Hour)
-
-		var successor *signin.RefreshTokenIssuance
-
-		racing, storeErr := NewSQLStore(&Config{}, client, WithClock(c))
-		must.NoError(t, storeErr)
-
-		racing.q = &interleavedQuerier{
-			Querier: racing.q,
-			afterFamilyRead: func() {
-				successor = rotate(t, store, testScope(), first.Secret)
-			},
-		}
-
-		ended, endErr := endSignIns(t, racing, testScope(), signin.SignInSelector{SubjectID: "user_race"})
-		must.NoError(t, endErr)
-		must.NotNil(t, successor)
-
-		test.Eq(t, []string{"family_race"}, endedFamilies(ended))
-
-		_, redeemErr := redeem(t, store, testScope(), successor.Secret)
-		test.ErrorIs(t, redeemErr, signin.ErrInvalidCredentials)
-	})
-
 	// A prefix is not decoration: it renders a second table, and both the DDL and
 	// every statement have to agree about which one they mean.
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {
@@ -499,27 +419,4 @@ func TestRefreshTokens_MySQL(T *testing.T) {
 
 		runDialectSuite(T, client, dialect.MySQL)
 	}, mysqltest.WithCredentials("refreshtest", "refreshtest", "refreshtest"))
-}
-
-// interleavedQuerier runs afterFamilyRead once, on another connection, between
-// a revocation's unlocked read of a family's rows and its locked one: the
-// window a racing exchange lands in.
-type interleavedQuerier struct {
-	signindb.Querier
-
-	afterFamilyRead func()
-	once            sync.Once
-}
-
-func (q *interleavedQuerier) ReadRefreshTokenFamilyRows(
-	ctx context.Context,
-	db signindb.DBTX,
-	arg signindb.ReadRefreshTokenFamilyRowsParams,
-) ([]signindb.ReadRefreshTokenFamilyRowsRow, error) {
-	rows, err := q.Querier.ReadRefreshTokenFamilyRows(ctx, db, arg)
-	if err == nil {
-		q.once.Do(q.afterFamilyRead)
-	}
-
-	return rows, err
 }

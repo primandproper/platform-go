@@ -116,6 +116,19 @@ WHERE {{prefix}}signin_refresh_tokens.scope = ?
 ORDER BY {{prefix}}signin_refresh_tokens.issued_at DESC, {{prefix}}signin_refresh_tokens.family_id ASC
 LIMIT ?`
 
+const lockLiveRefreshTokenFamiliesForSubjectMySQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT ?
+FOR UPDATE`
+
 const lockLiveRefreshTokenFamilyMySQL = `SELECT
 	{{prefix}}signin_refresh_tokens.subject_id,
 	{{prefix}}signin_refresh_tokens.family_id
@@ -129,32 +142,33 @@ ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
 LIMIT ?
 FOR UPDATE`
 
-const lockRefreshTokensMySQL = `SELECT
-	{{prefix}}signin_refresh_tokens.hash,
-	{{prefix}}signin_refresh_tokens.expires_at,
-	{{prefix}}signin_refresh_tokens.redeemed_at,
-	{{prefix}}signin_refresh_tokens.revoked_at,
-	{{prefix}}signin_refresh_tokens.redeemed_with_key,
-	{{prefix}}signin_refresh_tokens.successor_hash
-FROM {{prefix}}signin_refresh_tokens FORCE INDEX (PRIMARY)
-WHERE {{prefix}}signin_refresh_tokens.scope = ?
-	AND {{prefix}}signin_refresh_tokens.hash IN (/*SLICE:hashes*/?)
-ORDER BY {{prefix}}signin_refresh_tokens.hash ASC
-FOR UPDATE`
-
-const readRefreshTokenFamilyRowsMySQL = `SELECT
-	{{prefix}}signin_refresh_tokens.hash,
-	{{prefix}}signin_refresh_tokens.expires_at,
-	{{prefix}}signin_refresh_tokens.redeemed_at,
-	{{prefix}}signin_refresh_tokens.revoked_at,
-	{{prefix}}signin_refresh_tokens.redeemed_with_key,
-	{{prefix}}signin_refresh_tokens.successor_hash
+const lockLiveRefreshTokenFamilyForSubjectMySQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = ?
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?
 	AND {{prefix}}signin_refresh_tokens.family_id = ?
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
 	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-ORDER BY {{prefix}}signin_refresh_tokens.hash ASC
-LIMIT ?`
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT ?
+FOR UPDATE`
+
+const lockOtherLiveRefreshTokenFamiliesForSubjectMySQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = ?
+	AND {{prefix}}signin_refresh_tokens.subject_id = ?
+	AND {{prefix}}signin_refresh_tokens.family_id <> ?
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > ?
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT ?
+FOR UPDATE`
 
 const recordRefreshTokenSuccessorMySQL = `UPDATE {{prefix}}signin_refresh_tokens SET
 	successor_hash = ?
@@ -190,113 +204,49 @@ WHERE scope = ?
 	AND family_id = ?
 	AND revoked_at IS NULL`
 
-const revokeRefreshTokensMySQL = `UPDATE {{prefix}}signin_refresh_tokens FORCE INDEX (PRIMARY) SET
-	revoked_at = ?
-WHERE scope = ?
-	AND revoked_at IS NULL
-	AND hash IN (/*SLICE:hashes*/?)`
-
-const selectLiveRefreshTokenFamiliesForSubjectMySQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
-FROM {{prefix}}signin_refresh_tokens
-WHERE {{prefix}}signin_refresh_tokens.scope = ?
-	AND {{prefix}}signin_refresh_tokens.subject_id = ?
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > ?
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT ?, ?`
-
-const selectLiveRefreshTokenFamilyMySQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
-FROM {{prefix}}signin_refresh_tokens
-WHERE {{prefix}}signin_refresh_tokens.scope = ?
-	AND {{prefix}}signin_refresh_tokens.family_id = ?
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > ?
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT ?, ?`
-
-const selectLiveRefreshTokenFamilyForSubjectMySQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
-FROM {{prefix}}signin_refresh_tokens
-WHERE {{prefix}}signin_refresh_tokens.scope = ?
-	AND {{prefix}}signin_refresh_tokens.subject_id = ?
-	AND {{prefix}}signin_refresh_tokens.family_id = ?
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > ?
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT ?, ?`
-
-const selectOtherLiveRefreshTokenFamiliesForSubjectMySQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
-FROM {{prefix}}signin_refresh_tokens
-WHERE {{prefix}}signin_refresh_tokens.scope = ?
-	AND {{prefix}}signin_refresh_tokens.subject_id = ?
-	AND {{prefix}}signin_refresh_tokens.family_id <> ?
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > ?
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT ?, ?`
-
 const sweepRefreshTokensMySQL = `DELETE FROM {{prefix}}signin_refresh_tokens
 WHERE purge_after <= ?`
 
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
-	claimRefreshTokenRemint                       string
-	getLiveRefreshTokenForFamily                  string
-	getRefreshToken                               string
-	getRefreshTokenRedemption                     string
-	insertRefreshToken                            string
-	listLiveRefreshTokenFamilies                  string
-	lockLiveRefreshTokenFamily                    string
-	lockRefreshTokens                             string
-	readRefreshTokenFamilyRows                    string
-	recordRefreshTokenSuccessor                   string
-	redeemRefreshToken                            string
-	redeemRefreshTokenWithKey                     string
-	revokeRefreshToken                            string
-	revokeRefreshTokenFamily                      string
-	revokeRefreshTokens                           string
-	selectLiveRefreshTokenFamiliesForSubject      string
-	selectLiveRefreshTokenFamily                  string
-	selectLiveRefreshTokenFamilyForSubject        string
-	selectOtherLiveRefreshTokenFamiliesForSubject string
-	sweepRefreshTokens                            string
+	claimRefreshTokenRemint                     string
+	getLiveRefreshTokenForFamily                string
+	getRefreshToken                             string
+	getRefreshTokenRedemption                   string
+	insertRefreshToken                          string
+	listLiveRefreshTokenFamilies                string
+	lockLiveRefreshTokenFamiliesForSubject      string
+	lockLiveRefreshTokenFamily                  string
+	lockLiveRefreshTokenFamilyForSubject        string
+	lockOtherLiveRefreshTokenFamiliesForSubject string
+	recordRefreshTokenSuccessor                 string
+	redeemRefreshToken                          string
+	redeemRefreshTokenWithKey                   string
+	revokeRefreshToken                          string
+	revokeRefreshTokenFamily                    string
+	sweepRefreshTokens                          string
 }
 
 // newMySQL returns the mysql querier with prefix substituted into every
 // table name the analyzer identified.
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
-		claimRefreshTokenRemint:                       strings.ReplaceAll(claimRefreshTokenRemintMySQL, prefixMarker, prefix),
-		getLiveRefreshTokenForFamily:                  strings.ReplaceAll(getLiveRefreshTokenForFamilyMySQL, prefixMarker, prefix),
-		getRefreshToken:                               strings.ReplaceAll(getRefreshTokenMySQL, prefixMarker, prefix),
-		getRefreshTokenRedemption:                     strings.ReplaceAll(getRefreshTokenRedemptionMySQL, prefixMarker, prefix),
-		insertRefreshToken:                            strings.ReplaceAll(insertRefreshTokenMySQL, prefixMarker, prefix),
-		listLiveRefreshTokenFamilies:                  strings.ReplaceAll(listLiveRefreshTokenFamiliesMySQL, prefixMarker, prefix),
-		lockLiveRefreshTokenFamily:                    strings.ReplaceAll(lockLiveRefreshTokenFamilyMySQL, prefixMarker, prefix),
-		lockRefreshTokens:                             strings.ReplaceAll(lockRefreshTokensMySQL, prefixMarker, prefix),
-		readRefreshTokenFamilyRows:                    strings.ReplaceAll(readRefreshTokenFamilyRowsMySQL, prefixMarker, prefix),
-		recordRefreshTokenSuccessor:                   strings.ReplaceAll(recordRefreshTokenSuccessorMySQL, prefixMarker, prefix),
-		redeemRefreshToken:                            strings.ReplaceAll(redeemRefreshTokenMySQL, prefixMarker, prefix),
-		redeemRefreshTokenWithKey:                     strings.ReplaceAll(redeemRefreshTokenWithKeyMySQL, prefixMarker, prefix),
-		revokeRefreshToken:                            strings.ReplaceAll(revokeRefreshTokenMySQL, prefixMarker, prefix),
-		revokeRefreshTokenFamily:                      strings.ReplaceAll(revokeRefreshTokenFamilyMySQL, prefixMarker, prefix),
-		revokeRefreshTokens:                           strings.ReplaceAll(revokeRefreshTokensMySQL, prefixMarker, prefix),
-		selectLiveRefreshTokenFamiliesForSubject:      strings.ReplaceAll(selectLiveRefreshTokenFamiliesForSubjectMySQL, prefixMarker, prefix),
-		selectLiveRefreshTokenFamily:                  strings.ReplaceAll(selectLiveRefreshTokenFamilyMySQL, prefixMarker, prefix),
-		selectLiveRefreshTokenFamilyForSubject:        strings.ReplaceAll(selectLiveRefreshTokenFamilyForSubjectMySQL, prefixMarker, prefix),
-		selectOtherLiveRefreshTokenFamiliesForSubject: strings.ReplaceAll(selectOtherLiveRefreshTokenFamiliesForSubjectMySQL, prefixMarker, prefix),
-		sweepRefreshTokens:                            strings.ReplaceAll(sweepRefreshTokensMySQL, prefixMarker, prefix),
+		claimRefreshTokenRemint:                     strings.ReplaceAll(claimRefreshTokenRemintMySQL, prefixMarker, prefix),
+		getLiveRefreshTokenForFamily:                strings.ReplaceAll(getLiveRefreshTokenForFamilyMySQL, prefixMarker, prefix),
+		getRefreshToken:                             strings.ReplaceAll(getRefreshTokenMySQL, prefixMarker, prefix),
+		getRefreshTokenRedemption:                   strings.ReplaceAll(getRefreshTokenRedemptionMySQL, prefixMarker, prefix),
+		insertRefreshToken:                          strings.ReplaceAll(insertRefreshTokenMySQL, prefixMarker, prefix),
+		listLiveRefreshTokenFamilies:                strings.ReplaceAll(listLiveRefreshTokenFamiliesMySQL, prefixMarker, prefix),
+		lockLiveRefreshTokenFamiliesForSubject:      strings.ReplaceAll(lockLiveRefreshTokenFamiliesForSubjectMySQL, prefixMarker, prefix),
+		lockLiveRefreshTokenFamily:                  strings.ReplaceAll(lockLiveRefreshTokenFamilyMySQL, prefixMarker, prefix),
+		lockLiveRefreshTokenFamilyForSubject:        strings.ReplaceAll(lockLiveRefreshTokenFamilyForSubjectMySQL, prefixMarker, prefix),
+		lockOtherLiveRefreshTokenFamiliesForSubject: strings.ReplaceAll(lockOtherLiveRefreshTokenFamiliesForSubjectMySQL, prefixMarker, prefix),
+		recordRefreshTokenSuccessor:                 strings.ReplaceAll(recordRefreshTokenSuccessorMySQL, prefixMarker, prefix),
+		redeemRefreshToken:                          strings.ReplaceAll(redeemRefreshTokenMySQL, prefixMarker, prefix),
+		redeemRefreshTokenWithKey:                   strings.ReplaceAll(redeemRefreshTokenWithKeyMySQL, prefixMarker, prefix),
+		revokeRefreshToken:                          strings.ReplaceAll(revokeRefreshTokenMySQL, prefixMarker, prefix),
+		revokeRefreshTokenFamily:                    strings.ReplaceAll(revokeRefreshTokenFamilyMySQL, prefixMarker, prefix),
+		sweepRefreshTokens:                          strings.ReplaceAll(sweepRefreshTokensMySQL, prefixMarker, prefix),
 	}
 }
 
@@ -454,6 +404,42 @@ func (q *mysqlQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX
 	return items, nil
 }
 
+// LockLiveRefreshTokenFamiliesForSubject runs the :many query against mysql.
+func (q *mysqlQueries) LockLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamiliesForSubjectParams) ([]LockLiveRefreshTokenFamiliesForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamiliesForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		arg.Now,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []LockLiveRefreshTokenFamiliesForSubjectRow
+
+	for rows.Next() {
+		var i LockLiveRefreshTokenFamiliesForSubjectRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // LockLiveRefreshTokenFamily runs the :many query against mysql.
 func (q *mysqlQueries) LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyParams) ([]LockLiveRefreshTokenFamilyRow, error) {
 	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamily,
@@ -490,39 +476,29 @@ func (q *mysqlQueries) LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, 
 	return items, nil
 }
 
-// LockRefreshTokens runs the :many query against mysql.
-func (q *mysqlQueries) LockRefreshTokens(ctx context.Context, db DBTX, arg LockRefreshTokensParams) ([]LockRefreshTokensRow, error) {
-	query := q.lockRefreshTokens
-
-	args := make([]any, 0, 1+len(arg.Hashes))
-
-	args = append(args, arg.Scope)
-
-	query = strings.Replace(query, "/*SLICE:hashes*/?", slicePlaceholders("?", len(arg.Hashes)), 1)
-
-	for _, v := range arg.Hashes {
-		args = append(args, v)
-	}
-
-	rows, err := db.QueryContext(ctx, query, args...)
+// LockLiveRefreshTokenFamilyForSubject runs the :many query against mysql.
+func (q *mysqlQueries) LockLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyForSubjectParams) ([]LockLiveRefreshTokenFamilyForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamilyForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		arg.FamilyID,
+		arg.Now,
+		arg.ResultLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() { _ = rows.Close() }()
 
-	var items []LockRefreshTokensRow
+	var items []LockLiveRefreshTokenFamilyForSubjectRow
 
 	for rows.Next() {
-		var i LockRefreshTokensRow
+		var i LockLiveRefreshTokenFamilyForSubjectRow
 
 		if err := rows.Scan(
-			&i.Hash,
-			&i.ExpiresAt,
-			&i.RedeemedAt,
-			&i.RevokedAt,
-			&i.RedeemedWithKey,
-			&i.SuccessorHash,
+			&i.SubjectID,
+			&i.FamilyID,
 		); err != nil {
 			return nil, err
 		}
@@ -537,11 +513,13 @@ func (q *mysqlQueries) LockRefreshTokens(ctx context.Context, db DBTX, arg LockR
 	return items, nil
 }
 
-// ReadRefreshTokenFamilyRows runs the :many query against mysql.
-func (q *mysqlQueries) ReadRefreshTokenFamilyRows(ctx context.Context, db DBTX, arg ReadRefreshTokenFamilyRowsParams) ([]ReadRefreshTokenFamilyRowsRow, error) {
-	rows, err := db.QueryContext(ctx, q.readRefreshTokenFamilyRows,
+// LockOtherLiveRefreshTokenFamiliesForSubject runs the :many query against mysql.
+func (q *mysqlQueries) LockOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockOtherLiveRefreshTokenFamiliesForSubjectParams) ([]LockOtherLiveRefreshTokenFamiliesForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockOtherLiveRefreshTokenFamiliesForSubject,
 		arg.Scope,
-		arg.FamilyID,
+		arg.SubjectID,
+		arg.KeepFamilyID,
+		arg.Now,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -550,18 +528,14 @@ func (q *mysqlQueries) ReadRefreshTokenFamilyRows(ctx context.Context, db DBTX, 
 
 	defer func() { _ = rows.Close() }()
 
-	var items []ReadRefreshTokenFamilyRowsRow
+	var items []LockOtherLiveRefreshTokenFamiliesForSubjectRow
 
 	for rows.Next() {
-		var i ReadRefreshTokenFamilyRowsRow
+		var i LockOtherLiveRefreshTokenFamiliesForSubjectRow
 
 		if err := rows.Scan(
-			&i.Hash,
-			&i.ExpiresAt,
-			&i.RedeemedAt,
-			&i.RevokedAt,
-			&i.RedeemedWithKey,
-			&i.SuccessorHash,
+			&i.SubjectID,
+			&i.FamilyID,
 		); err != nil {
 			return nil, err
 		}
@@ -647,180 +621,6 @@ func (q *mysqlQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBTX, ar
 	}
 
 	return result.RowsAffected()
-}
-
-// RevokeRefreshTokens runs the :execrows query against mysql.
-func (q *mysqlQueries) RevokeRefreshTokens(ctx context.Context, db DBTX, arg RevokeRefreshTokensParams) (int64, error) {
-	query := q.revokeRefreshTokens
-
-	args := make([]any, 0, 2+len(arg.Hashes))
-
-	args = append(args, arg.RevokedAt)
-
-	args = append(args, arg.Scope)
-
-	query = strings.Replace(query, "/*SLICE:hashes*/?", slicePlaceholders("?", len(arg.Hashes)), 1)
-
-	for _, v := range arg.Hashes {
-		args = append(args, v)
-	}
-
-	result, err := db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
-}
-
-// SelectLiveRefreshTokenFamiliesForSubject runs the :many query against mysql.
-func (q *mysqlQueries) SelectLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamiliesForSubjectParams) ([]SelectLiveRefreshTokenFamiliesForSubjectRow, error) {
-	rows, err := db.QueryContext(ctx, q.selectLiveRefreshTokenFamiliesForSubject,
-		arg.Scope,
-		arg.SubjectID,
-		arg.Now,
-		arg.ResultOffset,
-		arg.ResultLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = rows.Close() }()
-
-	var items []SelectLiveRefreshTokenFamiliesForSubjectRow
-
-	for rows.Next() {
-		var i SelectLiveRefreshTokenFamiliesForSubjectRow
-
-		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
-		); err != nil {
-			return nil, err
-		}
-
-		items = append(items, i)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
-}
-
-// SelectLiveRefreshTokenFamily runs the :many query against mysql.
-func (q *mysqlQueries) SelectLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamilyParams) ([]SelectLiveRefreshTokenFamilyRow, error) {
-	rows, err := db.QueryContext(ctx, q.selectLiveRefreshTokenFamily,
-		arg.Scope,
-		arg.FamilyID,
-		arg.Now,
-		arg.ResultOffset,
-		arg.ResultLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = rows.Close() }()
-
-	var items []SelectLiveRefreshTokenFamilyRow
-
-	for rows.Next() {
-		var i SelectLiveRefreshTokenFamilyRow
-
-		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
-		); err != nil {
-			return nil, err
-		}
-
-		items = append(items, i)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
-}
-
-// SelectLiveRefreshTokenFamilyForSubject runs the :many query against mysql.
-func (q *mysqlQueries) SelectLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamilyForSubjectParams) ([]SelectLiveRefreshTokenFamilyForSubjectRow, error) {
-	rows, err := db.QueryContext(ctx, q.selectLiveRefreshTokenFamilyForSubject,
-		arg.Scope,
-		arg.SubjectID,
-		arg.FamilyID,
-		arg.Now,
-		arg.ResultOffset,
-		arg.ResultLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = rows.Close() }()
-
-	var items []SelectLiveRefreshTokenFamilyForSubjectRow
-
-	for rows.Next() {
-		var i SelectLiveRefreshTokenFamilyForSubjectRow
-
-		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
-		); err != nil {
-			return nil, err
-		}
-
-		items = append(items, i)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
-}
-
-// SelectOtherLiveRefreshTokenFamiliesForSubject runs the :many query against mysql.
-func (q *mysqlQueries) SelectOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg SelectOtherLiveRefreshTokenFamiliesForSubjectParams) ([]SelectOtherLiveRefreshTokenFamiliesForSubjectRow, error) {
-	rows, err := db.QueryContext(ctx, q.selectOtherLiveRefreshTokenFamiliesForSubject,
-		arg.Scope,
-		arg.SubjectID,
-		arg.KeepFamilyID,
-		arg.Now,
-		arg.ResultOffset,
-		arg.ResultLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = rows.Close() }()
-
-	var items []SelectOtherLiveRefreshTokenFamiliesForSubjectRow
-
-	for rows.Next() {
-		var i SelectOtherLiveRefreshTokenFamiliesForSubjectRow
-
-		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
-		); err != nil {
-			return nil, err
-		}
-
-		items = append(items, i)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
 }
 
 // SweepRefreshTokens runs the :execrows query against mysql.
@@ -930,6 +730,16 @@ var (
 	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
 		Scope       tenancy.Scope
+		SubjectID   string
+		Now         time.Time
+		ResultLimit int64
+	}(LockLiveRefreshTokenFamiliesForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(LockLiveRefreshTokenFamiliesForSubjectRow{})
+	_ = struct {
+		Scope       tenancy.Scope
 		FamilyID    string
 		Now         time.Time
 		ResultLimit int64
@@ -939,30 +749,27 @@ var (
 		FamilyID  string
 	}(LockLiveRefreshTokenFamilyRow{})
 	_ = struct {
-		Scope  tenancy.Scope
-		Hashes []string
-	}(LockRefreshTokensParams{})
-	_ = struct {
-		Hash            string
-		ExpiresAt       time.Time
-		RedeemedAt      *time.Time
-		RevokedAt       *time.Time
-		RedeemedWithKey *string
-		SuccessorHash   *string
-	}(LockRefreshTokensRow{})
-	_ = struct {
 		Scope       tenancy.Scope
+		SubjectID   string
 		FamilyID    string
+		Now         time.Time
 		ResultLimit int64
-	}(ReadRefreshTokenFamilyRowsParams{})
+	}(LockLiveRefreshTokenFamilyForSubjectParams{})
 	_ = struct {
-		Hash            string
-		ExpiresAt       time.Time
-		RedeemedAt      *time.Time
-		RevokedAt       *time.Time
-		RedeemedWithKey *string
-		SuccessorHash   *string
-	}(ReadRefreshTokenFamilyRowsRow{})
+		SubjectID string
+		FamilyID  string
+	}(LockLiveRefreshTokenFamilyForSubjectRow{})
+	_ = struct {
+		Scope        tenancy.Scope
+		SubjectID    string
+		KeepFamilyID string
+		Now          time.Time
+		ResultLimit  int64
+	}(LockOtherLiveRefreshTokenFamiliesForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(LockOtherLiveRefreshTokenFamiliesForSubjectRow{})
 	_ = struct {
 		SuccessorHash *string
 		Hash          string
@@ -991,57 +798,6 @@ var (
 		Scope     tenancy.Scope
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
-	_ = struct {
-		RevokedAt *time.Time
-		Scope     tenancy.Scope
-		Hashes    []string
-	}(RevokeRefreshTokensParams{})
-	_ = struct {
-		Scope        tenancy.Scope
-		SubjectID    string
-		Now          time.Time
-		ResultOffset int64
-		ResultLimit  int64
-	}(SelectLiveRefreshTokenFamiliesForSubjectParams{})
-	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(SelectLiveRefreshTokenFamiliesForSubjectRow{})
-	_ = struct {
-		Scope        tenancy.Scope
-		FamilyID     string
-		Now          time.Time
-		ResultOffset int64
-		ResultLimit  int64
-	}(SelectLiveRefreshTokenFamilyParams{})
-	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(SelectLiveRefreshTokenFamilyRow{})
-	_ = struct {
-		Scope        tenancy.Scope
-		SubjectID    string
-		FamilyID     string
-		Now          time.Time
-		ResultOffset int64
-		ResultLimit  int64
-	}(SelectLiveRefreshTokenFamilyForSubjectParams{})
-	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(SelectLiveRefreshTokenFamilyForSubjectRow{})
-	_ = struct {
-		Scope        tenancy.Scope
-		SubjectID    string
-		KeepFamilyID string
-		Now          time.Time
-		ResultOffset int64
-		ResultLimit  int64
-	}(SelectOtherLiveRefreshTokenFamiliesForSubjectParams{})
-	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(SelectOtherLiveRefreshTokenFamiliesForSubjectRow{})
 	_ = struct {
 		PurgeBefore time.Time
 	}(SweepRefreshTokensParams{})
