@@ -275,6 +275,16 @@ func TestFuncAdapters(T *testing.T) {
 		test.EqOp(t, "api_requests", ref.MeterName)
 	})
 
+	T.Run("Unbilled", func(t *testing.T) {
+		t.Parallel()
+
+		ref, err := Unbilled().ProviderRefFor(t.Context(), testSubject, testMeter)
+		test.ErrorIs(t, err, ErrNoProviderRef)
+		test.StrContains(t, err.Error(), testSubject)
+		test.StrContains(t, err.Error(), testMeter)
+		test.EqOp(t, ProviderRef{}, ref)
+	})
+
 	T.Run("PeriodResolverFunc", func(t *testing.T) {
 		t.Parallel()
 

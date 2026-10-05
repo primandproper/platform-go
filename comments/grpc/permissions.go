@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v15/comments/commentspb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -113,4 +114,24 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// Taking part in a discussion is a member's: writing, reading, and revising or
+// archiving what they wrote, which [AuthorAuthorizer] keeps to their own words
+// unless a deployment's rule says otherwise. Paging every comment about a kind
+// of thing is moderation of the tenant, and its admin's.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		TenantAdmin: []authorization.Permission{PermissionModerateComments},
+		Member: []authorization.Permission{
+			PermissionCreateComments,
+			PermissionReadComments,
+			PermissionUpdateComments,
+			PermissionArchiveComments,
+		},
+	}
 }

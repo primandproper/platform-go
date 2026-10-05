@@ -353,9 +353,14 @@ verifies the token and resolves the principal through the read that refuses a
 banned user. It carries the login's family so `ListSignIns` can mark the
 current one, and grants service roles only on a token minted through the
 administrative door. A seam can say what an ordinary-door token keeps; by
-default it keeps none. Grants come from the consumer's role policy, and a
-deployment that also accepts another kind of token chains its own extractor
-in behind this one. Its interceptors enforce a table of which methods need a
+default it keeps none. Grants come from the consumer's role policy.
+`WithAccessTokens` extends it to OAuth2 access tokens, over primitives-go's
+`oauth2server.Verifier`: the verifier owns the audience and scope checks, the
+directory owns the subject, and the join between them — which a `WithFallback`
+extractor could not make, since it cannot answer a missing scope as a 403 or a
+banned subject as anything but nobody — is written once here rather than once
+per resource server. A deployment that accepts a third kind of token chains its
+own extractor in behind this one. Its interceptors enforce a table of which methods need a
 caller. The table is built from each surface's own method lists, and a method
 nobody declared is refused. The application installs it: `service` builds no
 extractor, so a composition root names it to `service.Transports` and puts its

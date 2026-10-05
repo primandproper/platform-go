@@ -106,6 +106,11 @@ const (
 	metadataDeleted        = "deleted"
 )
 
+// writtenText is what a report's diff hashes before it is recorded: the details
+// the reporter wrote and the resolution a triager wrote back. See
+// RecordingHooks.
+var writtenText = audit.Redaction{Hash: []string{"details", "resolution"}}
+
 // lastUpdatedAtField is the json name of the timestamp every save stamps, which
 // a diff therefore always names and a changed-fields list should not.
 const lastUpdatedAtField = "lastUpdatedAt"
@@ -125,10 +130,14 @@ const lastUpdatedAtField = "lastUpdatedAt"
 // subject can; none names the reporter in its metadata, for the reason
 // waitlists.RecordingHooks gives.
 //
-// Nor does it redact. A revision's diff carries the details old and new, and a
-// transition's the resolution note it replaced; whether either is personal data
-// is the deployment's call, made with audit.WithRedaction for
-// [ResourceTypeReport] on the audit recorder.
+// A revision's diff carries the details hashed, and a transition's the
+// resolution note it replaced, never as written. Both are sentences somebody
+// typed, issuereports/privacy's eraser deletes the report for exactly that
+// reason, and a copy in the one table built not to forget would outlive the
+// report. The digests still say what changed, and the fields' names survive
+// into the event's Changed list. That is this type's obligation rather than a
+// deployment's policy, so it does not wait for an audit.WithRedaction; see
+// audit.Redaction.Apply.
 type RecordingHooks struct {
 	recorder *recording.Recorder
 }
@@ -166,13 +175,18 @@ func (h *RecordingHooks) AfterUpdateReport(ctx context.Context, tx database.Tx, 
 		return platformerrors.Wrap(err, "diffing the revised issue report")
 	}
 
+	if changes, err = writtenText.Apply(changes); err != nil {
+		return platformerrors.Wrap(err, "redacting the revised issue report")
+	}
+
 	return h.record(ctx, tx, scope, after, audit.EventUpdated, EventReportUpdated, "", changes)
 }
 
 // AfterTransitionReport records a report moving through its lifecycle. The
-// diff carries the status, the resolution note and the closing stamp it moved
-// away from, so who resolved a report and what it said before somebody
-// reopened it is answerable from the log after the row no longer says.
+// diff carries the status and the closing stamp it moved away from, and the
+// resolution note as a digest, so who resolved a report and that its note
+// changed when somebody reopened it is answerable from the log after the row no
+// longer says.
 func (h *RecordingHooks) AfterTransitionReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, before, after *Report) error {
 	if before == nil || after == nil {
 		return ErrNilReport
@@ -181,6 +195,10 @@ func (h *RecordingHooks) AfterTransitionReport(ctx context.Context, tx database.
 	changes, err := audit.Diff(before, after)
 	if err != nil {
 		return platformerrors.Wrap(err, "diffing the transitioned issue report")
+	}
+
+	if changes, err = writtenText.Apply(changes); err != nil {
+		return platformerrors.Wrap(err, "redacting the transitioned issue report")
 	}
 
 	return h.record(ctx, tx, scope, after, audit.EventUpdated, EventReportTransitioned, before.Status, changes)
