@@ -6,6 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/recording"
+	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -50,12 +52,13 @@ func RegisterStore(i do.Injector) {
 // Prerequisites: *Config, database.Client and identity.Store (see RegisterStore)
 // must be registered before the Service is invoked.
 //
-// identity.Hooks is resolved if something registered one and defaulted to
-// identity.NoopHooks otherwise, which is the same reading the constructor takes:
-// an application with nothing to commit beside an identity write registers
-// nothing. Absence is the only thing the lookup absorbs, and it is decided by
-// whether a Hooks is registered, not by the error the invocation returns. A
-// Hooks that is registered but fails to build is returned — including one whose
+// identity.Hooks is resolved through recordingcfg.InvokeHooks: one the
+// application registered, then an identity.RecordingHooks when a
+// *recording.Recorder is registered, then identity.NoopHooks, which is the same
+// reading the constructor takes. Absence is the only thing the lookup absorbs,
+// and it is decided by whether a Hooks is registered, not by the error the
+// invocation returns. A Hooks that is registered but fails to build is
+// returned — including one whose
 // own provider asked the container for something nobody registered, which do
 // reports with the very sentinel a missing Hooks would carry. The distinction
 // is the one observability.InvokePillars draws, through the same
@@ -77,9 +80,11 @@ func RegisterService(i do.Injector) {
 
 		opts := []Option{WithPillars(pillars)}
 
-		hooks, err := injection.InvokeOptional[identity.Hooks](i)
+		hooks, err := recordingcfg.InvokeHooks(i, func(r *recording.Recorder) (identity.Hooks, error) {
+			return identity.NewRecordingHooks(r)
+		})
 		if err != nil {
-			return nil, platformerrors.Wrap(err, "invoking identity hooks")
+			return nil, err
 		}
 
 		if hooks != nil {

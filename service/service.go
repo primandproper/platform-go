@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
+	"github.com/primandproper/platform-go/v14/recording"
 	"github.com/primandproper/platform-go/v14/saga"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
@@ -154,12 +155,45 @@ func New(i do.Injector, opts ...Option) (*Service, error) {
 		return nil, r.err
 	}
 
+	svc.noteRecording(i, cfg)
+
 	// Application loops go last, so they stop first: one that writes outbox
 	// rows or enqueues jobs has to be finished before the relay and the pool it
 	// was writing into are.
 	svc.runners = append(svc.runners, o.runners...)
 
 	return svc, nil
+}
+
+// noteRecording says, once, that a service keeping an audit log records
+// nothing beside its writes.
+//
+// It is the one configuration in which that is a surprise rather than a choice.
+// A service with Audit configured has a log, and a reader of the log will take
+// the absence of an entry for a write as the absence of the write; but a store's
+// entries are written through a recording.Recorder, and Register builds one
+// only beside Webhooks and Outbox, which carry the event a Recorder writes with
+// every entry. A Recorder the application registered by hand counts, so the
+// notice is about what the container holds and not about which blocks are set.
+//
+// A warning and not a refusal, because a service that writes its own entries
+// through audit.Recorder and none of platform's stores' is configured
+// correctly, and New cannot tell it from one that forgot.
+func (s *Service) noteRecording(i do.Injector, cfg *Config) {
+	if cfg.Audit == nil {
+		return
+	}
+
+	recorder, err := injection.InvokeOptional[*recording.Recorder](i)
+	if err == nil && recorder != nil {
+		return
+	}
+
+	s.logger.WithValues(map[string]any{
+		"webhooks_configured": cfg.Webhooks != nil,
+		"outbox_configured":   cfg.Outbox != nil,
+	}).Warn("audit is configured and platform store writes record no audit entry: " +
+		"recording is on only when webhooks and outbox are configured beside audit")
 }
 
 // resolver walks the injector and remembers the first failure, so a startup

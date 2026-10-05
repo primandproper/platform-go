@@ -24,6 +24,7 @@ import (
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
+	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
@@ -148,6 +149,7 @@ type Config struct {
 	Passkeys             *passkeyscfg.Config          `env:",init" envPrefix:"PASSKEYS_"               json:"passkeys,omitempty"             yaml:"passkeys,omitempty"`
 	PasswordReset        *passwordresetcfg.Config     `env:",init" envPrefix:"PASSWORD_RESET_"         json:"passwordReset,omitempty"        yaml:"passwordReset,omitempty"`
 	RateLimiting         *ratelimitingcfg.Config      `env:",init" envPrefix:"RATE_LIMITING_"          json:"rateLimiting,omitempty"         yaml:"rateLimiting,omitempty"`
+	Recording            *recordingcfg.Config         `env:",init" envPrefix:"RECORDING_"              json:"recording,omitempty"            yaml:"recording,omitempty"`
 	Retention            *retentioncfg.Config         `env:",init" envPrefix:"RETENTION_"              json:"retention,omitempty"            yaml:"retention,omitempty"`
 	Retry                *retrycfg.Config             `env:",init" envPrefix:"RETRY_"                  json:"retry,omitempty"                yaml:"retry,omitempty"`
 	Routing              *routingcfg.Config           `env:",init" envPrefix:"ROUTING_"                json:"routing,omitempty"              yaml:"routing,omitempty"`
@@ -323,6 +325,20 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.Passkeys),
 		validation.Field(&cfg.PasswordReset),
 		validation.Field(&cfg.RateLimiting),
+		// The second cross-subsystem rule, for the reason the first one has: the
+		// block only says where entries are filed, and recording is on when the
+		// three things it writes through are. A deployment that set
+		// RECORDING_FILE_BY without them asked for a filing rule over a log
+		// nothing writes to.
+		validation.Field(&cfg.Recording, validation.By(func(any) error {
+			if cfg.Recording != nil && !cfg.records() {
+				return platformerrors.New(
+					"recording is configured but audit, webhooks and outbox are not all configured; " +
+						"a store write's entries and event are written through all three")
+			}
+
+			return nil
+		})),
 		validation.Field(&cfg.Retention),
 		validation.Field(&cfg.Retry),
 		validation.Field(&cfg.Routing),
@@ -337,4 +353,11 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.WebAuthn),
 		validation.Field(&cfg.Webhooks),
 	)
+}
+
+// records reports whether a service built from cfg records an audit entry and
+// an event beside every platform write: whether the three things a
+// recording.Recorder writes through are all configured.
+func (cfg *Config) records() bool {
+	return cfg.Audit != nil && cfg.Webhooks != nil && cfg.Outbox != nil
 }

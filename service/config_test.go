@@ -5,8 +5,12 @@ import (
 	"testing"
 	"time"
 
+	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
+	recordingcfg "github.com/primandproper/platform-go/v14/recording/config"
+	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
@@ -169,6 +173,40 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		// used to pass on a coincidence: the logging pillar required a
 		// serviceName of every config, so every failure mentioned one.
 		test.StrContains(t, err.Error(), "name: cannot be blank")
+	})
+
+	T.Run("refuses a filing rule with nothing to file through", func(t *testing.T) {
+		t.Parallel()
+
+		// RECORDING_FILE_BY is the one setting recording has, and recording is
+		// on only beside Audit, Webhooks and Outbox; set without them, it is a
+		// rule over a log nothing writes to.
+		cfg := &Config{
+			Name:      "example",
+			Audit:     &auditcfg.Config{Dialect: dialect.SQLite},
+			Recording: &recordingcfg.Config{FileBy: recordingcfg.FileBySubject},
+		}
+
+		err := cfg.ValidateWithContext(t.Context())
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "recording is configured")
+	})
+
+	T.Run("keeps a filing rule beside the three it files through", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Name:     "example",
+			Audit:    &auditcfg.Config{Dialect: dialect.SQLite},
+			Webhooks: &webhookscfg.Config{TablePrefix: "acme"},
+			Outbox: &outboxcfg.Config{
+				Queue: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
+			},
+			Recording: &recordingcfg.Config{FileBy: recordingcfg.FileBySubject},
+		}
+
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+		test.NotNil(t, cfg.Recording)
 	})
 }
 
