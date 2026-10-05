@@ -246,7 +246,8 @@ func (t *Tools) ListEndpoints(
 }
 
 // ListEventTypes answers what a subscription may name: the application's
-// catalog, which is the same for every tenant and so binds no scope. It is
+// catalog, which is the same for every tenant and so binds no scope, less the
+// events it marks Internal, which no subscription may name. It is
 // webhooks/grpc's ListEventTypes over another transport, behind the same
 // grant.
 func (t *Tools) ListEventTypes(
@@ -262,7 +263,7 @@ func (t *Tools) ListEventTypes(
 	catalog := t.dispatcher.Catalog()
 
 	out := &EventTypes{Results: make([]EventTypeDefinition, 0, len(catalog))}
-	for _, eventType := range catalog.EventTypes() {
+	for _, eventType := range catalog.SubscribableEventTypes() {
 		out.Results = append(out.Results, EventTypeDefinition{
 			EventType:   eventType,
 			Description: catalog[eventType].Description,

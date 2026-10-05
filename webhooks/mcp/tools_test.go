@@ -38,6 +38,7 @@ var (
 const (
 	orderCreated webhooks.EventType = "order.created"
 	orderShipped webhooks.EventType = "order.shipped"
+	orderAudited webhooks.EventType = "order.audited"
 
 	testURL = "https://subscriber.example/hooks"
 
@@ -127,6 +128,7 @@ func newHarness(t *testing.T) *harness {
 		webhooks.WithCatalog(webhooks.Catalog{
 			orderCreated: {Description: "an order was placed"},
 			orderShipped: {Description: "an order left the warehouse"},
+			orderAudited: {Description: "staff read an order", Internal: true},
 		}),
 		webhooks.WithDispatcherURLChecker(func(context.Context, string) error { return nil }),
 	)
@@ -386,6 +388,8 @@ func TestTools_ListEndpoints(T *testing.T) {
 func TestTools_ListEventTypes(T *testing.T) {
 	T.Parallel()
 
+	// The catalog also lists orderAudited, marked Internal, so two results
+	// is the answer leaving it out.
 	T.Run("answers the catalog, sorted, with its prose", func(t *testing.T) {
 		t.Parallel()
 
