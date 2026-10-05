@@ -125,7 +125,7 @@ WHERE m.published_at IS NULL
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
-LIMIT COALESCE($3, 50)`
+LIMIT $4 OFFSET $3`
 
 const selectClaimableOutboxMessagesSkipLockedPostgreSQL = `SELECT id
 FROM {{prefix}}outbox_messages
@@ -348,6 +348,7 @@ func (q *postgresqlQueries) SelectClaimableOutboxMessages(ctx context.Context, d
 	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessages,
 		arg.Now,
 		arg.LeaseExpiredBy,
+		arg.ResultOffset,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -548,6 +549,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
+		ResultOffset   int64
 		ResultLimit    int64
 	}(SelectClaimableOutboxMessagesParams{})
 	_ = struct {

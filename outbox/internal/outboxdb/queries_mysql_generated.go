@@ -115,7 +115,7 @@ WHERE m.published_at IS NULL
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
-LIMIT ?`
+LIMIT ?, ?`
 
 const selectClaimableOutboxMessagesSkipLockedMySQL = `SELECT id
 FROM {{prefix}}outbox_messages FORCE INDEX (PRIMARY)
@@ -379,6 +379,7 @@ func (q *mysqlQueries) SelectClaimableOutboxMessages(ctx context.Context, db DBT
 	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessages,
 		arg.Now,
 		arg.LeaseExpiredBy,
+		arg.ResultOffset,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -589,6 +590,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
+		ResultOffset   int64
 		ResultLimit    int64
 	}(SelectClaimableOutboxMessagesParams{})
 	_ = struct {

@@ -993,49 +993,72 @@ func timeValue(t *time.Time) time.Time {
 
 // selectClaimable picks the batch of ids this cycle will lease.
 //
-// The lease mode reads its candidates and takes no lock; its claim's guarded
-// UPDATE is the whole of its exclusivity. The skip-locked mode reads the same
-// candidates and then locks them by primary key, skipping the ones another
-// relay holds, so its batch can come back short. It never locks by range: a
-// range lock on the claim index covers the gap every enqueue inserts into, and
-// on MySQL that turned a claim waiting on one enqueued row into a deadlock
-// with every other writer recording into the outbox. See
-// outbox/internal/queries' selectClaimable.
+// The lease mode reads one page of candidates and takes no lock; its claim's
+// guarded UPDATE is the whole of its exclusivity. The skip-locked mode reads
+// the same candidates and locks them by primary key, skipping the ones another
+// relay holds, and reads on from where the page stopped until the batch is
+// full or the candidates run out. It never locks by range: a range lock on the
+// claim index covers the gap every enqueue inserts into, and on MySQL that
+// turned a claim waiting on one enqueued row into a deadlock with every other
+// writer recording into the outbox. See outbox/internal/queries'
+// selectClaimable.
 //
 // The two comparisons are one instant and two arguments: next_attempt is NOT
 // NULL and claimed_until is not, and no analyzer gives one argument two
 // nullabilities. Both are bound from this cycle's single clock read, which is
 // what keeps them the same moment in fact.
 func (r *Relay) selectClaimable(ctx context.Context, q database.Tx, now time.Time) ([]string, error) {
-	candidates, err := r.candidates(ctx, q, now)
-	if err != nil || r.cfg.ClaimMode != ClaimSkipLocked || len(candidates) == 0 {
-		return candidates, err
+	limit := r.cfg.BatchSize
+
+	if r.cfg.ClaimMode != ClaimSkipLocked {
+		return r.candidates(ctx, q, now, limit, 0)
 	}
 
-	locked, err := r.q.SelectClaimableOutboxMessagesSkipLocked(ctx, q, outboxdb.SelectClaimableOutboxMessagesSkipLockedParams{
-		Now:            now,
-		LeaseExpiredBy: &now,
-		IDs:            candidates,
-	})
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "locking claimable outbox messages")
+	claimed := make([]string, 0, limit)
+
+	for offset := 0; len(claimed) < limit; {
+		want := limit - len(claimed)
+
+		candidates, err := r.candidates(ctx, q, now, want, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(candidates) == 0 {
+			break
+		}
+
+		offset += len(candidates)
+
+		locked, err := r.q.SelectClaimableOutboxMessagesSkipLocked(ctx, q, outboxdb.SelectClaimableOutboxMessagesSkipLockedParams{
+			Now:            now,
+			LeaseExpiredBy: &now,
+			IDs:            candidates,
+		})
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "locking claimable outbox messages")
+		}
+
+		for i := range locked {
+			claimed = append(claimed, locked[i].ID)
+		}
+
+		if len(candidates) < want {
+			break
+		}
 	}
 
-	ids := make([]string, 0, len(locked))
-	for i := range locked {
-		ids = append(ids, locked[i].ID)
-	}
-
-	return ids, nil
+	return claimed, nil
 }
 
-// candidates reads a batch of claimable ids, oldest first, without locking
+// candidates reads one page of claimable ids, oldest first, without locking
 // them.
-func (r *Relay) candidates(ctx context.Context, q database.Tx, now time.Time) ([]string, error) {
+func (r *Relay) candidates(ctx context.Context, q database.Tx, now time.Time, limit, offset int) ([]string, error) {
 	rows, err := r.q.SelectClaimableOutboxMessages(ctx, q, outboxdb.SelectClaimableOutboxMessagesParams{
 		Now:            now,
 		LeaseExpiredBy: &now,
-		ResultLimit:    int64(r.cfg.BatchSize),
+		ResultLimit:    int64(limit),
+		ResultOffset:   int64(offset),
 	})
 	if err != nil {
 		return nil, err
