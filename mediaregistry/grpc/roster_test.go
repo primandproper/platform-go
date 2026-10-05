@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

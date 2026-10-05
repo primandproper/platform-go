@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -18,7 +18,7 @@ import (
 // [ErrMagicLinksNotConfigured].
 //
 // This module ships a SQL implementation,
-// [github.com/primandproper/platform-go/v14/authentication/signin/magiclinks],
+// [github.com/primandproper/platform-go/v15/authentication/signin/magiclinks],
 // together with the DDL it needs, so adopting a passwordless door does not mean
 // writing this.
 //
@@ -320,7 +320,7 @@ func (f MagicLinkMailerFunc) SendMagicLink(ctx context.Context, mail *MagicLinkM
 // # Who gets one
 //
 // Somebody whose standing admits a sign-in, and somebody still in
-// [github.com/primandproper/platform-go/v14/identity.StatusUnverified] — which
+// [github.com/primandproper/platform-go/v15/identity.StatusUnverified] — which
 // is the case this door exists for, and the one place it parts company with
 // [Service.LoginForToken]. A registrant has not proven their address yet, and
 // the link this mails is how they do it: following it proves the address and
@@ -455,7 +455,7 @@ func (s *Service) RequestMagicLink(
 // [Service.VerifyEmailAddress] exists to establish. So this door establishes it:
 // a redemption stamps that address proven, where it was not already, and
 // promotes a user out of
-// [github.com/primandproper/platform-go/v14/identity.StatusUnverified], through
+// [github.com/primandproper/platform-go/v15/identity.StatusUnverified], through
 // the same [Service.promote] the verification door uses and in the transaction
 // that signs them in.
 //

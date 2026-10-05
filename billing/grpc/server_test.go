@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
-	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
-	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
+	"github.com/primandproper/platform-go/v15/billing"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
+	billinggrpc "github.com/primandproper/platform-go/v15/billing/grpc"
+	billingmock "github.com/primandproper/platform-go/v15/billing/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

@@ -1,7 +1,7 @@
 package outboxcfg
 
 import (
-	"github.com/primandproper/platform-go/v14/outbox"
+	"github.com/primandproper/platform-go/v15/outbox"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

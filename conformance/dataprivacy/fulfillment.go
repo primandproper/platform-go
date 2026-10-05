@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/conformance/internal/httpcall"
-	"github.com/primandproper/platform-go/v14/conformance/internal/people"
-	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/conformance/internal/httpcall"
+	"github.com/primandproper/platform-go/v15/conformance/internal/people"
+	dataprivacyhttp "github.com/primandproper/platform-go/v15/dataprivacy/http"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

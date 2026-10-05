@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/grants"
-	grantsmock "github.com/primandproper/platform-go/v14/authentication/grants/mock"
+	"github.com/primandproper/platform-go/v15/authentication/grants"
+	grantsmock "github.com/primandproper/platform-go/v15/authentication/grants/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

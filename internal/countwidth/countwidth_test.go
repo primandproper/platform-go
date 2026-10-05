@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/audit"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

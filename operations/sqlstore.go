@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
-	"github.com/primandproper/platform-go/v14/operations/internal/operationssplitdb"
-	"github.com/primandproper/platform-go/v14/operations/migrations"
+	"github.com/primandproper/platform-go/v15/operations/internal/operationsdb"
+	"github.com/primandproper/platform-go/v15/operations/internal/operationssplitdb"
+	"github.com/primandproper/platform-go/v15/operations/migrations"
 
 	"github.com/primandproper/primitives-go/v2/charset"
 	"github.com/primandproper/primitives-go/v2/database"

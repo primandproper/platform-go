@@ -3,7 +3,7 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
+	"github.com/primandproper/platform-go/v15/identity/internal/identitydb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/querygen"

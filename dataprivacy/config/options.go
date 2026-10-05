@@ -1,8 +1,8 @@
 package dataprivacycfg
 
 import (
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/dataprivacy/auditerasure"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy/auditerasure"
 
 	"github.com/primandproper/primitives-go/v2/compression"
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"

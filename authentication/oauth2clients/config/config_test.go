@@ -3,8 +3,8 @@ package oauth2clientscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	oauth2clientsmock "github.com/primandproper/platform-go/v14/authentication/oauth2clients/mock"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	oauth2clientsmock "github.com/primandproper/platform-go/v15/authentication/oauth2clients/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

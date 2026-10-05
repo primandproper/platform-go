@@ -46,6 +46,33 @@ grpc_health_v1, from the one registry. What the platform cannot see — a domain
 dependency, a cache whose type no config can name — joins through
 WithHealthChecks.
 
+# Every platform write is recorded
+
+A service that configures Audit, Webhooks and Outbox records an audit entry and
+an outbox event beside every write a platform store makes, on that write's
+transaction, and the application registers no hook to get it. Register builds a
+recording.Recorder from the three, and every config package that builds a store
+with Hooks resolves them in one order, recordingcfg.InvokeHooks': a Hooks the
+application registered, then the package's RecordingHooks over that Recorder,
+then the package's NoopHooks. So a deployment that wants one package to record
+differently registers its own Hooks for it, and one that wants a package silent
+registers that package's NoopHooks by name:
+
+	do.ProvideValue[waitlists.Hooks](i, waitlists.NoopHooks{})
+
+What the application still owes is who is writing. The Recorder attributes each
+entry through a callers.PrincipalExtractor, and a service that would record and
+registered none fails at New naming it rather than recording every write as
+unattributed. A deployment on sign-in's extractor registers
+signingrpc.PrincipalFromContext, since the extractor itself is built over the
+sign-in service whose hooks need the Recorder. RECORDING_FILE_BY is the one
+setting, and says whether an entry is filed under the write's scope or its
+subject's.
+
+A service that configures Audit without the other two records nothing, because
+an entry is written with the event that announces it or not at all, and New
+logs a warning saying so when it starts.
+
 # A worker process
 
 A worker is a service built from a Config like any other, with no servers in

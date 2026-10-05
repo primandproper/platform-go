@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )

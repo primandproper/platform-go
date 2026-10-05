@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/waitlists"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

@@ -1,7 +1,7 @@
 package syncsource
 
 import (
-	"github.com/primandproper/platform-go/v14/searchsync"
+	"github.com/primandproper/platform-go/v15/searchsync"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	textsearch "github.com/primandproper/primitives-go/v2/search/text"

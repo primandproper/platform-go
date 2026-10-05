@@ -3,31 +3,31 @@ package sentinelmatrix
 import (
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/authentication/grants"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/comments"
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/entitlements"
-	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/issuereports"
-	"github.com/primandproper/platform-go/v14/links"
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	"github.com/primandproper/platform-go/v14/metering"
-	"github.com/primandproper/platform-go/v14/notifications"
-	"github.com/primandproper/platform-go/v14/operations"
-	"github.com/primandproper/platform-go/v14/series"
-	"github.com/primandproper/platform-go/v14/sessions"
-	"github.com/primandproper/platform-go/v14/settings"
-	"github.com/primandproper/platform-go/v14/shredding"
-	"github.com/primandproper/platform-go/v14/waitlists"
-	"github.com/primandproper/platform-go/v14/webhooks"
+	"github.com/primandproper/platform-go/v15/audit"
+	"github.com/primandproper/platform-go/v15/authentication/grants"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/billing"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/comments"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/entitlements"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/issuereports"
+	"github.com/primandproper/platform-go/v15/links"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	"github.com/primandproper/platform-go/v15/metering"
+	"github.com/primandproper/platform-go/v15/notifications"
+	"github.com/primandproper/platform-go/v15/operations"
+	"github.com/primandproper/platform-go/v15/series"
+	"github.com/primandproper/platform-go/v15/sessions"
+	"github.com/primandproper/platform-go/v15/settings"
+	"github.com/primandproper/platform-go/v15/shredding"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	"github.com/primandproper/platform-go/v15/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
@@ -218,6 +218,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilExecutor":       {Err: billing.ErrNilExecutor, Is: Platform},
 		"ErrNilProduct":        {Err: billing.ErrNilProduct, Is: Platform},
 		"ErrNilPurchase":       {Err: billing.ErrNilPurchase, Is: Platform},
+		"ErrNilRecorder":       {Err: billing.ErrNilRecorder, Is: Platform},
 		"ErrNilSubscription":   {Err: billing.ErrNilSubscription, Is: Platform},
 		"ErrNilTransaction":    {Err: billing.ErrNilTransaction, Is: Platform},
 
@@ -409,6 +410,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilInvitation":     {Err: identity.ErrNilInvitation, Is: Platform},
 		"ErrNilMembership":     {Err: identity.ErrNilMembership, Is: Platform},
 		"ErrNilProfileUpdate":  {Err: identity.ErrNilProfileUpdate, Is: Platform},
+		"ErrNilRecorder":       {Err: identity.ErrNilRecorder, Is: Platform},
 		"ErrNilStore":          {Err: identity.ErrNilStore, Is: Platform},
 		"ErrNilUser":           {Err: identity.ErrNilUser, Is: Platform},
 
@@ -486,6 +488,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient": {Err: oauth2clients.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: oauth2clients.ErrNilExecutor, Is: Platform},
 		"ErrNilInput":          {Err: oauth2clients.ErrNilInput, Is: Platform},
+		"ErrNilRecorder":       {Err: oauth2clients.ErrNilRecorder, Is: Platform},
 		"ErrNilService":        {Err: oauth2clients.ErrNilService, Is: Platform},
 		"ErrNilStore":          {Err: oauth2clients.ErrNilStore, Is: Platform},
 		"ErrNilTransaction":    {Err: oauth2clients.ErrNilTransaction, Is: Platform},
@@ -631,6 +634,8 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDirectory":          {Err: signin.ErrNilDirectory, Is: Platform},
 		"ErrNilPasswordAttachment": {Err: signin.ErrNilPasswordAttachment, Is: Platform},
 		"ErrNilPasswordUpdate":     {Err: signin.ErrNilPasswordUpdate, Is: Platform},
+		"ErrNilHookArgument":       {Err: signin.ErrNilHookArgument, Is: Platform},
+		"ErrNilRecorder":           {Err: signin.ErrNilRecorder, Is: Platform},
 		"ErrNilRegistration":       {Err: signin.ErrNilRegistration, Is: Platform},
 		"ErrNilSecretRefresh":      {Err: signin.ErrNilSecretRefresh, Is: Platform},
 		"ErrNilTokenIssuer":        {Err: signin.ErrNilTokenIssuer, Is: Platform},
@@ -781,6 +786,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDevice":         {Err: notifications.ErrNilDevice, Is: Platform},
 		"ErrNilExecutor":       {Err: notifications.ErrNilExecutor, Is: Platform},
 		"ErrNilNotification":   {Err: notifications.ErrNilNotification, Is: Platform},
+		"ErrNilRecorder":       {Err: notifications.ErrNilRecorder, Is: Platform},
 	},
 
 	commentsPkg: {
@@ -815,16 +821,17 @@ var Matrix = map[string]map[string]Decision{
 		"ErrTargetNotFound":    {Err: comments.ErrTargetNotFound, Is: Mapped},
 		"ErrUnknownTargetType": {Err: comments.ErrUnknownTargetType, Is: Mapped},
 
-		// The three that are somebody else's sentinel, answered by the platform
-		// mappers because that is the tier those sentinels belong to. All three
-		// wrap errors.ErrNilInputParameter, and all three are a nil argument
+		// The four that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to. All four
+		// wrap errors.ErrNilInputParameter, and all four are a nil argument
 		// inside the process rather than anything a request can express: no
-		// executor, no comment, no client. comments/grpc refuses a request whose
+		// executor, no comment, no client, no recorder. comments/grpc refuses a request whose
 		// comment field was never set with a sentinel of its own instead, where
 		// the answer is about that request rather than about the argument.
 		"ErrNilComment":        {Err: comments.ErrNilComment, Is: Platform},
 		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: comments.ErrNilRecorder, Is: Platform},
 	},
 
 	webhooksPkg: {
@@ -870,7 +877,9 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilEnqueuer":       {Err: webhooks.ErrNilEnqueuer, Is: Platform},
 		"ErrNilEvent":          {Err: webhooks.ErrNilEvent, Is: Platform},
 		"ErrNilExecutor":       {Err: webhooks.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: webhooks.ErrNilRecorder, Is: Platform},
 		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
+		"ErrNilSubscription":   {Err: webhooks.ErrNilSubscription, Is: Platform},
 		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},
 
 		// The three nobody answers. ErrLeaseTooShort is a worker configured with a
@@ -921,6 +930,7 @@ var Matrix = map[string]map[string]Decision{
 		// executor it holds.
 		"ErrNilDatabaseClient": {Err: issuereports.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: issuereports.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":       {Err: issuereports.ErrNilRecorder, Is: Platform},
 		"ErrNilReport":         {Err: issuereports.ErrNilReport, Is: Platform},
 	},
 
@@ -971,7 +981,9 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient":      {Err: settings.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilDefinition":          {Err: settings.ErrNilDefinition, Is: Platform},
 		"ErrNilExecutor":            {Err: settings.ErrNilExecutor, Is: Platform},
+		"ErrNilRecorder":            {Err: settings.ErrNilRecorder, Is: Platform},
 		"ErrNilStore":               {Err: settings.ErrNilStore, Is: Platform},
+		"ErrNilValue":               {Err: settings.ErrNilValue, Is: Platform},
 		"ErrMalformedValue":         {Err: settings.ErrMalformedValue, Is: Platform},
 		"ErrNotEnumerated":          {Err: settings.ErrNotEnumerated, Is: Platform},
 		"ErrSubjectValueTooLong":    {Err: settings.ErrSubjectValueTooLong, Is: Platform},
@@ -1010,6 +1022,8 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyUserID":       {Err: passwordreset.ErrEmptyUserID, Is: Platform},
 		"ErrNilConfig":         {Err: passwordreset.ErrNilConfig, Is: Platform},
 		"ErrNilDatabaseClient": {Err: passwordreset.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilRecorder":       {Err: passwordreset.ErrNilRecorder, Is: Platform},
+		"ErrNilToken":          {Err: passwordreset.ErrNilToken, Is: Platform},
 
 		// A TTL of zero is an unset configuration field read at issuance. It
 		// reaches a client only through a service that shipped broken.
@@ -1055,6 +1069,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilExecutor":            {Err: passkeys.ErrNilExecutor, Is: Platform},
 		"ErrNilCredential":          {Err: passkeys.ErrNilCredential, Is: Platform},
 		"ErrNilStore":               {Err: passkeys.ErrNilStore, Is: Platform},
+		"ErrNilRecorder":            {Err: passkeys.ErrNilRecorder, Is: Platform},
 		"ErrNilResolver":            {Err: passkeys.ErrNilResolver, Is: Platform},
 		"ErrNilRelyingParty":        {Err: passkeys.ErrNilRelyingParty, Is: Platform},
 		"ErrNilUserSource":          {Err: passkeys.ErrNilUserSource, Is: Platform},
@@ -1215,6 +1230,8 @@ var Matrix = map[string]map[string]Decision{
 		// The nil arguments, which wrap errors.ErrNilInputParameter.
 		"ErrNilDatabaseClient": {Err: mediaregistry.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: mediaregistry.ErrNilExecutor, Is: Platform},
+		"ErrNilObject":         {Err: mediaregistry.ErrNilObject, Is: Platform},
+		"ErrNilRecorder":       {Err: mediaregistry.ErrNilRecorder, Is: Platform},
 		"ErrNilReader":         {Err: mediaregistry.ErrNilReader, Is: Platform},
 		"ErrNilStore":          {Err: mediaregistry.ErrNilStore, Is: Platform},
 		"ErrNilUploadManager":  {Err: mediaregistry.ErrNilUploadManager, Is: Platform},

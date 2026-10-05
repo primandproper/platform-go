@@ -4,7 +4,7 @@ single-use, digest-at-rest second factors a person keeps on paper for the day
 they no longer have the authenticator they enrolled.
 
 It is the SQL implementation of
-[github.com/primandproper/platform-go/v14/authentication/signin.RecoveryCodeStore],
+[github.com/primandproper/platform-go/v15/authentication/signin.RecoveryCodeStore],
 and it ships the DDL it needs, so giving a lost phone a door that is not a
 support ticket is a table and an option rather than a package somebody writes.
 The seam is in the parent because the flow and its storage are genuinely
@@ -75,7 +75,7 @@ erasure that deleted the user and left their codes would leave a user id with
 digests under it indefinitely.
 
 So this package ships the passwordreset/privacy shape, both halves:
-[github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/privacy].
+[github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/privacy].
 The eraser deletes every code a subject holds on the erasure's transaction; the
 collector exports when their set was issued and which codes they have spent,
 and never a digest — no statement in this package projects one to a list.

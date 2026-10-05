@@ -1,8 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

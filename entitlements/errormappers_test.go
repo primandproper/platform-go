@@ -3,7 +3,7 @@ package entitlements_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/entitlements"
+	"github.com/primandproper/platform-go/v15/entitlements"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"

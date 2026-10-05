@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
-	"github.com/primandproper/platform-go/v14/operations/internal/operationssplitdb"
-	"github.com/primandproper/platform-go/v14/operations/internal/queries"
+	"github.com/primandproper/platform-go/v15/operations/internal/operationsdb"
+	"github.com/primandproper/platform-go/v15/operations/internal/operationssplitdb"
+	"github.com/primandproper/platform-go/v15/operations/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"

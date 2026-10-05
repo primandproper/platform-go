@@ -53,7 +53,7 @@ them with a lifecycle of their own.
 # Why this is in the platform at all
 
 A waitlist is the next thing every pre-launch product writes, and it sits in the
-[github.com/primandproper/platform-go/v14/authentication/passwordreset] class:
+[github.com/primandproper/platform-go/v15/authentication/passwordreset] class:
 short enough to look like it needs no library, repeated often enough that the
 copies drift. What drifts is never the CRUD. It is the three things below.
 
@@ -201,7 +201,7 @@ withdrawal cannot, because an archived signup still holds the address it was
 made with. It runs in the caller's transaction, like every other write here, so a
 subject's signups and the rest of their footprint commit or roll back together.
 
-[github.com/primandproper/platform-go/v14/waitlists/privacy] is the
+[github.com/primandproper/platform-go/v15/waitlists/privacy] is the
 dataprivacy.Collector and dataprivacy.Eraser built on that write and on
 [SignupStore.ListSignupsForSubject]. It is its own package so that a service
 with a signup form and no privacy pipeline does not compile one.
@@ -268,7 +268,7 @@ that has not said yes.
 The loop itself is waitlists/grpc's, because the link is a transport's to
 redeem. Built with its WithConfirmation option, the public Join writes a pending
 signup, mints a confirmation link and an unsubscribe link through
-[github.com/primandproper/platform-go/v14/links] after the signup commits, and
+[github.com/primandproper/platform-go/v15/links] after the signup commits, and
 hands both to a mailer the consumer supplies; its Confirm and Unsubscribe RPCs
 are what the two links land on. The send is still the consumer's — see below —
 and so is the rate limit in front of a form that mails on every submission.

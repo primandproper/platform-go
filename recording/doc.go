@@ -46,7 +46,10 @@ Recorder is built with, which is the same extractor every gRPC surface here
 already takes. A write that reaches the recorder with no principal on its
 context is recorded as audit.ActorUnattributed, by name, so a log can count the
 writes nobody has yet decided an actor for; it is never recorded with an empty
-actor, which audit refuses.
+actor, which audit refuses. The one exception is the write that establishes who
+is acting, a sign-in, whose request carries no principal because the principal
+is what it produces; RecordAs takes the actor from the service that minted it,
+and is for that write alone.
 
 Where an entry is filed is the write's scope unless a ScopeResolver says
 otherwise. The default is right for a store whose rows belong to a tenant. It is

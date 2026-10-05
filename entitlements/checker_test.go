@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/metering"
-	meteringmock "github.com/primandproper/platform-go/v14/metering/mock"
+	"github.com/primandproper/platform-go/v15/metering"
+	meteringmock "github.com/primandproper/platform-go/v15/metering/mock"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/cache"

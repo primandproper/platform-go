@@ -15,6 +15,13 @@ var (
 	// ErrNilDefinition indicates a nil *Definition where one was required.
 	ErrNilDefinition = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil setting definition")
 
+	// ErrNilValue indicates a nil *Value where one was required.
+	ErrNilValue = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil setting value")
+
+	// ErrNilRecorder indicates a nil recording.Recorder handed to NewRecordingHooks.
+	// It wraps errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil settings recorder")
+
 	// ErrNilStore indicates a nil DefinitionStore where one was required. It is
 	// what [DeclareDefinitions] reports, being the one thing here that is handed
 	// the store rather than being it.

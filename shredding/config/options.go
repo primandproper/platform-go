@@ -1,7 +1,7 @@
 package shreddingcfg
 
 import (
-	"github.com/primandproper/platform-go/v14/shredding"
+	"github.com/primandproper/platform-go/v15/shredding"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

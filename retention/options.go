@@ -1,7 +1,7 @@
 package retention
 
 import (
-	"github.com/primandproper/platform-go/v14/audit"
+	"github.com/primandproper/platform-go/v15/audit"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

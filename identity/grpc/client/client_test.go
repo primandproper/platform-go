@@ -3,7 +3,7 @@ package client_test
 import (
 	"testing"
 
-	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
+	identityclient "github.com/primandproper/platform-go/v15/identity/grpc/client"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

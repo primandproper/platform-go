@@ -3,7 +3,7 @@ Package http is a payment provider's webhook endpoint: verify the delivery,
 reconcile it into billing, and answer with the status code the provider acts on.
 
 [github.com/primandproper/primitives-go/v2/capitalism] verifies and parses a
-delivery, and [github.com/primandproper/platform-go/v14/billing/sync] reconciles
+delivery, and [github.com/primandproper/platform-go/v15/billing/sync] reconciles
 one. The endpoint between them was the consumer's to write, and the copy this
 package was written against shows what that costs. It answered 400 to every
 failure, so a database that blinked told the provider the delivery was bad and

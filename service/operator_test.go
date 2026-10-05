@@ -6,12 +6,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
-	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
-	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
-	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
+	"github.com/primandproper/platform-go/v15/audit"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
+	auditmock "github.com/primandproper/platform-go/v15/audit/mock"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
+	identitymock "github.com/primandproper/platform-go/v15/identity/mock"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"

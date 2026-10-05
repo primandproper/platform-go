@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/shredding"
+	"github.com/primandproper/platform-go/v15/shredding"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/database"

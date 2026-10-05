@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/grants/internal/grantsdb"
+	"github.com/primandproper/platform-go/v15/authentication/grants/internal/grantsdb"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/database"

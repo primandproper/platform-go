@@ -3,7 +3,7 @@ package series_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/series"
+	"github.com/primandproper/platform-go/v15/series"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"

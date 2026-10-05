@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/metering"
-	meteringcfg "github.com/primandproper/platform-go/v14/metering/config"
-	meteringmock "github.com/primandproper/platform-go/v14/metering/mock"
-	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
-	"github.com/primandproper/platform-go/v14/workqueue"
+	"github.com/primandproper/platform-go/v15/metering"
+	meteringcfg "github.com/primandproper/platform-go/v15/metering/config"
+	meteringmock "github.com/primandproper/platform-go/v15/metering/mock"
+	operationscfg "github.com/primandproper/platform-go/v15/operations/config"
+	"github.com/primandproper/platform-go/v15/workqueue"
 
 	capitalismmock "github.com/primandproper/primitives-go/v2/capitalism/mock"
 	"github.com/primandproper/primitives-go/v2/database"

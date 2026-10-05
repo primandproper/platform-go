@@ -1,7 +1,7 @@
 package passkeyscfg
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

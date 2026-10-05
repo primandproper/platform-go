@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/querygen"

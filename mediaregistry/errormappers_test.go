@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"

@@ -235,6 +235,16 @@ delivery queue's own writes — Claim, MarkDelivered, RecordFailure,
 RecordAttempt, Requeue and Reap — take no caller transaction for a companion to
 join, and Enqueue's companion belongs beside the Dispatch call that caused it.
 
+A deployment that owes every write the ordinary pair does not write that Hooks
+itself. webhooks/recordinghooks is it, built over a recording.Recorder: the
+entry names the row by [ResourceTypeEndpoint] or [ResourceTypeSubscription],
+the event is one of the types [EventCatalog] describes, and neither names an
+endpoint's headers or any of its keys. It is a package of its own because
+recording imports this one, and its documentation shows the two-store wiring
+that lets the events it emits fan out through this package without a
+construction cycle. An endpoint subscribed to [EventEndpointArchived] is not
+told about its own archival; the constant's block says why.
+
 # Ordering
 
 Deliveries sharing an OrderingKey reach a given endpoint in dispatch order. The

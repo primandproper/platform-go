@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/notifications"
-	notificationsmock "github.com/primandproper/platform-go/v14/notifications/mock"
-	"github.com/primandproper/platform-go/v14/notifications/push"
+	"github.com/primandproper/platform-go/v15/notifications"
+	notificationsmock "github.com/primandproper/platform-go/v15/notifications/mock"
+	"github.com/primandproper/platform-go/v15/notifications/push"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/notifications/mobile"

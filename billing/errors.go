@@ -12,6 +12,10 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing database client")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to NewRecordingHooks.
+	// It wraps errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing recorder")
+
 	// ErrNilProduct indicates a nil *Product where one was required.
 	ErrNilProduct = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil product")
 

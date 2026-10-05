@@ -1,7 +1,7 @@
 package rbaccfg
 
 import (
-	"github.com/primandproper/platform-go/v14/rbac"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	authorizationcfg "github.com/primandproper/primitives-go/v2/authorization/config"
 	"github.com/primandproper/primitives-go/v2/observability"

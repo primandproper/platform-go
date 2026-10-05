@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/callers"
+	"github.com/primandproper/platform-go/v15/callers"
 )
 
 // ContactResolver decides where a Join's contact address comes from, for a

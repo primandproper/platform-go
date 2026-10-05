@@ -1,9 +1,9 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/waitlists"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	encryptioncfg "github.com/primandproper/primitives-go/v2/cryptography/encryption/config"

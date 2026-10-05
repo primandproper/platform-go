@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/waitlists"
-	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"

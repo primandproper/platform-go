@@ -11,12 +11,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/comments/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/comments/v1/comments.proto=github.com/primandproper/platform-go/v14/comments/commentspb \
+//	    --go_opt=Mprimandproper/platform/comments/v1/comments.proto=github.com/primandproper/platform-go/v15/comments/commentspb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -1293,7 +1293,7 @@ const file_primandproper_platform_comments_v1_comments_proto_rawDesc = "" +
 	"\x18ListCommentsByTargetType\x12C.primandproper.platform.comments.v1.ListCommentsByTargetTypeRequest\x1aD.primandproper.platform.comments.v1.ListCommentsByTargetTypeResponse\x12\x99\x01\n" +
 	"\x14ListCommentsByAuthor\x12?.primandproper.platform.comments.v1.ListCommentsByAuthorRequest\x1a@.primandproper.platform.comments.v1.ListCommentsByAuthorResponse\x12\x84\x01\n" +
 	"\rUpdateComment\x128.primandproper.platform.comments.v1.UpdateCommentRequest\x1a9.primandproper.platform.comments.v1.UpdateCommentResponse\x12\x87\x01\n" +
-	"\x0eArchiveComment\x129.primandproper.platform.comments.v1.ArchiveCommentRequest\x1a:.primandproper.platform.comments.v1.ArchiveCommentResponseBIZGgithub.com/primandproper/platform-go/v14/comments/commentspb;commentspbb\x06proto3"
+	"\x0eArchiveComment\x129.primandproper.platform.comments.v1.ArchiveCommentRequest\x1a:.primandproper.platform.comments.v1.ArchiveCommentResponseBIZGgithub.com/primandproper/platform-go/v15/comments/commentspb;commentspbb\x06proto3"
 
 var (
 	file_primandproper_platform_comments_v1_comments_proto_rawDescOnce sync.Once

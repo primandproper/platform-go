@@ -3,7 +3,7 @@ package entitlements
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

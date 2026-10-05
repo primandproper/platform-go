@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/conformance"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 

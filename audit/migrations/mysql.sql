@@ -45,11 +45,16 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}audit_log_entries (
     metadata      LONGBLOB     NULL,
     prev_hash     VARCHAR(64)  NOT NULL DEFAULT '',
     hash          VARCHAR(64)  NOT NULL,
+    -- See postgres.sql for why it is a column, why its default is the empty
+    -- string, and why it is last. It is the actor's width, since it holds the
+    -- same kind of identifier actor_id does.
+    actor_impersonator VARCHAR(255) NOT NULL DEFAULT '',
 
     UNIQUE KEY {{PREFIX}}audit_log_entries_chain_idx (scope, seq),
     KEY {{PREFIX}}audit_log_entries_scope_time_idx (scope, recorded_at),
     KEY {{PREFIX}}audit_log_entries_actor_idx (actor_id, recorded_at),
-    KEY {{PREFIX}}audit_log_entries_resource_idx (resource_type, resource_id, recorded_at)
+    KEY {{PREFIX}}audit_log_entries_resource_idx (resource_type, resource_id, recorded_at),
+    KEY {{PREFIX}}audit_log_entries_impersonator_idx (actor_impersonator, recorded_at)
 );
 
 -- Mutable, unlike the entries — appends advance the head, retention moves the
