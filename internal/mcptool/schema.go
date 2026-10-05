@@ -218,7 +218,7 @@ func Undescribed(schema *jsonschema.Schema) []string {
 
 // Extract reads the field doc comments of each named struct out of its
 // package's source. A spec is an import path and a type name joined by a dot:
-// "github.com/primandproper/platform-go/v14/issuereports.Report".
+// "github.com/primandproper/platform-go/v15/issuereports.Report".
 //
 // A field's description is the first paragraph of its doc comment, or of its
 // line comment where it has no doc comment, with the line breaks folded. The
@@ -353,7 +353,7 @@ func Render(pkg, name string, docs Docs) ([]byte, error) {
 	if pkg == "mcptool" {
 		qualifier = ""
 	} else {
-		b.WriteString("import \"github.com/primandproper/platform-go/v14/internal/mcptool\"\n\n")
+		b.WriteString("import \"github.com/primandproper/platform-go/v15/internal/mcptool\"\n\n")
 	}
 
 	fmt.Fprintf(&b, "// %s is the field doc comments the tool schemas here describe their\n", name)

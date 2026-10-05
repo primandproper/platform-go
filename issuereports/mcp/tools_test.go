@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/internal/mcptool"
-	"github.com/primandproper/platform-go/v14/issuereports"
-	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
-	issuereportsmcp "github.com/primandproper/platform-go/v14/issuereports/mcp"
-	"github.com/primandproper/platform-go/v14/issuereports/migrations"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/issuereports"
+	issuereportsgrpc "github.com/primandproper/platform-go/v15/issuereports/grpc"
+	issuereportsmcp "github.com/primandproper/platform-go/v15/issuereports/mcp"
+	"github.com/primandproper/platform-go/v15/issuereports/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"

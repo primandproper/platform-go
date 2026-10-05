@@ -5,10 +5,10 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/internal/mcptool"
-	"github.com/primandproper/platform-go/v14/issuereports"
-	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/issuereports"
+	issuereportsgrpc "github.com/primandproper/platform-go/v15/issuereports/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -19,7 +19,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v14/issuereports.Report github.com/primandproper/platform-go/v14/issuereports/mcp.GetReportInput github.com/primandproper/platform-go/v14/issuereports/mcp.ListReportsInput github.com/primandproper/platform-go/v14/issuereports/mcp.ListReportsByStatusInput
+//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/issuereports.Report github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput
 
 // surfaceName scopes this surface's spans, logger and instruments.
 const surfaceName = "issuereports_mcp"

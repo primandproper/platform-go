@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/primandproper/platform-go/v14/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/internal/mcptool"
 )
 
 func main() {

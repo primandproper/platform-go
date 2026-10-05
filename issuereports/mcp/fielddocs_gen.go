@@ -2,12 +2,12 @@
 
 package mcp
 
-import "github.com/primandproper/platform-go/v14/internal/mcptool"
+import "github.com/primandproper/platform-go/v15/internal/mcptool"
 
 // fieldDocs is the field doc comments the tool schemas here describe their
 // properties with, read out of the source by Extract.
 var fieldDocs = mcptool.Docs{
-	"github.com/primandproper/platform-go/v14/issuereports.Report": {
+	"github.com/primandproper/platform-go/v15/issuereports.Report": {
 		"archivedAt":    "ArchivedAt is when the report was removed from the queue, and nil while it is still there.",
 		"closedAt":      "ClosedAt is when the report reached a terminal status, and nil while it is still open or acknowledged. A reopen clears it.",
 		"createdAt":     "CreatedAt is when the report was filed, assigned by the database.",
@@ -22,14 +22,14 @@ var fieldDocs = mcptool.Docs{
 		"subjectID":     "SubjectID is which one. Empty is a report about a kind of thing rather than about one of them.",
 		"subjectType":   "SubjectType is what the report is about, as the application names it — a table, an entity kind. Empty is a report about the product in general.",
 	},
-	"github.com/primandproper/platform-go/v14/issuereports/mcp.GetReportInput": {
+	"github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput": {
 		"reportID": "ReportID is the identifier of the report to read.",
 	},
-	"github.com/primandproper/platform-go/v14/issuereports/mcp.ListReportsByStatusInput": {
+	"github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput": {
 		"filter": "Filter is the page to read. Absent reads the first page, oldest first.",
 		"status": "Status is the triage queue to page: the status every report on the page is in.",
 	},
-	"github.com/primandproper/platform-go/v14/issuereports/mcp.ListReportsInput": {
+	"github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsInput": {
 		"filter": "Filter is the page to read. Absent reads the first page, oldest first.",
 	},
 }

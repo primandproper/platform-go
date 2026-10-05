@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/internal/mcptool"
-	"github.com/primandproper/platform-go/v14/internal/mcptool/fixture"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/internal/mcptool/fixture"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -20,7 +20,7 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-const thisPackage = "github.com/primandproper/platform-go/v14/internal/mcptool/fixture"
+const thisPackage = "github.com/primandproper/platform-go/v15/internal/mcptool/fixture"
 
 func TestExtract(T *testing.T) {
 	T.Parallel()

@@ -2,12 +2,12 @@
 
 package mcp
 
-import "github.com/primandproper/platform-go/v14/internal/mcptool"
+import "github.com/primandproper/platform-go/v15/internal/mcptool"
 
 // fieldDocs is the field doc comments the tool schemas here describe their
 // properties with, read out of the source by Extract.
 var fieldDocs = mcptool.Docs{
-	"github.com/primandproper/platform-go/v14/waitlists.List": {
+	"github.com/primandproper/platform-go/v15/waitlists.List": {
 		"archivedAt":    "ArchivedAt is when the list was retired. An archived list is excluded from every read that does not ask for archived rows, and takes no further signups; the signups already against it are left alone, because archiving is not erasure.",
 		"closesAt":      "ClosesAt is when the list stops taking signups. Required.",
 		"createdAt":     "CreatedAt is when the list was opened. It is the database's clock rather than the application's, read back by the write — see waitlists/migrations.",
@@ -17,10 +17,10 @@ var fieldDocs = mcptool.Docs{
 		"name":          "Name is what the list is called, for whoever administers it and for whatever renders the signup form. Required.",
 		"scope":         "Scope is whose list this is. See the tenancy package.",
 	},
-	"github.com/primandproper/platform-go/v14/waitlists/mcp.GetListInput": {
+	"github.com/primandproper/platform-go/v15/waitlists/mcp.GetListInput": {
 		"listID": "ListID is the identifier of the waitlist to read.",
 	},
-	"github.com/primandproper/platform-go/v14/waitlists/mcp.ListListsInput": {
+	"github.com/primandproper/platform-go/v15/waitlists/mcp.ListListsInput": {
 		"filter": "Filter is the page to read. Absent reads the first page, oldest first.",
 	},
 }
