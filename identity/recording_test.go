@@ -307,6 +307,16 @@ func recordingCalls() map[string]recordingCall {
 	}
 }
 
+// recordingBySubject is recordingcfg.FileBySubject's rule, spelled here so the
+// tests need not build a Recorder through the config package.
+func recordingBySubject(_ context.Context, scope tenancy.Scope, entry *recording.Entry) tenancy.Scope {
+	if entry.SubjectID != "" {
+		return tenancy.Of(entry.SubjectID)
+	}
+
+	return scope
+}
+
 // runRecording calls one Hooks method on fresh RecordingHooks inside a real
 // transaction and hands back what it recorded.
 func runRecording(t *testing.T, env *storeEnv, name string, opts ...recording.Option) *recordingLedger {
@@ -481,21 +491,13 @@ func TestRecordingHooks(T *testing.T) {
 	T.Run("an archival records an entry per ended membership, each on its member's chain", func(t *testing.T) {
 		t.Parallel()
 
-		bySubject := func(_ context.Context, scope tenancy.Scope, entry *recording.Entry) tenancy.Scope {
-			if entry.SubjectID != "" {
-				return tenancy.Of(entry.SubjectID)
-			}
-
-			return scope
-		}
-
-		l := runRecording(t, env, "AfterArchiveAccount", recording.WithScopeResolver(bySubject))
+		l := runRecording(t, env, "AfterArchiveAccount", recording.WithScopeResolver(recordingBySubject))
 
 		must.SliceLen(t, 3, l.entries)
 		test.EqOp(t, ResourceTypeAccount, l.entries[0].ResourceType)
 		test.EqOp(t, audit.EventArchived, l.entries[0].EventType)
-		// An account is not a person, so its entry stays where the write ran.
-		test.EqOp(t, testScope, l.entries[0].Scope)
+		// The account's own end is on the account's chain, beside its members'.
+		test.EqOp(t, tenancy.Of("account-1"), l.entries[0].Scope)
 		test.EqOp(t, "membership-1", l.entries[1].ResourceID)
 		test.EqOp(t, tenancy.Of("user-1"), l.entries[1].Scope)
 		test.EqOp(t, "membership-2", l.entries[2].ResourceID)
@@ -510,6 +512,64 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, EventAccountArchived, l.delivery(t).EventType)
 		must.SliceLen(t, 2, event.EndedMemberships)
 		test.EqOp(t, "user-2", event.EndedMemberships[1].UserID)
+	})
+
+	T.Run("every entry about an account is filed on the account's chain", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{
+			"AfterRegister",
+			"AfterCreateAccount",
+			"AfterTransferAccountOwnership",
+			"AfterArchiveAccount",
+			"AfterUpdateAccount",
+		} {
+			l := runRecording(t, env, name, recording.WithScopeResolver(recordingBySubject))
+
+			var accounts int
+			for _, entry := range l.entries {
+				if entry.ResourceType != ResourceTypeAccount || entry.Scope != tenancy.Of(entry.ResourceID) {
+					continue
+				}
+
+				accounts++
+			}
+
+			test.EqOp(t, 1, accounts, test.Sprintf("%s", name))
+		}
+	})
+
+	T.Run("an account's entry beside a membership's goes on a chain of its own", func(t *testing.T) {
+		t.Parallel()
+
+		l := runRecording(t, env, "AfterCreateAccount", recording.WithScopeResolver(recordingBySubject))
+
+		must.SliceLen(t, 2, l.entries)
+		test.EqOp(t, ResourceTypeAccount, l.entries[0].ResourceType)
+		test.EqOp(t, tenancy.Of("account-2"), l.entries[0].Scope)
+		test.EqOp(t, ResourceTypeMembership, l.entries[1].ResourceType)
+		test.EqOp(t, tenancy.Of("user-1"), l.entries[1].Scope)
+	})
+
+	T.Run("a transfer is on the account's chain and both owners'", func(t *testing.T) {
+		t.Parallel()
+
+		l := runRecording(t, env, "AfterTransferAccountOwnership", recording.WithScopeResolver(recordingBySubject))
+
+		must.SliceLen(t, 3, l.entries)
+
+		for i, scope := range []tenancy.Scope{tenancy.Of("account-1"), tenancy.Of("user-2"), tenancy.Of("user-1")} {
+			test.EqOp(t, scope, l.entries[i].Scope)
+			test.EqOp(t, ResourceTypeAccount, l.entries[i].ResourceType)
+			test.EqOp(t, "account-1", l.entries[i].ResourceID)
+			test.EqOp(t, audit.EventUpdated, l.entries[i].EventType)
+			test.Eq(t, map[string]string{metadataPreviousOwnerUserID: "user-1"}, l.entries[i].Metadata)
+		}
+
+		// Filed by write, the three are the same write's, on its chain.
+		for _, entry := range runRecording(t, env, "AfterTransferAccountOwnership").entries {
+			test.EqOp(t, testScope, entry.Scope)
+		}
 	})
 
 	T.Run("a user's archival names the memberships it ended", func(t *testing.T) {
@@ -532,7 +592,6 @@ func TestRecordingHooks(T *testing.T) {
 		t.Parallel()
 
 		for name, want := range map[string]map[string]string{
-			"AfterTransferAccountOwnership":  {metadataPreviousOwnerUserID: "user-1"},
 			"AfterSetDefaultAccount":         {metadataAccountID: "account-2", metadataPreviousAccountID: "account-1"},
 			"AfterRemoveMembership":          {metadataAccountID: "account-1", metadataNewDefaultAccountID: "account-2"},
 			"AfterSetUserServiceRoles":       {metadataPreviousRoles: "support", metadataNewRoles: "admin,support"},

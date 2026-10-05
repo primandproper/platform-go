@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -224,4 +225,20 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// Both grants are an operator's: each reaches somebody else's logins, anywhere
+// in the directory. A caller's own logins are [SelfServiceMethods], which hold
+// no permission and are in no tier, as [AnonymousMethods] are not either.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator: []authorization.Permission{
+			PermissionReadAnySignIns,
+			PermissionEndAnySignIns,
+		},
+	}
 }

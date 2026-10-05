@@ -239,6 +239,25 @@ func TestFlusher_Flush(T *testing.T) {
 		test.EqOp(t, 0, again.Claimed)
 	})
 
+	T.Run("settles without posting under the Unbilled mapper", func(t *testing.T) {
+		t.Parallel()
+
+		env := newTestFlusher(t, Unbilled())
+
+		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("req-1", 42, AggregationSum)))
+
+		result, err := env.flusher.Flush(t.Context())
+		must.NoError(t, err)
+
+		test.EqOp(t, 1, result.Skipped)
+		test.EqOp(t, 0, result.Failed)
+		test.SliceEmpty(t, env.reporter.recorded())
+
+		again, err := env.flusher.Flush(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, 0, again.Claimed)
+	})
+
 	T.Run("settles without posting for an empty provider ref", func(t *testing.T) {
 		t.Parallel()
 

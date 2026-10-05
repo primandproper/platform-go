@@ -55,9 +55,9 @@ const (
 
 	// FileBySubject files an entry that names a subject under that subject's
 	// scope, and one that names none under the write's. It is for a deployment
-	// whose stores are global but whose entries are about a person, where "what
-	// happened to this subject" has to be a chain the log can walk after the row
-	// no longer says. See recording.ScopeResolver.
+	// whose stores are global but whose entries are about a person or an
+	// account, where "what happened to this subject" has to be a chain the log
+	// can walk after the row no longer says. See recording.ScopeResolver.
 	FileBySubject FileBy = "subject"
 )
 
