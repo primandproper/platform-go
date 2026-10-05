@@ -33,7 +33,7 @@ which is the arrangement this command exists to end.
 	//platform:narrowing <why this package ships fewer than three dialects>
 
 Both are read only from a package's own doc.go, and both are required rather
-than optional: a directory named http or grpc with no transport directive, or a
+than optional: a directory named http, grpc or mcp with no transport directive, or a
 migrations directory shipping fewer than three dialects with no narrowing
 directive, is a failed generate rather than a row emitted with a blank cell.
 That is the forcing function the old tests were — a package cannot quietly grow

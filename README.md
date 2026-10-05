@@ -616,27 +616,30 @@ to hold to it. What is left here is the second half of that sentence, and it is
 the whole list.
 
 <!-- readmegen:transports -->
-| Transport                           | Kind             | Whose shape it is                                                                                                     |
-|-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `billing/http`                      | binding          | a payment provider's callback, whose status code the provider acts on                                                 |
-| `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                             |
-| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                                   |
-| `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                                   |
-| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`                       |
-| `authentication/passkeys/grpc`      | resource surface | enrolling a passkey and signing in with one, into sign-in's token — over `passkeys.Service`                           |
-| `authentication/passwordreset/grpc` | resource surface | ask for a reset link, check one, spend one — over `passwordreset.Service`                                             |
-| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                                 |
-| `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                             |
-| `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                              |
-| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request, and download an export — over `dataprivacy.Service`               |
-| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                     |
-| `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                                |
-| `mediaregistry/grpc`                | resource surface | uploading, registering and reading back the caller's objects — over `mediaregistry.Store` and `uploads.UploadManager` |
-| `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`                    |
-| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                                      |
-| `settings/grpc`                     | resource surface | the catalog, the answers stored against it, and what a setting resolves to — over `settings.Store`                    |
-| `waitlists/grpc`                    | resource surface | the catalog, the queue and the two audiences that reach them — over `waitlists.Store`                                 |
-| `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store`             |
+| Transport                           | Kind             | Whose shape it is                                                                                                              |
+|-------------------------------------|------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `billing/http`                      | binding          | a payment provider's callback, whose status code the provider acts on                                                          |
+| `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                                      |
+| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                                            |
+| `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                                            |
+| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`                                |
+| `authentication/passkeys/grpc`      | resource surface | enrolling a passkey and signing in with one, into sign-in's token — over `passkeys.Service`                                    |
+| `authentication/passwordreset/grpc` | resource surface | ask for a reset link, check one, spend one — over `passwordreset.Service`                                                      |
+| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                                          |
+| `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`                                      |
+| `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                                       |
+| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request, and download an export — over `dataprivacy.Service`                        |
+| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                              |
+| `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                                         |
+| `issuereports/mcp`                  | resource surface | read-only MCP tools — one report, the queue, the queue by status — over `issuereports.Store`                                   |
+| `mediaregistry/grpc`                | resource surface | uploading, registering and reading back the caller's objects — over `mediaregistry.Store` and `uploads.UploadManager`          |
+| `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`                             |
+| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                                               |
+| `settings/grpc`                     | resource surface | the catalog, the answers stored against it, and what a setting resolves to — over `settings.Store`                             |
+| `waitlists/grpc`                    | resource surface | the catalog, the queue and the two audiences that reach them — over `waitlists.Store`                                          |
+| `waitlists/mcp`                     | resource surface | read-only MCP tools — the waitlist catalog, whole and open, never the signups — over `waitlists.Store`                         |
+| `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store`                      |
+| `webhooks/mcp`                      | resource surface | read-only MCP tools — endpoints without their headers, and the event catalog — over `webhooks.Store` and `webhooks.Dispatcher` |
 <!-- /readmegen:transports -->
 
 The bindings are not surfaces. `sessions/http` binds a store to a

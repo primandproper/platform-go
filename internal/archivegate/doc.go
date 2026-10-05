@@ -39,6 +39,11 @@
 // FromProto anywhere but here, or serves a filtered RPC whose handler never
 // reaches [Filter].
 //
+// An MCP tool's filter arrives decoded rather than as a protobuf message, so it
+// enters at [Narrow], the half of [Filter] that decides, through
+// internal/mcptool — one door for every transport rather than a second copy of
+// the rule beside the tools.
+//
 // A read whose rows are never archived names [NothingArchived] rather than
 // skipping the call. That is a decision recorded where it can be read, and it
 // clears the field for everybody — so a store that starts archiving those rows
