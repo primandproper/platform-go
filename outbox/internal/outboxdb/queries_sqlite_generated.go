@@ -123,25 +123,15 @@ WHERE m.published_at IS NULL
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
-LIMIT COALESCE(?3, 50)`
+LIMIT ?4 OFFSET ?3`
 
-const selectClaimableOutboxMessagesSkipLockedSQLite = `SELECT m.id
-FROM {{prefix}}outbox_messages AS m
-WHERE m.published_at IS NULL
-	AND m.quarantined_at IS NULL
-	AND m.next_attempt <= ?1
-	AND (m.claimed_until IS NULL OR m.claimed_until <= ?2)
-	AND (m.partition_key = '' OR NOT EXISTS (
-		SELECT 1
-		FROM {{prefix}}outbox_messages AS prior
-		WHERE prior.partition_key = m.partition_key
-			AND prior.published_at IS NULL
-			AND prior.quarantined_at IS NULL
-			AND (prior.created_at < m.created_at
-				OR (prior.created_at = m.created_at AND prior.id < m.id))
-	))
-ORDER BY m.created_at, m.id
-LIMIT COALESCE(?3, 50)`
+const selectClaimableOutboxMessagesSkipLockedSQLite = `SELECT id
+FROM {{prefix}}outbox_messages
+WHERE published_at IS NULL
+	AND quarantined_at IS NULL
+	AND next_attempt <= ?1
+	AND (claimed_until IS NULL OR claimed_until <= ?2)
+	AND id IN (/*SLICE:ids*/?)`
 
 const selectQuarantinedOutboxMessagesSQLite = `SELECT
 	{{prefix}}outbox_messages.id,
@@ -425,6 +415,7 @@ func (q *sqliteQueries) SelectClaimableOutboxMessages(ctx context.Context, db DB
 	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessages,
 		timeText(arg.Now),
 		timeTextPtr(arg.LeaseExpiredBy),
+		arg.ResultOffset,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -456,11 +447,21 @@ func (q *sqliteQueries) SelectClaimableOutboxMessages(ctx context.Context, db DB
 
 // SelectClaimableOutboxMessagesSkipLocked runs the :many query against sqlite.
 func (q *sqliteQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.Context, db DBTX, arg SelectClaimableOutboxMessagesSkipLockedParams) ([]SelectClaimableOutboxMessagesSkipLockedRow, error) {
-	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessagesSkipLocked,
-		timeText(arg.Now),
-		timeTextPtr(arg.LeaseExpiredBy),
-		arg.ResultLimit,
-	)
+	query := q.selectClaimableOutboxMessagesSkipLocked
+
+	args := make([]any, 0, 2+len(arg.IDs))
+
+	args = append(args, timeText(arg.Now))
+
+	args = append(args, timeTextPtr(arg.LeaseExpiredBy))
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -625,6 +626,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
+		ResultOffset   int64
 		ResultLimit    int64
 	}(SelectClaimableOutboxMessagesParams{})
 	_ = struct {
@@ -633,7 +635,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
-		ResultLimit    int64
+		IDs            []string
 	}(SelectClaimableOutboxMessagesSkipLockedParams{})
 	_ = struct {
 		ID string

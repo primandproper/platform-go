@@ -145,6 +145,10 @@ const (
 	metadataSubjectType    = "subjectType"
 )
 
+// signupText is what a signup's diff hashes before it is recorded: the
+// operator's notes, which are text about a person. See RecordingHooks.
+var signupText = audit.Redaction{Hash: []string{"notes"}}
+
 // lastUpdatedAtField is the json name of the timestamp every update stamps,
 // which a diff therefore always names and a changed-fields list should not.
 const lastUpdatedAtField = "lastUpdatedAt"
@@ -170,10 +174,13 @@ const lastUpdatedAtField = "lastUpdatedAt"
 // way a signup's entries reach the subject: none of them names the subject in
 // its metadata, for the reason recordSignup gives.
 //
-// Nor does it redact. A Signup's Contact is tagged `audit:"-"` and never reaches
-// a diff; its Notes are not, because whether an operator's note about a person
-// is personal data is the deployment's call, made with audit.WithRedaction for
-// [ResourceTypeSignup] on the audit recorder.
+// A Signup's Contact is tagged `audit:"-"` and never reaches a diff. Its Notes
+// do, hashed: an operator's note is text about a person, a withdrawal blanks it
+// and waitlists/privacy's eraser withdraws, and a copy in the one table built
+// not to forget is one neither can reach. The digest still says the note
+// changed, and the field's name survives into the event's Changed list. That is
+// this type's obligation rather than a deployment's policy, so it does not wait
+// for an audit.WithRedaction; see audit.Redaction.Apply.
 type RecordingHooks struct {
 	recorder *recording.Recorder
 }
@@ -233,8 +240,8 @@ func (h *RecordingHooks) AfterJoin(ctx context.Context, tx database.Tx, scope te
 }
 
 // AfterUpdateSignupNotes records the operator's note changing. The diff carries
-// the note's old and new text; a deployment that treats that as personal data
-// redacts the field on its audit recorder, as the type's documentation says.
+// the note old and new as digests, never as written, for the reason the type's
+// documentation gives.
 func (h *RecordingHooks) AfterUpdateSignupNotes(
 	ctx context.Context,
 	tx database.Tx,
@@ -248,6 +255,10 @@ func (h *RecordingHooks) AfterUpdateSignupNotes(
 	changes, err := audit.Diff(before, after)
 	if err != nil {
 		return platformerrors.Wrap(err, "diffing the updated waitlist signup")
+	}
+
+	if changes, err = signupText.Apply(changes); err != nil {
+		return platformerrors.Wrap(err, "redacting the updated waitlist signup")
 	}
 
 	return h.recordSignup(ctx, tx, scope, after, audit.EventUpdated, EventSignupNotesUpdated, after.Status, "", changes)

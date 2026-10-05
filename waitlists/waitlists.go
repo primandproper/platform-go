@@ -273,7 +273,8 @@ type Signup struct {
 	ContactDigest string `json:"contactDigest"`
 
 	// Notes is whatever whoever administers the list wrote about this signup.
-	// It is empty for a withdrawn signup.
+	// It is empty for a withdrawn signup. RecordingHooks records it hashed, so
+	// an audit log says the note changed and never what it said.
 	Notes string `json:"notes"`
 
 	// Status is where the signup stands.
