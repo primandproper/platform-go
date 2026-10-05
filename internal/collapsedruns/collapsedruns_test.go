@@ -42,7 +42,7 @@ var collapses = []collapse{
 }
 
 // runOf rebuilds the v14 run from testdata, version 1 onwards.
-func runOf(t *testing.T, c collapse) ddl.Migrations {
+func runOf(t *testing.T, c *collapse) ddl.Migrations {
 	t.Helper()
 
 	read := func(d string, version int) string {
@@ -201,8 +201,14 @@ func shapeOf(t *testing.T, db executor, d dialect.Dialect, prefix string) shape 
 func runCollapses(t *testing.T, db executor, d dialect.Dialect) {
 	t.Helper()
 
-	for _, c := range collapses {
+	for i := range collapses {
+		c := &collapses[i]
+
 		t.Run(c.run, func(t *testing.T) {
+			// Each run is under prefixes of its own, so the runs share the
+			// database without seeing one another.
+			t.Parallel()
+
 			// The run and the schema share the database under two prefixes,
 			// so the catalog answers for both in the same terms.
 			fromRun, collapsed := "fromrun"+c.run, "collapsed"+c.run
