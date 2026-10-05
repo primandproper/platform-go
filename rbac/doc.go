@@ -226,6 +226,13 @@ the deployment re-reading that surface's documentation. Tiers is plain data, so
 a deployment whose roles do not line up with three tiers edits it before handing
 it over; how many roles there are and what they are called stay its own.
 
+A surface's sort is its author's judgement of the common case, and a deployment
+may depart from it: any method may be reserved to an operator. Tiers.Place
+moves a permission to another tier after the merge — MergeTiers itself refuses
+a second placement, because there it reads as two surfaces disagreeing:
+
+	tiers, err = tiers.Place(rbac.TierOperator, commentsgrpc.PermissionCreateComments)
+
 A Narrowing is the one thing PolicyFromTiers does not grant: a method a lower
 tier may safely reach although the permission in front of it is a higher
 tier's, because the surface confines the call inside the handler. The

@@ -239,6 +239,85 @@ func TestMergeTiers(T *testing.T) {
 	})
 }
 
+func TestTiers_Place(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a member grant reserved to operators", func(t *testing.T) {
+		t.Parallel()
+
+		placed, err := testTiers().Place(TierOperator, readOwn)
+		must.NoError(t, err)
+
+		test.Eq(t, []authorization.Permission{readAny, override, readOwn}, placed.Operator)
+		test.Eq(t, []authorization.Permission{moderate}, placed.TenantAdmin)
+		test.SliceEmpty(t, placed.Member)
+		test.Eq(t, testTiers().Narrowings, placed.Narrowings)
+		must.NoError(t, placed.Validate())
+	})
+
+	T.Run("an operator grant handed down", func(t *testing.T) {
+		t.Parallel()
+
+		placed, err := testTiers().Place(TierTenantAdmin, override)
+		must.NoError(t, err)
+
+		test.Eq(t, []authorization.Permission{readAny}, placed.Operator)
+		test.Eq(t, []authorization.Permission{moderate, override}, placed.TenantAdmin)
+	})
+
+	T.Run("a grant placed where it already is", func(t *testing.T) {
+		t.Parallel()
+
+		placed, err := testTiers().Place(TierTenantAdmin, moderate, moderate)
+		must.NoError(t, err)
+
+		test.Eq(t, testTiers(), placed)
+	})
+
+	T.Run("what MergeTiers refuses as a second placement", func(t *testing.T) {
+		t.Parallel()
+
+		merged, err := MergeTiers(testTiers(), Tiers{Member: []authorization.Permission{"other.read"}})
+		must.NoError(t, err)
+
+		placed, err := merged.Place(TierOperator, readOwn, "other.read")
+		must.NoError(t, err)
+
+		test.Eq(t, []authorization.Permission{readAny, override, readOwn, "other.read"}, placed.Operator)
+		test.SliceEmpty(t, placed.Member)
+	})
+
+	T.Run("the original is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		original := testTiers()
+
+		_, err := original.Place(TierMember, readAny)
+		must.NoError(t, err)
+
+		test.Eq(t, testTiers(), original)
+	})
+
+	T.Run("a permission placed nowhere", func(t *testing.T) {
+		t.Parallel()
+
+		placed, err := testTiers().Place(TierOperator, readOwn, "things.raed")
+		test.ErrorIs(t, err, ErrUntieredPermission)
+		test.StrContains(t, err.Error(), "things.raed")
+		test.Eq(t, Tiers{}, placed)
+	})
+
+	T.Run("a tier outside the three", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := testTiers().Place(Tier(0), readOwn)
+		test.ErrorIs(t, err, ErrUnknownTier)
+
+		_, err = testTiers().Place(TierOperator+1, readOwn)
+		test.ErrorIs(t, err, ErrUnknownTier)
+	})
+}
+
 func TestPolicyFromTiers(T *testing.T) {
 	T.Parallel()
 

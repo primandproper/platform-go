@@ -268,6 +268,71 @@ func MergeTiers(tiers ...Tiers) (Tiers, error) {
 	return out, nil
 }
 
+// Place moves each of perms into tier, out of whichever tier it was placed in,
+// and returns the result; t is not modified.
+//
+// It is how a deployment departs from a surface's sort. Any method may be
+// reserved to an operator — a product where only staff comment on a dispute
+// places the comment grants in TierOperator — and a surface's placement is its
+// author's judgement of the common case, not a promise about every deployment.
+// The departure goes after [MergeTiers] rather than into it, because MergeTiers
+// reads a second placement of one permission as two surfaces disagreeing, and
+// refuses it:
+//
+//	tiers, err := rbac.MergeTiers(identitygrpc.Tiers(), commentsgrpc.Tiers())
+//	...
+//	tiers, err = tiers.Place(rbac.TierOperator, commentsgrpc.PermissionCreateComments)
+//
+// A permission t places nowhere is refused with [ErrUntieredPermission] rather
+// than added, since it is a name nothing in t checks and most likely a typo; a
+// tier outside the three is refused with [ErrUnknownTier]. Narrowings are kept
+// as they are. One whose permission now sits at or below its tier says nothing,
+// and grants nothing either, since [PolicyFromTiers] grants no narrowing.
+//
+//nolint:gocritic // hugeParam: a value receiver so it chains on MergeTiers' result
+func (t Tiers) Place(tier Tier, perms ...authorization.Permission) (Tiers, error) {
+	if tier < TierMember || tier > TierOperator {
+		return Tiers{}, platformerrors.Wrapf(ErrUnknownTier, "%d", tier)
+	}
+
+	placements := t.placements()
+
+	var errs []error
+	for _, p := range perms {
+		if len(placements[p]) == 0 {
+			errs = append(errs, platformerrors.Wrapf(ErrUntieredPermission, "placing %q in %v", p, tier))
+		}
+	}
+
+	if err := platformerrors.Join(errs...); err != nil {
+		return Tiers{}, err
+	}
+
+	moved := func(p authorization.Permission) bool { return slices.Contains(perms, p) }
+
+	out := Tiers{
+		Operator:    slices.DeleteFunc(slices.Clone(t.Operator), moved),
+		TenantAdmin: slices.DeleteFunc(slices.Clone(t.TenantAdmin), moved),
+		Member:      slices.DeleteFunc(slices.Clone(t.Member), moved),
+		Narrowings:  slices.Clone(t.Narrowings),
+	}
+
+	switch tier {
+	case TierOperator:
+		out.Operator = append(out.Operator, perms...)
+	case TierTenantAdmin:
+		out.TenantAdmin = append(out.TenantAdmin, perms...)
+	case TierMember:
+		out.Member = append(out.Member, perms...)
+	}
+
+	out.Operator = dedupe(out.Operator)
+	out.TenantAdmin = dedupe(out.TenantAdmin)
+	out.Member = dedupe(out.Member)
+
+	return out, nil
+}
+
 // PolicyFromTiers is the policy that grants each tier's permissions to the
 // role a deployment names for it, with the tiers' order as inheritance: the
 // tenant admin role inherits the member role, and the operator role inherits

@@ -35,4 +35,7 @@ var (
 	// no permission, names no authorizer, is not below its permission's tier,
 	// or is stated two different ways.
 	ErrInvalidNarrowing = platformerrors.New("invalid tier narrowing")
+	// ErrUnknownTier indicates a Tier that is none of TierMember,
+	// TierTenantAdmin and TierOperator.
+	ErrUnknownTier = platformerrors.New("unknown permission tier")
 )
