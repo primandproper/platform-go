@@ -123,12 +123,14 @@ func ExampleWithRedaction() {
 	client := exampleDatabase(ctx)
 	defer func() { _ = client.Close() }()
 
+	// CredentialRedaction is already installed, so "password" and its kin need
+	// no rule here; these are the deployment's own names on top of it.
 	recorder, err := audit.NewRecorder(dialect.SQLite,
 		// Applies to every resource type: this is a rule about the field name.
-		audit.WithRedaction("", audit.Redaction{Drop: []string{"password"}}),
-		// Rotating an API key is a real event; the new key is not a thing to
+		audit.WithRedaction("", audit.Redaction{Drop: []string{"pin"}}),
+		// Rotating a signing key is a real event; the new key is not a thing to
 		// write down, but "is it the same one as before" still is.
-		audit.WithRedaction("api_key", audit.Redaction{Hash: []string{"secret"}}),
+		audit.WithRedaction("api_key", audit.Redaction{Hash: []string{"signingKey"}}),
 	)
 	if err != nil {
 		panic(err)
@@ -140,9 +142,10 @@ func ExampleWithRedaction() {
 		ResourceID:   "key_1",
 		Actor:        audit.Actor{ID: "user_123", Type: audit.ActorUser},
 		Changes: map[string]audit.Change{
-			"password": {New: "hunter2"},
-			"secret":   {New: "sk_live_abcdef"},
-			"label":    {Old: "old label", New: "new label"},
+			"password":   {New: "hunter2"},
+			"pin":        {New: "1234"},
+			"signingKey": {New: "sk_live_abcdef"},
+			"label":      {Old: "old label", New: "new label"},
 		},
 	}
 
@@ -154,12 +157,15 @@ func ExampleWithRedaction() {
 
 	_, recorded := entry.Changes["password"]
 	fmt.Println("password recorded:", recorded)
-	fmt.Printf("secret recorded as: %.7s...\n", entry.Changes["secret"].New)
+	_, recorded = entry.Changes["pin"]
+	fmt.Println("pin recorded:", recorded)
+	fmt.Printf("signingKey recorded as: %.7s...\n", entry.Changes["signingKey"].New)
 	fmt.Println("label recorded as:", entry.Changes["label"].New)
 
 	// Output:
 	// password recorded: false
-	// secret recorded as: sha256:...
+	// pin recorded: false
+	// signingKey recorded as: sha256:...
 	// label recorded as: new label
 }
 

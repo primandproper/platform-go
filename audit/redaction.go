@@ -193,3 +193,46 @@ func redactMetadata(metadata map[string]string, rules map[string]disposition) (m
 
 	return out, nil
 }
+
+// CredentialRedaction is the redaction every deployment wants under the empty
+// resource type: secrets dropped, tokens hashed. NewRecorder installs it unless
+// WithoutCredentialRedaction says not to, and a deployment's own rules under
+// the empty resource type add to it rather than replacing it.
+//
+// It is a starting point to extend, not a guarantee. It matches field names,
+// so a credential in a field called anything else is recorded as it was given;
+// a row type's own credential fields belong behind the audit:"-" tag, and a
+// deployment's names for them in a WithRedaction of its own.
+//
+// Every field is listed in both JSON spellings, because Diff keys on the json
+// tag and the module's rows use camelCase where a sqlc-shaped row uses
+// snake_case.
+//
+// The tokens are hashed rather than dropped because the question an
+// investigation asks of a reset or verification token is whether the one
+// presented was the one issued, and a digest answers it; rotating a credential
+// is a real event worth recording, and the new credential is not a thing to
+// write down. The secrets are dropped because no question about them is
+// answered by a digest that is not better answered by the event itself.
+//
+// Each call returns a fresh value, so extending what one call returned
+// changes nothing another caller holds.
+func CredentialRedaction() Redaction {
+	return Redaction{
+		Drop: []string{
+			"password",
+			"hashed_password", "hashedPassword",
+			"two_factor_secret", "twoFactorSecret",
+			"totp_token", "totpToken",
+			"client_secret", "clientSecret",
+			"access_token", "accessToken",
+			"refresh_token", "refreshToken",
+			"secret",
+		},
+		Hash: []string{
+			"token",
+			"email_verification_token", "emailVerificationToken",
+			"api_key", "apiKey",
+		},
+	}
+}

@@ -31,12 +31,13 @@ func TestConfigEnvironmentNames(T *testing.T) {
 		must.NoError(t, env.ParseWithOptions(cfg, env.Options{
 			Prefix: "AUDIT_",
 			Environment: map[string]string{
-				"AUDIT_DIALECT":         "sqlite",
-				"AUDIT_TABLE_PREFIX":    "app",
-				"AUDIT_BASIS":           "a regulation names it",
-				"AUDIT_RETENTION":       "720h",
-				"AUDIT_BATCH_SIZE":      "250",
-				"AUDIT_SCOPE_PAGE_SIZE": "7",
+				"AUDIT_DIALECT":                       "sqlite",
+				"AUDIT_TABLE_PREFIX":                  "app",
+				"AUDIT_BASIS":                         "a regulation names it",
+				"AUDIT_RETENTION":                     "720h",
+				"AUDIT_BATCH_SIZE":                    "250",
+				"AUDIT_SCOPE_PAGE_SIZE":               "7",
+				"AUDIT_CREDENTIAL_REDACTION_DISABLED": "true",
 			},
 		}))
 
@@ -45,6 +46,7 @@ func TestConfigEnvironmentNames(T *testing.T) {
 		test.EqOp(t, 720*time.Hour, cfg.Retention.Retention)
 		test.EqOp(t, 250, cfg.Retention.BatchSize)
 		test.EqOp(t, 7, cfg.Retention.ScopePageSize)
+		test.True(t, cfg.CredentialRedactionDisabled)
 	})
 
 	// The name the field carried before was SCOPE_PAGE, which parses as nothing

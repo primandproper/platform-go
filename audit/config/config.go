@@ -83,6 +83,13 @@ type Config struct {
 	// Retention carries the window entries are kept for and the bounds a sweep
 	// of the log runs under.
 	Retention audit.RetentionConfig `env:",init" json:"retention,omitzero" yaml:"retention,omitempty"`
+
+	// CredentialRedactionDisabled stops the Recorder installing
+	// audit.CredentialRedaction under the empty resource type, beside whatever
+	// Redactions registers there. It defaults to false, so the safe policy is
+	// the one a deployment gets by saying nothing, and turning it off is written
+	// down — see audit.WithoutCredentialRedaction.
+	CredentialRedactionDisabled bool `env:"CREDENTIAL_REDACTION_DISABLED" json:"credentialRedactionDisabled,omitempty" yaml:"credentialRedactionDisabled,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
@@ -144,6 +151,10 @@ func NewRecorder(
 	}
 	if o.metricsProvider != nil {
 		base = append(base, audit.WithRecorderMetricsProvider(o.metricsProvider))
+	}
+
+	if cfg.CredentialRedactionDisabled {
+		base = append(base, audit.WithoutCredentialRedaction())
 	}
 
 	for resourceType := range cfg.Redactions {

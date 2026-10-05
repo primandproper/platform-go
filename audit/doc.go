@@ -186,6 +186,11 @@ wherever it appears — and the value is dropped or replaced by a digest before 
 is ever written. Filtering at query time is not the same thing and does not
 help.
 
+NewRecorder installs CredentialRedaction under the empty resource type, so the
+passwords, secrets and tokens every deployment names are dropped or hashed
+without a deployment writing the list. A deployment's own rules there add to it;
+WithoutCredentialRedaction is the one way to take it away.
+
 The static counterpart is the audit:"-" struct tag, which keeps a field out of
 every Diff. Use the tag for a field that must never be audited anywhere, and a
 Redaction for a policy that belongs to a deployment.

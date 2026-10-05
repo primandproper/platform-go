@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -234,6 +235,166 @@ func TestRedaction(T *testing.T) {
 		result, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
+	})
+}
+
+func TestCredentialRedaction(T *testing.T) {
+	T.Parallel()
+
+	T.Run("names no field in both lists", func(t *testing.T) {
+		t.Parallel()
+
+		r := CredentialRedaction()
+		for _, field := range r.Hash {
+			test.SliceNotContains(t, r.Drop, field)
+		}
+	})
+
+	T.Run("spells every multi-word field both ways", func(t *testing.T) {
+		t.Parallel()
+
+		r := CredentialRedaction()
+		for _, fields := range [][]string{r.Drop, r.Hash} {
+			for _, field := range fields {
+				if !strings.Contains(field, "_") {
+					continue
+				}
+
+				words := strings.Split(field, "_")
+				for i := 1; i < len(words); i++ {
+					words[i] = strings.ToUpper(words[i][:1]) + words[i][1:]
+				}
+				test.SliceContains(t, fields, strings.Join(words, ""))
+			}
+		}
+	})
+
+	T.Run("returns a fresh value on each call", func(t *testing.T) {
+		t.Parallel()
+
+		first := CredentialRedaction()
+		first.Drop[0] = "overwritten"
+
+		test.SliceNotContains(t, CredentialRedaction().Drop, "overwritten")
+	})
+
+	T.Run("is installed by default, over changes and metadata alike", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		credentials := CredentialRedaction()
+		entry := &Entry{
+			EventType:    EventUpdated,
+			ResourceType: "anything",
+			Scope:        tenancy.Global(),
+			Actor:        Actor{ID: "user_1"},
+			Changes:      map[string]Change{"email": {New: "a@example.com"}},
+			Metadata:     map[string]string{"reason": "rotation"},
+		}
+		for _, field := range append(slices.Clone(credentials.Drop), credentials.Hash...) {
+			entry.Changes[field] = Change{Old: "plain-old-" + field, New: "plain-new-" + field}
+			entry.Metadata[field] = "plain-" + field
+		}
+		record(t, client, recorder, entry)
+
+		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
+		must.NoError(t, err)
+
+		for _, field := range credentials.Drop {
+			test.MapNotContainsKey(t, read.Changes, field)
+			test.MapNotContainsKey(t, read.Metadata, field)
+		}
+
+		for _, field := range credentials.Hash {
+			newHash, ok := read.Changes[field].New.(string)
+			must.True(t, ok)
+			test.True(t, strings.HasPrefix(newHash, "sha256:"))
+			test.StrNotContains(t, newHash, "plain")
+
+			test.True(t, strings.HasPrefix(read.Metadata[field], "sha256:"))
+		}
+
+		test.EqOp(t, "a@example.com", read.Changes["email"].New)
+		test.EqOp(t, "rotation", read.Metadata["reason"])
+	})
+
+	T.Run("a deployment's own catch-all adds to it rather than replacing it", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock(),
+			WithRedaction("", Redaction{Drop: []string{"pin"}, Hash: []string{"password"}}))
+		reader := newTestReader(t, client)
+
+		entry := &Entry{
+			EventType:    EventUpdated,
+			ResourceType: "user",
+			Scope:        tenancy.Global(),
+			Actor:        Actor{ID: "user_1"},
+			Changes: map[string]Change{
+				"pin":      {New: "1234"},
+				"secret":   {New: "s3cret"},
+				"password": {New: "hunter2"},
+			},
+		}
+		record(t, client, recorder, entry)
+
+		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
+		must.NoError(t, err)
+		test.MapNotContainsKey(t, read.Changes, "pin")
+		test.MapNotContainsKey(t, read.Changes, "secret")
+		// Named in the deployment's Hash and the default's Drop: dropped.
+		test.MapNotContainsKey(t, read.Changes, "password")
+	})
+
+	T.Run("WithoutCredentialRedaction records the fields as given", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock(), WithoutCredentialRedaction())
+		reader := newTestReader(t, client)
+
+		entry := &Entry{
+			EventType:    EventUpdated,
+			ResourceType: "user",
+			Scope:        tenancy.Global(),
+			Actor:        Actor{ID: "user_1"},
+			Changes:      map[string]Change{"token": {New: "not-a-credential"}},
+			Metadata:     map[string]string{"secret": "not-a-credential"},
+		}
+		record(t, client, recorder, entry)
+
+		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "not-a-credential", read.Changes["token"].New)
+		test.EqOp(t, "not-a-credential", read.Metadata["secret"])
+	})
+
+	T.Run("WithoutCredentialRedaction leaves a deployment's own catch-all in place", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock(),
+			WithoutCredentialRedaction(),
+			WithRedaction("", Redaction{Drop: []string{"secret"}}))
+		reader := newTestReader(t, client)
+
+		entry := &Entry{
+			EventType:    EventUpdated,
+			ResourceType: "user",
+			Scope:        tenancy.Global(),
+			Actor:        Actor{ID: "user_1"},
+			Changes:      map[string]Change{"secret": {New: "s3cret"}, "token": {New: "kept"}},
+		}
+		record(t, client, recorder, entry)
+
+		read, err := reader.GetAcrossScopes(t.Context(), client.Reader(), entry.ID)
+		must.NoError(t, err)
+		test.MapNotContainsKey(t, read.Changes, "secret")
+		test.EqOp(t, "kept", read.Changes["token"].New)
 	})
 }
 

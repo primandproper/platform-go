@@ -108,9 +108,17 @@ type ChainRecorder struct {
 	// written, which is a property of the dialect's storage — see
 	// storedPrecision.
 	precision time.Duration
+
+	// withoutCredentialRedaction is WithoutCredentialRedaction's record that
+	// this recorder was told not to install CredentialRedaction.
+	withoutCredentialRedaction bool
 }
 
 // NewRecorder builds a Recorder for the given dialect.
+//
+// It installs CredentialRedaction under the empty resource type, beside
+// whatever WithRedaction registers there, unless WithoutCredentialRedaction
+// says not to.
 func NewRecorder(d dialect.Dialect, opts ...RecorderOption) (*ChainRecorder, error) {
 	if !d.Valid() {
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "audit dialect %q", d)
@@ -129,6 +137,10 @@ func NewRecorder(d dialect.Dialect, opts ...RecorderOption) (*ChainRecorder, err
 
 	if err := ValidateTablePrefix(r.prefix); err != nil {
 		return nil, err
+	}
+
+	if !r.withoutCredentialRedaction {
+		WithRedaction("", CredentialRedaction())(r)
 	}
 
 	// The generated querier, instantiated once the prefix is settled and the
