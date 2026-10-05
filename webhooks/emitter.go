@@ -39,9 +39,9 @@ var _ Enqueuer = (*outbox.Writer)(nil)
 // Emitter builds those; this is the application's side of the same event, which
 // also has a broker to reach.
 type Event struct {
-	// Payload is the event body. It is marshaled to JSON once, and those exact
-	// bytes are what the outbox stores and what the dispatcher signs and sends —
-	// see Emitter.Emit for why that matters.
+	// Payload is the event body. It reaches the outbox writer as this value,
+	// not as bytes, so a side effect registered on the writer reads it by type —
+	// see Emitter.Emit for how the stored body and the signed one still agree.
 	//
 	// It is any rather than json.RawMessage because the value an application has
 	// at the call site is its own event struct, and marshaling it at a hundred
@@ -179,11 +179,28 @@ func NewEmitter(enqueuer Enqueuer, dispatcher Dispatcher, topic string, opts ...
 // against two systems that share no commit, and the row lands while the event
 // does not with nothing able to detect it.
 //
-// The payload is marshaled once and both halves are handed the same bytes, so a
-// queue consumer and a webhook subscriber read byte-identical bodies — and the
-// bytes that are signed are the bytes that were stored, since re-marshaling
-// between the two is exactly how a signature comes to cover something other
-// than what was sent.
+// # The payload
+//
+// The outbox is handed the payload as the caller's value, and the writer
+// renders it. That is what lets a side effect registered on the writer — the
+// searchsync bridge from a data change to the index events it implies is the
+// one this module ships — see an emitted event at all: an effect reads its
+// message by type assertion, and a body rendered here first would reach it as a
+// json.RawMessage that asserts to nothing, so every emitted event would derive
+// nothing and the index would drift with no error at any layer.
+//
+// The dispatch is handed bytes, rendered here by the same JSON encoding the
+// writer pins, from the same value, inside the same call. A queue consumer and a
+// webhook subscriber therefore read byte-identical bodies for any payload whose
+// encoding is a function of its value — every struct, map and slice
+// encoding/json renders is — and what a subscriber verifies the signature over
+// is what the outbox stored. A payload with a MarshalJSON of its own that reads
+// a clock or a random source would render twice differently; such a payload
+// owes its stability to itself, or arrives already rendered as a
+// json.RawMessage, which encodes to itself on both sides.
+//
+// It is rendered here before either write, so a payload that cannot be encoded
+// fails with nothing enqueued rather than between the two halves.
 //
 // # The catalog gate
 //
@@ -272,21 +289,20 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 		op.Set(orderingKeyKey, key)
 	}
 
-	// Marshaled once, before either write, so a payload that cannot be rendered
-	// fails before anything has been enqueued rather than between the two halves.
+	// Rendered before either write, so a payload that cannot be encoded fails
+	// before anything has been enqueued rather than between the two halves.
 	payload, err := e.marshaler.Marshal(ctx, event.Payload)
 	if err != nil {
 		return op.Error(err, "marshaling domain event %q", event.EventType)
 	}
 
-	// The same bytes reach both. json.RawMessage marshals to itself, so what the
-	// writer stores is what was rendered here and what the subscriber is signed
-	// over.
-	body := json.RawMessage(payload)
-
+	// The outbox gets the value and the dispatch gets the bytes. The writer runs
+	// its side effects over the typed message before rendering it with the same
+	// encoding as above, so what it stores is what the subscriber is signed
+	// over — and an effect that asserts the payload's type finds it.
 	if err = e.enqueuer.Enqueue(ctx, tx, outbox.Message{
 		Topic:   e.topic,
-		Payload: body,
+		Payload: event.Payload,
 		Key:     key,
 	}); err != nil {
 		return op.Error(err, "enqueuing domain event %q", event.EventType)
@@ -324,7 +340,7 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 		// endpoint, and an endpoint belongs to one scope, so the scope would add
 		// nothing but width to an index that is already on the claim path.
 		OrderingKey: key,
-		Payload:     body,
+		Payload:     json.RawMessage(payload),
 	}); err != nil {
 		return op.Error(err, "dispatching domain event %q", event.EventType)
 	}
