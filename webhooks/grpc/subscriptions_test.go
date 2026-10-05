@@ -55,6 +55,22 @@ func TestAddSubscription(T *testing.T) {
 		test.ErrorIs(t, err, webhooks.ErrUnknownEventType)
 	})
 
+	T.Run("refuses an internal event type as though it were unknown", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		seeded := h.seed(t, testScope)
+
+		_, err := h.server.AddSubscription(h.ctx(t), &webhookspb.AddSubscriptionRequest{
+			EndpointId: seeded.ID,
+			EventType:  string(orderAudited),
+		})
+		must.Error(t, err)
+
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+		test.ErrorIs(t, err, webhooks.ErrUnknownEventType)
+	})
+
 	T.Run("refuses an empty event type", func(t *testing.T) {
 		t.Parallel()
 
