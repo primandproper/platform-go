@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/identity"
-	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitymock "github.com/primandproper/platform-go/v15/identity/mock"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/shredding"
+	"github.com/primandproper/platform-go/v15/shredding"
 
 	"github.com/primandproper/primitives-go/v2/messagequeue"
 	messagequeuemock "github.com/primandproper/primitives-go/v2/messagequeue/mock"

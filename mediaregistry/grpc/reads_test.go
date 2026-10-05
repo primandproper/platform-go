@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v15/mediaregistry/grpc"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/tenancy"

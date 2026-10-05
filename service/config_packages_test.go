@@ -19,7 +19,7 @@ import (
 // repository. It is spelled out rather than derived because deriving it from a
 // field's own PkgPath would make the check agree with whatever the fields
 // happen to say.
-const thisModule = "github.com/primandproper/platform-go/v14"
+const thisModule = "github.com/primandproper/platform-go/v15"
 
 // exemptionKind is why a config package has no field on Config.
 type exemptionKind int

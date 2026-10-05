@@ -15,6 +15,10 @@ var (
 	// ErrNilReport indicates a nil *Report where one was required.
 	ErrNilReport = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil issue report")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to NewRecordingHooks.
+	// It wraps errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil issue report recorder")
+
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, an executor for a read — so
 	// there is no method that can fall back to a connection of the store's own.

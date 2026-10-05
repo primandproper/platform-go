@@ -265,7 +265,7 @@ formatters:
     gci:
       sections:
         - standard
-        - prefix(github.com/primandproper/platform-go/v14)
+        - prefix(github.com/primandproper/platform-go/v15)
         - prefix(github.com/primandproper)
         - default
       custom-order: true

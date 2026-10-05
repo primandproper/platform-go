@@ -7,17 +7,17 @@
 // the module's proto directory on protoc's path and imports this file by its
 // canonical name, exactly as filtering.proto already works:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/identity/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v14/identity/identitypb \
+//	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v15/identity/identitypb \
 //	    --go_opt=Mprimandproper/platform/filtering/v1/filtering.proto=github.com/primandproper/primitives-go/v2/filtering/filteringpb \
 //	    $(CONSUMER_PROTO_FILES)   # both platform files deliberately absent from that list
 //
 // Go links against the bindings this module already generated, in
-// github.com/primandproper/platform-go/v14/identity/identitypb, rather than
+// github.com/primandproper/platform-go/v15/identity/identitypb, rather than
 // making a second copy: the server and the typed client here are built against
 // those types, and a consumer generating its own would hold types that look
 // identical and satisfy nothing. Swift, TypeScript and Kotlin have no such
@@ -5087,7 +5087,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x12ListAccountMembers\x12=.primandproper.platform.identity.v1.ListAccountMembersRequest\x1a>.primandproper.platform.identity.v1.ListAccountMembersResponse\x12\x84\x01\n" +
 	"\rGetInvitation\x128.primandproper.platform.identity.v1.GetInvitationRequest\x1a9.primandproper.platform.identity.v1.GetInvitationResponse\x12\xa2\x01\n" +
 	"\x17ListInvitationsFromUser\x12B.primandproper.platform.identity.v1.ListInvitationsFromUserRequest\x1aC.primandproper.platform.identity.v1.ListInvitationsFromUserResponse\x12\xb7\x01\n" +
-	"\x1eListInvitationsForEmailAddress\x12I.primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest\x1aJ.primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponseBIZGgithub.com/primandproper/platform-go/v14/identity/identitypb;identitypbb\x06proto3"
+	"\x1eListInvitationsForEmailAddress\x12I.primandproper.platform.identity.v1.ListInvitationsForEmailAddressRequest\x1aJ.primandproper.platform.identity.v1.ListInvitationsForEmailAddressResponseBIZGgithub.com/primandproper/platform-go/v15/identity/identitypb;identitypbb\x06proto3"
 
 var (
 	file_primandproper_platform_identity_v1_identity_proto_rawDescOnce sync.Once

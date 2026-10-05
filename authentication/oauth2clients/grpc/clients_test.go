@@ -3,9 +3,9 @@ package grpc_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	oauth2clientsgrpc "github.com/primandproper/platform-go/v15/authentication/oauth2clients/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb"
 
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"

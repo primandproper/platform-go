@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
+	"github.com/primandproper/platform-go/v15/audit"
+	auditmock "github.com/primandproper/platform-go/v15/audit/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

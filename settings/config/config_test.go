@@ -3,7 +3,7 @@ package settingscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v15/settings"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

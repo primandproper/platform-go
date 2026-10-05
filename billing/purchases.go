@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/billing/internal/billingdb"
+	"github.com/primandproper/platform-go/v15/billing/internal/billingdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

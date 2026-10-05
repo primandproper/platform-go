@@ -1,4 +1,4 @@
-module github.com/primandproper/platform-go/v14
+module github.com/primandproper/platform-go/v15
 
 go 1.27
 

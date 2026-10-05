@@ -3,8 +3,10 @@ package signincfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/recording"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/tokens"
@@ -44,9 +46,12 @@ import (
 // registering it is what switches the handle reminder door on: the door has no
 // block, so there is no presence for a missing mailer to contradict.
 //
-// signin.Hooks, signin.PasswordPolicy, signin.AccountPasswordPolicy,
-// signin.RegistrationPolicy and signin.ClaimsBuilder are used if the application registered them, and the
-// service's own defaults apply otherwise. So is a signin.VerificationMailer,
+// signin.PasswordPolicy, signin.AccountPasswordPolicy, signin.RegistrationPolicy
+// and signin.ClaimsBuilder are used if the application registered them, and the
+// service's own defaults apply otherwise. signin.Hooks is resolved through
+// recordingcfg.InvokeHooks: one the application registered, then a
+// signin.RecordingHooks when a *recording.Recorder is registered, then the
+// service's NoopHooks. So is a signin.VerificationMailer,
 // whose absence leaves RequestVerificationEmail refusing with
 // signin.ErrVerificationMailerNotConfigured: it is the one door no config block
 // turns on, because it needs nothing but the mailer. Only absence is absorbed, as
@@ -168,9 +173,11 @@ func RegisterService(i do.Injector) {
 func optionalServiceOptions(i do.Injector) ([]signin.ServiceOption, error) {
 	var opts []signin.ServiceOption
 
-	hooks, err := injection.InvokeOptional[signin.Hooks](i)
+	hooks, err := recordingcfg.InvokeHooks(i, func(r *recording.Recorder) (signin.Hooks, error) {
+		return signin.NewRecordingHooks(r)
+	})
 	if err != nil {
-		return nil, platformerrors.Wrap(err, "invoking sign-in hooks")
+		return nil, err
 	}
 
 	if hooks != nil {

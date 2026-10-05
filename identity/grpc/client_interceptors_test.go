@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/identity"
-	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/identity"
+	identityclient "github.com/primandproper/platform-go/v15/identity/grpc/client"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

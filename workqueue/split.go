@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuesplitdb"
+	"github.com/primandproper/platform-go/v15/workqueue/internal/workqueuesplitdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

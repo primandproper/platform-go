@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/outbox"
-	"github.com/primandproper/platform-go/v14/webhooks"
-	webhooksmock "github.com/primandproper/platform-go/v14/webhooks/mock"
+	"github.com/primandproper/platform-go/v15/audit"
+	auditmock "github.com/primandproper/platform-go/v15/audit/mock"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/outbox"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	webhooksmock "github.com/primandproper/platform-go/v15/webhooks/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -359,5 +359,64 @@ func TestRecorder_Record(T *testing.T) {
 		test.ErrorIs(t, err, errRefused)
 		test.SliceLen(t, 1, h.got.batches)
 		test.SliceLen(t, 1, h.got.messages)
+	})
+}
+
+func TestRecorder_RecordAs(T *testing.T) {
+	T.Parallel()
+
+	T.Run("files every entry under the named actor, whatever the context says", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, somebody("user-1"), false, false)
+
+		named := audit.Actor{ID: "subject-1", Type: audit.ActorUser, Impersonator: "operator-1"}
+
+		must.NoError(t, h.recorder.RecordAs(t.Context(), tx(), testScope, named, anEvent(), anEntry("thing-1"), anEntry("thing-2")))
+
+		must.SliceLen(t, 1, h.got.batches)
+		must.SliceLen(t, 2, h.got.batches[0].entries)
+
+		for _, entry := range h.got.batches[0].entries {
+			test.Eq(t, named, entry.Actor)
+			test.EqOp(t, testScope, entry.Scope)
+		}
+
+		test.SliceLen(t, 1, h.got.messages)
+	})
+
+	T.Run("names an actor where the context names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, nobody, false, false)
+
+		must.NoError(t, h.recorder.RecordAs(t.Context(), tx(), testScope, audit.Actor{ID: "subject-1", Type: audit.ActorUser}, nil, anEntry("thing-1")))
+
+		must.SliceLen(t, 1, h.got.batches)
+		test.EqOp(t, "subject-1", h.got.batches[0].entries[0].Actor.ID)
+	})
+
+	T.Run("an actor with no ID is refused before anything is written", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, somebody("user-1"), false, false)
+
+		err := h.recorder.RecordAs(t.Context(), tx(), testScope, audit.Actor{Type: audit.ActorUser}, anEvent(), anEntry("thing-1"))
+		test.ErrorIs(t, err, ErrEmptyActor)
+		test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+		test.SliceEmpty(t, h.got.batches)
+		test.SliceEmpty(t, h.got.messages)
+	})
+
+	T.Run("refuses what Record refuses", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, somebody("user-1"), false, false)
+		named := audit.Actor{ID: "subject-1", Type: audit.ActorUser}
+
+		test.ErrorIs(t, h.recorder.RecordAs(t.Context(), nil, testScope, named, anEvent()), ErrNilExecutor)
+		test.ErrorIs(t, h.recorder.RecordAs(t.Context(), tx(), testScope, named, nil), ErrNothingToRecord)
+		test.SliceEmpty(t, h.got.batches)
+		test.SliceEmpty(t, h.got.messages)
 	})
 }

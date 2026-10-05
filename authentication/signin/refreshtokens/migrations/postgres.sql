@@ -79,10 +79,76 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}signin_refresh_tokens (
     redeemed_at       TIMESTAMPTZ,
     -- NULL until the token is revoked, either as one of its family's or as one of
     -- a subject's.
-    revoked_at        TIMESTAMPTZ
+    revoked_at        TIMESTAMPTZ,
+    -- The columns from here on arrived after the table first shipped, as v14's
+    -- later schema versions, and sit in the order those versions added them so
+    -- that a table created here is the table an upgraded one is.
+    --
+    -- redeemed_with_key is the idempotency key the exchange that spent this row
+    -- presented, and NULL both before the row is spent and when it is spent
+    -- without one. It is what lets a client's own retry of an exchange it never
+    -- got an answer to be told from somebody else's replay of the same request:
+    -- the retry arrives bearing the key that spent the row, and a replay does
+    -- not.
+    --
+    -- It is cleared again by the re-mint that honors it, which is what bounds
+    -- the whole mechanism to one re-mint per key. Without that, a single
+    -- captured request would mint a fresh live token for as long as the grace
+    -- window lasted, where today a spent token is worth nothing to anybody.
+    redeemed_with_key TEXT,
+    -- successor_hash is the digest of the row this exchange minted, and NULL
+    -- until it is spent. It is the second column the retry path needs and the
+    -- one that is easy to leave out: honoring a retry means revoking the
+    -- successor the first attempt already minted, and "the successor" is not a
+    -- row anything else here can name. Revoking the family instead would be the
+    -- outcome the retry exists to avoid, and revoking nothing would leave one
+    -- login holding two live refresh tokens.
+    --
+    -- It is a digest for the same reason hash is: a column holding the token
+    -- itself would make a backup a live session.
+    successor_hash    TEXT,
+    -- signed_in_at is when the login a row belongs to began — the issued_at of
+    -- the family's first token, copied onto every successor. It is a column
+    -- rather than the earliest issued_at a family still has, because that row
+    -- is swept at its purge deadline and a login that has refreshed for longer
+    -- than a token's lifetime would then report having begun at whichever row
+    -- happened to survive. It is what a "where you're signed in" screen says a
+    -- login began. It has no default: a mint that forgot it would be stamped
+    -- with a login time nobody chose.
+    signed_in_at      TIMESTAMPTZ NOT NULL,
+    -- access_token_id is the "jti" of the access token minted alongside this
+    -- refresh token — by the sign-in that began the login, or by the exchange
+    -- that minted this row as a successor.
+    --
+    -- It is what lets a per-request check tell a family's current access token
+    -- from one it has since replaced. A family's live row is its current
+    -- refresh token, and the access token minted with it is the one a client
+    -- holding the login is meant to be presenting; any other access token
+    -- carrying the family's "sid" was minted by a row the family has since
+    -- spent, and is superseded. Without the column a check could say whether a
+    -- login is still going and nothing about which of its tokens is current.
+    --
+    -- It is nullable, and NULL is a row whose mint recorded no access token.
+    access_token_id   TEXT,
+    -- actor_id is the operator behind a login
+    -- signin.Service.IssueImpersonationToken began — somebody acting as the
+    -- subject — and NULL on every other row. It is what lets a person's list of
+    -- where they are signed in say which login is not theirs.
+    actor_id          TEXT,
+    -- credential_kind is what proved the sign-in that began the login —
+    -- signin.CredentialKind: a password, a recovery code, a sign-in link, a
+    -- principal the consumer proved, an impersonation, or a kind the consumer
+    -- named — carried onto every successor an exchange mints, as signed_in_at
+    -- is. It is a fact the service knows at the moment of sign-in rather than
+    -- device metadata, which is why it is a column here and a device name is
+    -- not: a person's list of where they are signed in can say how each login
+    -- happened without the consumer recording it. NULL is a row minted by a
+    -- store caller that named none.
+    credential_kind   TEXT
 );
 
--- Serves the family revocation a detected token reuse triggers. Without it,
+-- Serves the family revocation a detected token reuse triggers, and the
+-- per-request check that reads a family's live row. Without it,
 -- revoking a family scans every token this service has ever issued — at the one
 -- moment where being slow is being unavailable. Leading with scope keeps one
 -- tenant's revocation from walking every other tenant's rows.
@@ -94,7 +160,8 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}signin_refresh_tokens_family_idx
     ON {{PREFIX}}signin_refresh_tokens (scope, family_id);
 
 -- Serves the subject-wide revocation: "disable this account", "sign out
--- everywhere", and the erasure a dataprivacy run performs. It cannot be
+-- everywhere", and the erasure a dataprivacy run performs — and the listing of
+-- one person's live logins, which is the same key read rather than written. It cannot be
 -- assembled out of family revocations — a caller holding a subject identifier
 -- cannot enumerate that person's families, and a loop would leave live whatever
 -- was issued while it ran.

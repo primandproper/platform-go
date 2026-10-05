@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

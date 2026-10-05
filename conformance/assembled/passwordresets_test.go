@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"

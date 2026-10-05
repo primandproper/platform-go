@@ -22,6 +22,10 @@ var (
 	// ErrNilCredential indicates a nil Credential handed to a write.
 	ErrNilCredential = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey credential")
 
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey recorder")
+
 	// ErrNilStore indicates a nil Store handed to NewUserSource.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil passkey store")
 

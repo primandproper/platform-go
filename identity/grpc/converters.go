@@ -3,8 +3,8 @@ package grpc
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

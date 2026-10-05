@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/identity"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
-	identitymock "github.com/primandproper/platform-go/v14/identity/mock"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitygrpc "github.com/primandproper/platform-go/v15/identity/grpc"
+	identitymock "github.com/primandproper/platform-go/v15/identity/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"

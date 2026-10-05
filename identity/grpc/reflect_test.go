@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	"github.com/shoenig/test/must"
 	"google.golang.org/protobuf/reflect/protoreflect"

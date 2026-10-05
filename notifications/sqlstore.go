@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/notifications/internal/notificationsdb"
-	"github.com/primandproper/platform-go/v14/notifications/migrations"
+	"github.com/primandproper/platform-go/v15/notifications/internal/notificationsdb"
+	"github.com/primandproper/platform-go/v15/notifications/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"

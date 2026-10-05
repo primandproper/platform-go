@@ -85,6 +85,14 @@ from before the write and the row from after it. A hook's error fails the write
 it was called from, so the report and its companions commit together or not at
 all.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: the entry names the report by [ResourceTypeReport], the event
+is one of the types [EventCatalog] describes, a transition's entry keeps the
+status, note and closing stamp it moved away from, and a reporter's erasure
+records its count and never who. Embed it to change one write's record and
+inherit the rest.
+
 # Tenancy
 
 Every write and every tenant's read takes a tenancy.Scope. A deployment with a

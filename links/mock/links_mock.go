@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v15/links"
 )
 
 // Ensure, that StoreMock does implement links.Store.

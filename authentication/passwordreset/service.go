@@ -5,7 +5,7 @@ import (
 	stderrors "errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/clock"
@@ -55,7 +55,7 @@ const padKey = "password_reset.padded"
 // other people's email addresses, and one that could also read the whole
 // directory or archive a user is one that could be made to.
 //
-// The write is [github.com/primandproper/platform-go/v14/identity.CredentialStore]'s,
+// The write is [github.com/primandproper/platform-go/v15/identity.CredentialStore]'s,
 // and it is reached as a store rather than through identity's Service
 // deliberately. identity.Service.UpdateUserPassword opens a transaction of its
 // own, which is the one thing this flow cannot afford: [Store.Consume] decides

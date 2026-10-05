@@ -4,7 +4,7 @@ import (
 	"context"
 	nethttp "net/http"
 
-	billingsync "github.com/primandproper/platform-go/v14/billing/sync"
+	billingsync "github.com/primandproper/platform-go/v15/billing/sync"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"

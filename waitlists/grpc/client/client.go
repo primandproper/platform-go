@@ -59,7 +59,7 @@ duplicate, which is a list somebody archives.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

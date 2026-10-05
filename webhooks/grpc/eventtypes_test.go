@@ -3,8 +3,8 @@ package grpc_test
 import (
 	"testing"
 
-	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

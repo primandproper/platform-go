@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/errormappers"
-	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
-	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/errormappers"
+	issuereportscfg "github.com/primandproper/platform-go/v15/issuereports/config"
+	issuereportsgrpc "github.com/primandproper/platform-go/v15/issuereports/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

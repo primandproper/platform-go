@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/comments"
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
-	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
+	"github.com/primandproper/platform-go/v15/comments"
+	"github.com/primandproper/platform-go/v15/comments/commentspb"
+	commentsgrpc "github.com/primandproper/platform-go/v15/comments/grpc"
 
 	"github.com/primandproper/primitives-go/v2/tenancy"
 

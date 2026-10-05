@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/dataprivacy/migrations"
-	"github.com/primandproper/platform-go/v14/operations"
-	opsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
-	"github.com/primandproper/platform-go/v14/workqueue"
-	workqueuemigrations "github.com/primandproper/platform-go/v14/workqueue/migrations"
+	"github.com/primandproper/platform-go/v15/dataprivacy/migrations"
+	"github.com/primandproper/platform-go/v15/operations"
+	opsmigrations "github.com/primandproper/platform-go/v15/operations/migrations"
+	"github.com/primandproper/platform-go/v15/workqueue"
+	workqueuemigrations "github.com/primandproper/platform-go/v15/workqueue/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

@@ -8,18 +8,18 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/authentication/signin/proto \
 //	    --proto_path $(PLATFORM_PROTO)/identity/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v14/authentication/signin/signinpb \
-//	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v14/identity/identitypb \
+//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v15/authentication/signin/signinpb \
+//	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v15/identity/identitypb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Go links against the bindings this module already generated, in
-// github.com/primandproper/platform-go/v14/authentication/signin/signinpb.
+// github.com/primandproper/platform-go/v15/authentication/signin/signinpb.
 // Swift, TypeScript and Kotlin have no such bindings to link against and
 // generate this file directly, which is the whole point of shipping the schema.
 //
@@ -73,7 +73,7 @@
 // credential that mints the first again without a password, and a family
 // identifier naming the login both belong to. What it does not carry is a
 // session: keeping either token in a cookie is
-// github.com/primandproper/platform-go/v14/sessions, and turning one back into a
+// github.com/primandproper/platform-go/v15/sessions, and turning one back into a
 // caller is the consumer's interceptor. Neither is a decision a schema should be
 // making for everybody.
 //
@@ -110,7 +110,7 @@
 // this module already ships, and each is its own file rather than a branch in
 // this one. The logins a person holds are here -- ListSignIns and EndSignIn read
 // and end the refresh token families above -- and a session in the sense of
-// github.com/primandproper/platform-go/v14/sessions still is not. Email-link sign-in -- a door that mints a
+// github.com/primandproper/platform-go/v15/sessions still is not. Email-link sign-in -- a door that mints a
 // token from a clicked link rather than from a password -- is not here either:
 // it is a sibling of LoginForToken rather than a branch inside it, and it is
 // the one thing a registrant who named no password still needs.

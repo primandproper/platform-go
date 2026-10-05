@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS audit_log_entries (
     change_set    BYTEA,
     metadata      BYTEA,
     prev_hash     TEXT NOT NULL DEFAULT '',
-    hash          TEXT NOT NULL
+    hash          TEXT NOT NULL,
+    actor_impersonator TEXT NOT NULL DEFAULT ''
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS audit_log_entries_chain_idx
@@ -27,6 +28,9 @@ CREATE INDEX IF NOT EXISTS audit_log_entries_actor_idx
 CREATE INDEX IF NOT EXISTS audit_log_entries_resource_idx
     ON audit_log_entries (resource_type, resource_id, recorded_at);
 
+CREATE INDEX IF NOT EXISTS audit_log_entries_impersonator_idx
+    ON audit_log_entries (actor_impersonator, recorded_at);
+
 CREATE TABLE IF NOT EXISTS audit_log_chains (
     scope               TEXT PRIMARY KEY,
     head_seq            BIGINT NOT NULL DEFAULT -1,
@@ -37,10 +41,4 @@ CREATE TABLE IF NOT EXISTS audit_log_chains (
     last_updated_at     TIMESTAMPTZ,
     archived_at         TIMESTAMPTZ
 );
-
-ALTER TABLE audit_log_entries
-    ADD COLUMN IF NOT EXISTS actor_impersonator TEXT NOT NULL DEFAULT '';
-
-CREATE INDEX IF NOT EXISTS audit_log_entries_impersonator_idx
-    ON audit_log_entries (actor_impersonator, recorded_at);
 

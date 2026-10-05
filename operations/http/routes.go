@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/internal/routeguard"
-	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v15/internal/routeguard"
+	"github.com/primandproper/platform-go/v15/operations"
 
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

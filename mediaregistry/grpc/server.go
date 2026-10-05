@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

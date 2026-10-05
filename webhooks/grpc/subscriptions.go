@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/webhooks"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

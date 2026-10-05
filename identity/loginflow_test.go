@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/sessions"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/database"

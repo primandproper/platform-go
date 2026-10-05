@@ -3,7 +3,7 @@ package client_test
 import (
 	"testing"
 
-	mediaregistryclient "github.com/primandproper/platform-go/v14/mediaregistry/grpc/client"
+	mediaregistryclient "github.com/primandproper/platform-go/v15/mediaregistry/grpc/client"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

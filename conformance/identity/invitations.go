@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

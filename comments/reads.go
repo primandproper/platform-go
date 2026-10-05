@@ -3,7 +3,7 @@ package comments
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/comments/internal/commentsdb"
+	"github.com/primandproper/platform-go/v15/comments/internal/commentsdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"

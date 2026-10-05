@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/webhooks"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

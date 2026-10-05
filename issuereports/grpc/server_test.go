@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v15/callers"
+	issuereportsgrpc "github.com/primandproper/platform-go/v15/issuereports/grpc"
+	"github.com/primandproper/platform-go/v15/issuereports/issuereportspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

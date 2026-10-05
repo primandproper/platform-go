@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/internal/recoverycodedb"
-	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/internal/recoverycodedb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing"

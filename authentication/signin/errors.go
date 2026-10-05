@@ -214,7 +214,7 @@ var (
 	// reset. An outstanding link can furnish an account that holds no password,
 	// once; against an account that holds one it can do nothing, and somebody who
 	// has forgotten theirs goes through
-	// github.com/primandproper/platform-go/v14/authentication/passwordreset,
+	// github.com/primandproper/platform-go/v15/authentication/passwordreset,
 	// which is the flow with an expiry, a redemption stamp and a revocation.
 	//
 	// It is the specific answer rather than the collapsed one because the caller
@@ -525,6 +525,16 @@ var (
 
 	// ErrNilPasswordAttachment indicates a nil *PasswordAttachment.
 	ErrNilPasswordAttachment = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password attachment")
+
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil sign-in recorder")
+
+	// ErrNilHookArgument indicates a RecordingHooks method handed nothing to
+	// record: a nil Authentication, Verification, Revocation or AccountSwitch,
+	// or an Authentication with no principal on it. Service never calls a hook
+	// that way, so it is a caller driving the hooks by hand.
+	ErrNilHookArgument = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "a sign-in hook was handed nothing to record")
 
 	// ErrEmptyVerificationToken indicates a door answered with no token at all.
 	//

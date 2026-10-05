@@ -1,7 +1,7 @@
 package webauthnsessionscfg
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions"
+	"github.com/primandproper/platform-go/v15/authentication/webauthnsessions"
 
 	webauthncfg "github.com/primandproper/primitives-go/v2/authentication/webauthn/config"
 	"github.com/primandproper/primitives-go/v2/observability"

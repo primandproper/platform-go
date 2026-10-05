@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/conformance/internal/httpcall"
-	"github.com/primandproper/platform-go/v14/conformance/internal/people"
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
-	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/conformance/internal/httpcall"
+	"github.com/primandproper/platform-go/v15/conformance/internal/people"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	dataprivacyhttp "github.com/primandproper/platform-go/v15/dataprivacy/http"
+	operationshttp "github.com/primandproper/platform-go/v15/operations/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

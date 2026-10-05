@@ -3,7 +3,7 @@ Package refreshtokens is where a sign-in's refresh tokens live: a digest-keyed,
 single-use credential grouped into families, one family per login.
 
 It is the SQL implementation of
-[github.com/primandproper/platform-go/v14/authentication/signin.RefreshTokenStore],
+[github.com/primandproper/platform-go/v15/authentication/signin.RefreshTokenStore],
 and it ships the DDL it needs, so adopting rotation is a table and an option
 rather than a package somebody writes. The seam is in the parent because the
 flow and its storage are genuinely separable; the implementation is here because
@@ -28,11 +28,11 @@ reuse from.
 family_id groups the tokens one sign-in issued: minted when the password was
 proven, inherited by every successor, and revoked as a unit by a detected reuse
 or by a sign-out. It is the same mechanism and the same column name
-[github.com/primandproper/platform-go/v14/authentication/oauth2serverstore] uses
+[github.com/primandproper/platform-go/v15/authentication/oauth2serverstore] uses
 for the same thing, followed rather than re-spelled.
 
 It is deliberately not called a session.
-[github.com/primandproper/platform-go/v14/sessions] is a different package in
+[github.com/primandproper/platform-go/v15/sessions] is a different package in
 this module, with its own store, its own identifier and its own revocation, and
 one mechanism answering to one name in two places is exactly the drift a shared
 vocabulary exists to prevent. What crosses the wire is still the conventional
@@ -55,7 +55,7 @@ proven at sign-in.
 Rotation's rule — retry with the successor you were given, never with the token
 you already sent — is unfollowable by a client that never received an answer.
 This store implements
-[github.com/primandproper/platform-go/v14/authentication/signin.RefreshTokenStore]'s
+[github.com/primandproper/platform-go/v15/authentication/signin.RefreshTokenStore]'s
 RedeemIdempotently and RecordSuccessor so that a retry carrying the idempotency key that spent the token is answered
 with a *fresh* successor while the one the lost response carried is revoked,
 rather than being treated as the theft it is otherwise indistinguishable from.

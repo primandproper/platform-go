@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v15/mediaregistry/grpc"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes"
-	recoverymigrations "github.com/primandproper/platform-go/v14/authentication/signin/recoverycodes/migrations"
-	"github.com/primandproper/platform-go/v14/identity"
-	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes"
+	recoverymigrations "github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/migrations"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitymigrations "github.com/primandproper/platform-go/v15/identity/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 	"github.com/primandproper/primitives-go/v2/authentication/totp"

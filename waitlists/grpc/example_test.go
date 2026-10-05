@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/errormappers"
-	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
-	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/errormappers"
+	waitlistscfg "github.com/primandproper/platform-go/v15/waitlists/config"
+	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

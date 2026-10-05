@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/errormappers"
-	"github.com/primandproper/platform-go/v14/identity"
-	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/errormappers"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitycfg "github.com/primandproper/platform-go/v15/identity/config"
+	identitygrpc "github.com/primandproper/platform-go/v15/identity/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

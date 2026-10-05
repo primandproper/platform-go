@@ -3,7 +3,7 @@ package notifications
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/notifications/internal/notificationsdb"
+	"github.com/primandproper/platform-go/v15/notifications/internal/notificationsdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
