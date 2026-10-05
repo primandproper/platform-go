@@ -138,3 +138,12 @@ func TestNothingIsPermissioned(T *testing.T) {
 		test.True(T, reached, test.Sprintf("%s never reached its handler", method))
 	}
 }
+
+// TestTiers_IsEmpty pins that this surface places nothing: none of its methods
+// requires a permission, so against an empty map any placement or narrowing
+// at all fails.
+func TestTiers_IsEmpty(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, passkeysgrpc.Tiers().Partitions(nil))
+}

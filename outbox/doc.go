@@ -88,9 +88,9 @@ count, which is exactly what a checked corpus cannot hold. They still run inside
 the caller's transaction, so the atomicity the package exists for is unchanged.
 
 The claim mode reaches it too. FOR UPDATE SKIP LOCKED is statement text rather
-than a bound value, so the corpus carries the claim twice — once locked, once not
-— and a relay picks the method its mode names, the way a paged read picks
-between its two directions.
+than a bound value, so the corpus carries a lock beside the candidate read, and a
+relay in the locking mode runs both where one in the lease mode runs the read
+alone.
 
 The one line of SQL this package still names is database/dialect's NOTIFY, which
 is addressed to a channel rather than to a table and belongs to no schema sqlc
@@ -145,8 +145,12 @@ message on that key is quarantined and no longer after it. See "Failure" below
 for what that costs and why it is the trade this package makes.
 
 What the mode decides is how the fleet divides the backlog, not whether it
-divides it. ClaimSkipLocked locks the batch as it selects it, so a second relay
-selecting at the same instant skips past to a batch of its own. ClaimLease
+divides it. ClaimSkipLocked locks the candidates it reads by primary key,
+skipping the ones another relay holds and reading on until its batch is full, so
+a second relay selecting at the same instant takes a batch of its own. It locks
+by key rather than by range because a range lock on MySQL also locks the gap a
+new message is inserted into, and every writer enqueueing into the outbox would
+queue behind the claim, and deadlock with it. ClaimLease
 selects without locking, so relays ordinarily read the same batch and the
 guarded claim hands it to whichever of them gets there first — the losers write
 no lease, read back no rows, and publish nothing that cycle. Both are exclusive;
