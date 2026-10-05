@@ -3,7 +3,6 @@ package waitlists
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -132,13 +131,13 @@ func TestEventCatalog(T *testing.T) {
 		for _, eventType := range []webhooks.EventType{
 			EventListCreated, EventListUpdated, EventListArchived,
 			EventSignupJoined, EventSignupNotesUpdated, EventSignupConfirmed, EventSignupInvited,
-			EventSignupConverted, EventSignupWithdrawn, EventSignupArchived, EventSignupsErased,
+			EventSignupConverted, EventSignupWithdrawn, EventSignupArchived,
 		} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 
-		test.MapLen(t, 11, catalog)
+		test.MapLen(t, 10, catalog)
 	})
 
 	T.Run("hands out a fresh copy each time", func(t *testing.T) {
@@ -284,7 +283,7 @@ func TestRecordingHooks(T *testing.T) {
 		test.StrNotContains(t, string(delivery.Payload), "ada@example.com")
 	})
 
-	T.Run("an erasure records its count and the kind of subject, and never the subject, zero included", func(t *testing.T) {
+	T.Run("an erasure records nothing, because dataprivacy records the request once", func(t *testing.T) {
 		t.Parallel()
 
 		l := &ledger{}
@@ -300,25 +299,13 @@ func TestRecordingHooks(T *testing.T) {
 
 				return err
 			}))
-
-			entry, delivery := l.last(t)
-			test.EqOp(t, ResourceTypeSignup, entry.ResourceType)
-			test.EqOp(t, "", entry.ResourceID)
-			test.EqOp(t, audit.EventUpdated, entry.EventType)
-			test.EqOp(t, testScope, entry.Scope)
-			test.Eq(t, map[string]string{metadataSubjectType: "user", metadataWithdrawn: strconv.FormatInt(want, 10)}, entry.Metadata)
-
-			test.EqOp(t, EventSignupsErased, delivery.EventType)
-			var erased ErasureEvent
-			must.NoError(t, json.Unmarshal(delivery.Payload, &erased))
-			test.EqOp(t, SubjectUser, erased.SubjectType)
-			test.EqOp(t, want, erased.Withdrawn)
-			test.StrNotContains(t, string(delivery.Payload), testSubject.ID)
 		}
 
-		// One list, one join, two erasures.
-		test.SliceLen(t, 4, l.entries)
-		test.SliceLen(t, 4, l.deliveries)
+		// The list and the join, and nothing for either erasure.
+		test.SliceLen(t, 2, l.entries)
+		test.SliceLen(t, 2, l.deliveries)
+		_, delivery := l.last(t)
+		test.EqOp(t, EventSignupJoined, delivery.EventType)
 	})
 
 	T.Run("a recorder filing by subject puts a signup's entries on the subject's chain and a list's where the write ran", func(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strconv"
 
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/recording"
@@ -37,9 +36,6 @@ const (
 	EventReportTransitioned webhooks.EventType = "issuereports.report.transitioned"
 	// EventReportArchived says a report was removed from the queue.
 	EventReportArchived webhooks.EventType = "issuereports.report.archived"
-	// EventReportsErased says a reporter's reports were deleted by an erasure.
-	// The payload carries the count, and nothing that identifies them.
-	EventReportsErased webhooks.EventType = "issuereports.reports.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -56,7 +52,6 @@ func EventCatalog() webhooks.Catalog {
 		EventReportUpdated:      {Description: "An issue report's reporter revised it."},
 		EventReportTransitioned: {Description: "An issue report moved through its lifecycle."},
 		EventReportArchived:     {Description: "An issue report was removed from the queue."},
-		EventReportsErased:      {Description: "A reporter's issue reports were deleted by an erasure."},
 	}
 }
 
@@ -87,23 +82,11 @@ type ReportEvent struct {
 	Changed []string `json:"changed,omitempty"`
 }
 
-// ErasureEvent is the payload of EventReportsErased. It says how many reports an
-// erasure deleted, and not whose, for the reason waitlists.ErasureEvent gives:
-// "forget this person" is one signal per subject, and it is dataprivacy's to
-// emit rather than every store's.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// Deleted is how many reports the erasure deleted, zero included.
-	Deleted int64 `json:"deleted"`
-}
-
 // The metadata keys an audit entry here carries.
 const (
 	metadataKind           = "kind"
 	metadataStatus         = "status"
 	metadataPreviousStatus = "previousStatus"
-	metadataDeleted        = "deleted"
 )
 
 // lastUpdatedAtField is the json name of the timestamp every save stamps, which
@@ -111,9 +94,10 @@ const (
 const lastUpdatedAtField = "lastUpdatedAt"
 
 // RecordingHooks is the Hooks a deployment that keeps an audit log and
-// publishes events installs with WithHooks. Every write records an audit entry
-// naming the report and emits the event above for it, both on the write's
-// transaction, through the recording.Recorder it is built with.
+// publishes events installs with WithHooks. Every write but the erasure records
+// an audit entry naming the report and emits the event above for it, both on
+// the write's transaction, through the recording.Recorder it is built with. An
+// erasure records nothing, for the reason AfterDeleteReportsByReporter gives.
 //
 // It implements Hooks outright rather than embedding NoopHooks, so a write
 // added to Store later fails to compile here until somebody decides what it
@@ -197,30 +181,20 @@ func (h *RecordingHooks) AfterArchiveReport(ctx context.Context, tx database.Tx,
 	return h.record(ctx, tx, scope, report, audit.EventArchived, EventReportArchived, "", nil)
 }
 
-// AfterDeleteReportsByReporter records an erasure: that it ran and how many
-// reports it deleted. Zero is recorded too, because the erasure ran. It names
-// no reporter, for the reason
-// waitlists.RecordingHooks.AfterWithdrawSignupsForSubject gives: this entry is
-// about the erasure and survives it.
-func (h *RecordingHooks) AfterDeleteReportsByReporter(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	_ string,
-	deleted int64,
-) error {
-	entry := &recording.Entry{
-		ResourceType: ResourceTypeReport,
-		EventType:    audit.EventDeleted,
-		Metadata:     map[string]string{metadataDeleted: strconv.FormatInt(deleted, 10)},
-	}
-
-	event := &webhooks.Event{
-		EventType: EventReportsErased,
-		Payload:   &ErasureEvent{Deleted: deleted},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
+// AfterDeleteReportsByReporter records nothing, deliberately.
+//
+// Store.DeleteReportsByReporter is an erasure's write, one table of the many a
+// single erasure request reaches, and dataprivacy.Fulfiller records that request
+// once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls Store.DeleteReportsByReporter outside an erasure has a
+// deletion nothing else recorded, and embeds this type to override the method.
+func (h *RecordingHooks) AfterDeleteReportsByReporter(context.Context, database.Tx, tenancy.Scope, string, int64) error {
+	return nil
 }
 
 // record writes the entry and the event for a write to one report. The entry's

@@ -146,13 +146,13 @@ func TestEventCatalog(T *testing.T) {
 		catalog := EventCatalog()
 		for _, eventType := range []webhooks.EventType{
 			EventDefinitionCreated, EventDefinitionUpdated, EventDefinitionArchived,
-			EventValueSet, EventValueCleared, EventValuesErased,
+			EventValueSet, EventValueCleared,
 		} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 
-		test.MapLen(t, 6, catalog)
+		test.MapLen(t, 5, catalog)
 	})
 
 	T.Run("hands out a fresh copy each time", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestRecordingHooks_Values(T *testing.T) {
 func TestRecordingHooks_Erasure(T *testing.T) {
 	T.Parallel()
 
-	T.Run("records the count and the kind of subject, and nothing that identifies them", func(t *testing.T) {
+	T.Run("records nothing, because dataprivacy records the request once", func(t *testing.T) {
 		t.Parallel()
 
 		for _, deleted := range []int64{0, 3} {
@@ -335,17 +335,8 @@ func TestRecordingHooks_Erasure(T *testing.T) {
 			subject := Subject{Type: "user", ID: "user-7"}
 			must.NoError(t, newRecordingHooks(t, l).AfterDeleteValuesForSubject(t.Context(), recordingTx(), testScope, subject, deleted))
 
-			entry, delivery := l.last(t)
-			test.EqOp(t, ResourceTypeValue, entry.ResourceType)
-			test.EqOp(t, "", entry.ResourceID)
-			test.EqOp(t, audit.EventDeleted, entry.EventType)
-			test.Eq(t, map[string]string{
-				metadataSubjectType: "user",
-				metadataDeleted:     map[int64]string{0: "0", 3: "3"}[deleted],
-			}, entry.Metadata)
-			test.EqOp(t, EventValuesErased, delivery.EventType)
-			test.Eq(t, &ErasureEvent{SubjectType: "user", Deleted: deleted}, decodeEvent[ErasureEvent](t, delivery))
-			test.StrNotContains(t, string(delivery.Payload), "user-7")
+			test.SliceEmpty(t, l.entries)
+			test.SliceEmpty(t, l.deliveries)
 		}
 	})
 }

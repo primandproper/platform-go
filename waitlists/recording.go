@@ -4,7 +4,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strconv"
 
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/recording"
@@ -61,10 +60,6 @@ const (
 	EventSignupWithdrawn webhooks.EventType = "waitlists.signup.withdrawn"
 	// EventSignupArchived says a signup was retired administratively.
 	EventSignupArchived webhooks.EventType = "waitlists.signup.archived"
-	// EventSignupsErased says a subject's signups were withdrawn by an erasure.
-	// The payload carries the count and the kind of subject, and nothing that
-	// identifies them.
-	EventSignupsErased webhooks.EventType = "waitlists.signups.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -87,7 +82,6 @@ func EventCatalog() webhooks.Catalog {
 		EventSignupConverted:    {Description: "An invited signup took up its invitation."},
 		EventSignupWithdrawn:    {Description: "Somebody withdrew from a waitlist."},
 		EventSignupArchived:     {Description: "A waitlist signup was retired by an operator."},
-		EventSignupsErased:      {Description: "A subject's waitlist signups were withdrawn by an erasure."},
 	}
 }
 
@@ -141,26 +135,6 @@ type SignupEvent struct {
 	Changed []string `json:"changed,omitempty"`
 }
 
-// ErasureEvent is the payload of EventSignupsErased. It says how many signups an
-// erasure withdrew and what kind of subject they belonged to, and not whose.
-//
-// Not because the event outlives the erasure in a subscriber's logs: every
-// signup event here names its subject by opaque ID and outlives it the same
-// way, and must, since a joined event that names nobody tells a subscriber
-// nothing. The reason is grain. "Forget this person" is one signal per subject,
-// and a per-store erasure event naming them would be that signal repeated once
-// for every store the person touched. This event says only that an erasure
-// ran here and how much it found; the subject-level signal, when platform
-// ships one, is dataprivacy's to emit.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// SubjectType is the kind of subject erased.
-	SubjectType SubjectType `json:"subjectType"`
-	// Withdrawn is how many signups the erasure withdrew, zero included.
-	Withdrawn int64 `json:"withdrawn"`
-}
-
 // The metadata keys an audit entry here carries. Strings rather than the
 // observability keys above, because they are read back by whoever reads the
 // log, not by a span.
@@ -169,7 +143,6 @@ const (
 	metadataStatus         = "status"
 	metadataPreviousStatus = "previousStatus"
 	metadataSubjectType    = "subjectType"
-	metadataWithdrawn      = "withdrawn"
 )
 
 // lastUpdatedAtField is the json name of the timestamp every update stamps,
@@ -177,9 +150,10 @@ const (
 const lastUpdatedAtField = "lastUpdatedAt"
 
 // RecordingHooks is the Hooks a deployment that keeps an audit log and
-// publishes events installs with WithHooks. Every write records an audit entry
-// naming the row and emits the event above for it, both on the write's
-// transaction, through the recording.Recorder it is built with.
+// publishes events installs with WithHooks. Every write but one records an
+// audit entry naming the row and emits the event above for it, both on the
+// write's transaction, through the recording.Recorder it is built with. An
+// erasure records nothing, for the reason AfterWithdrawSignupsForSubject gives.
 //
 // It implements Hooks outright rather than embedding NoopHooks, so a write
 // added to Store later fails to compile here until somebody decides what it
@@ -321,40 +295,21 @@ func (h *RecordingHooks) AfterWithdraw(ctx context.Context, tx database.Tx, scop
 	return h.recordSignup(ctx, tx, scope, signup, audit.EventUpdated, EventSignupWithdrawn, StatusWithdrawn, signup.Status, nil)
 }
 
-// AfterWithdrawSignupsForSubject records an erasure: that it ran, how many
-// signups it withdrew, and what kind of subject they were. Zero is recorded
-// too, because the erasure ran.
+// AfterWithdrawSignupsForSubject records nothing, deliberately.
 //
-// It names no subject, and no entry here does. audit.Erasure deletes the
-// scopes that belong to the subject and counts the entries elsewhere whose
-// actor, resource or impersonator is the subject; a subject named in some other
-// entry's metadata is neither deleted nor counted, nor exported to the subject
-// by audit/privacy. This entry is about the erasure, so it is filed under the
-// write's scope and survives every scope deletion, and a subject identifier on
-// it would be the one reference the erasure left behind with nothing to say so.
-// The count and the kind of subject are what a reader of the log can be told.
-func (h *RecordingHooks) AfterWithdrawSignupsForSubject(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	subject Subject,
-	withdrawn int64,
-) error {
-	entry := &recording.Entry{
-		ResourceType: ResourceTypeSignup,
-		EventType:    audit.EventUpdated,
-		Metadata: map[string]string{
-			metadataSubjectType: string(subject.Type),
-			metadataWithdrawn:   strconv.FormatInt(withdrawn, 10),
-		},
-	}
-
-	event := &webhooks.Event{
-		EventType: EventSignupsErased,
-		Payload:   &ErasureEvent{SubjectType: subject.Type, Withdrawn: withdrawn},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
+// SignupStore.WithdrawSignupsForSubject is an erasure's write, one table of the
+// many a single erasure request reaches, and dataprivacy.Fulfiller records that
+// request once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls SignupStore.WithdrawSignupsForSubject outside an erasure
+// has a withdrawal nothing else recorded, and embeds this type to override the
+// method.
+func (h *RecordingHooks) AfterWithdrawSignupsForSubject(context.Context, database.Tx, tenancy.Scope, Subject, int64) error {
+	return nil
 }
 
 // AfterArchiveSignup records a signup being retired administratively.

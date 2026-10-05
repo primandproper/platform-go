@@ -4,7 +4,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strconv"
 
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/recording"
@@ -27,8 +26,9 @@ const ResourceTypeComment = "comments.comment"
 // [EventCatalog] is the fragment to merge into that catalog; an event type
 // left out of it is still published to the outbox and dispatched to nobody.
 //
-// A sweep of a target's comments emits none. See
-// [RecordingHooks.AfterDeleteCommentsForTarget] for why.
+// A sweep of a target's comments emits none, and neither does an author's
+// erasure. See [RecordingHooks.AfterDeleteCommentsForTarget] and
+// [RecordingHooks.AfterDeleteCommentsByAuthor] for why.
 const (
 	// EventCommentCreated says somebody commented, or replied.
 	EventCommentCreated webhooks.EventType = "comments.comment.created"
@@ -36,10 +36,6 @@ const (
 	EventCommentUpdated webhooks.EventType = "comments.comment.updated"
 	// EventCommentArchived says a comment was removed from its discussion.
 	EventCommentArchived webhooks.EventType = "comments.comment.archived"
-	// EventCommentsErased says an author's comments were deleted by an
-	// erasure. The payload carries the count, and nothing that identifies
-	// them.
-	EventCommentsErased webhooks.EventType = "comments.comments.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -55,7 +51,6 @@ func EventCatalog() webhooks.Catalog {
 		EventCommentCreated:  {Description: "Somebody commented, or replied to a comment."},
 		EventCommentUpdated:  {Description: "A comment's body was edited."},
 		EventCommentArchived: {Description: "A comment was removed from its discussion."},
-		EventCommentsErased:  {Description: "An author's comments were deleted by an erasure."},
 	}
 }
 
@@ -83,23 +78,11 @@ type CommentEvent struct {
 	Changed []string `json:"changed,omitempty"`
 }
 
-// ErasureEvent is the payload of EventCommentsErased. It says how many comments
-// an erasure deleted, and not whose, for the reason waitlists.ErasureEvent
-// gives: "forget this person" is one signal per subject, and it is
-// dataprivacy's to emit rather than every store's.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// Deleted is how many comments the erasure deleted, zero included.
-	Deleted int64 `json:"deleted"`
-}
-
 // The metadata keys an audit entry here carries.
 const (
 	metadataTargetType = "targetType"
 	metadataTargetID   = "targetID"
 	metadataParentID   = "parentID"
-	metadataDeleted    = "deleted"
 )
 
 // lastUpdatedAtField is the json name of the timestamp every edit stamps, which
@@ -108,9 +91,9 @@ const lastUpdatedAtField = "lastUpdatedAt"
 
 // RecordingHooks is the Hooks a deployment that keeps an audit log and
 // publishes events installs with WithHooks. Every write but a target's sweep
-// records an audit entry naming the comment and emits the event above for it,
-// both on the write's transaction, through the recording.Recorder it is built
-// with.
+// and an author's erasure records an audit entry naming the comment and emits
+// the event above for it, both on the write's transaction, through the
+// recording.Recorder it is built with.
 //
 // It implements Hooks outright rather than embedding NoopHooks, so a write
 // added to Store later fails to compile here until somebody decides what it
@@ -192,30 +175,20 @@ func (*RecordingHooks) AfterDeleteCommentsForTarget(context.Context, database.Tx
 	return nil
 }
 
-// AfterDeleteCommentsByAuthor records an erasure: that it ran and how many
-// comments it deleted. Zero is recorded too, because the erasure ran. It names
-// no author, for the reason
-// waitlists.RecordingHooks.AfterWithdrawSignupsForSubject gives: this entry is
-// about the erasure and survives it.
-func (h *RecordingHooks) AfterDeleteCommentsByAuthor(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	_ string,
-	deleted int64,
-) error {
-	entry := &recording.Entry{
-		ResourceType: ResourceTypeComment,
-		EventType:    audit.EventDeleted,
-		Metadata:     map[string]string{metadataDeleted: strconv.FormatInt(deleted, 10)},
-	}
-
-	event := &webhooks.Event{
-		EventType: EventCommentsErased,
-		Payload:   &ErasureEvent{Deleted: deleted},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
+// AfterDeleteCommentsByAuthor records nothing, deliberately.
+//
+// Store.DeleteCommentsByAuthor is an erasure's write, one table of the many a
+// single erasure request reaches, and dataprivacy.Fulfiller records that request
+// once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls Store.DeleteCommentsByAuthor outside an erasure has a
+// deletion nothing else recorded, and embeds this type to override the method.
+func (h *RecordingHooks) AfterDeleteCommentsByAuthor(context.Context, database.Tx, tenancy.Scope, string, int64) error {
+	return nil
 }
 
 // record writes the entry and the event for a write to one comment. The entry's

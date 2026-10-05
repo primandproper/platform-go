@@ -3,7 +3,6 @@ package mediaregistry
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -111,12 +110,12 @@ func TestEventCatalog(T *testing.T) {
 		t.Parallel()
 
 		catalog := EventCatalog()
-		for _, eventType := range []webhooks.EventType{EventObjectRecorded, EventObjectArchived, EventObjectsErased} {
+		for _, eventType := range []webhooks.EventType{EventObjectRecorded, EventObjectArchived} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 
-		test.MapLen(t, 3, catalog)
+		test.MapLen(t, 2, catalog)
 	})
 
 	T.Run("hands out a fresh copy each time", func(t *testing.T) {
@@ -201,7 +200,7 @@ func TestRecordingHooks(T *testing.T) {
 		}
 	})
 
-	T.Run("an erasure records its count and never the owner, zero included", func(t *testing.T) {
+	T.Run("an erasure records nothing, because dataprivacy records the request once", func(t *testing.T) {
 		t.Parallel()
 
 		l := &ledger{}
@@ -214,24 +213,13 @@ func TestRecordingHooks(T *testing.T) {
 			archived, err := env.archiveForOwner(t, store, testScope, "user_1")
 			must.NoError(t, err)
 			test.EqOp(t, want, archived)
-
-			entry, delivery := l.last(t)
-			test.EqOp(t, ResourceTypeObject, entry.ResourceType)
-			test.EqOp(t, "", entry.ResourceID)
-			test.EqOp(t, audit.EventArchived, entry.EventType)
-			test.EqOp(t, testScope, entry.Scope)
-			test.Eq(t, map[string]string{metadataArchived: strconv.FormatInt(want, 10)}, entry.Metadata)
-
-			test.EqOp(t, EventObjectsErased, delivery.EventType)
-			var erased ErasureEvent
-			must.NoError(t, json.Unmarshal(delivery.Payload, &erased))
-			test.EqOp(t, want, erased.Archived)
-			test.StrNotContains(t, string(delivery.Payload), "user_1")
 		}
 
-		// Two registrations, two erasures.
-		test.SliceLen(t, 4, l.entries)
-		test.SliceLen(t, 4, l.deliveries)
+		// The two registrations, and nothing for either erasure.
+		test.SliceLen(t, 2, l.entries)
+		test.SliceLen(t, 2, l.deliveries)
+		_, delivery := l.last(t)
+		test.EqOp(t, EventObjectRecorded, delivery.EventType)
 	})
 
 	T.Run("a recorder filing by subject puts an object's entries on its owner's chain", func(t *testing.T) {
@@ -250,14 +238,10 @@ func TestRecordingHooks(T *testing.T) {
 
 		recorded := env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
 		env.mustArchive(t, store, testScope, recorded.ID)
-		_, err := env.archiveForOwner(t, store, testScope, "user_1")
-		must.NoError(t, err)
 
-		must.SliceLen(t, 3, l.entries)
+		must.SliceLen(t, 2, l.entries)
 		test.EqOp(t, tenancy.Of("user_1"), l.entries[0].Scope)
 		test.EqOp(t, tenancy.Of("user_1"), l.entries[1].Scope)
-		// The erasure's entry names nobody, so it stays with the write.
-		test.EqOp(t, testScope, l.entries[2].Scope)
 	})
 
 	T.Run("a refused recording fails the write, and the row with it", func(t *testing.T) {

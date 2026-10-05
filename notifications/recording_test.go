@@ -3,7 +3,6 @@ package notifications
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -108,15 +107,6 @@ func decodeDeviceEvent(t *testing.T, delivery *webhooks.Delivery) *DeviceEvent {
 	return &event
 }
 
-func decodeErasureEvent(t *testing.T, delivery *webhooks.Delivery) *ErasureEvent {
-	t.Helper()
-
-	var event ErasureEvent
-	must.NoError(t, json.Unmarshal(delivery.Payload, &event))
-
-	return &event
-}
-
 func TestNewRecordingHooks(T *testing.T) {
 	T.Parallel()
 
@@ -138,14 +128,14 @@ func TestEventCatalog(T *testing.T) {
 
 		catalog := EventCatalog()
 		for _, eventType := range []webhooks.EventType{
-			EventNotificationCreated, EventNotificationArchived, EventNotificationsErased,
-			EventDeviceRegistered, EventDeviceReregistered, EventDeviceRevoked, EventDevicesErased,
+			EventNotificationCreated, EventNotificationArchived,
+			EventDeviceRegistered, EventDeviceReregistered, EventDeviceRevoked,
 		} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 
-		test.MapLen(t, 7, catalog)
+		test.MapLen(t, 5, catalog)
 	})
 
 	T.Run("hands out a fresh copy each time", func(t *testing.T) {
@@ -303,7 +293,7 @@ func TestRecordingHooks(T *testing.T) {
 		}
 	})
 
-	T.Run("an erasure records its count and never the principal, zero included", func(t *testing.T) {
+	T.Run("an erasure records nothing, because dataprivacy records the request once", func(t *testing.T) {
 		t.Parallel()
 
 		l := &ledger{}
@@ -312,45 +302,25 @@ func TestRecordingHooks(T *testing.T) {
 		env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
-		erasures := []struct {
-			erase        func() (int64, error)
-			resourceType string
-			eventType    webhooks.EventType
-		}{
-			{
-				erase:        func() (int64, error) { return env.eraseNotifications(t, store, testScope, testPrincipal) },
-				resourceType: ResourceTypeNotification,
-				eventType:    EventNotificationsErased,
-			},
-			{
-				erase:        func() (int64, error) { return env.eraseDevices(t, store, testScope, testPrincipal) },
-				resourceType: ResourceTypeDevice,
-				eventType:    EventDevicesErased,
-			},
+		erasures := []func() (int64, error){
+			func() (int64, error) { return env.eraseNotifications(t, store, testScope, testPrincipal) },
+			func() (int64, error) { return env.eraseDevices(t, store, testScope, testPrincipal) },
 		}
 
-		for _, erasure := range erasures {
+		for _, erase := range erasures {
 			for _, want := range []int64{1, 0} {
-				deleted, err := erasure.erase()
+				deleted, err := erase()
 				must.NoError(t, err)
 				test.EqOp(t, want, deleted)
-
-				entry, delivery := l.last(t)
-				test.EqOp(t, erasure.resourceType, entry.ResourceType)
-				test.EqOp(t, "", entry.ResourceID)
-				test.EqOp(t, audit.EventDeleted, entry.EventType)
-				test.EqOp(t, testScope, entry.Scope)
-				test.Eq(t, map[string]string{metadataDeleted: strconv.FormatInt(want, 10)}, entry.Metadata)
-
-				test.EqOp(t, erasure.eventType, delivery.EventType)
-				test.EqOp(t, want, decodeErasureEvent(t, delivery).Deleted)
-				test.StrNotContains(t, string(delivery.Payload), testPrincipal)
 			}
 		}
 
-		// One notification, one device, four erasures.
-		test.SliceLen(t, 6, l.entries)
-		test.SliceLen(t, 6, l.deliveries)
+		// The notification and the device, and nothing for any of the four
+		// erasures.
+		test.SliceLen(t, 2, l.entries)
+		test.SliceLen(t, 2, l.deliveries)
+		_, delivery := l.last(t)
+		test.EqOp(t, EventDeviceRegistered, delivery.EventType)
 	})
 
 	T.Run("a refused recording fails the write, and the row with it", func(t *testing.T) {

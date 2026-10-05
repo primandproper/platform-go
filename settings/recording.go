@@ -4,7 +4,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strconv"
 
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/recording"
@@ -47,10 +46,6 @@ const (
 	// EventValueCleared says a subject withdrew their answer, and resolution
 	// falls back to the definition's default.
 	EventValueCleared webhooks.EventType = "settings.value.cleared"
-	// EventValuesErased says a subject's answers were deleted by an erasure.
-	// The payload carries the count and the kind of subject, and nothing that
-	// identifies them.
-	EventValuesErased webhooks.EventType = "settings.values.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -68,7 +63,6 @@ func EventCatalog() webhooks.Catalog {
 		EventDefinitionArchived: {Description: "A setting was retired."},
 		EventValueSet:           {Description: "A subject answered a setting."},
 		EventValueCleared:       {Description: "A subject withdrew their answer to a setting."},
-		EventValuesErased:       {Description: "A subject's answers to settings were deleted by an erasure."},
 	}
 }
 
@@ -112,25 +106,11 @@ type ValueEvent struct {
 	Changed []string `json:"changed,omitempty"`
 }
 
-// ErasureEvent is the payload of EventValuesErased. It says how many answers an
-// erasure deleted and what kind of subject they belonged to, and not whose, for
-// the reason waitlists.ErasureEvent gives: "forget this person" is one signal
-// per subject, and it is dataprivacy's to emit rather than every store's.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// SubjectType is the kind of subject erased.
-	SubjectType SubjectType `json:"subjectType"`
-	// Deleted is how many answers the erasure deleted, zero included.
-	Deleted int64 `json:"deleted"`
-}
-
 // The metadata keys an audit entry here carries.
 const (
 	metadataDefinitionID = "definitionID"
 	metadataName         = "name"
 	metadataSubjectType  = "subjectType"
-	metadataDeleted      = "deleted"
 )
 
 // The json names of the fields the recording treats specially: the timestamp
@@ -142,9 +122,10 @@ const (
 )
 
 // RecordingHooks is the Hooks a deployment that keeps an audit log and
-// publishes events installs with WithHooks. Every write records an audit entry
-// naming the row and emits the event above for it, both on the write's
-// transaction, through the recording.Recorder it is built with.
+// publishes events installs with WithHooks. Every write but one records an
+// audit entry naming the row and emits the event above for it, both on the
+// write's transaction, through the recording.Recorder it is built with. An
+// erasure records nothing, for the reason AfterDeleteValuesForSubject gives.
 //
 // It implements Hooks outright rather than embedding NoopHooks, so a write
 // added to Store later fails to compile here until somebody decides what it
@@ -280,33 +261,20 @@ func (h *RecordingHooks) AfterClearValue(
 	return h.recordValue(ctx, tx, scope, definition, value, audit.EventArchived, EventValueCleared, changes, nil)
 }
 
-// AfterDeleteValuesForSubject records an erasure: that it ran, how many answers
-// it deleted, and what kind of subject they were. Zero is recorded too, because
-// the erasure ran. It names no subject, for the reason
-// waitlists.RecordingHooks.AfterWithdrawSignupsForSubject gives: this entry is
-// about the erasure and survives it.
-func (h *RecordingHooks) AfterDeleteValuesForSubject(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	subject Subject,
-	deleted int64,
-) error {
-	entry := &recording.Entry{
-		ResourceType: ResourceTypeValue,
-		EventType:    audit.EventDeleted,
-		Metadata: map[string]string{
-			metadataSubjectType: string(subject.Type),
-			metadataDeleted:     strconv.FormatInt(deleted, 10),
-		},
-	}
-
-	event := &webhooks.Event{
-		EventType: EventValuesErased,
-		Payload:   &ErasureEvent{SubjectType: subject.Type, Deleted: deleted},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
+// AfterDeleteValuesForSubject records nothing, deliberately.
+//
+// Store.DeleteValuesForSubject is an erasure's write, one table of the many a
+// single erasure request reaches, and dataprivacy.Fulfiller records that request
+// once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls Store.DeleteValuesForSubject outside an erasure has a
+// deletion nothing else recorded, and embeds this type to override the method.
+func (h *RecordingHooks) AfterDeleteValuesForSubject(context.Context, database.Tx, tenancy.Scope, Subject, int64) error {
+	return nil
 }
 
 // recordDefinition writes the entry and the event for a write to the catalog.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strconv"
 
 	"github.com/primandproper/platform-go/v15/audit"
 	"github.com/primandproper/platform-go/v15/recording"
@@ -40,9 +39,6 @@ const (
 	EventNotificationCreated webhooks.EventType = "notifications.notification.created"
 	// EventNotificationArchived says a notification was dismissed.
 	EventNotificationArchived webhooks.EventType = "notifications.notification.archived"
-	// EventNotificationsErased says an erasure emptied a principal's inbox. The
-	// payload carries the count, and nothing that identifies whose.
-	EventNotificationsErased webhooks.EventType = "notifications.notifications.erased"
 
 	// EventDeviceRegistered says a handset was registered for the first time in
 	// the scope.
@@ -54,9 +50,6 @@ const (
 	EventDeviceReregistered webhooks.EventType = "notifications.device.reregistered"
 	// EventDeviceRevoked says a handset's registration was removed.
 	EventDeviceRevoked webhooks.EventType = "notifications.device.revoked"
-	// EventDevicesErased says an erasure removed every handset of a principal.
-	// The payload carries the count, and nothing that identifies whose.
-	EventDevicesErased webhooks.EventType = "notifications.devices.erased"
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
@@ -71,11 +64,9 @@ func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
 		EventNotificationCreated:  {Description: "A notification was filed in somebody's inbox."},
 		EventNotificationArchived: {Description: "A notification was dismissed."},
-		EventNotificationsErased:  {Description: "An erasure emptied somebody's inbox."},
 		EventDeviceRegistered:     {Description: "A handset was registered for push notifications."},
 		EventDeviceReregistered:   {Description: "A registered handset announced itself again, possibly under a new owner."},
 		EventDeviceRevoked:        {Description: "A handset's push registration was removed."},
-		EventDevicesErased:        {Description: "An erasure removed every handset somebody had registered."},
 	}
 }
 
@@ -124,31 +115,10 @@ type DeviceEvent struct {
 	Changed []string `json:"changed,omitempty"`
 }
 
-// ErasureEvent is the payload of EventNotificationsErased and EventDevicesErased.
-// It says how many rows an erasure removed, and not whose.
-//
-// It omits the principal for the reason waitlists.ErasureEvent omits its
-// subject: grain. "Forget this person" is one signal per subject, and a
-// per-store erasure event naming them would be that signal repeated once for
-// every store the person touched. This event says only that an erasure ran here
-// and how much it found.
-//
-// waitlists' carries the kind of subject beside the count. This one has no
-// kind to carry: a principal here is a string, because notifications does not
-// own the directory, and what kind of thing it names is not this package's to
-// know.
-type ErasureEvent struct {
-	_ struct{} `json:"-"`
-
-	// Deleted is how many rows the erasure removed, zero included.
-	Deleted int64 `json:"deleted"`
-}
-
 // The metadata keys an audit entry here carries.
 const (
 	metadataTopic    = "topic"
 	metadataPlatform = "platform"
-	metadataDeleted  = "deleted"
 )
 
 // lastSeenAtField is the json name of the timestamp every re-registration
@@ -170,9 +140,12 @@ const lastSeenAtField = "lastSeenAt"
 // audit.EventAccessed entry on a table of its own, and overrides those two
 // methods to write it.
 //
+// The two erasures record nothing either, for the reason
+// AfterDeleteNotificationsForPrincipal gives.
+//
 // It implements Hooks outright rather than embedding NoopHooks, so a write
 // added to Store later fails to compile here until somebody decides what it
-// records — the two no-ops above are that decision, made. That makes it the
+// records — the four no-ops above are that decision, made. That makes it the
 // type a consumer embeds in turn: one that wants a single entry shaped
 // differently overrides that method and inherits the rest.
 //
@@ -226,21 +199,20 @@ func (h *RecordingHooks) AfterArchiveNotification(ctx context.Context, tx databa
 	return h.recordNotification(ctx, tx, scope, notification, audit.EventArchived, EventNotificationArchived)
 }
 
-// AfterDeleteNotificationsForPrincipal records an erasure of an inbox: that it
-// ran and how many notifications it removed, zero included, because it ran.
+// AfterDeleteNotificationsForPrincipal records nothing, deliberately.
 //
-// It names no principal, for the reason waitlists.RecordingHooks gives for its
-// own erasure: this entry is about the erasure, so it is filed under the
-// write's scope and survives every scope deletion, and an identifier on it
-// would be the one reference the erasure left behind.
-func (h *RecordingHooks) AfterDeleteNotificationsForPrincipal(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	_ string,
-	deleted int64,
-) error {
-	return h.recordErasure(ctx, tx, scope, ResourceTypeNotification, EventNotificationsErased, deleted)
+// Store.DeleteNotificationsForPrincipal is an erasure's write, one table of the many a
+// single erasure request reaches, and dataprivacy.Fulfiller records that request
+// once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls Store.DeleteNotificationsForPrincipal outside an erasure has a
+// deletion nothing else recorded, and embeds this type to override the method.
+func (*RecordingHooks) AfterDeleteNotificationsForPrincipal(context.Context, database.Tx, tenancy.Scope, string, int64) error {
+	return nil
 }
 
 // AfterRegisterDevice records a handset being registered. A first registration
@@ -275,16 +247,20 @@ func (h *RecordingHooks) AfterRevokeDevice(ctx context.Context, tx database.Tx, 
 	return h.recordDevice(ctx, tx, scope, device, audit.EventDeleted, EventDeviceRevoked, "", nil)
 }
 
-// AfterDeleteDevicesForPrincipal records an erasure of a principal's handsets,
-// on the terms AfterDeleteNotificationsForPrincipal gives.
-func (h *RecordingHooks) AfterDeleteDevicesForPrincipal(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	_ string,
-	deleted int64,
-) error {
-	return h.recordErasure(ctx, tx, scope, ResourceTypeDevice, EventDevicesErased, deleted)
+// AfterDeleteDevicesForPrincipal records nothing, deliberately.
+//
+// Store.DeleteDevicesForPrincipal is an erasure's write, one table of the many a
+// single erasure request reaches, and dataprivacy.Fulfiller records that request
+// once: one audit entry naming it, with this table's count among the
+// per-section counts in its metadata, and one dataprivacy.EventErasureFulfilled.
+// An entry and an event here as well would be the request's fan-out across
+// stores written down as a separate fact per store, none of which says which
+// erasure it belonged to.
+//
+// A consumer that calls Store.DeleteDevicesForPrincipal outside an erasure has a
+// deletion nothing else recorded, and embeds this type to override the method.
+func (*RecordingHooks) AfterDeleteDevicesForPrincipal(context.Context, database.Tx, tenancy.Scope, string, int64) error {
+	return nil
 }
 
 // recordNotification writes the entry and the event for a write to one
@@ -350,30 +326,6 @@ func (h *RecordingHooks) recordDevice(
 			Platform:          device.Platform,
 			Changed:           changedFields(changes),
 		},
-	}
-
-	return h.recorder.Record(ctx, tx, scope, event, entry)
-}
-
-// recordErasure writes the entry and the event for an erasure of one table:
-// the count, and nothing that identifies whose rows they were.
-func (h *RecordingHooks) recordErasure(
-	ctx context.Context,
-	tx database.Tx,
-	scope tenancy.Scope,
-	resourceType string,
-	eventType webhooks.EventType,
-	deleted int64,
-) error {
-	entry := &recording.Entry{
-		ResourceType: resourceType,
-		EventType:    audit.EventDeleted,
-		Metadata:     map[string]string{metadataDeleted: strconv.FormatInt(deleted, 10)},
-	}
-
-	event := &webhooks.Event{
-		EventType: eventType,
-		Payload:   &ErasureEvent{Deleted: deleted},
 	}
 
 	return h.recorder.Record(ctx, tx, scope, event, entry)

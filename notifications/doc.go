@@ -108,9 +108,10 @@ A deployment that owes every write the ordinary pair, an audit entry and a domai
 event, does not write that Hooks itself. [RecordingHooks] is it, built over a
 recording.Recorder: the entry names the row by [ResourceTypeNotification] or
 [ResourceTypeDevice], the event is one of the types [EventCatalog] describes, a
-device's event names the registration and never its token, and the two mark-read
-writes record nothing, because ReadAt on the row is the record. Embed it to change
-one write's record and inherit the rest.
+device's event names the registration and never its token, the two mark-read
+writes record nothing, because ReadAt on the row is the record, and the two
+erasures record nothing, because dataprivacy.Fulfiller records the erasure
+request once. Embed it to change one write's record and inherit the rest.
 
 # Tenancy, and the one method without it
 

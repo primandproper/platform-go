@@ -181,8 +181,9 @@ event, does not write that Hooks itself. [RecordingHooks] is it, built over a
 recording.Recorder, and it records what this package knows about its own writes:
 the entry names the row by [ResourceTypeList] or [ResourceTypeSignup], the event
 is one of the types [EventCatalog] describes, and a withdrawal's event names the
-signup by digest and never by address. Embed it to change one write's record and
-inherit the rest; where an entry is filed and who made it are the Recorder's,
+signup by digest and never by address. The erasure write records nothing,
+because dataprivacy.Fulfiller records the erasure request once rather than once
+per store it reached. Embed it to change one write's record and inherit the rest; where an entry is filed and who made it are the Recorder's,
 through its ScopeResolver and the principal extractor it was built with.
 
 # Erasure is a withdrawal, and it is a separate package
