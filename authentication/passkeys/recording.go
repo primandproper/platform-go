@@ -14,6 +14,8 @@ import (
 // ResourceTypeCredential is what an audit entry about a Credential names. It is
 // platform's vocabulary for platform's own table, prefixed so a consumer's
 // "credential" is never mistaken for one of these.
+//
+//nolint:gosec // G101: a resource type name; no credential is on the entry.
 const ResourceTypeCredential = "passkeys.credential"
 
 // The events this package's writes emit. They are platform's names for
@@ -29,8 +31,10 @@ const ResourceTypeCredential = "passkeys.credential"
 // name, which is a decision it then has to spell.
 const (
 	// EventPasskeyRegistered says a passkey was added to somebody's account.
+	//nolint:gosec // G101: an event name; no credential is on the event.
 	EventPasskeyRegistered webhooks.EventType = "passkeys.credential.registered"
 	// EventPasskeyArchived says a passkey was revoked.
+	//nolint:gosec // G101: an event name; no credential is on the event.
 	EventPasskeyArchived webhooks.EventType = "passkeys.credential.archived"
 )
 
