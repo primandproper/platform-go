@@ -49,6 +49,7 @@ const (
 	EventEndpointArchived EventType = "webhooks.endpoint.archived"
 	// EventEndpointSecretRotated says an endpoint's signing key was replaced.
 	// The payload names the endpoint and no key, old or new.
+	//nolint:gosec // G101: an event name; no key is on the event.
 	EventEndpointSecretRotated EventType = "webhooks.endpoint.secret_rotated"
 	// EventSubscriptionCreated says an endpoint subscribed to an event type. It
 	// is emitted whether the subscription was new, an archived one revived, or
