@@ -284,7 +284,9 @@ usage posts against. Both are one-method interfaces with function adapters.
 
 The default QuotaSource serves the Registry's static quotas to every subject,
 which is right for a deployment with one set of limits and wrong the moment two
-customers can buy different amounts.
+customers can buy different amounts. The ProviderMapper to start with is
+Unbilled, which answers ErrNoProviderRef for everything: usage is counted and
+settled as nothing to post until the provider has a meter to post it against.
 
 # The rung between those two
 
