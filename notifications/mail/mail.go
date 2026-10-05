@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/links"
-	"github.com/primandproper/platform-go/v14/waitlists"
-	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/links"
+	"github.com/primandproper/platform-go/v15/waitlists"
+	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 
 	"github.com/primandproper/primitives-go/v2/email"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
