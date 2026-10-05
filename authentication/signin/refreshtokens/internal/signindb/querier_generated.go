@@ -26,6 +26,21 @@ import (
 // correct on two engines and wrong on the third. Either give it a predicate
 // that discriminates, or set clientFoundRows=true in the MySQL DSN, which
 // switches MySQL to matched semantics.
+//
+// # A note on empty lists
+//
+// A list parameter that is empty matches nothing, on every dialect: Postgres
+// binds an empty array to `= ANY`, and the other two expand to `IN (NULL)` because
+// `IN ()` is a syntax error there. Asking for the rows whose key is in an empty
+// set gets no rows back, which is what the empty set says, so a caller does not
+// have to guard the call.
+//
+// The negation is where they part company, and nothing below can warn you. An
+// empty list makes `NOT IN (NULL)` never true, so it matches nothing, while
+// Postgres's empty `<> ALL` is true and matches everything. Both readings are
+// defensible and no shared signature can say which was meant — so test
+// membership rather than its negation, and let the caller decide what an empty
+// set means before it calls.
 type Querier interface {
 	// ClaimRefreshTokenRemint runs the :execrows query.
 	//
@@ -42,14 +57,12 @@ type Querier interface {
 	InsertRefreshToken(ctx context.Context, db DBTX, arg InsertRefreshTokenParams) error
 	// ListLiveRefreshTokenFamilies runs the :many query.
 	ListLiveRefreshTokenFamilies(ctx context.Context, db DBTX, arg ListLiveRefreshTokenFamiliesParams) ([]ListLiveRefreshTokenFamiliesRow, error)
-	// LockLiveRefreshTokenFamiliesForSubject runs the :many query.
-	LockLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamiliesForSubjectParams) ([]LockLiveRefreshTokenFamiliesForSubjectRow, error)
 	// LockLiveRefreshTokenFamily runs the :many query.
 	LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyParams) ([]LockLiveRefreshTokenFamilyRow, error)
-	// LockLiveRefreshTokenFamilyForSubject runs the :many query.
-	LockLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyForSubjectParams) ([]LockLiveRefreshTokenFamilyForSubjectRow, error)
-	// LockOtherLiveRefreshTokenFamiliesForSubject runs the :many query.
-	LockOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockOtherLiveRefreshTokenFamiliesForSubjectParams) ([]LockOtherLiveRefreshTokenFamiliesForSubjectRow, error)
+	// LockRefreshTokens runs the :many query.
+	LockRefreshTokens(ctx context.Context, db DBTX, arg LockRefreshTokensParams) ([]LockRefreshTokensRow, error)
+	// ReadRefreshTokenFamilyRows runs the :many query.
+	ReadRefreshTokenFamilyRows(ctx context.Context, db DBTX, arg ReadRefreshTokenFamilyRowsParams) ([]ReadRefreshTokenFamilyRowsRow, error)
 	// RecordRefreshTokenSuccessor runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -75,6 +88,19 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RevokeRefreshTokenFamily(ctx context.Context, db DBTX, arg RevokeRefreshTokenFamilyParams) (int64, error)
+	// RevokeRefreshTokens runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RevokeRefreshTokens(ctx context.Context, db DBTX, arg RevokeRefreshTokensParams) (int64, error)
+	// SelectLiveRefreshTokenFamiliesForSubject runs the :many query.
+	SelectLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamiliesForSubjectParams) ([]SelectLiveRefreshTokenFamiliesForSubjectRow, error)
+	// SelectLiveRefreshTokenFamily runs the :many query.
+	SelectLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamilyParams) ([]SelectLiveRefreshTokenFamilyRow, error)
+	// SelectLiveRefreshTokenFamilyForSubject runs the :many query.
+	SelectLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamilyForSubjectParams) ([]SelectLiveRefreshTokenFamilyForSubjectRow, error)
+	// SelectOtherLiveRefreshTokenFamiliesForSubject runs the :many query.
+	SelectOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg SelectOtherLiveRefreshTokenFamiliesForSubjectParams) ([]SelectOtherLiveRefreshTokenFamiliesForSubjectRow, error)
 	// SweepRefreshTokens runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

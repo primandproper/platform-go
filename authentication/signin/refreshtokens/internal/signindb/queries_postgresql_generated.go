@@ -116,19 +116,6 @@ WHERE {{prefix}}signin_refresh_tokens.scope = $1
 ORDER BY {{prefix}}signin_refresh_tokens.issued_at DESC, {{prefix}}signin_refresh_tokens.family_id ASC
 LIMIT COALESCE($4, 50)`
 
-const lockLiveRefreshTokenFamiliesForSubjectPostgreSQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
-FROM {{prefix}}signin_refresh_tokens
-WHERE {{prefix}}signin_refresh_tokens.scope = $1
-	AND {{prefix}}signin_refresh_tokens.subject_id = $2
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > $3
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT COALESCE($4, 50)
-FOR UPDATE`
-
 const lockLiveRefreshTokenFamilyPostgreSQL = `SELECT
 	{{prefix}}signin_refresh_tokens.subject_id,
 	{{prefix}}signin_refresh_tokens.family_id
@@ -142,33 +129,32 @@ ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
 LIMIT COALESCE($4, 50)
 FOR UPDATE`
 
-const lockLiveRefreshTokenFamilyForSubjectPostgreSQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
+const lockRefreshTokensPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.hash,
+	{{prefix}}signin_refresh_tokens.expires_at,
+	{{prefix}}signin_refresh_tokens.redeemed_at,
+	{{prefix}}signin_refresh_tokens.revoked_at,
+	{{prefix}}signin_refresh_tokens.redeemed_with_key,
+	{{prefix}}signin_refresh_tokens.successor_hash
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = $1
-	AND {{prefix}}signin_refresh_tokens.subject_id = $2
-	AND {{prefix}}signin_refresh_tokens.family_id = $3
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > $4
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT COALESCE($5, 50)
+	AND {{prefix}}signin_refresh_tokens.hash = ANY($2::text[])
+ORDER BY {{prefix}}signin_refresh_tokens.hash ASC
 FOR UPDATE`
 
-const lockOtherLiveRefreshTokenFamiliesForSubjectPostgreSQL = `SELECT
-	{{prefix}}signin_refresh_tokens.subject_id,
-	{{prefix}}signin_refresh_tokens.family_id
+const readRefreshTokenFamilyRowsPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.hash,
+	{{prefix}}signin_refresh_tokens.expires_at,
+	{{prefix}}signin_refresh_tokens.redeemed_at,
+	{{prefix}}signin_refresh_tokens.revoked_at,
+	{{prefix}}signin_refresh_tokens.redeemed_with_key,
+	{{prefix}}signin_refresh_tokens.successor_hash
 FROM {{prefix}}signin_refresh_tokens
 WHERE {{prefix}}signin_refresh_tokens.scope = $1
-	AND {{prefix}}signin_refresh_tokens.subject_id = $2
-	AND {{prefix}}signin_refresh_tokens.family_id <> $3
-	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.family_id = $2
 	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
-	AND {{prefix}}signin_refresh_tokens.expires_at > $4
-ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
-LIMIT COALESCE($5, 50)
-FOR UPDATE`
+ORDER BY {{prefix}}signin_refresh_tokens.hash ASC
+LIMIT COALESCE($3, 50)`
 
 const recordRefreshTokenSuccessorPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
 	successor_hash = $1
@@ -204,49 +190,113 @@ WHERE scope = $2
 	AND family_id = $3
 	AND revoked_at IS NULL`
 
+const revokeRefreshTokensPostgreSQL = `UPDATE {{prefix}}signin_refresh_tokens SET
+	revoked_at = $1
+WHERE scope = $2
+	AND revoked_at IS NULL
+	AND hash = ANY($3::text[])`
+
+const selectLiveRefreshTokenFamiliesForSubjectPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = $1
+	AND {{prefix}}signin_refresh_tokens.subject_id = $2
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > $3
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT $5 OFFSET $4`
+
+const selectLiveRefreshTokenFamilyPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = $1
+	AND {{prefix}}signin_refresh_tokens.family_id = $2
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > $3
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT $5 OFFSET $4`
+
+const selectLiveRefreshTokenFamilyForSubjectPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = $1
+	AND {{prefix}}signin_refresh_tokens.subject_id = $2
+	AND {{prefix}}signin_refresh_tokens.family_id = $3
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > $4
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT $6 OFFSET $5`
+
+const selectOtherLiveRefreshTokenFamiliesForSubjectPostgreSQL = `SELECT
+	{{prefix}}signin_refresh_tokens.subject_id,
+	{{prefix}}signin_refresh_tokens.family_id
+FROM {{prefix}}signin_refresh_tokens
+WHERE {{prefix}}signin_refresh_tokens.scope = $1
+	AND {{prefix}}signin_refresh_tokens.subject_id = $2
+	AND {{prefix}}signin_refresh_tokens.family_id <> $3
+	AND {{prefix}}signin_refresh_tokens.redeemed_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.revoked_at IS NULL
+	AND {{prefix}}signin_refresh_tokens.expires_at > $4
+ORDER BY {{prefix}}signin_refresh_tokens.family_id ASC
+LIMIT $6 OFFSET $5`
+
 const sweepRefreshTokensPostgreSQL = `DELETE FROM {{prefix}}signin_refresh_tokens
 WHERE purge_after <= $1`
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
-	claimRefreshTokenRemint                     string
-	getLiveRefreshTokenForFamily                string
-	getRefreshToken                             string
-	getRefreshTokenRedemption                   string
-	insertRefreshToken                          string
-	listLiveRefreshTokenFamilies                string
-	lockLiveRefreshTokenFamiliesForSubject      string
-	lockLiveRefreshTokenFamily                  string
-	lockLiveRefreshTokenFamilyForSubject        string
-	lockOtherLiveRefreshTokenFamiliesForSubject string
-	recordRefreshTokenSuccessor                 string
-	redeemRefreshToken                          string
-	redeemRefreshTokenWithKey                   string
-	revokeRefreshToken                          string
-	revokeRefreshTokenFamily                    string
-	sweepRefreshTokens                          string
+	claimRefreshTokenRemint                       string
+	getLiveRefreshTokenForFamily                  string
+	getRefreshToken                               string
+	getRefreshTokenRedemption                     string
+	insertRefreshToken                            string
+	listLiveRefreshTokenFamilies                  string
+	lockLiveRefreshTokenFamily                    string
+	lockRefreshTokens                             string
+	readRefreshTokenFamilyRows                    string
+	recordRefreshTokenSuccessor                   string
+	redeemRefreshToken                            string
+	redeemRefreshTokenWithKey                     string
+	revokeRefreshToken                            string
+	revokeRefreshTokenFamily                      string
+	revokeRefreshTokens                           string
+	selectLiveRefreshTokenFamiliesForSubject      string
+	selectLiveRefreshTokenFamily                  string
+	selectLiveRefreshTokenFamilyForSubject        string
+	selectOtherLiveRefreshTokenFamiliesForSubject string
+	sweepRefreshTokens                            string
 }
 
 // newPostgreSQL returns the postgresql querier with prefix substituted into every
 // table name the analyzer identified.
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
-		claimRefreshTokenRemint:                     strings.ReplaceAll(claimRefreshTokenRemintPostgreSQL, prefixMarker, prefix),
-		getLiveRefreshTokenForFamily:                strings.ReplaceAll(getLiveRefreshTokenForFamilyPostgreSQL, prefixMarker, prefix),
-		getRefreshToken:                             strings.ReplaceAll(getRefreshTokenPostgreSQL, prefixMarker, prefix),
-		getRefreshTokenRedemption:                   strings.ReplaceAll(getRefreshTokenRedemptionPostgreSQL, prefixMarker, prefix),
-		insertRefreshToken:                          strings.ReplaceAll(insertRefreshTokenPostgreSQL, prefixMarker, prefix),
-		listLiveRefreshTokenFamilies:                strings.ReplaceAll(listLiveRefreshTokenFamiliesPostgreSQL, prefixMarker, prefix),
-		lockLiveRefreshTokenFamiliesForSubject:      strings.ReplaceAll(lockLiveRefreshTokenFamiliesForSubjectPostgreSQL, prefixMarker, prefix),
-		lockLiveRefreshTokenFamily:                  strings.ReplaceAll(lockLiveRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
-		lockLiveRefreshTokenFamilyForSubject:        strings.ReplaceAll(lockLiveRefreshTokenFamilyForSubjectPostgreSQL, prefixMarker, prefix),
-		lockOtherLiveRefreshTokenFamiliesForSubject: strings.ReplaceAll(lockOtherLiveRefreshTokenFamiliesForSubjectPostgreSQL, prefixMarker, prefix),
-		recordRefreshTokenSuccessor:                 strings.ReplaceAll(recordRefreshTokenSuccessorPostgreSQL, prefixMarker, prefix),
-		redeemRefreshToken:                          strings.ReplaceAll(redeemRefreshTokenPostgreSQL, prefixMarker, prefix),
-		redeemRefreshTokenWithKey:                   strings.ReplaceAll(redeemRefreshTokenWithKeyPostgreSQL, prefixMarker, prefix),
-		revokeRefreshToken:                          strings.ReplaceAll(revokeRefreshTokenPostgreSQL, prefixMarker, prefix),
-		revokeRefreshTokenFamily:                    strings.ReplaceAll(revokeRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
-		sweepRefreshTokens:                          strings.ReplaceAll(sweepRefreshTokensPostgreSQL, prefixMarker, prefix),
+		claimRefreshTokenRemint:                       strings.ReplaceAll(claimRefreshTokenRemintPostgreSQL, prefixMarker, prefix),
+		getLiveRefreshTokenForFamily:                  strings.ReplaceAll(getLiveRefreshTokenForFamilyPostgreSQL, prefixMarker, prefix),
+		getRefreshToken:                               strings.ReplaceAll(getRefreshTokenPostgreSQL, prefixMarker, prefix),
+		getRefreshTokenRedemption:                     strings.ReplaceAll(getRefreshTokenRedemptionPostgreSQL, prefixMarker, prefix),
+		insertRefreshToken:                            strings.ReplaceAll(insertRefreshTokenPostgreSQL, prefixMarker, prefix),
+		listLiveRefreshTokenFamilies:                  strings.ReplaceAll(listLiveRefreshTokenFamiliesPostgreSQL, prefixMarker, prefix),
+		lockLiveRefreshTokenFamily:                    strings.ReplaceAll(lockLiveRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
+		lockRefreshTokens:                             strings.ReplaceAll(lockRefreshTokensPostgreSQL, prefixMarker, prefix),
+		readRefreshTokenFamilyRows:                    strings.ReplaceAll(readRefreshTokenFamilyRowsPostgreSQL, prefixMarker, prefix),
+		recordRefreshTokenSuccessor:                   strings.ReplaceAll(recordRefreshTokenSuccessorPostgreSQL, prefixMarker, prefix),
+		redeemRefreshToken:                            strings.ReplaceAll(redeemRefreshTokenPostgreSQL, prefixMarker, prefix),
+		redeemRefreshTokenWithKey:                     strings.ReplaceAll(redeemRefreshTokenWithKeyPostgreSQL, prefixMarker, prefix),
+		revokeRefreshToken:                            strings.ReplaceAll(revokeRefreshTokenPostgreSQL, prefixMarker, prefix),
+		revokeRefreshTokenFamily:                      strings.ReplaceAll(revokeRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
+		revokeRefreshTokens:                           strings.ReplaceAll(revokeRefreshTokensPostgreSQL, prefixMarker, prefix),
+		selectLiveRefreshTokenFamiliesForSubject:      strings.ReplaceAll(selectLiveRefreshTokenFamiliesForSubjectPostgreSQL, prefixMarker, prefix),
+		selectLiveRefreshTokenFamily:                  strings.ReplaceAll(selectLiveRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
+		selectLiveRefreshTokenFamilyForSubject:        strings.ReplaceAll(selectLiveRefreshTokenFamilyForSubjectPostgreSQL, prefixMarker, prefix),
+		selectOtherLiveRefreshTokenFamiliesForSubject: strings.ReplaceAll(selectOtherLiveRefreshTokenFamiliesForSubjectPostgreSQL, prefixMarker, prefix),
+		sweepRefreshTokens:                            strings.ReplaceAll(sweepRefreshTokensPostgreSQL, prefixMarker, prefix),
 	}
 }
 
@@ -404,42 +454,6 @@ func (q *postgresqlQueries) ListLiveRefreshTokenFamilies(ctx context.Context, db
 	return items, nil
 }
 
-// LockLiveRefreshTokenFamiliesForSubject runs the :many query against postgresql.
-func (q *postgresqlQueries) LockLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamiliesForSubjectParams) ([]LockLiveRefreshTokenFamiliesForSubjectRow, error) {
-	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamiliesForSubject,
-		arg.Scope,
-		arg.SubjectID,
-		arg.Now,
-		arg.ResultLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = rows.Close() }()
-
-	var items []LockLiveRefreshTokenFamiliesForSubjectRow
-
-	for rows.Next() {
-		var i LockLiveRefreshTokenFamiliesForSubjectRow
-
-		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
-		); err != nil {
-			return nil, err
-		}
-
-		items = append(items, i)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return items, nil
-}
-
 // LockLiveRefreshTokenFamily runs the :many query against postgresql.
 func (q *postgresqlQueries) LockLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyParams) ([]LockLiveRefreshTokenFamilyRow, error) {
 	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamily,
@@ -476,14 +490,11 @@ func (q *postgresqlQueries) LockLiveRefreshTokenFamily(ctx context.Context, db D
 	return items, nil
 }
 
-// LockLiveRefreshTokenFamilyForSubject runs the :many query against postgresql.
-func (q *postgresqlQueries) LockLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg LockLiveRefreshTokenFamilyForSubjectParams) ([]LockLiveRefreshTokenFamilyForSubjectRow, error) {
-	rows, err := db.QueryContext(ctx, q.lockLiveRefreshTokenFamilyForSubject,
+// LockRefreshTokens runs the :many query against postgresql.
+func (q *postgresqlQueries) LockRefreshTokens(ctx context.Context, db DBTX, arg LockRefreshTokensParams) ([]LockRefreshTokensRow, error) {
+	rows, err := db.QueryContext(ctx, q.lockRefreshTokens,
 		arg.Scope,
-		arg.SubjectID,
-		arg.FamilyID,
-		arg.Now,
-		arg.ResultLimit,
+		arg.Hashes,
 	)
 	if err != nil {
 		return nil, err
@@ -491,14 +502,18 @@ func (q *postgresqlQueries) LockLiveRefreshTokenFamilyForSubject(ctx context.Con
 
 	defer func() { _ = rows.Close() }()
 
-	var items []LockLiveRefreshTokenFamilyForSubjectRow
+	var items []LockRefreshTokensRow
 
 	for rows.Next() {
-		var i LockLiveRefreshTokenFamilyForSubjectRow
+		var i LockRefreshTokensRow
 
 		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
+			&i.Hash,
+			&i.ExpiresAt,
+			&i.RedeemedAt,
+			&i.RevokedAt,
+			&i.RedeemedWithKey,
+			&i.SuccessorHash,
 		); err != nil {
 			return nil, err
 		}
@@ -513,13 +528,11 @@ func (q *postgresqlQueries) LockLiveRefreshTokenFamilyForSubject(ctx context.Con
 	return items, nil
 }
 
-// LockOtherLiveRefreshTokenFamiliesForSubject runs the :many query against postgresql.
-func (q *postgresqlQueries) LockOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg LockOtherLiveRefreshTokenFamiliesForSubjectParams) ([]LockOtherLiveRefreshTokenFamiliesForSubjectRow, error) {
-	rows, err := db.QueryContext(ctx, q.lockOtherLiveRefreshTokenFamiliesForSubject,
+// ReadRefreshTokenFamilyRows runs the :many query against postgresql.
+func (q *postgresqlQueries) ReadRefreshTokenFamilyRows(ctx context.Context, db DBTX, arg ReadRefreshTokenFamilyRowsParams) ([]ReadRefreshTokenFamilyRowsRow, error) {
+	rows, err := db.QueryContext(ctx, q.readRefreshTokenFamilyRows,
 		arg.Scope,
-		arg.SubjectID,
-		arg.KeepFamilyID,
-		arg.Now,
+		arg.FamilyID,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -528,14 +541,18 @@ func (q *postgresqlQueries) LockOtherLiveRefreshTokenFamiliesForSubject(ctx cont
 
 	defer func() { _ = rows.Close() }()
 
-	var items []LockOtherLiveRefreshTokenFamiliesForSubjectRow
+	var items []ReadRefreshTokenFamilyRowsRow
 
 	for rows.Next() {
-		var i LockOtherLiveRefreshTokenFamiliesForSubjectRow
+		var i ReadRefreshTokenFamilyRowsRow
 
 		if err := rows.Scan(
-			&i.SubjectID,
-			&i.FamilyID,
+			&i.Hash,
+			&i.ExpiresAt,
+			&i.RedeemedAt,
+			&i.RevokedAt,
+			&i.RedeemedWithKey,
+			&i.SuccessorHash,
 		); err != nil {
 			return nil, err
 		}
@@ -621,6 +638,170 @@ func (q *postgresqlQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBT
 	}
 
 	return result.RowsAffected()
+}
+
+// RevokeRefreshTokens runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RevokeRefreshTokens(ctx context.Context, db DBTX, arg RevokeRefreshTokensParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshTokens,
+		arg.RevokedAt,
+		arg.Scope,
+		arg.Hashes,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// SelectLiveRefreshTokenFamiliesForSubject runs the :many query against postgresql.
+func (q *postgresqlQueries) SelectLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamiliesForSubjectParams) ([]SelectLiveRefreshTokenFamiliesForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectLiveRefreshTokenFamiliesForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		arg.Now,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectLiveRefreshTokenFamiliesForSubjectRow
+
+	for rows.Next() {
+		var i SelectLiveRefreshTokenFamiliesForSubjectRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// SelectLiveRefreshTokenFamily runs the :many query against postgresql.
+func (q *postgresqlQueries) SelectLiveRefreshTokenFamily(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamilyParams) ([]SelectLiveRefreshTokenFamilyRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectLiveRefreshTokenFamily,
+		arg.Scope,
+		arg.FamilyID,
+		arg.Now,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectLiveRefreshTokenFamilyRow
+
+	for rows.Next() {
+		var i SelectLiveRefreshTokenFamilyRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// SelectLiveRefreshTokenFamilyForSubject runs the :many query against postgresql.
+func (q *postgresqlQueries) SelectLiveRefreshTokenFamilyForSubject(ctx context.Context, db DBTX, arg SelectLiveRefreshTokenFamilyForSubjectParams) ([]SelectLiveRefreshTokenFamilyForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectLiveRefreshTokenFamilyForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		arg.FamilyID,
+		arg.Now,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectLiveRefreshTokenFamilyForSubjectRow
+
+	for rows.Next() {
+		var i SelectLiveRefreshTokenFamilyForSubjectRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// SelectOtherLiveRefreshTokenFamiliesForSubject runs the :many query against postgresql.
+func (q *postgresqlQueries) SelectOtherLiveRefreshTokenFamiliesForSubject(ctx context.Context, db DBTX, arg SelectOtherLiveRefreshTokenFamiliesForSubjectParams) ([]SelectOtherLiveRefreshTokenFamiliesForSubjectRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectOtherLiveRefreshTokenFamiliesForSubject,
+		arg.Scope,
+		arg.SubjectID,
+		arg.KeepFamilyID,
+		arg.Now,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectOtherLiveRefreshTokenFamiliesForSubjectRow
+
+	for rows.Next() {
+		var i SelectOtherLiveRefreshTokenFamiliesForSubjectRow
+
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.FamilyID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 // SweepRefreshTokens runs the :execrows query against postgresql.
@@ -730,16 +911,6 @@ var (
 	}(ListLiveRefreshTokenFamiliesRow{})
 	_ = struct {
 		Scope       tenancy.Scope
-		SubjectID   string
-		Now         time.Time
-		ResultLimit int64
-	}(LockLiveRefreshTokenFamiliesForSubjectParams{})
-	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(LockLiveRefreshTokenFamiliesForSubjectRow{})
-	_ = struct {
-		Scope       tenancy.Scope
 		FamilyID    string
 		Now         time.Time
 		ResultLimit int64
@@ -749,27 +920,30 @@ var (
 		FamilyID  string
 	}(LockLiveRefreshTokenFamilyRow{})
 	_ = struct {
+		Scope  tenancy.Scope
+		Hashes []string
+	}(LockRefreshTokensParams{})
+	_ = struct {
+		Hash            string
+		ExpiresAt       time.Time
+		RedeemedAt      *time.Time
+		RevokedAt       *time.Time
+		RedeemedWithKey *string
+		SuccessorHash   *string
+	}(LockRefreshTokensRow{})
+	_ = struct {
 		Scope       tenancy.Scope
-		SubjectID   string
 		FamilyID    string
-		Now         time.Time
 		ResultLimit int64
-	}(LockLiveRefreshTokenFamilyForSubjectParams{})
+	}(ReadRefreshTokenFamilyRowsParams{})
 	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(LockLiveRefreshTokenFamilyForSubjectRow{})
-	_ = struct {
-		Scope        tenancy.Scope
-		SubjectID    string
-		KeepFamilyID string
-		Now          time.Time
-		ResultLimit  int64
-	}(LockOtherLiveRefreshTokenFamiliesForSubjectParams{})
-	_ = struct {
-		SubjectID string
-		FamilyID  string
-	}(LockOtherLiveRefreshTokenFamiliesForSubjectRow{})
+		Hash            string
+		ExpiresAt       time.Time
+		RedeemedAt      *time.Time
+		RevokedAt       *time.Time
+		RedeemedWithKey *string
+		SuccessorHash   *string
+	}(ReadRefreshTokenFamilyRowsRow{})
 	_ = struct {
 		SuccessorHash *string
 		Hash          string
@@ -798,6 +972,57 @@ var (
 		Scope     tenancy.Scope
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		Scope     tenancy.Scope
+		Hashes    []string
+	}(RevokeRefreshTokensParams{})
+	_ = struct {
+		Scope        tenancy.Scope
+		SubjectID    string
+		Now          time.Time
+		ResultOffset int64
+		ResultLimit  int64
+	}(SelectLiveRefreshTokenFamiliesForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(SelectLiveRefreshTokenFamiliesForSubjectRow{})
+	_ = struct {
+		Scope        tenancy.Scope
+		FamilyID     string
+		Now          time.Time
+		ResultOffset int64
+		ResultLimit  int64
+	}(SelectLiveRefreshTokenFamilyParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(SelectLiveRefreshTokenFamilyRow{})
+	_ = struct {
+		Scope        tenancy.Scope
+		SubjectID    string
+		FamilyID     string
+		Now          time.Time
+		ResultOffset int64
+		ResultLimit  int64
+	}(SelectLiveRefreshTokenFamilyForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(SelectLiveRefreshTokenFamilyForSubjectRow{})
+	_ = struct {
+		Scope        tenancy.Scope
+		SubjectID    string
+		KeepFamilyID string
+		Now          time.Time
+		ResultOffset int64
+		ResultLimit  int64
+	}(SelectOtherLiveRefreshTokenFamiliesForSubjectParams{})
+	_ = struct {
+		SubjectID string
+		FamilyID  string
+	}(SelectOtherLiveRefreshTokenFamiliesForSubjectRow{})
 	_ = struct {
 		PurgeBefore time.Time
 	}(SweepRefreshTokensParams{})

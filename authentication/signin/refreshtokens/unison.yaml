@@ -28,6 +28,7 @@ options:
   rename_params:
     mysql:
       limit: result_limit
+      offset: result_offset
 
   type_overrides:
     # The scope is bound as the Scope itself rather than as a string derived
@@ -36,3 +37,4 @@ options:
     - {column: "*.scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}
     # Neither SQLite nor Postgres resolves a type for a LIMIT's argument.
     - {column: "*.result_limit", go_type: int64}
+    - {column: "*.result_offset", go_type: int64}

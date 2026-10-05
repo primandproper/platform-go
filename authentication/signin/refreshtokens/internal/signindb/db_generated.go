@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // DBTX is what a generated method needs from a database handle.
@@ -53,6 +54,21 @@ func Dialects() []Dialect {
 // that are genuinely tables rather than words that look like them. New replaces
 // it once per statement, at construction; nothing rewrites SQL at query time.
 const prefixMarker = "{{prefix}}"
+
+// slicePlaceholders renders what one list parameter expands to: a placeholder
+// per element, comma-separated.
+//
+// An empty list renders NULL rather than nothing, because `IN ()` is a syntax
+// error on MySQL and SQLite both. `IN (NULL)` is the predicate that matches no
+// row, which is the same answer Postgres gives when an empty array is bound to
+// `= ANY` — so an empty list means the same thing on every dialect here.
+func slicePlaceholders(placeholder string, n int) string {
+	if n == 0 {
+		return "NULL"
+	}
+
+	return strings.TrimPrefix(strings.Repeat(","+placeholder, n), ",")
+}
 
 // New returns the Querier for a dialect, with every table name prefixed.
 //

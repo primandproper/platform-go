@@ -158,9 +158,13 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		RevokeTokenQuery,
 		RevokeFamilyQuery,
 		LockFamilyQuery,
-		LockSubjectFamilyQuery,
-		LockFamiliesForSubjectQuery,
-		LockOtherFamiliesQuery,
+		ReadFamilyRowsQuery,
+		LockTokensQuery,
+		RevokeTokensQuery,
+		SelectFamilyQuery,
+		SelectSubjectFamilyQuery,
+		SelectFamiliesForSubjectQuery,
+		SelectOtherFamiliesQuery,
 		ListLiveFamiliesQuery,
 		GetLiveTokenQuery,
 		SweepTokensQuery,
@@ -299,9 +303,11 @@ func TestRender_ExchangeRepeatsEveryRowStateTestItsAnswerRestsOn(T *testing.T) {
 // boundedReads is every statement here that carries a LIMIT.
 var boundedReads = []string{
 	LockFamilyQuery,
-	LockSubjectFamilyQuery,
-	LockFamiliesForSubjectQuery,
-	LockOtherFamiliesQuery,
+	ReadFamilyRowsQuery,
+	SelectFamilyQuery,
+	SelectSubjectFamilyQuery,
+	SelectFamiliesForSubjectQuery,
+	SelectOtherFamiliesQuery,
 	ListLiveFamiliesQuery,
 }
 
@@ -337,14 +343,15 @@ func TestRender_RevocationIsKeyedOnTheFamily(T *testing.T) {
 	}
 }
 
-// TestRender_LocksOnlyWhatAnExchangeWouldAccept pins the locking reads to
-// the exchange's reading of "live", to their keys, and to the lock itself.
+// TestRender_SelectsOnlyWhatAnExchangeWouldAccept pins the candidate reads to
+// the exchange's reading of "live", to their keys, and to taking no lock.
 //
-// What they lock is what a revocation reports as ended, so a guard dropped here
-// would report a spent or lapsed login as one somebody signed out of. The
+// What they select is what a revocation reports as ended, so a guard dropped
+// here would report a spent or lapsed login as one somebody signed out of. The
 // subject predicate on the self-service read is the whole of what keeps a
-// borrowed family id from reaching somebody else's login.
-func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
+// borrowed family id from reaching somebody else's login. The fallback's
+// locking read is held to the same guards, locked where the engine locks.
+func TestRender_SelectsOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 	T.Parallel()
 
 	for _, d := range everyDialect {
@@ -354,10 +361,11 @@ func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 			rendered := Render(d)
 
 			for name, keys := range map[string][]string{
-				LockFamilyQuery:             {FamilyIDColumn},
-				LockSubjectFamilyQuery:      {SubjectIDColumn, FamilyIDColumn},
-				LockFamiliesForSubjectQuery: {SubjectIDColumn},
-				LockOtherFamiliesQuery:      {SubjectIDColumn},
+				LockFamilyQuery:               {FamilyIDColumn},
+				SelectFamilyQuery:             {FamilyIDColumn},
+				SelectSubjectFamilyQuery:      {SubjectIDColumn, FamilyIDColumn},
+				SelectFamiliesForSubjectQuery: {SubjectIDColumn},
+				SelectOtherFamiliesQuery:      {SubjectIDColumn},
 			} {
 				read := statement(t, rendered, name)
 
@@ -377,16 +385,19 @@ func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 				test.StrContains(t, read, ExpiresAtColumn+" > sqlc.arg("+NowArg+")")
 
 				// The one family "sign out my other devices" spares is excluded
-				// by its own argument, and is never locked.
-				if name == LockOtherFamiliesQuery {
+				// by its own argument.
+				if name == SelectOtherFamiliesQuery {
 					test.StrContains(t, read, FamilyIDColumn+" <> sqlc.arg("+KeepFamilyIDArg+")")
 				}
 
-				// Locked where the engine locks, and on SQLite — one writer at
-				// a time — not at all.
-				if d == dialect.SQLite {
+				switch {
+				case name != LockFamilyQuery:
+					// A candidate read locks nothing, on any engine: a lock over
+					// these keys is a range lock on MySQL. See readFamilyRows.
 					test.StrNotContains(t, read, exclusiveLock)
-				} else {
+				case d == dialect.SQLite:
+					test.StrNotContains(t, read, exclusiveLock)
+				default:
 					test.StrContains(t, read, "\n"+exclusiveLock+";")
 				}
 
@@ -400,6 +411,65 @@ func TestRender_LocksOnlyWhatAnExchangeWouldAccept(T *testing.T) {
 						test.Sprintf("%s column %q", name, column))
 				}
 			}
+		})
+	}
+}
+
+// TestRender_TheRevocationByKeyHoldsNoRange is the MySQL deadlock, pinned at the
+// statements.
+//
+// A revocation that locked the family or subject index by range held the gap a
+// new login's row is inserted into while it waited on an audit chain's head, and
+// a sign-in that took the head first and minted second waited on that gap. The
+// revocation by key reads without a lock, then locks and withdraws by the
+// primary key — the hash set — and on MySQL is held to that key, since naming
+// it does not stop the optimizer costing the scope-led indexes as cheaper.
+func TestRender_TheRevocationByKeyHoldsNoRange(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+			g := querygen.For(d)
+
+			read := statement(t, rendered, ReadFamilyRowsQuery)
+			test.StrNotContains(t, read, exclusiveLock)
+			test.StrContains(t, read, FamilyIDColumn+" = sqlc.arg("+FamilyIDColumn+")")
+			test.StrContains(t, read, RevokedAtColumn+" IS NULL")
+
+			for _, name := range []string{LockTokensQuery, RevokeTokensQuery} {
+				q := statement(t, rendered, name)
+
+				test.True(t,
+					strings.Contains(q, g.SetCondition(querygen.Qualify(TokensTable, HashColumn), HashesArg)) ||
+						strings.Contains(q, g.SetCondition(HashColumn, HashesArg)),
+					test.Sprintf("%s names its rows by key", name))
+				test.StrNotContains(t, q, FamilyIDColumn+" =")
+				test.StrNotContains(t, q, SubjectIDColumn+" =")
+
+				if d == dialect.MySQL {
+					test.StrContains(t, q, TokensTable+" FORCE INDEX (PRIMARY)", test.Sprintf("%s is not held to the key", name))
+				} else {
+					test.StrNotContains(t, q, "FORCE INDEX")
+				}
+			}
+
+			// The read-back reads every column a racing write could move, so
+			// the store can tell a snapshot that saw the whole family from one
+			// that did not.
+			for _, column := range FamilyRowColumns {
+				test.StrContains(t, statement(t, rendered, LockTokensQuery), querygen.Qualify(TokensTable, column))
+			}
+
+			if d == dialect.SQLite {
+				test.StrNotContains(t, statement(t, rendered, LockTokensQuery), exclusiveLock)
+			} else {
+				test.StrContains(t, statement(t, rendered, LockTokensQuery), exclusiveLock)
+			}
+
+			test.StrContains(t, statement(t, rendered, RevokeTokensQuery), RevokedAtColumn+" IS NULL")
 		})
 	}
 }

@@ -383,21 +383,11 @@ func (s *SQLStore) refuse(
 		return signin.ErrInvalidCredentials
 	}
 
-	// The family's live row is locked before it is revoked, for the reason
-	// EndSignIns locks first: what the refusal reports as ended has to be what
-	// was live when the revocation ran, and not a successor an exchange racing
-	// this one minted after the read.
-	live, err := s.q.LockLiveRefreshTokenFamily(ctx, tx, signindb.LockLiveRefreshTokenFamilyParams{
-		Scope:       token.Scope,
-		FamilyID:    token.FamilyID,
-		Now:         s.clock.Now().UTC(),
-		ResultLimit: endBatch,
-	})
+	// What the refusal reports as ended is what was live when the revocation
+	// ran, read off the rows it locked, and not a successor an exchange racing
+	// this one minted after a read.
+	ended, err := s.endFamily(ctx, tx, token.Scope, token.FamilyID, false)
 	if err != nil {
-		return op.Error(err, "locking a reused refresh token's family")
-	}
-
-	if _, err = s.RevokeFamily(ctx, tx, token.Scope, token.FamilyID); err != nil {
 		// The revocation is the half that matters, so a failure to run it is
 		// reported as itself rather than collapsed into the refusal. Joining the
 		// two would let a caller match ErrRefreshTokenReused and conclude the
@@ -412,7 +402,7 @@ func (s *SQLStore) refuse(
 	return &signin.RefreshTokenReusedError{
 		FamilyID:  token.FamilyID,
 		SubjectID: token.SubjectID,
-		Ended:     len(live) > 0,
+		Ended:     ended.live,
 	}
 }
 
@@ -440,25 +430,196 @@ func (s *SQLStore) RevokeFamily(
 
 	op.SetValues(map[string]any{scopeKey: scope.String(), familyKey: familyID})
 
-	at := s.clock.Now().UTC()
-
-	revoked, err := s.q.RevokeRefreshTokenFamily(ctx, tx, signindb.RevokeRefreshTokenFamilyParams{
-		RevokedAt: &at,
-		Scope:     scope,
-		FamilyID:  familyID,
-	})
+	ended, err := s.endFamily(ctx, tx, scope, familyID, false)
 	if err != nil {
 		return 0, op.Error(err, "revoking a refresh token family's rows")
 	}
 
-	op.SpanOnly(revokedKey, revoked)
+	op.SpanOnly(revokedKey, ended.revoked)
 
-	return revoked, nil
+	return ended.revoked, nil
 }
 
-// endBatch is how many families one pass of EndSignIns locks and revokes.
+// maxFamilyRows is the most unrevoked rows endFamily will lock by key in one
+// family. A family holds one row per exchange its login has made since its
+// oldest row was swept, so this is far past any login a person keeps; one
+// longer than it takes the fallback rather than an IN list of that length.
+const maxFamilyRows = int64(1000)
+
+// endedFamily is what endFamily did to one family: how many rows it withdrew,
+// and whether the family was live when it did.
+type endedFamily struct {
+	revoked int64
+	live    bool
+}
+
+// endFamily withdraws every unrevoked row of one family, locking them by
+// primary key rather than by the family's range, and says whether the family
+// was live when it did.
 //
-// It bounds the rows one locking read holds and one round trip carries, not
+// It reads the family's rows without a lock, locks those rows by key, and
+// compares: rows as they were mean the read saw the whole family — nothing can
+// join a family without writing a row already in it — and they are revoked by
+// key. Rows that moved mean an exchange or a retry's re-mint wrote the family
+// after the read, possibly adding a successor the read could not see, and the
+// family is read again by range and revoked by its id, which is what this store
+// did for every revocation before. See internal/queries' readFamilyRows for
+// why the range is the fallback rather than the rule: on MySQL it locks the gap
+// a new login's row is inserted into, and a revocation holding that gap while
+// it waits on an audit chain's head deadlocks with a sign-in that took the head
+// first.
+//
+// liveOnly is EndSignIns' reading: a family that is no longer live when this
+// runs was ended by somebody else and is left alone. RevokeFamily's reading is
+// the other: the whole family is withdrawn either way.
+func (s *SQLStore) endFamily(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	familyID string,
+	liveOnly bool,
+) (*endedFamily, error) {
+	now := s.clock.Now().UTC()
+
+	read, err := s.q.ReadRefreshTokenFamilyRows(ctx, tx, signindb.ReadRefreshTokenFamilyRowsParams{
+		Scope:       scope,
+		FamilyID:    familyID,
+		ResultLimit: maxFamilyRows,
+	})
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "reading a refresh token family's rows")
+	}
+
+	if len(read) == 0 {
+		return &endedFamily{}, nil
+	}
+
+	if int64(len(read)) == maxFamilyRows {
+		return s.endFamilyByRange(ctx, tx, scope, familyID, now, liveOnly)
+	}
+
+	hashes := make([]string, 0, len(read))
+	for i := range read {
+		hashes = append(hashes, read[i].Hash)
+	}
+
+	locked, err := s.q.LockRefreshTokens(ctx, tx, signindb.LockRefreshTokensParams{Scope: scope, Hashes: hashes})
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "locking a refresh token family's rows")
+	}
+
+	if moved(read, locked) {
+		return s.endFamilyByRange(ctx, tx, scope, familyID, now, liveOnly)
+	}
+
+	ended := &endedFamily{}
+
+	for i := range locked {
+		if locked[i].RedeemedAt == nil && locked[i].RevokedAt == nil && locked[i].ExpiresAt.After(now) {
+			ended.live = true
+		}
+	}
+
+	if liveOnly && !ended.live {
+		return ended, nil
+	}
+
+	if ended.revoked, err = s.q.RevokeRefreshTokens(ctx, tx, signindb.RevokeRefreshTokensParams{
+		RevokedAt: &now,
+		Scope:     scope,
+		Hashes:    hashes,
+	}); err != nil {
+		return nil, platformerrors.Wrap(err, "revoking a refresh token family's rows by key")
+	}
+
+	return ended, nil
+}
+
+// endFamilyByRange is endFamily's fallback, and this store's revocation as it
+// was before it locked by key: the family's live row locked by the family's
+// range, and the family revoked by its id. It is reached only by a revocation
+// that raced a write to the same family, or one whose family is too long to
+// name by key.
+func (s *SQLStore) endFamilyByRange(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	familyID string,
+	now time.Time,
+	liveOnly bool,
+) (*endedFamily, error) {
+	live, err := s.q.LockLiveRefreshTokenFamily(ctx, tx, signindb.LockLiveRefreshTokenFamilyParams{
+		Scope:       scope,
+		FamilyID:    familyID,
+		Now:         now,
+		ResultLimit: endBatch,
+	})
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "locking a refresh token family's live row")
+	}
+
+	ended := &endedFamily{live: len(live) > 0}
+
+	if liveOnly && !ended.live {
+		return ended, nil
+	}
+
+	if ended.revoked, err = s.q.RevokeRefreshTokenFamily(ctx, tx, signindb.RevokeRefreshTokenFamilyParams{
+		RevokedAt: &now,
+		Scope:     scope,
+		FamilyID:  familyID,
+	}); err != nil {
+		return nil, platformerrors.Wrap(err, "revoking a refresh token family by its id")
+	}
+
+	return ended, nil
+}
+
+// moved reports whether any row a revocation read without a lock is not, now
+// that it is locked, what the read said it was.
+func moved(read []signindb.ReadRefreshTokenFamilyRowsRow, locked []signindb.LockRefreshTokensRow) bool {
+	if len(read) != len(locked) {
+		return true
+	}
+
+	now := make(map[string]signindb.LockRefreshTokensRow, len(locked))
+	for i := range locked {
+		now[locked[i].Hash] = locked[i]
+	}
+
+	for i := range read {
+		row, ok := now[read[i].Hash]
+		if !ok ||
+			!sameInstant(read[i].RedeemedAt, row.RedeemedAt) ||
+			!sameInstant(read[i].RevokedAt, row.RevokedAt) ||
+			!sameString(read[i].RedeemedWithKey, row.RedeemedWithKey) ||
+			!sameString(read[i].SuccessorHash, row.SuccessorHash) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func sameInstant(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return a.Equal(*b)
+}
+
+func sameString(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return *a == *b
+}
+
+// endBatch is how many families one pass of EndSignIns reads and revokes.
+//
+// It bounds the rows one read returns and one round trip carries, not
 // what a call ends: EndSignIns runs passes until one comes back short. It is
 // signin.MaxSignInListLimit, the most logins a person is ever shown, so a
 // person who could see every login they hold on one screen is signed out of
@@ -468,12 +629,12 @@ const endBatch = int64(signin.MaxSignInListLimit)
 // EndSignIns ends the live logins selector names, and answers with the ones it
 // ended.
 //
-// Each pass locks up to endBatch of the selected families' live rows and then
-// revokes each family by its id, all on tx; a pass that comes back full is
-// followed by another, which finds the families the last one did not reach
-// because a revoked family is no longer live. See internal/queries'
-// lockFamiliesForSubject for why the lock comes first, and why a revocation
-// keyed on the subject cannot be what runs here.
+// Each pass reads up to endBatch of the selected families' live rows without a
+// lock, and ends each family by key with endFamily, all on tx; a pass that
+// comes back full is followed by another, which finds the families the last one
+// did not reach because a revoked family is no longer live. See internal/queries'
+// selectFamiliesForSubject for why the read comes first, and readFamilyRows for
+// why nothing here locks by range.
 //
 // A login already over — spent, revoked or lapsed — is not selected and not
 // reported. A lapsed family's rows are left unstamped, where the subject-wide
@@ -510,23 +671,34 @@ func (s *SQLStore) EndSignIns(
 		revoked int64
 	)
 
-	for {
-		live, err := s.lockLive(ctx, tx, scope, selector)
+	// The offset counts the candidates found already over: a family this pass
+	// ends is no longer live and leaves the next page, but one somebody else
+	// ended after this transaction's snapshot is still in it, and still
+	// ordered ahead of every family no pass has reached yet.
+	for offset := int64(0); ; {
+		candidates, err := s.selectLive(ctx, tx, scope, selector, offset)
 		if err != nil {
-			return nil, op.Error(err, "locking the live refresh token families a revocation ends")
+			return nil, op.Error(err, "selecting the live refresh token families a revocation ends")
 		}
 
-		for _, signIn := range live {
-			if signIn.Revoked, err = s.RevokeFamily(ctx, tx, scope, signIn.FamilyID); err != nil {
-				return nil, op.Error(err, "revoking a locked refresh token family")
+		for _, candidate := range candidates {
+			family, endErr := s.endFamily(ctx, tx, scope, candidate.FamilyID, true)
+			if endErr != nil {
+				return nil, op.Error(endErr, "revoking a live refresh token family")
 			}
 
-			revoked += signIn.Revoked
+			if !family.live {
+				offset++
+
+				continue
+			}
+
+			candidate.Revoked = family.revoked
+			revoked += family.revoked
+			ended = append(ended, candidate)
 		}
 
-		ended = append(ended, live...)
-
-		if int64(len(live)) < endBatch {
+		if int64(len(candidates)) < endBatch {
 			break
 		}
 	}
@@ -536,13 +708,15 @@ func (s *SQLStore) EndSignIns(
 	return ended, nil
 }
 
-// lockLive runs whichever of the locking reads selector names, and
-// answers with one EndedSignIn per row it locked, its count still to come.
-func (s *SQLStore) lockLive(
+// selectLive runs whichever of the candidate reads selector names, from
+// offset, and answers with one EndedSignIn per live family it found, its count
+// still to come. Nothing it reads is locked; endFamily locks each family by key.
+func (s *SQLStore) selectLive(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	selector signin.SignInSelector,
+	offset int64,
 ) ([]*signin.EndedSignIn, error) {
 	now := s.clock.Now().UTC()
 
@@ -550,12 +724,13 @@ func (s *SQLStore) lockLive(
 
 	switch {
 	case selector.ExceptFamilyID != "":
-		rows, err := s.q.LockOtherLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.LockOtherLiveRefreshTokenFamiliesForSubjectParams{
+		rows, err := s.q.SelectOtherLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.SelectOtherLiveRefreshTokenFamiliesForSubjectParams{
 			Scope:        scope,
 			SubjectID:    selector.SubjectID,
 			KeepFamilyID: selector.ExceptFamilyID,
 			Now:          now,
 			ResultLimit:  endBatch,
+			ResultOffset: offset,
 		})
 		if err != nil {
 			return nil, err
@@ -565,12 +740,13 @@ func (s *SQLStore) lockLive(
 			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
 		}
 	case selector.SubjectID != "" && selector.FamilyID != "":
-		rows, err := s.q.LockLiveRefreshTokenFamilyForSubject(ctx, tx, signindb.LockLiveRefreshTokenFamilyForSubjectParams{
-			Scope:       scope,
-			SubjectID:   selector.SubjectID,
-			FamilyID:    selector.FamilyID,
-			Now:         now,
-			ResultLimit: endBatch,
+		rows, err := s.q.SelectLiveRefreshTokenFamilyForSubject(ctx, tx, signindb.SelectLiveRefreshTokenFamilyForSubjectParams{
+			Scope:        scope,
+			SubjectID:    selector.SubjectID,
+			FamilyID:     selector.FamilyID,
+			Now:          now,
+			ResultLimit:  endBatch,
+			ResultOffset: offset,
 		})
 		if err != nil {
 			return nil, err
@@ -580,11 +756,12 @@ func (s *SQLStore) lockLive(
 			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
 		}
 	case selector.FamilyID != "":
-		rows, err := s.q.LockLiveRefreshTokenFamily(ctx, tx, signindb.LockLiveRefreshTokenFamilyParams{
-			Scope:       scope,
-			FamilyID:    selector.FamilyID,
-			Now:         now,
-			ResultLimit: endBatch,
+		rows, err := s.q.SelectLiveRefreshTokenFamily(ctx, tx, signindb.SelectLiveRefreshTokenFamilyParams{
+			Scope:        scope,
+			FamilyID:     selector.FamilyID,
+			Now:          now,
+			ResultLimit:  endBatch,
+			ResultOffset: offset,
 		})
 		if err != nil {
 			return nil, err
@@ -594,11 +771,12 @@ func (s *SQLStore) lockLive(
 			live = append(live, &signin.EndedSignIn{FamilyID: rows[i].FamilyID, SubjectID: rows[i].SubjectID})
 		}
 	default:
-		rows, err := s.q.LockLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.LockLiveRefreshTokenFamiliesForSubjectParams{
-			Scope:       scope,
-			SubjectID:   selector.SubjectID,
-			Now:         now,
-			ResultLimit: endBatch,
+		rows, err := s.q.SelectLiveRefreshTokenFamiliesForSubject(ctx, tx, signindb.SelectLiveRefreshTokenFamiliesForSubjectParams{
+			Scope:        scope,
+			SubjectID:    selector.SubjectID,
+			Now:          now,
+			ResultLimit:  endBatch,
+			ResultOffset: offset,
 		})
 		if err != nil {
 			return nil, err

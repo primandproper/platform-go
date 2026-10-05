@@ -119,7 +119,56 @@ ORDER BY signin_refresh_tokens.family_id ASC
 LIMIT COALESCE(sqlc.narg(result_limit), 50)
 FOR UPDATE;
 
--- name: LockLiveRefreshTokenFamilyForSubject :many
+-- name: ReadRefreshTokenFamilyRows :many
+SELECT
+	signin_refresh_tokens.hash,
+	signin_refresh_tokens.expires_at,
+	signin_refresh_tokens.redeemed_at,
+	signin_refresh_tokens.revoked_at,
+	signin_refresh_tokens.redeemed_with_key,
+	signin_refresh_tokens.successor_hash
+FROM signin_refresh_tokens
+WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
+	AND signin_refresh_tokens.family_id = sqlc.arg(family_id)
+	AND signin_refresh_tokens.revoked_at IS NULL
+ORDER BY signin_refresh_tokens.hash ASC
+LIMIT COALESCE(sqlc.narg(result_limit), 50);
+
+-- name: LockRefreshTokens :many
+SELECT
+	signin_refresh_tokens.hash,
+	signin_refresh_tokens.expires_at,
+	signin_refresh_tokens.redeemed_at,
+	signin_refresh_tokens.revoked_at,
+	signin_refresh_tokens.redeemed_with_key,
+	signin_refresh_tokens.successor_hash
+FROM signin_refresh_tokens
+WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
+	AND signin_refresh_tokens.hash = ANY(sqlc.arg(hashes)::text[])
+ORDER BY signin_refresh_tokens.hash ASC
+FOR UPDATE;
+
+-- name: RevokeRefreshTokens :execrows
+UPDATE signin_refresh_tokens SET
+	revoked_at = sqlc.arg(revoked_at)
+WHERE scope = sqlc.arg(scope)
+	AND revoked_at IS NULL
+	AND hash = ANY(sqlc.arg(hashes)::text[]);
+
+-- name: SelectLiveRefreshTokenFamily :many
+SELECT
+	signin_refresh_tokens.subject_id,
+	signin_refresh_tokens.family_id
+FROM signin_refresh_tokens
+WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
+	AND signin_refresh_tokens.family_id = sqlc.arg(family_id)
+	AND signin_refresh_tokens.redeemed_at IS NULL
+	AND signin_refresh_tokens.revoked_at IS NULL
+	AND signin_refresh_tokens.expires_at > sqlc.arg(now)
+ORDER BY signin_refresh_tokens.family_id ASC
+LIMIT sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
+
+-- name: SelectLiveRefreshTokenFamilyForSubject :many
 SELECT
 	signin_refresh_tokens.subject_id,
 	signin_refresh_tokens.family_id
@@ -131,10 +180,9 @@ WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
 	AND signin_refresh_tokens.revoked_at IS NULL
 	AND signin_refresh_tokens.expires_at > sqlc.arg(now)
 ORDER BY signin_refresh_tokens.family_id ASC
-LIMIT COALESCE(sqlc.narg(result_limit), 50)
-FOR UPDATE;
+LIMIT sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
 
--- name: LockLiveRefreshTokenFamiliesForSubject :many
+-- name: SelectLiveRefreshTokenFamiliesForSubject :many
 SELECT
 	signin_refresh_tokens.subject_id,
 	signin_refresh_tokens.family_id
@@ -145,10 +193,9 @@ WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
 	AND signin_refresh_tokens.revoked_at IS NULL
 	AND signin_refresh_tokens.expires_at > sqlc.arg(now)
 ORDER BY signin_refresh_tokens.family_id ASC
-LIMIT COALESCE(sqlc.narg(result_limit), 50)
-FOR UPDATE;
+LIMIT sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
 
--- name: LockOtherLiveRefreshTokenFamiliesForSubject :many
+-- name: SelectOtherLiveRefreshTokenFamiliesForSubject :many
 SELECT
 	signin_refresh_tokens.subject_id,
 	signin_refresh_tokens.family_id
@@ -160,8 +207,7 @@ WHERE signin_refresh_tokens.scope = sqlc.arg(scope)
 	AND signin_refresh_tokens.revoked_at IS NULL
 	AND signin_refresh_tokens.expires_at > sqlc.arg(now)
 ORDER BY signin_refresh_tokens.family_id ASC
-LIMIT COALESCE(sqlc.narg(result_limit), 50)
-FOR UPDATE;
+LIMIT sqlc.arg(result_limit) OFFSET sqlc.arg(result_offset);
 
 -- name: ListLiveRefreshTokenFamilies :many
 SELECT
