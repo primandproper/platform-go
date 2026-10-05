@@ -873,7 +873,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
 		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},
 
-		// The three nobody answers. ErrLeaseTooShort is a worker configured with a
+		// The four nobody answers. ErrLeaseTooShort is a worker configured with a
 		// lease that does not outlast its own request timeout, which is a process
 		// that should not have started. ErrNonSuccessStatus is a subscriber
 		// answering 4xx or 5xx, which is the delivery worker's own business and
@@ -887,9 +887,14 @@ var Matrix = map[string]map[string]Decision{
 		// process, where a keyring with no key is a wiring failure and a 500 is
 		// honest. webhooks/grpc refuses a keyless save at the request instead, with
 		// codes.InvalidArgument as that one call site's default.
-		"ErrLeaseTooShort":    {Err: webhooks.ErrLeaseTooShort, Is: Unhandled},
-		"ErrNoSigningSecret":  {Err: webhooks.ErrNoSigningSecret, Is: Unhandled},
-		"ErrNonSuccessStatus": {Err: webhooks.ErrNonSuccessStatus, Is: Unhandled},
+		//
+		// ErrDuplicateEventType is Merge refusing two catalogs that define one
+		// event type, which is the composition root's configuration fault at
+		// startup and never reaches a request.
+		"ErrDuplicateEventType": {Err: webhooks.ErrDuplicateEventType, Is: Unhandled},
+		"ErrLeaseTooShort":      {Err: webhooks.ErrLeaseTooShort, Is: Unhandled},
+		"ErrNoSigningSecret":    {Err: webhooks.ErrNoSigningSecret, Is: Unhandled},
+		"ErrNonSuccessStatus":   {Err: webhooks.ErrNonSuccessStatus, Is: Unhandled},
 	},
 
 	issueReportsPkg: {

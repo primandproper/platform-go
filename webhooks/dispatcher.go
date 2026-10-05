@@ -257,7 +257,7 @@ func (d *StoreDispatcher) Subscribe(ctx context.Context, tx database.Tx, scope t
 		return nil, op.Error(ErrEmptyEventType, "subscribing webhook endpoint %q", endpointID)
 	}
 
-	if !d.catalog.Known(eventType) {
+	if !d.catalog.Subscribable(eventType) {
 		return nil, op.Error(
 			platformerrors.Wrapf(ErrUnknownEventType, "event type %q", eventType),
 			"subscribing webhook endpoint %q", endpointID,
@@ -461,7 +461,7 @@ func (d *StoreDispatcher) Dispatch(ctx context.Context, tx database.Tx, scope te
 		return op.Error(err, "dispatching webhook delivery")
 	}
 
-	if !d.catalog.Known(delivery.EventType) {
+	if !d.catalog.Subscribable(delivery.EventType) {
 		return op.Error(
 			platformerrors.Wrapf(ErrUnknownEventType, "event type %q", delivery.EventType),
 			"dispatching webhook delivery",

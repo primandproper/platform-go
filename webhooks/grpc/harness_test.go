@@ -68,11 +68,13 @@ const (
 	otherUser = "user_2"
 )
 
-// The catalog these tests publish. It is two entries because one of them has to
-// be absent from a subscription request for the catalog gate to be visible.
+// The catalog these tests publish. It is two subscribable entries because one
+// of them has to be absent from a subscription request for the catalog gate to
+// be visible, and one internal entry no subscription may name.
 const (
 	orderCreated webhooks.EventType = "order.created"
 	orderShipped webhooks.EventType = "order.shipped"
+	orderAudited webhooks.EventType = "order.audited"
 	uncataloged  webhooks.EventType = "order.reticulated"
 )
 
@@ -80,6 +82,7 @@ func testCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
 		orderCreated: {Description: "an order was placed"},
 		orderShipped: {Description: "an order left the warehouse"},
+		orderAudited: {Description: "an order was read by staff", Internal: true},
 	}
 }
 

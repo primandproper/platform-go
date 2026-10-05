@@ -366,7 +366,8 @@ clock rather than from however many application instances are writing.
 Subscribable event types are supplied at construction via WithCatalog, not
 stored. What an event means is an application opinion and this package has none.
 
-Both Register and Dispatch reject a type outside the catalog. That matters
+Both Register and Dispatch reject a type outside the catalog, or one it marks
+Internal. That matters
 because an event type is a string underneath and string literals are typo-prone:
 a subscription to "artcile.created" accepted silently produces an endpoint that
 never fires, and diagnosing it means noticing an absence.
@@ -409,6 +410,26 @@ webhooks owes that scan is a declaration form it can rely on, which is this one.
 Nothing here constrains the string itself. Dots, colons, and underscores are all
 fine, and the catalog remains the authority on which values exist.
 
+Platform packages that emit events ship their part of the catalog as an
+EventCatalog function. Merge assembles the dispatcher's catalog from those
+fragments and the application's own, and refuses an event type two of them
+define, with ErrDuplicateEventType — maps.Copy would let the later definition
+win silently:
+
+	catalog, err := webhooks.Merge(
+	    webhooks.Catalog{OrderCreated: {Description: "an order was created"}},
+	    waitlists.EventCatalog(),
+	)
+
+An event a subscriber must never receive — a sign-in, a credential change, a
+reset token issued — is listed with Internal set rather than left out. Emitter
+publishes it to the outbox, and Register, Subscribe and Dispatch all refuse it
+with ErrUnknownEventType, reading the one predicate Catalog.Subscribable so the
+gate at registration and the gate at dispatch cannot disagree. Listing it is what
+lets a package say "deliberately excluded" where an omission could also mean
+"forgotten", and marking an event internal later stops the subscriptions already
+made to it, because the gate is read at every dispatch.
+
 # Watching it
 
 The two that matter most are webhooks_backlog_depth and
@@ -426,9 +447,9 @@ webhooks_claimed_batch_size distributions.
 
 webhooks_events_emitted and webhooks_events_unsubscribable are Emitter's, and
 the second is the one to look at: it counts the events an application published
-that no subscriber may receive. Some of those are deliberate exclusions, and the
-number climbing for an event type nobody meant to exclude is the only signal
-that a constant has fallen out of the catalog.
+that its catalog does not list. Deliberate exclusions are marked Internal in the
+catalog and are not counted, so the number climbing is the signal that a
+constant has fallen out of the catalog and nothing else.
 
 webhooks_secrets_rotated is the odd one, because what it is worth watching for
 is silence. A key nobody rolls is the key a leak is still good against months

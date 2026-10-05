@@ -368,7 +368,7 @@ func (e *Endpoint) Validate(ctx context.Context, catalog Catalog, checkURL URLCh
 			return ErrEmptyEventType
 		}
 
-		if !catalog.Known(event) {
+		if !catalog.Subscribable(event) {
 			return platformerrors.Wrapf(ErrUnknownEventType, "event type %q", event)
 		}
 	}

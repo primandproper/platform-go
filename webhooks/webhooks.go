@@ -62,10 +62,13 @@ const (
 	// whether an emitted event reached the outbox alone or the outbox and its
 	// subscribers.
 	subscribableKey = "webhooks.subscribable"
-	replayedKey     = "webhooks.replayed"
-	rotatedKey      = "webhooks.secret_rotated"
-	deadKey         = "webhooks.dead"
-	limitKey        = "webhooks.limit"
+	// internalKey records whether an unsubscribable event was one the catalog
+	// marks Internal, rather than one it does not list.
+	internalKey = "webhooks.internal"
+	replayedKey = "webhooks.replayed"
+	rotatedKey  = "webhooks.secret_rotated"
+	deadKey     = "webhooks.dead"
+	limitKey    = "webhooks.limit"
 
 	// The row counts a store read produced, which are what distinguish an empty
 	// page from a query that never ran.
@@ -78,7 +81,20 @@ var (
 	// ErrUnknownEventType indicates an event type absent from the Catalog. It is
 	// returned both when registering an endpoint that subscribes to it and when
 	// dispatching it, so a typo cannot reach the wire from either direction.
+	//
+	// An event type the catalog marks Internal is refused with this sentinel
+	// too, and with the same wording. To a subscriber the two are the same
+	// answer — there is nothing here you may receive — and a distinct refusal
+	// would let anybody holding the light event-types grant probe which
+	// credential events an application publishes.
 	ErrUnknownEventType = platformerrors.New("unknown webhook event type")
+
+	// ErrDuplicateEventType indicates Merge was handed two catalogs defining the
+	// same event type. It is a configuration fault found at startup — two
+	// packages, or a package and the application, claiming one name — and there
+	// is no right answer to pick between their definitions, so Merge refuses
+	// rather than letting the later one win.
+	ErrDuplicateEventType = platformerrors.New("webhook event type defined in more than one catalog")
 
 	// ErrNoSigningSecret indicates an endpoint with no current signing secret.
 	// Unsigned delivery is not an option this package offers: a subscriber that
@@ -220,9 +236,27 @@ func (e EventType) String() string {
 // the reason this is a struct rather than a set — a bare set would push every
 // consumer into maintaining that text somewhere else, out of step with the
 // events themselves.
+//
+// Internal marks an event a subscriber may never receive: a sign-in, a
+// credential change, a reset token issued — whatever a package publishes for
+// the application's own consumers and would be a live feed of an account's
+// authentication to whoever registered an endpoint on it. Emitter still
+// publishes such an event to the outbox, and the dispatcher refuses both a
+// subscription to it and a dispatch of it. The definition stays in the
+// catalog rather than being left out, for two reasons: a package listing every
+// event it emits, the internal ones flagged, says "deliberately excluded" where
+// an omission could only say "excluded, or forgotten"; and an operator asking
+// why an endpoint never fires has an entry to read.
+//
+// It is a property of the event type, not of a subscription. A subscription
+// made before its event type was marked internal stays on the endpoint and
+// stops being dispatched, because the gate is read at every dispatch rather
+// than once at registration.
 type EventDefinition struct {
 	// Description is human-facing prose explaining when the event fires.
 	Description string `json:"description"`
+	// Internal marks an event no subscriber may receive.
+	Internal bool `json:"internal,omitempty"`
 }
 
 // Catalog is the set of event types an application publishes, keyed by event
@@ -238,15 +272,67 @@ type EventDefinition struct {
 // compile time for everything except the catalog's own literals.
 type Catalog map[EventType]EventDefinition
 
-// Known reports whether eventType is in the catalog.
+// Known reports whether eventType is in the catalog, internal or not. It is
+// what the catalog defines; Subscribable is what a subscriber may receive, and
+// every gate in this package reads that one.
 func (c Catalog) Known(eventType EventType) bool {
 	_, ok := c[eventType]
 
 	return ok
 }
 
-// EventTypes returns the catalog's event types, sorted, for rendering a
-// subscription UI or an API response.
+// Subscribable reports whether eventType is in the catalog and not Internal.
+//
+// It is the one predicate registration, Subscribe, Dispatch and Emitter all
+// read, so that the gate an endpoint passes when it subscribes and the gate a
+// delivery passes when it fans out cannot disagree about which events reach a
+// subscriber.
+func (c Catalog) Subscribable(eventType EventType) bool {
+	definition, ok := c[eventType]
+
+	return ok && !definition.Internal
+}
+
+// Merge builds one catalog from several, refusing an event type defined in
+// more than one of them.
+//
+// It exists because the catalog a dispatcher is built with is assembled from
+// fragments — each platform package's EventCatalog and the application's own
+// — and maps.Copy over them cannot refuse anything: a second definition of one
+// event type silently overwrites the first, and the subscriber is told the
+// wrong thing about what it receives. Two definitions are refused even when
+// they are equal, because two packages naming one event type is the fault
+// whether or not they happen to describe it alike.
+//
+// It returns the error rather than panicking: the fragments are chosen by
+// configuration at startup, and a collision between them is a configuration
+// fault for the composition root to report, not a programming one. The
+// arguments are not modified, and a nil catalog contributes nothing.
+func Merge(catalogs ...Catalog) (Catalog, error) {
+	size := 0
+	for _, catalog := range catalogs {
+		size += len(catalog)
+	}
+
+	merged := make(Catalog, size)
+
+	for _, catalog := range catalogs {
+		// Sorted so that which collision is reported does not depend on map
+		// iteration order.
+		for _, eventType := range catalog.EventTypes() {
+			if merged.Known(eventType) {
+				return nil, platformerrors.Wrapf(ErrDuplicateEventType, "event type %q", eventType)
+			}
+
+			merged[eventType] = catalog[eventType]
+		}
+	}
+
+	return merged, nil
+}
+
+// EventTypes returns the catalog's event types, sorted, internal ones
+// included. A subscription UI wants SubscribableEventTypes instead.
 func (c Catalog) EventTypes() []EventType {
 	types := make([]EventType, 0, len(c))
 	for eventType := range c {
@@ -256,6 +342,15 @@ func (c Catalog) EventTypes() []EventType {
 	slices.Sort(types)
 
 	return types
+}
+
+// SubscribableEventTypes returns the event types a subscriber may receive,
+// sorted, for rendering a subscription UI or an API response. It leaves the
+// internal ones out, so a menu built from it offers nothing Subscribe refuses.
+func (c Catalog) SubscribableEventTypes() []EventType {
+	return slices.DeleteFunc(c.EventTypes(), func(eventType EventType) bool {
+		return !c.Subscribable(eventType)
+	})
 }
 
 // Secret carries an endpoint's HMAC signing keys.
