@@ -106,7 +106,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres, mysql, sqlite (+ http) |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
 | `webhooks`      | Outbound webhook delivery (seam: `Hooks`) | postgres, mysql, sqlite          |
-| `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out (seam: `Hooks`) | postgres, mysql, sqlite (+ grpc) |
+| `notifications` | The in-app inbox, the device registry, the `notifications/push` fan-out (seam: `Hooks`), and `notifications/mail`, the outbox-queued implementation of every Mailer seam with its drain | postgres, mysql, sqlite (+ grpc) |
 | `searchsync`    | Reindexing worker driven by the outbox                                              | —                                |
 
 ### The composition root
