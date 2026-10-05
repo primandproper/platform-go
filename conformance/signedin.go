@@ -3,7 +3,7 @@ package conformance
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 )
 
 // SignedIn is the caller a token the sign-in surface issued makes calls as,

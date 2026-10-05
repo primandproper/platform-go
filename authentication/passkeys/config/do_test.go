@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
 
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	"github.com/primandproper/primitives-go/v2/database"

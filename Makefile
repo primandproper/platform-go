@@ -2,7 +2,7 @@
 PWD := $(shell pwd)
 
 # PATHS
-THIS          := github.com/primandproper/platform-go/v14
+THIS          := github.com/primandproper/platform-go/v15
 ARTIFACTS_DIR := artifacts
 SCRIPTS_DIR   := .scripts
 

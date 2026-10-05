@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
-	"github.com/primandproper/platform-go/v14/outbox/migrations"
+	"github.com/primandproper/platform-go/v15/outbox/internal/outboxdb"
+	"github.com/primandproper/platform-go/v15/outbox/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -108,6 +108,146 @@ func countIn(t *testing.T, client database.Client, table, where string) int {
 // timestamp handling — is actually executed rather than merely rendered.
 func runDialectSuite(t *testing.T, env *dialectEnv) {
 	t.Helper()
+
+	// A skip-locked claim holds its rows until its transaction ends, and what
+	// it must not hold is anything an enqueue needs. On MySQL a claim that
+	// locked its candidates by range next-key-locked the gap every new row is
+	// inserted into, so every writer recording into the outbox queued behind
+	// the claim — and deadlocked with it once the claim waited on a row one of
+	// those writers had already enqueued. Locked by primary key, the claim
+	// holds the rows it took and nothing beside them, so an enqueue lands
+	// while the claim is open and a second relay claims around it.
+	t.Run("a held claim blocks no enqueue", func(t *testing.T) {
+		t.Parallel()
+
+		if env.claimMode != ClaimSkipLocked {
+			t.Skip("only the skip-locked claim takes locks")
+		}
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+		holder, _ := env.relay(t, c, table)
+		second, rec := env.relay(t, c, table)
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return w.Enqueue(t.Context(), q,
+				Message{Topic: "orders", Payload: map[string]any{"id": "held-a"}},
+				Message{Topic: "orders", Payload: map[string]any{"id": "held-b"}},
+			)
+		}))
+
+		var (
+			held    = make(chan []string, 1)
+			release = make(chan struct{})
+			done    = make(chan error, 1)
+		)
+
+		go func() {
+			done <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				ids, err := holder.selectClaimable(t.Context(), q, c.Now().UTC())
+				held <- ids
+				if err != nil {
+					return err
+				}
+
+				<-release
+
+				return nil
+			})
+		}()
+
+		select {
+		case ids := <-held:
+			must.SliceLen(t, 2, ids)
+		case err := <-done:
+			t.Fatalf("the holding claim ended before it held anything: %v", err)
+		}
+
+		// Well inside InnoDB's lock wait timeout, so a blocked insert reads as
+		// a failure rather than as a slow pass.
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+
+		enqueueErr := env.client.WithTransaction(ctx, func(q database.Tx) error {
+			return w.Enqueue(ctx, q, Message{Topic: "orders", Payload: map[string]any{"id": "fresh"}})
+		})
+
+		second.cycle(t.Context())
+
+		close(release)
+		must.NoError(t, <-done)
+
+		must.NoError(t, enqueueErr)
+		test.Eq(t, []string{`{"id":"fresh"}`}, rec.payloads())
+	})
+
+	// What the skip-locked mode is for. Relays a NOTIFY wakes together read the
+	// same oldest candidates, and a claim that kept only what it could lock of
+	// those would hand every relay but the first an empty batch — the lease
+	// mode's contention under another name. The claim reads on past the rows
+	// another relay holds, so the second relay takes a batch of its own.
+	t.Run("a second relay claims past a batch another holds", func(t *testing.T) {
+		t.Parallel()
+
+		if env.claimMode != ClaimSkipLocked {
+			t.Skip("only the skip-locked claim reads past held rows")
+		}
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+
+		pairs := func(cfg *RelayConfig) {
+			cfg.ClaimMode = env.claimMode
+			cfg.TablePrefix = table
+			cfg.BatchSize = 2
+		}
+
+		holder, _ := newTestRelay(t, env.client, c, pairs)
+		second, rec := newTestRelay(t, env.client, c, pairs)
+
+		for _, id := range []string{"held-a", "held-b", "next-a", "next-b"} {
+			must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				return w.Enqueue(t.Context(), q, Message{Topic: "orders", Payload: map[string]any{"id": id}})
+			}))
+			c.advance(time.Millisecond)
+		}
+
+		var (
+			held    = make(chan []string, 1)
+			release = make(chan struct{})
+			done    = make(chan error, 1)
+		)
+
+		go func() {
+			done <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				ids, err := holder.selectClaimable(t.Context(), q, c.Now().UTC())
+				held <- ids
+				if err != nil {
+					return err
+				}
+
+				<-release
+
+				return nil
+			})
+		}()
+
+		select {
+		case ids := <-held:
+			must.SliceLen(t, 2, ids)
+		case err := <-done:
+			t.Fatalf("the holding claim ended before it held anything: %v", err)
+		}
+
+		second.cycle(t.Context())
+
+		close(release)
+		must.NoError(t, <-done)
+
+		test.Eq(t, []string{`{"id":"next-a"}`, `{"id":"next-b"}`}, rec.payloads())
+	})
 
 	t.Run("publishes committed messages", func(t *testing.T) {
 		t.Parallel()

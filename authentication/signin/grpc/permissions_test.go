@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -230,4 +230,15 @@ func reaches(t *testing.T, interceptor grpc.UnaryServerInterceptor, method strin
 		})
 
 	return reached, err
+}
+
+// TestTiers_PartitionsPermissions holds Tiers to what this surface checks:
+// every permission it requires is in exactly one tier, every tiered permission
+// is one it requires, and a narrowing names a permissioned method. A grant
+// added to Permissions later and sorted nowhere fails here, rather than being
+// absent from every deployment's roles until somebody reads a release note.
+func TestTiers_PartitionsPermissions(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, signingrpc.Tiers().Partitions(signingrpc.Permissions()))
 }

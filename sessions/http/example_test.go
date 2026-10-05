@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/sessions"
-	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
-	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
+	"github.com/primandproper/platform-go/v15/sessions"
+	sessionscache "github.com/primandproper/platform-go/v15/sessions/cache"
+	sessionshttp "github.com/primandproper/platform-go/v15/sessions/http"
 
 	"github.com/primandproper/primitives-go/v2/cache/memory"
 	"github.com/primandproper/primitives-go/v2/cookies"

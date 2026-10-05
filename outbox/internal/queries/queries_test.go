@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/outbox/migrations"
+	"github.com/primandproper/platform-go/v15/outbox/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/querygen"
@@ -177,9 +177,10 @@ func TestFailureColumns_ReleaseTheLeaseAndItsHolder(t *testing.T) {
 // emitted here and not executed is SQL nobody checks the other way round: sqlc
 // would be reading a statement the outbox does not run.
 //
-// The claim appears twice, under its name and that name plus SkipLocked: a lock
-// clause is statement text rather than a bound value, so it is answered by a
-// second statement rather than by an argument.
+// The claim appears twice, under its name and that name plus SkipLocked: the
+// candidate read every mode makes, and the skip-locked mode's lock of those
+// candidates by key. A lock clause is statement text rather than a bound value,
+// so it is answered by a second statement rather than by an argument.
 func TestRender_EmitsTheStatementsTheOutboxExecutes(T *testing.T) {
 	T.Parallel()
 
@@ -210,13 +211,12 @@ func TestRender_EmitsTheStatementsTheOutboxExecutes(T *testing.T) {
 
 // TestRender_LocksOnlyWhereTheDialectCan is the claim's dialect split.
 //
-// The unlocked form never carries the clause, on any dialect: it is what a
-// single-relay deployment runs, and a lock clause on it would be a lease mode
-// that quietly locked. The locked form carries it exactly where the dialect has
-// it, and on SQLite the two statements are the same text under two names —
-// which is correct rather than redundant, since one writer at a time is that
-// engine's whole storage model and RelayConfig narrows the mode before it can
-// reach the statement there.
+// The candidate read never carries the clause, on any dialect: the lease mode
+// runs it alone, and the skip-locked mode runs it first so that its lock is by
+// key rather than by range. The locked form carries it exactly where the
+// dialect has it; on SQLite one writer at a time is that engine's whole storage
+// model, and RelayConfig narrows the mode before it can reach the statement
+// there.
 func TestRender_LocksOnlyWhereTheDialectCan(T *testing.T) {
 	T.Parallel()
 
@@ -256,10 +256,7 @@ func TestRender_TheClaimAndItsPredicateAgreeOnEarlier(T *testing.T) {
 		T.Run(string(d), func(t *testing.T) {
 			t.Parallel()
 
-			for _, name := range []string{
-				"SelectClaimableOutboxMessages",
-				SkipLockedName("SelectClaimableOutboxMessages"),
-			} {
+			for _, name := range []string{"SelectClaimableOutboxMessages"} {
 				claim := statement(t, Render(d), name)
 
 				test.StrContains(t, claim, "prior.created_at < m.created_at")
@@ -286,10 +283,7 @@ func TestRender_TheClaimSkipsWhatItMustNeverPublishTwice(T *testing.T) {
 		T.Run(string(d), func(t *testing.T) {
 			t.Parallel()
 
-			for _, name := range []string{
-				"SelectClaimableOutboxMessages",
-				SkipLockedName("SelectClaimableOutboxMessages"),
-			} {
+			for _, name := range []string{"SelectClaimableOutboxMessages"} {
 				claim := statement(t, Render(d), name)
 
 				test.StrContains(t, claim, "m.published_at IS NULL")
@@ -353,6 +347,7 @@ func TestRender_TheClaimRepeatsTheSelectsWholeRowStateTest(T *testing.T) {
 
 			var (
 				claim  = statement(t, Render(d), "ClaimOutboxMessages")
+				lock   = statement(t, Render(d), SkipLockedName("SelectClaimableOutboxMessages"))
 				selekt = statement(t, Render(d), "SelectClaimableOutboxMessages")
 			)
 
@@ -364,6 +359,11 @@ func TestRender_TheClaimRepeatsTheSelectsWholeRowStateTest(T *testing.T) {
 			} {
 				test.StrContains(t, claim, predicate,
 					test.Sprintf("the claim does not repeat %q", predicate))
+
+				// The skip-locked lock reads the candidates as they are now
+				// rather than as the snapshot had them, so it owes the same.
+				test.StrContains(t, lock, predicate,
+					test.Sprintf("the lock does not repeat %q", predicate))
 
 				// The same spelling the select uses, modulo its alias: a guard
 				// that agreed in prose and differed in SQL would be the bug
@@ -391,6 +391,45 @@ func TestRender_TheClaimDoesNotRepeatTheOrderingSubquery(T *testing.T) {
 			t.Parallel()
 
 			test.StrNotContains(t, statement(t, Render(d), "ClaimOutboxMessages"), "NOT EXISTS")
+		})
+	}
+}
+
+// TestRender_TheSkipLockedClaimLocksByKey is the MySQL deadlock, pinned at the
+// statement.
+//
+// A locking read over the claimable predicate is a range over the claim index,
+// and InnoDB locks a range by next-key — through the gap every new message is
+// inserted into. A claim holding that gap blocked every enqueue in the fleet,
+// and deadlocked with them as soon as it waited on a row one had already
+// enqueued. So the lock names the candidates' ids and nothing else bounds it:
+// no ordering, no limit, no correlated read — a unique lookup per id, which
+// locks the record and no gap. On MySQL, the statements addressed by id are
+// also held to the primary key, since naming the key does not stop the
+// optimizer costing the claim index as cheaper.
+func TestRender_TheSkipLockedClaimLocksByKey(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			g := querygen.For(d)
+			lock := statement(t, Render(d), SkipLockedName("SelectClaimableOutboxMessages"))
+
+			test.StrContains(t, lock, g.SetCondition(querygen.IDColumn, IDsArg))
+			test.StrNotContains(t, lock, "ORDER BY")
+			test.StrNotContains(t, lock, "LIMIT")
+			test.StrNotContains(t, lock, "NOT EXISTS")
+
+			for _, name := range []string{SkipLockedName("SelectClaimableOutboxMessages"), "ClaimOutboxMessages"} {
+				if d == dialect.MySQL {
+					test.StrContains(t, statement(t, Render(d), name), OutboxTable+" FORCE INDEX (PRIMARY)",
+						test.Sprintf("%s is not held to the primary key", name))
+				} else {
+					test.StrNotContains(t, statement(t, Render(d), name), "FORCE INDEX")
+				}
+			}
 		})
 	}
 }
@@ -470,10 +509,7 @@ func TestRender_TheClaimBoundsTheBatch(T *testing.T) {
 		T.Run(string(d), func(t *testing.T) {
 			t.Parallel()
 
-			for _, name := range []string{
-				"SelectClaimableOutboxMessages",
-				SkipLockedName("SelectClaimableOutboxMessages"),
-			} {
+			for _, name := range []string{"SelectClaimableOutboxMessages"} {
 				test.StrContains(t, statement(t, Render(d), name), "LIMIT")
 			}
 

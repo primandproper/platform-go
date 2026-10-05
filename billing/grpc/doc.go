@@ -1,6 +1,6 @@
 /*
 Package grpc is billing on the wire: the gRPC service over
-[github.com/primandproper/platform-go/v14/billing]'s Store, the converters
+[github.com/primandproper/platform-go/v15/billing]'s Store, the converters
 between the generated messages and its types, a typed client, and the default
 permission fragment a consumer composes into their policy.
 
@@ -106,9 +106,9 @@ with something the client supplied.
 
 # Who is calling
 
-Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+Who is calling is [github.com/primandproper/platform-go/v15/callers.Principal],
 which a consumer's own authentication interceptor puts on the context and
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor] reads
 back. Those are one package for the whole module rather than an interface per
 surface, because a deployment has one authentication interceptor and one notion
 of a caller, and that package's documentation is where the ruling that keeps the
@@ -141,7 +141,7 @@ reads — a refusal is codes.NotFound, the same status a row that is not
 there gets, because answering anything else would tell a caller walking
 transaction ids which of them are real. The chain returned is still the refusal
 and the log and the span record it; only the status differs, and
-[github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is not
+[github.com/primandproper/platform-go/v15/callers.ErrTargetNotPermitted] is not
 a client-safe sentinel, so its wording does not travel.
 
 # Subscription means something else in webhooks

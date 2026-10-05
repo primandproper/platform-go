@@ -1,7 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset/passwordresetpb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )
@@ -51,4 +52,13 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b
+}
+
+// Tiers is this service's share of a deployment's policy, which is nothing:
+// every method is in [AnonymousMethods], and none holds a
+// permission. It is exported so a deployment composing every surface's tiers
+// with rbac.MergeTiers names this one too, and picks up whatever it grows
+// without a change of its own.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{}
 }

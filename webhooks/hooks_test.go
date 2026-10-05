@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/internal/txcount"
+	"github.com/primandproper/platform-go/v15/internal/txcount"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

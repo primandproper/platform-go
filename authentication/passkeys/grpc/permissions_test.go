@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	passkeysgrpc "github.com/primandproper/platform-go/v14/authentication/passkeys/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
+	passkeysgrpc "github.com/primandproper/platform-go/v15/authentication/passkeys/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -137,4 +137,13 @@ func TestNothingIsPermissioned(T *testing.T) {
 		test.NoError(T, err, test.Sprintf("%s was refused", method))
 		test.True(T, reached, test.Sprintf("%s never reached its handler", method))
 	}
+}
+
+// TestTiers_IsEmpty pins that this surface places nothing: none of its methods
+// requires a permission, so against an empty map any placement or narrowing
+// at all fails.
+func TestTiers_IsEmpty(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, passkeysgrpc.Tiers().Partitions(nil))
 }

@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/identity/migrations"
-	"github.com/primandproper/platform-go/v14/sessions"
-	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/identity/migrations"
+	"github.com/primandproper/platform-go/v15/sessions"
+	sessionscache "github.com/primandproper/platform-go/v15/sessions/cache"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"

@@ -1,12 +1,14 @@
 package webhookscfg
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/webhooks"
-	"github.com/primandproper/platform-go/v14/webhooks/migrations"
+	"github.com/primandproper/platform-go/v15/outbox"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	"github.com/primandproper/platform-go/v15/webhooks/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -82,6 +84,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		cfg.EnsureDefaults()
 
 		test.EqOp(t, webhooks.DefaultTablePrefix, cfg.TablePrefix)
+		test.EqOp(t, DefaultEmitterTopic, cfg.EmitterTopic)
 		test.EqOp(t, webhooks.DefaultBatchSize, cfg.Worker.BatchSize)
 		test.True(t, cfg.HTTPClient.Timeout > 0)
 		test.NotEqOp(t, "", cfg.CircuitBreaker.Name)
@@ -217,6 +220,92 @@ func TestNewDispatcher(T *testing.T) {
 
 		_, err := NewDispatcher(t.Context(), validConfig(), newTestClient(t), nil, testCatalog)
 		test.ErrorIs(t, err, webhooks.ErrNilStore)
+	})
+}
+
+// enqueued is a webhooks.Enqueuer that keeps what it is handed.
+type enqueued struct {
+	messages []outbox.Message
+}
+
+func (e *enqueued) Enqueue(_ context.Context, _ database.Tx, msgs ...outbox.Message) error {
+	e.messages = append(e.messages, msgs...)
+
+	return nil
+}
+
+func TestNewEmitter(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validConfig()
+		client := newTestClient(t)
+		enqueuer := &enqueued{}
+
+		emitter, err := NewEmitter(t.Context(), cfg, client, enqueuer, testCatalog)
+		must.NoError(t, err)
+		must.NotNil(t, emitter)
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return emitter.Emit(t.Context(), tx, tenancy.Global(), &webhooks.Event{
+				EventType: "order.created",
+				Payload:   map[string]string{"id": "1"},
+			})
+		}))
+
+		must.SliceLen(t, 1, enqueuer.messages)
+		test.EqOp(t, DefaultEmitterTopic, enqueuer.messages[0].Topic)
+	})
+
+	T.Run("publishes under the configured topic", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{EmitterTopic: "acme_events"}
+		client := newTestClient(t)
+		enqueuer := &enqueued{}
+
+		emitter, err := NewEmitter(t.Context(), cfg, client, enqueuer, testCatalog)
+		must.NoError(t, err)
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return emitter.Emit(t.Context(), tx, tenancy.Global(), &webhooks.Event{
+				EventType: "order.created",
+				Payload:   map[string]string{"id": "1"},
+			})
+		}))
+
+		must.SliceLen(t, 1, enqueuer.messages)
+		test.EqOp(t, "acme_events", enqueuer.messages[0].Topic)
+	})
+
+	T.Run("nil config", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewEmitter(t.Context(), nil, nil, &enqueued{}, testCatalog)
+		test.ErrorIs(t, err, errors.ErrNilInputParameter)
+	})
+
+	T.Run("nil client", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewEmitter(t.Context(), validConfig(), nil, &enqueued{}, testCatalog)
+		test.ErrorIs(t, err, webhooks.ErrNilDatabaseClient)
+	})
+
+	T.Run("nil enqueuer", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewEmitter(t.Context(), validConfig(), newTestClient(t), nil, testCatalog)
+		test.ErrorIs(t, err, webhooks.ErrNilEnqueuer)
+	})
+
+	T.Run("invalid config", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewEmitter(t.Context(), invalidConfig(), newTestClient(t), &enqueued{}, testCatalog)
+		test.Error(t, err)
 	})
 }
 

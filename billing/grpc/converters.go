@@ -1,8 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
+	"github.com/primandproper/platform-go/v15/billing"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

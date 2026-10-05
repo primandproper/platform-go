@@ -62,7 +62,7 @@ refresh exchange is the single call in this API a client cannot safely retry on
 its own: the token is single-use with reuse detection, so an attempt whose
 answer never arrived leaves no successor to retry with, and re-sending the token
 the client still holds is indistinguishable from a replay and ends the login.
-[github.com/primandproper/platform-go/v14/authentication/signin.RefreshTokenStore]'s
+[github.com/primandproper/platform-go/v15/authentication/signin.RefreshTokenStore]'s
 RedeemIdempotently is the answer to that, and it is reachable only if the key the caller minted
 actually leaves this process. Stamping it here is what makes the fix arrive by
 using this client, rather than by a consumer learning a metadata name and wiring
@@ -100,7 +100,7 @@ one.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

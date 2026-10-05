@@ -3,10 +3,10 @@ package sessionscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/sessions"
-	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
-	sessionsdatabase "github.com/primandproper/platform-go/v14/sessions/database"
-	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
+	"github.com/primandproper/platform-go/v15/sessions"
+	sessionscache "github.com/primandproper/platform-go/v15/sessions/cache"
+	sessionsdatabase "github.com/primandproper/platform-go/v15/sessions/database"
+	sessionshttp "github.com/primandproper/platform-go/v15/sessions/http"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"

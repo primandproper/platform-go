@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/notifications"
-	"github.com/primandproper/platform-go/v14/notifications/migrations"
-	"github.com/primandproper/platform-go/v14/notifications/push"
-	"github.com/primandproper/platform-go/v14/settings"
-	settingsmigrations "github.com/primandproper/platform-go/v14/settings/migrations"
+	"github.com/primandproper/platform-go/v15/notifications"
+	"github.com/primandproper/platform-go/v15/notifications/migrations"
+	"github.com/primandproper/platform-go/v15/notifications/push"
+	"github.com/primandproper/platform-go/v15/settings"
+	settingsmigrations "github.com/primandproper/platform-go/v15/settings/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

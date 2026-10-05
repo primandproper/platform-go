@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -29,7 +29,7 @@ import (
 // marking an address proven and moving the standing it confers are one fact
 // that must commit once.
 //
-// [github.com/primandproper/platform-go/v14/identity.Store] satisfies it.
+// [github.com/primandproper/platform-go/v15/identity.Store] satisfies it.
 type Verifications interface {
 	// GetUserByEmailVerificationToken reads the live user a verification link
 	// names, by the digest of the token rather than by the token. A link that
@@ -119,7 +119,7 @@ type PasswordAttachment struct {
 }
 
 // Verification is somebody being promoted out of
-// [github.com/primandproper/platform-go/v14/identity.StatusUnverified], and
+// [github.com/primandproper/platform-go/v15/identity.StatusUnverified], and
 // what was proven to get them there.
 //
 // It is one value for both doors because a consumer recording this wants one
@@ -175,7 +175,7 @@ type Verification struct {
 // the link carries a deadline, stamped beside its digest when it was minted, and
 // this door is closed once that has passed. Somebody who has a password and has
 // forgotten it goes through
-// [github.com/primandproper/platform-go/v14/authentication/passwordreset],
+// [github.com/primandproper/platform-go/v15/authentication/passwordreset],
 // which is still the flow with a redemption stamp and a revocation of its own.
 //
 // # What it does not do
@@ -276,7 +276,7 @@ func (s *Service) AttachPassword(
 
 // VerifyEmailAddress answers a verification link: it proves the address, spends
 // the link, and promotes the user out of
-// [github.com/primandproper/platform-go/v14/identity.StatusUnverified] so they
+// [github.com/primandproper/platform-go/v15/identity.StatusUnverified] so they
 // can sign in.
 //
 // The promotion is the half that was missing. identity's own

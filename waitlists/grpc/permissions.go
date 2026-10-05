@@ -1,7 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
+	"github.com/primandproper/platform-go/v15/rbac"
+	"github.com/primandproper/platform-go/v15/waitlists/waitlistspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -228,4 +229,46 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// Every grant here is an operator's. Which lists a deployment runs is a launch
+// decision, and every signup grant reaches people who are not the caller —
+// [PermissionReadSignups] most of all, since it is an oracle over every address
+// in the tenant.
+//
+// One method is narrowed. ListSignupsForSubject is behind
+// [PermissionReadSignups] and asks [SignupAuthorizer.AuthorizeSubjectRead]
+// once the subject is read, so a member asking where they are in a queue is
+// safe to admit — but the grant in front of it is the oracle's too, so the
+// narrowing is not a grant. A deployment that wants it re-declares the method
+// under a permission of its own with RequirementsBuilder.Override and gives
+// that to its members.
+//
+// [PublicMethods] hold no permission and are in no tier.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator: []authorization.Permission{
+			PermissionCreateLists,
+			PermissionReadLists,
+			PermissionUpdateLists,
+			PermissionArchiveLists,
+			PermissionReadSignups,
+			PermissionUpdateSignups,
+			PermissionInviteSignups,
+			PermissionConvertSignups,
+			PermissionArchiveSignups,
+			PermissionEraseSignups,
+		},
+		Narrowings: []rbac.Narrowing{
+			{
+				Method:     waitlistspb.WaitlistsService_ListSignupsForSubject_FullMethodName,
+				Authorizer: "SignupAuthorizer.AuthorizeSubjectRead",
+				Tier:       rbac.TierMember,
+			},
+		},
+	}
 }

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
+	"github.com/primandproper/platform-go/v15/outbox/internal/outboxdb"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -991,43 +991,74 @@ func timeValue(t *time.Time) time.Time {
 	return t.UTC()
 }
 
-// selectClaimable picks the batch of ids this cycle will lease, through
-// whichever of the two claim statements the configured mode names.
+// selectClaimable picks the batch of ids this cycle will lease.
 //
-// The lock clause is statement text rather than a bound value, so the mode is a
-// choice between two generated methods — the way a paged read chooses between
-// its two directions — rather than a clause appended to one. See
-// outbox/internal/queries.
+// The lease mode reads one page of candidates and takes no lock; its claim's
+// guarded UPDATE is the whole of its exclusivity. The skip-locked mode reads
+// the same candidates and locks them by primary key, skipping the ones another
+// relay holds, and reads on from where the page stopped until the batch is
+// full or the candidates run out. It never locks by range: a range lock on the
+// claim index covers the gap every enqueue inserts into, and on MySQL that
+// turned a claim waiting on one enqueued row into a deadlock with every other
+// writer recording into the outbox. See outbox/internal/queries'
+// selectClaimable.
 //
 // The two comparisons are one instant and two arguments: next_attempt is NOT
 // NULL and claimed_until is not, and no analyzer gives one argument two
 // nullabilities. Both are bound from this cycle's single clock read, which is
 // what keeps them the same moment in fact.
 func (r *Relay) selectClaimable(ctx context.Context, q database.Tx, now time.Time) ([]string, error) {
-	limit := int64(r.cfg.BatchSize)
+	limit := r.cfg.BatchSize
 
-	if r.cfg.ClaimMode == ClaimSkipLocked {
-		rows, err := r.q.SelectClaimableOutboxMessagesSkipLocked(ctx, q, outboxdb.SelectClaimableOutboxMessagesSkipLockedParams{
-			Now:            now,
-			LeaseExpiredBy: &now,
-			ResultLimit:    limit,
-		})
+	if r.cfg.ClaimMode != ClaimSkipLocked {
+		return r.candidates(ctx, q, now, limit, 0)
+	}
+
+	claimed := make([]string, 0, limit)
+
+	for offset := 0; len(claimed) < limit; {
+		want := limit - len(claimed)
+
+		candidates, err := r.candidates(ctx, q, now, want, offset)
 		if err != nil {
 			return nil, err
 		}
 
-		ids := make([]string, 0, len(rows))
-		for i := range rows {
-			ids = append(ids, rows[i].ID)
+		if len(candidates) == 0 {
+			break
 		}
 
-		return ids, nil
+		offset += len(candidates)
+
+		locked, err := r.q.SelectClaimableOutboxMessagesSkipLocked(ctx, q, outboxdb.SelectClaimableOutboxMessagesSkipLockedParams{
+			Now:            now,
+			LeaseExpiredBy: &now,
+			IDs:            candidates,
+		})
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "locking claimable outbox messages")
+		}
+
+		for i := range locked {
+			claimed = append(claimed, locked[i].ID)
+		}
+
+		if len(candidates) < want {
+			break
+		}
 	}
 
+	return claimed, nil
+}
+
+// candidates reads one page of claimable ids, oldest first, without locking
+// them.
+func (r *Relay) candidates(ctx context.Context, q database.Tx, now time.Time, limit, offset int) ([]string, error) {
 	rows, err := r.q.SelectClaimableOutboxMessages(ctx, q, outboxdb.SelectClaimableOutboxMessagesParams{
 		Now:            now,
 		LeaseExpiredBy: &now,
-		ResultLimit:    limit,
+		ResultLimit:    int64(limit),
+		ResultOffset:   int64(offset),
 	})
 	if err != nil {
 		return nil, err

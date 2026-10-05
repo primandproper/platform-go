@@ -3,7 +3,7 @@ package meteringcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	"github.com/primandproper/primitives-go/v2/analytics"
 	"github.com/primandproper/primitives-go/v2/cache"
@@ -182,10 +182,16 @@ func RegisterEnforcer(i do.Injector) {
 
 // RegisterFlusher registers a *metering.Flusher with the injector.
 //
-// Prerequisites: *Config, metering.Store (see RegisterStore),
-// metering.ProviderMapper, and capitalism.UsageReporter must be registered in
-// the injector before the Flusher is invoked. Where no provider push is
-// wanted, register the named noop reporter.
+// The provider mapper is optional: absent, the flusher runs over
+// metering.Unbilled, which settles every subject's usage as nothing to post. That
+// is the deployment that meters and does not bill yet, and it replaces the
+// default by registering a metering.ProviderMapper once the provider has a meter
+// to post against.
+//
+// Prerequisites: *Config, metering.Store (see RegisterStore), and
+// capitalism.UsageReporter must be registered in the injector before the Flusher
+// is invoked. Where no provider push is wanted, register the named noop
+// reporter.
 func RegisterFlusher(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*metering.Flusher, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -208,9 +214,12 @@ func RegisterFlusher(i do.Injector) {
 			return nil, err
 		}
 
-		providerMapper, err := do.Invoke[metering.ProviderMapper](i)
+		providerMapper, err := injection.InvokeOptional[metering.ProviderMapper](i)
 		if err != nil {
 			return nil, err
+		}
+		if providerMapper == nil {
+			providerMapper = metering.Unbilled()
 		}
 
 		usageReporter, err := do.Invoke[capitalism.UsageReporter](i)

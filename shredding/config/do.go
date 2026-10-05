@@ -3,7 +3,7 @@ package shreddingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/shredding"
+	"github.com/primandproper/platform-go/v15/shredding"
 
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/cryptography/encryption"

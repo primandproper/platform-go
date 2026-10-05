@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/billing/billingpb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/billing/billingpb"
 
 	"github.com/primandproper/primitives-go/v2/tenancy"
 

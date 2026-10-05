@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/audit/internal/auditdb"
-	"github.com/primandproper/platform-go/v14/audit/internal/queries"
+	"github.com/primandproper/platform-go/v15/audit/internal/auditdb"
+	"github.com/primandproper/platform-go/v15/audit/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/ddl"

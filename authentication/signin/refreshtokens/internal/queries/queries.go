@@ -795,7 +795,7 @@ func listLiveFamilies(g *querygen.Generator) *querygen.Query {
 // person.
 //
 // It is what a per-request check reads, so it is keyed on what an access token
-// carries — the scope and the family, which version 1's family index serves —
+// carries — the scope and the family, which the family index serves —
 // and it carries the exchange's three guards for [listLiveFamilies]' reason: a
 // family has exactly one row they admit while the login is going and none once
 // it has ended, so "no row" is the answer "this login is over" and a row is the

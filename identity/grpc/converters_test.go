@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/identity"
+	identitygrpc "github.com/primandproper/platform-go/v15/identity/grpc"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/webhooks"
-	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
 
 	"github.com/primandproper/primitives-go/v2/tenancy"
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
+	auditmigrations "github.com/primandproper/platform-go/v15/audit/migrations"
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"

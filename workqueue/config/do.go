@@ -3,7 +3,7 @@ package workqueuecfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/workqueue"
+	"github.com/primandproper/platform-go/v15/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/observability"

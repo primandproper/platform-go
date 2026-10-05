@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v15/operations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

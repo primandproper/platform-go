@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/authserver"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore"
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/authserver"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2serverstore"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v15/authentication/signin/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/database"

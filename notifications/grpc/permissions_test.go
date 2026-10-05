@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	notificationsgrpc "github.com/primandproper/platform-go/v15/notifications/grpc"
+	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -200,4 +200,15 @@ func TestRequireToleratesANilBuilder(T *testing.T) {
 	T.Parallel()
 
 	test.Nil(T, notificationsgrpc.Require(nil))
+}
+
+// TestTiers_PartitionsPermissions holds Tiers to what this surface checks:
+// every permission it requires is in exactly one tier, every tiered permission
+// is one it requires, and a narrowing names a permissioned method. A grant
+// added to Permissions later and sorted nowhere fails here, rather than being
+// absent from every deployment's roles until somebody reads a release note.
+func TestTiers_PartitionsPermissions(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, notificationsgrpc.Tiers().Partitions(notificationsgrpc.Permissions()))
 }

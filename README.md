@@ -1,10 +1,10 @@
 # platform-go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v14.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v14) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
+[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v15.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v15) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
 
 A Go library of the things a product has: a noun with a table, its lifecycle, its transport, its permissions and its privacy obligations. Identity, billing, audit, webhooks, sagas and the rest ship a `Store`, the DDL for the dialects they serve, a mock, and — for the ones that have crossed — a gRPC or HTTP surface over them. The infrastructure they are built from is [`primitives-go`](https://github.com/primandproper/primitives-go/v2), which this module requires; [Primitives and Domains](#primitives-and-domains) is the rule that says which is which.
 
-**Module:** `github.com/primandproper/platform-go/v14`
+**Module:** `github.com/primandproper/platform-go/v15`
 **Go:** 1.27
 
 ## Project Status & Stability
@@ -23,7 +23,7 @@ If you depend on this library, pin to a released tag — and note that `@latest`
 ## Installation
 
 ```bash
-go get github.com/primandproper/platform-go/v14@latest
+go get github.com/primandproper/platform-go/v15@latest
 ```
 
 Because breaking changes ride the major-version import path, upgrading across majors is an explicit, opt-in edit to your import paths — never a surprise from `go get -u`.
@@ -58,7 +58,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 ### Identity & access
 | Package                            | Purpose                                                                       | Implementations                  |
 |------------------------------------|-------------------------------------------------------------------------------|----------------------------------|
-| `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request | postgres, mysql, sqlite (+ grpc) |
+| `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request (seam: `Hooks`) | postgres, mysql, sqlite (+ grpc) |
 | `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table of its own | — (+ grpc)                       |
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/signin/magiclinks` | The sign-in links the passwordless door mails: digest at rest, single use, and a redemption that proves the address it was sent to | postgres, mysql, sqlite          |
@@ -195,6 +195,9 @@ audit entry and the outbox event every store write here owes, written once on th
 write's transaction through `audit`'s recorder and `webhooks`' emitter, so that each
 store's `RecordingHooks` is a decision about what to record rather than a copy of
 how. It is a domain because both halves are about a resource an application has.
+`recording/config` is what makes it the default: a service built from
+`service.Config` with audit, webhooks and an outbox configured records every
+platform write without registering a hook.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
 owns no table either, and it is not a flow: it is the interface a consumer's
@@ -350,9 +353,14 @@ verifies the token and resolves the principal through the read that refuses a
 banned user. It carries the login's family so `ListSignIns` can mark the
 current one, and grants service roles only on a token minted through the
 administrative door. A seam can say what an ordinary-door token keeps; by
-default it keeps none. Grants come from the consumer's role policy, and a
-deployment that also accepts another kind of token chains its own extractor
-in behind this one. Its interceptors enforce a table of which methods need a
+default it keeps none. Grants come from the consumer's role policy.
+`WithAccessTokens` extends it to OAuth2 access tokens, over primitives-go's
+`oauth2server.Verifier`: the verifier owns the audience and scope checks, the
+directory owns the subject, and the join between them — which a `WithFallback`
+extractor could not make, since it cannot answer a missing scope as a 403 or a
+banned subject as anything but nobody — is written once here rather than once
+per resource server. A deployment that accepts a third kind of token chains its
+own extractor in behind this one. Its interceptors enforce a table of which methods need a
 caller. The table is built from each surface's own method lists, and a method
 nobody declared is refused. The application installs it: `service` builds no
 extractor, so a composition root names it to `service.Transports` and puts its

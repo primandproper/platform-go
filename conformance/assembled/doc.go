@@ -43,6 +43,15 @@ it would be proving a service nobody could run.
     rule working, not a gap in it.
   - The declarations no environment variable can express: comments.Targets and
     webhooks.Catalog.
+  - Who is writing, for recording. The config names Audit, Webhooks and Outbox,
+    so every platform store records an entry and an event beside each write
+    through its RecordingHooks, and every suite runs against stores that
+    record. The recorder attributes through a callers.PrincipalExtractor, and
+    the harness registers signingrpc.PrincipalFromContext as that before
+    anything is built: the sign-in extractor itself is built over the sign-in
+    service whose hooks need the recorder. identity's hooks are the harness's
+    own, for its invitation tokens, which is the registered-hooks-win half of
+    the same rule.
   - The extractor, and the authorizers that surfaces refuse to mount
     without. The extractor is signingrpc's, named to service.Transports as
     both the extractor and the grants, and its interceptor and middleware are

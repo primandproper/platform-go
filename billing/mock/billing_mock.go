@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v15/billing"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"

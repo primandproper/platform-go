@@ -3,8 +3,8 @@ package grpc_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/comments"
-	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
+	"github.com/primandproper/platform-go/v15/comments"
+	commentsgrpc "github.com/primandproper/platform-go/v15/comments/grpc"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

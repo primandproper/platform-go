@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	"github.com/primandproper/primitives-go/v2/analytics"
 	analyticsnoop "github.com/primandproper/primitives-go/v2/analytics/noop"
@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -198,5 +199,43 @@ func TestRegisterFlusher(T *testing.T) {
 		flusher, err := do.Invoke[*metering.Flusher](i)
 		must.NoError(t, err)
 		test.NotNil(t, flusher)
+	})
+
+	T.Run("settles usage unposted when no provider mapper is registered", func(t *testing.T) {
+		t.Parallel()
+
+		// The deployment that meters and does not bill yet registers no mapper,
+		// and gets metering.Unbilled rather than a flusher that refuses to build.
+		client := newClient(t)
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, client)
+		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, newRegistry(t))
+		do.ProvideValue[metering.PeriodResolver](i, metering.NewCalendarPeriodResolver(nil))
+		do.ProvideValue[capitalism.UsageReporter](i, capitalismnoop.NewUsageReporter())
+
+		RegisterStore(i)
+		RegisterRecorder(i)
+		RegisterFlusher(i)
+
+		recorder, err := do.Invoke[*metering.DurableRecorder](i)
+		must.NoError(t, err)
+
+		flusher, err := do.Invoke[*metering.Flusher](i)
+		must.NoError(t, err)
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return recorder.Record(t.Context(), tx, tenancy.Global(), metering.Usage{
+				Subject: "account-1", Meter: "api_requests", Quantity: 5, IdempotencyKey: "req-1",
+			})
+		}))
+
+		result, err := flusher.Flush(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, 1, result.Skipped)
+		test.EqOp(t, 0, result.Flushed)
+		test.EqOp(t, 0, result.Failed)
 	})
 }

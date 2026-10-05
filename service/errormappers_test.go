@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
-	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v15/internal/sentinelmatrix"
+	"github.com/primandproper/platform-go/v15/links"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

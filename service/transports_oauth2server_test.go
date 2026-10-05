@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v15/authentication/oauth2serverstore/config"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 

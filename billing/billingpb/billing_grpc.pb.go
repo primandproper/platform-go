@@ -7,12 +7,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/billing/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/billing/v1/billing.proto=github.com/primandproper/platform-go/v14/billing/billingpb \
+//	    --go_opt=Mprimandproper/platform/billing/v1/billing.proto=github.com/primandproper/platform-go/v15/billing/billingpb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer

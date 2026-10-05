@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/issuereports/issuereportspb"
 
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/identifiers"

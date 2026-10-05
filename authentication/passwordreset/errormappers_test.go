@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

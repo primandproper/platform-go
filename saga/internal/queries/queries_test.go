@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/saga/internal/queries"
-	"github.com/primandproper/platform-go/v14/saga/migrations"
+	"github.com/primandproper/platform-go/v15/saga/internal/queries"
+	"github.com/primandproper/platform-go/v15/saga/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/querygen"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -32,7 +32,7 @@ const DefaultRecentSignInWindow = 10 * time.Minute
 // package adds no hook of its own for the same reason — a second hook on the
 // same write would be a second place for a consumer to have forgotten one.
 //
-// [github.com/primandproper/platform-go/v14/identity.Service] satisfies it.
+// [github.com/primandproper/platform-go/v15/identity.Service] satisfies it.
 type ProfileUpdater interface {
 	// UpdateProfile saves the fields a user may change about themselves and
 	// answers with the user as they stand after it, redacted.

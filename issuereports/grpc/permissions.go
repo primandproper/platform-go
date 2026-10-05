@@ -1,7 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v15/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v15/rbac"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -154,4 +155,25 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// The table's two audiences are two tiers. Filing a report and reading one's
+// own are a member's, and [ReportAuthorizer] keeps the read to the caller's
+// reports. Paging, revising, moving and archiving the queue are the tenant's
+// triager's. Reading every tenant's queue is an operator's.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		Operator: []authorization.Permission{PermissionReadAnyReports},
+		TenantAdmin: []authorization.Permission{
+			PermissionTriageReports,
+			PermissionUpdateReports,
+			PermissionTransitionReports,
+			PermissionArchiveReports,
+		},
+		Member: []authorization.Permission{PermissionFileReports, PermissionReadReports},
+	}
 }

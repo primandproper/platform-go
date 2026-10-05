@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+	operationsmock "github.com/primandproper/platform-go/v15/operations/mock"
 
 	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 

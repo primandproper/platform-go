@@ -3,8 +3,10 @@ package passwordresetcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/recording"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/config/injection"
@@ -20,6 +22,11 @@ import (
 // Prerequisites: *Config, database.Client and a context.Context must be
 // registered in the injector before the Store is invoked. The context bounds
 // the sweeper's life, when the config starts one.
+//
+// passwordreset.Hooks is resolved through recordingcfg.InvokeHooks: one the
+// application registered, then a passwordreset.RecordingHooks when a
+// *recording.Recorder is registered, then none, which leaves the store's
+// NoopHooks default.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (passwordreset.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -42,7 +49,20 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(ctx, cfg, client, WithPillars(pillars))
+		opts := []Option{WithPillars(pillars)}
+
+		hooks, err := recordingcfg.InvokeHooks(i, func(r *recording.Recorder) (passwordreset.Hooks, error) {
+			return passwordreset.NewRecordingHooks(r)
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if hooks != nil {
+			opts = append(opts, WithStoreOptions(passwordreset.WithHooks(hooks)))
+		}
+
+		return NewStore(ctx, cfg, client, opts...)
 	})
 }
 

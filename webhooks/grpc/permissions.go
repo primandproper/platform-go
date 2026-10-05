@@ -1,7 +1,8 @@
 package grpc
 
 import (
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	"github.com/primandproper/platform-go/v15/rbac"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -159,4 +160,29 @@ func Require(b *authzgrpc.RequirementsBuilder) *authzgrpc.RequirementsBuilder {
 	}
 
 	return b.RequireAll(Permissions())
+}
+
+// Tiers sorts this service's permissions by the kind of principal that should
+// hold them. A deployment composes its policy from these with rbac.MergeTiers
+// and rbac.PolicyFromTiers; the role names are its own.
+//
+// An endpoint is the tenant's, not the caller's, so everything that reads or
+// changes one — where its events go, the keys they are signed under, what it
+// subscribes to, and the delivery log it accumulated — is the tenant's admin's.
+// The event type catalog is the application's own constant and is nobody's
+// row, so reading it is a member's.
+func Tiers() rbac.Tiers {
+	return rbac.Tiers{
+		TenantAdmin: []authorization.Permission{
+			PermissionSaveEndpoints,
+			PermissionReadEndpoints,
+			PermissionArchiveEndpoints,
+			PermissionRotateEndpointSecrets,
+			PermissionAddSubscriptions,
+			PermissionReadSubscriptions,
+			PermissionArchiveSubscriptions,
+			PermissionReadAttempts,
+		},
+		Member: []authorization.Permission{PermissionReadEventTypes},
+	}
 }

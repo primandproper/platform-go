@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	domain "github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/conformance"
+	domain "github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/conformance"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 

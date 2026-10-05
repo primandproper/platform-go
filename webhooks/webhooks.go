@@ -187,6 +187,17 @@ var (
 	// sentinels sharing a wording share a cockroachdb mark, which is what a
 	// client matches on after a round trip.
 	ErrNilDispatcher = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhook event dispatcher")
+
+	// ErrNilSubscription indicates a hook handed no Subscription where the
+	// write it follows always has one.
+	ErrNilSubscription = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhook subscription")
+
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// recordinghooks.NewRecordingHooks. It is declared here rather than beside
+	// that constructor so the sentinels a webhooks caller can be handed stay in
+	// one package's roster. It wraps errors.ErrNilInputParameter, so a caller
+	// may check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks write recorder")
 )
 
 // EventType names one kind of event an application publishes. It is the string

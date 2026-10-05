@@ -6,9 +6,10 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/identity"
 
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"google.golang.org/grpc"
@@ -251,8 +252,9 @@ func RequireAuthentication(b *AuthenticationRequirementsBuilder) *Authentication
 // anonymous: a token naming somebody whose account status admits no sign-in is
 // codes.PermissionDenied — identity's own answer to a banned caller, and the
 // honest one, since the credential is theirs and it is the person who is
-// refused — and a directory that could not be read is codes.Unavailable, since
-// an outage is not a credential to discard.
+// refused — as is an access token lacking a scope WithAccessTokens requires,
+// and a directory that could not be read is codes.Unavailable, since an
+// outage is not a credential to discard.
 //
 // A caller who owes a forced password change is then refused with
 // signin.ErrPasswordChangeRequired, as codes.FailedPrecondition, on every method
@@ -307,6 +309,8 @@ func (e *PrincipalExtractor) admit(ctx context.Context, reqs *AuthenticationRequ
 	principal, err := e.resolve(ctx, bearerFromMetadata(ctx))
 
 	switch {
+	case errors.Is(err, oauth2server.ErrInsufficientScope):
+		return ctx, status.Error(codes.PermissionDenied, "the access token does not carry a required scope")
 	case err != nil && !errors.Is(err, ErrUnauthenticated):
 		e.o11y.Logger().Error("resolving the caller of "+method, err)
 

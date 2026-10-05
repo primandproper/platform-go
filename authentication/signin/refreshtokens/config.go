@@ -3,7 +3,7 @@ package refreshtokens
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens/migrations"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

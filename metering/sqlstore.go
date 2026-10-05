@@ -7,9 +7,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/metering/internal/meteringdb"
-	"github.com/primandproper/platform-go/v14/metering/internal/queries"
-	"github.com/primandproper/platform-go/v14/metering/migrations"
+	"github.com/primandproper/platform-go/v15/metering/internal/meteringdb"
+	"github.com/primandproper/platform-go/v15/metering/internal/queries"
+	"github.com/primandproper/platform-go/v15/metering/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/ddl"

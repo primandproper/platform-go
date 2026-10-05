@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
-	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
+	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
+	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
@@ -149,4 +149,15 @@ func TestRequireToleratesANilBuilder(T *testing.T) {
 	T.Parallel()
 
 	test.Nil(T, webhooksgrpc.Require(nil))
+}
+
+// TestTiers_PartitionsPermissions holds Tiers to what this surface checks:
+// every permission it requires is in exactly one tier, every tiered permission
+// is one it requires, and a narrowing names a permissioned method. A grant
+// added to Permissions later and sorted nowhere fails here, rather than being
+// absent from every deployment's roles until somebody reads a release note.
+func TestTiers_PartitionsPermissions(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, webhooksgrpc.Tiers().Partitions(webhooksgrpc.Permissions()))
 }

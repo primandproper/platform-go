@@ -22,8 +22,8 @@ package entitlementscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/entitlements"
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/entitlements"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	"github.com/primandproper/primitives-go/v2/errors"
 

@@ -6,13 +6,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/outbox"
-	"github.com/primandproper/platform-go/v14/recording"
-	"github.com/primandproper/platform-go/v14/webhooks"
-	webhooksmock "github.com/primandproper/platform-go/v14/webhooks/mock"
+	"github.com/primandproper/platform-go/v15/audit"
+	auditmock "github.com/primandproper/platform-go/v15/audit/mock"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/outbox"
+	"github.com/primandproper/platform-go/v15/recording"
+	"github.com/primandproper/platform-go/v15/webhooks"
+	webhooksmock "github.com/primandproper/platform-go/v15/webhooks/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -213,7 +213,11 @@ func TestRecordingHooks(T *testing.T) {
 		must.NoError(t, err)
 		entry, delivery = l.last(t)
 		test.EqOp(t, audit.EventUpdated, entry.EventType)
-		test.EqOp(t, "met at the conference", entry.Changes["notes"].New)
+		// The entry says the note changed, and never what it said.
+		hashed, err := audit.Redaction{Hash: []string{"notes"}}.Apply(map[string]audit.Change{"notes": {Old: "", New: "met at the conference"}})
+		must.NoError(t, err)
+		test.Eq(t, hashed["notes"], entry.Changes["notes"])
+		test.StrHasPrefix(t, "sha256:", entry.Changes["notes"].New.(string))
 		test.EqOp(t, EventSignupNotesUpdated, delivery.EventType)
 		test.Eq(t, []string{"notes"}, decodeSignup(t, delivery).Changed)
 

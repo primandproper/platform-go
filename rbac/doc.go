@@ -201,6 +201,45 @@ whatever the policy was on the day that version was cut, and a policy edit
 would be a schema version. The consumer calls SeedPolicy after the migrations
 instead, from whichever of the two places above it already has.
 
+# Composing a policy from the surfaces
+
+Every gRPC surface in this module exports a Tiers beside its Permissions map:
+its grants sorted by the kind of principal that should hold them — an operator,
+a tenant's admin, or a member. The sort is the surface's to make, because the
+surface is what knows that one read is an oracle over every address and another
+is a member reading their own row, and each surface's test holds its sort to the
+methods it declares. A deployment composes them and names the roles:
+
+	tiers, err := rbac.MergeTiers(identitygrpc.Tiers(), waitlistsgrpc.Tiers(), commentsgrpc.Tiers())
+	if err != nil {
+		return err
+	}
+
+	policy := rbac.PolicyFromTiers(tiers, rbac.RoleNames{
+		Operator:    "staff",
+		TenantAdmin: "account_admin",
+		Member:      "member",
+	})
+
+A grant a surface adds in a later release then reaches the right role without
+the deployment re-reading that surface's documentation. Tiers is plain data, so
+a deployment whose roles do not line up with three tiers edits it before handing
+it over; how many roles there are and what they are called stay its own.
+
+A surface's sort is its author's judgement of the common case, and a deployment
+may depart from it: any method may be reserved to an operator. Tiers.Place
+moves a permission to another tier after the merge — MergeTiers itself refuses
+a second placement, because there it reads as two surfaces disagreeing:
+
+	tiers, err = tiers.Place(rbac.TierOperator, commentsgrpc.PermissionCreateComments)
+
+A Narrowing is the one thing PolicyFromTiers does not grant: a method a lower
+tier may safely reach although the permission in front of it is a higher
+tier's, because the surface confines the call inside the handler. The
+permission also gates the methods beside it, so a deployment that wants the
+narrowing re-declares that method under a permission of its own and grants
+that.
+
 # Archival
 
 ArchiveRole soft-deletes, and the name stays reserved.

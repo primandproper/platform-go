@@ -7,16 +7,16 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/audit/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/audit/v1/audit.proto=github.com/primandproper/platform-go/v14/audit/auditpb \
+//	    --go_opt=Mprimandproper/platform/audit/v1/audit.proto=github.com/primandproper/platform-go/v15/audit/auditpb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Go links against the bindings this module already generated, in
-// github.com/primandproper/platform-go/v14/audit/auditpb. Swift, TypeScript and
+// github.com/primandproper/platform-go/v15/audit/auditpb. Swift, TypeScript and
 // Kotlin have no such bindings to link against and generate this file directly,
 // which is the whole point of shipping the schema.
 //
@@ -1456,7 +1456,7 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\vVerifyChain\x123.primandproper.platform.audit.v1.VerifyChainRequest\x1a4.primandproper.platform.audit.v1.VerifyChainResponse2\x9a\x02\n" +
 	"\x1aAuditAdministrationService\x12x\n" +
 	"\vGetAnyEntry\x123.primandproper.platform.audit.v1.GetAnyEntryRequest\x1a4.primandproper.platform.audit.v1.GetAnyEntryResponse\x12\x81\x01\n" +
-	"\x0eListAnyEntries\x126.primandproper.platform.audit.v1.ListAnyEntriesRequest\x1a7.primandproper.platform.audit.v1.ListAnyEntriesResponseB@Z>github.com/primandproper/platform-go/v14/audit/auditpb;auditpbb\x06proto3"
+	"\x0eListAnyEntries\x126.primandproper.platform.audit.v1.ListAnyEntriesRequest\x1a7.primandproper.platform.audit.v1.ListAnyEntriesResponseB@Z>github.com/primandproper/platform-go/v15/audit/auditpb;auditpbb\x06proto3"
 
 var (
 	file_primandproper_platform_audit_v1_audit_proto_rawDescOnce sync.Once

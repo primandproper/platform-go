@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const claimOutboxMessagesMySQL = `UPDATE {{prefix}}outbox_messages SET
+const claimOutboxMessagesMySQL = `UPDATE {{prefix}}outbox_messages FORCE INDEX (PRIMARY) SET
 	claimed_until = ?,
 	claimed_by = ?,
 	attempts = attempts + 1
@@ -115,25 +115,15 @@ WHERE m.published_at IS NULL
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
-LIMIT ?`
+LIMIT ?, ?`
 
-const selectClaimableOutboxMessagesSkipLockedMySQL = `SELECT m.id
-FROM {{prefix}}outbox_messages AS m
-WHERE m.published_at IS NULL
-	AND m.quarantined_at IS NULL
-	AND m.next_attempt <= ?
-	AND (m.claimed_until IS NULL OR m.claimed_until <= ?)
-	AND (m.partition_key = '' OR NOT EXISTS (
-		SELECT 1
-		FROM {{prefix}}outbox_messages AS prior
-		WHERE prior.partition_key = m.partition_key
-			AND prior.published_at IS NULL
-			AND prior.quarantined_at IS NULL
-			AND (prior.created_at < m.created_at
-				OR (prior.created_at = m.created_at AND prior.id < m.id))
-	))
-ORDER BY m.created_at, m.id
-LIMIT ?
+const selectClaimableOutboxMessagesSkipLockedMySQL = `SELECT id
+FROM {{prefix}}outbox_messages FORCE INDEX (PRIMARY)
+WHERE published_at IS NULL
+	AND quarantined_at IS NULL
+	AND next_attempt <= ?
+	AND (claimed_until IS NULL OR claimed_until <= ?)
+	AND id IN (/*SLICE:ids*/?)
 FOR UPDATE SKIP LOCKED`
 
 const selectQuarantinedOutboxMessagesMySQL = `SELECT
@@ -389,6 +379,7 @@ func (q *mysqlQueries) SelectClaimableOutboxMessages(ctx context.Context, db DBT
 	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessages,
 		arg.Now,
 		arg.LeaseExpiredBy,
+		arg.ResultOffset,
 		arg.ResultLimit,
 	)
 	if err != nil {
@@ -420,11 +411,21 @@ func (q *mysqlQueries) SelectClaimableOutboxMessages(ctx context.Context, db DBT
 
 // SelectClaimableOutboxMessagesSkipLocked runs the :many query against mysql.
 func (q *mysqlQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.Context, db DBTX, arg SelectClaimableOutboxMessagesSkipLockedParams) ([]SelectClaimableOutboxMessagesSkipLockedRow, error) {
-	rows, err := db.QueryContext(ctx, q.selectClaimableOutboxMessagesSkipLocked,
-		arg.Now,
-		arg.LeaseExpiredBy,
-		arg.ResultLimit,
-	)
+	query := q.selectClaimableOutboxMessagesSkipLocked
+
+	args := make([]any, 0, 2+len(arg.IDs))
+
+	args = append(args, arg.Now)
+
+	args = append(args, arg.LeaseExpiredBy)
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -589,6 +590,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
+		ResultOffset   int64
 		ResultLimit    int64
 	}(SelectClaimableOutboxMessagesParams{})
 	_ = struct {
@@ -597,7 +599,7 @@ var (
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
-		ResultLimit    int64
+		IDs            []string
 	}(SelectClaimableOutboxMessagesSkipLockedParams{})
 	_ = struct {
 		ID string

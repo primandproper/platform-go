@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
-	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
+	"github.com/primandproper/platform-go/v15/conformance"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 

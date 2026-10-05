@@ -12,9 +12,9 @@ composes into their own.
 
 # Who is calling
 
-Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+Who is calling is [github.com/primandproper/platform-go/v15/callers.Principal],
 which a consumer's own authentication interceptor puts on the context and
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor] reads
 back. Those are one package for the whole module rather than an interface per
 surface, because a deployment has one authentication interceptor and one notion
 of a caller, and that package's documentation is where the ruling that keeps the

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/metering"
-	meteringmigrations "github.com/primandproper/platform-go/v14/metering/migrations"
+	"github.com/primandproper/platform-go/v15/metering"
+	meteringmigrations "github.com/primandproper/platform-go/v15/metering/migrations"
 
 	"github.com/primandproper/primitives-go/v2/cache/memory"
 	"github.com/primandproper/primitives-go/v2/database"

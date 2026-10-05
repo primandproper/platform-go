@@ -3,7 +3,7 @@ package grpc_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
+	"github.com/primandproper/platform-go/v15/notifications/notificationspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

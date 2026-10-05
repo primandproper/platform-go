@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
-	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
+	auditgrpc "github.com/primandproper/platform-go/v15/audit/grpc"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
@@ -171,4 +171,15 @@ func TestPermissionsAreNamespaced(T *testing.T) {
 	test.False(T, slices.Contains(
 		[]authorization.Permission{auditgrpc.PermissionReadEntries},
 		auditgrpc.PermissionVerifyChain))
+}
+
+// TestTiers_PartitionsPermissions holds Tiers to what this surface checks:
+// every permission it requires is in exactly one tier, every tiered permission
+// is one it requires, and a narrowing names a permissioned method. A grant
+// added to Permissions later and sorted nowhere fails here, rather than being
+// absent from every deployment's roles until somebody reads a release note.
+func TestTiers_PartitionsPermissions(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, auditgrpc.Tiers().Partitions(auditgrpc.Permissions()))
 }

@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/issuereports"
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	"github.com/primandproper/platform-go/v15/issuereports"
+	"github.com/primandproper/platform-go/v15/issuereports/issuereportspb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

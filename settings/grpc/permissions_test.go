@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	settingsgrpc "github.com/primandproper/platform-go/v15/settings/grpc"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
@@ -165,4 +165,19 @@ func TestRequireToleratesANilBuilder(T *testing.T) {
 	T.Parallel()
 
 	test.Nil(T, settingsgrpc.Require(nil))
+}
+
+// TestTiers_PartitionsPermissions holds Tiers to what this surface checks:
+// every permission it requires is in exactly one tier, every tiered permission
+// is one it requires, and a narrowing names a permissioned method. A grant
+// added to Permissions later and sorted nowhere fails here, rather than being
+// absent from every deployment's roles until somebody reads a release note.
+//
+// The permissions this surface asks inside a handler rather than on a method
+// are passed as consulted: they gate no method and are a principal's to hold
+// all the same, so they are tiered like the rest.
+func TestTiers_PartitionsPermissions(T *testing.T) {
+	T.Parallel()
+
+	must.NoError(T, settingsgrpc.Tiers().Partitions(settingsgrpc.Permissions(), settingsgrpc.PermissionWriteAdminValues))
 }

@@ -6,8 +6,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/primandproper/platform-go/v14/outbox"
-	"github.com/primandproper/platform-go/v14/searchsync"
+	"github.com/primandproper/platform-go/v15/outbox"
+	"github.com/primandproper/platform-go/v15/searchsync"
 )
 
 // order is the domain object, and orderDoc is what the index holds. The

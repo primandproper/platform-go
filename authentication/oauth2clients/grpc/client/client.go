@@ -41,7 +41,7 @@ authentication/signin's client takes of a token.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients/oauth2clientspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
