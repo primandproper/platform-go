@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/waitlists/internal/waitlistsdb"
+	"github.com/primandproper/platform-go/v15/waitlists/internal/waitlistsdb"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

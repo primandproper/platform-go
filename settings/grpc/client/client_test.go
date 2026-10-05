@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	settingsclient "github.com/primandproper/platform-go/v14/settings/grpc/client"
-	"github.com/primandproper/platform-go/v14/settings/settingspb"
+	settingsclient "github.com/primandproper/platform-go/v15/settings/grpc/client"
+	"github.com/primandproper/platform-go/v15/settings/settingspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/idempotency"

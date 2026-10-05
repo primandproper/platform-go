@@ -36,7 +36,26 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}audit_log_entries (
     change_set    BYTEA,
     metadata      BYTEA,
     prev_hash     TEXT NOT NULL DEFAULT '',
-    hash          TEXT NOT NULL
+    hash          TEXT NOT NULL,
+    -- Who was really acting, when the actor was acting through somebody else's
+    -- identity.
+    --
+    -- actor_id stays the subject — the person an impersonated request was
+    -- filed under, and whose entry it is — and this column names the operator
+    -- who made it. It is empty for every entry nobody impersonated, which is
+    -- almost every entry, so the default is an absence and not a value: unlike
+    -- scope, the empty string here means exactly what a write that omitted the
+    -- column meant.
+    --
+    -- It is a column rather than a reserved key in metadata because it is
+    -- something a reader has to be able to ask for. "What did this operator do
+    -- while acting as somebody else" is a question the log exists to answer,
+    -- and a value inside an encoded blob is one no statement can select on in
+    -- all three dialects.
+    --
+    -- It is the last column because it arrived last, in v14's second schema
+    -- version, and a table created at that version has it there.
+    actor_impersonator TEXT NOT NULL DEFAULT ''
 );
 
 -- The chain's structural guarantee. Two writers racing on the same scope both
@@ -63,6 +82,11 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}audit_log_entries_actor_idx
 -- also answers the type-only question List supports.
 CREATE INDEX IF NOT EXISTS {{PREFIX}}audit_log_entries_resource_idx
     ON {{PREFIX}}audit_log_entries (resource_type, resource_id, recorded_at);
+
+-- "What did this operator do as somebody else", as a range scan — the
+-- impersonator's counterpart of the actor index.
+CREATE INDEX IF NOT EXISTS {{PREFIX}}audit_log_entries_impersonator_idx
+    ON {{PREFIX}}audit_log_entries (actor_impersonator, recorded_at);
 
 -- One row per scope, holding that scope's chain head and how far retention has
 -- pruned it.

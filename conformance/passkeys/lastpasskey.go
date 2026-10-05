@@ -4,10 +4,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authentication/passkeys/passkeyspb"
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"

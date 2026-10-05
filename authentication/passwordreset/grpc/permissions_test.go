@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	passwordresetgrpc "github.com/primandproper/platform-go/v14/authentication/passwordreset/grpc"
-	"github.com/primandproper/platform-go/v14/authentication/passwordreset/passwordresetpb"
+	passwordresetgrpc "github.com/primandproper/platform-go/v15/authentication/passwordreset/grpc"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset/passwordresetpb"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"

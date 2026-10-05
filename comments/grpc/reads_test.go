@@ -3,10 +3,10 @@ package grpc_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/comments"
-	"github.com/primandproper/platform-go/v14/comments/commentspb"
-	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/comments"
+	"github.com/primandproper/platform-go/v15/comments/commentspb"
+	commentsgrpc "github.com/primandproper/platform-go/v15/comments/grpc"
 
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 

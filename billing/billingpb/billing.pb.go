@@ -7,12 +7,12 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/billing/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/billing/v1/billing.proto=github.com/primandproper/platform-go/v14/billing/billingpb \
+//	    --go_opt=Mprimandproper/platform/billing/v1/billing.proto=github.com/primandproper/platform-go/v15/billing/billingpb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Field numbers are the compatibility promise, across every language a consumer
@@ -2894,7 +2894,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\x0eGetTransaction\x128.primandproper.platform.billing.v1.GetTransactionRequest\x1a9.primandproper.platform.billing.v1.GetTransactionResponse\x12\x8b\x01\n" +
 	"\x10ListTransactions\x12:.primandproper.platform.billing.v1.ListTransactionsRequest\x1a;.primandproper.platform.billing.v1.ListTransactionsResponse\x12\xa9\x01\n" +
 	"\x1aListTransactionsForAccount\x12D.primandproper.platform.billing.v1.ListTransactionsForAccountRequest\x1aE.primandproper.platform.billing.v1.ListTransactionsForAccountResponse\x12\x91\x01\n" +
-	"\x12ArchiveTransaction\x12<.primandproper.platform.billing.v1.ArchiveTransactionRequest\x1a=.primandproper.platform.billing.v1.ArchiveTransactionResponseBFZDgithub.com/primandproper/platform-go/v14/billing/billingpb;billingpbb\x06proto3"
+	"\x12ArchiveTransaction\x12<.primandproper.platform.billing.v1.ArchiveTransactionRequest\x1a=.primandproper.platform.billing.v1.ArchiveTransactionResponseBFZDgithub.com/primandproper/platform-go/v15/billing/billingpb;billingpbb\x06proto3"
 
 var (
 	file_primandproper_platform_billing_v1_billing_proto_rawDescOnce sync.Once

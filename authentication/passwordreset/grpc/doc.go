@@ -2,7 +2,7 @@
 Package grpc serves the password reset flow over gRPC.
 
 It is imported as passwordresetgrpc, and it serves
-[github.com/primandproper/platform-go/v14/authentication/passwordreset.Service]:
+[github.com/primandproper/platform-go/v15/authentication/passwordreset.Service]:
 ask for a link, check that a link is still good, spend it. Each method converts,
 calls one thing, and converts back. There is no orchestration here — the
 redemption, the password write and the withdrawal of every other link that person
@@ -13,7 +13,7 @@ held are one transaction, and that transaction is one layer down.
 Every other resource surface in this module reads who is calling. This one never
 does, on any method, because the premise of the flow is somebody who cannot sign
 in: a caller able to prove who they are would be changing their password through
-[github.com/primandproper/platform-go/v14/authentication/signin] instead.
+[github.com/primandproper/platform-go/v15/authentication/signin] instead.
 
 So the scope — whose directory this is — comes off a [ScopeResolver] the consumer
 supplies, which reads it from the connection: a host header, a piece of metadata,

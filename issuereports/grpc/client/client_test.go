@@ -3,8 +3,8 @@ package client_test
 import (
 	"testing"
 
-	issuereportsclient "github.com/primandproper/platform-go/v14/issuereports/grpc/client"
-	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
+	issuereportsclient "github.com/primandproper/platform-go/v15/issuereports/grpc/client"
+	"github.com/primandproper/platform-go/v15/issuereports/issuereportspb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 

@@ -4,17 +4,17 @@ import (
 	"reflect"
 	"testing"
 
-	grantscfg "github.com/primandproper/platform-go/v14/authentication/grants/config"
-	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	phonecodescfg "github.com/primandproper/platform-go/v14/authentication/phonecodes/config"
-	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
-	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
-	linkscfg "github.com/primandproper/platform-go/v14/links/config"
-	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
-	seriescfg "github.com/primandproper/platform-go/v14/series/config"
-	"github.com/primandproper/platform-go/v14/service"
-	sessionscfg "github.com/primandproper/platform-go/v14/sessions/config"
-	timerscfg "github.com/primandproper/platform-go/v14/timers/config"
+	grantscfg "github.com/primandproper/platform-go/v15/authentication/grants/config"
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v15/authentication/oauth2serverstore/config"
+	phonecodescfg "github.com/primandproper/platform-go/v15/authentication/phonecodes/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v15/authentication/webauthnsessions/config"
+	entitlementscfg "github.com/primandproper/platform-go/v15/entitlements/config"
+	linkscfg "github.com/primandproper/platform-go/v15/links/config"
+	mediaregistrycfg "github.com/primandproper/platform-go/v15/mediaregistry/config"
+	seriescfg "github.com/primandproper/platform-go/v15/series/config"
+	"github.com/primandproper/platform-go/v15/service"
+	sessionscfg "github.com/primandproper/platform-go/v15/sessions/config"
+	timerscfg "github.com/primandproper/platform-go/v15/timers/config"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -24,7 +24,7 @@ import (
 // walk below descends into a nested config only when this module declares its
 // type: how primitives-go spells the prefixes inside its own configs is
 // primitives-go's to decide, and a test here could only red on it, never fix it.
-const platformModule = "github.com/primandproper/platform-go/v14/"
+const platformModule = "github.com/primandproper/platform-go/v15/"
 
 // unreachableRoots are the config subpackages service.Config does not nest.
 //

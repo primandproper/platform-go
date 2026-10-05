@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin"
-	"github.com/primandproper/platform-go/v14/callers"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/callers"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authentication/tokens"
@@ -774,6 +774,25 @@ func withResolved(ctx context.Context, principal callers.Principal) context.Cont
 // neither therefore sees every caller as anonymous, and a method that needs a
 // caller refuses them all.
 func (e *PrincipalExtractor) Extract(ctx context.Context) (callers.Principal, bool) {
+	return PrincipalFromContext(ctx)
+}
+
+// PrincipalFromContext is Extract without an extractor: it reads what an
+// extractor's interceptor or middleware resolved for this request, and needs
+// nothing the extractor was built with to do it.
+//
+// It exists for the registration that has to come first. A
+// callers.PrincipalExtractor registered with the container is what a
+// recording.Recorder attributes every store write through, and the Recorder is
+// built into the hooks of the *signin.Service a PrincipalExtractor is built
+// over, so registering the extractor's own Extract would be a container whose
+// extractor needs itself to be built. Register this instead, before anything
+// is invoked:
+//
+//	do.ProvideValue[callers.PrincipalExtractor](i, signingrpc.PrincipalFromContext)
+//
+// It answers identically to Extract on every request, because Extract is it.
+func PrincipalFromContext(ctx context.Context) (callers.Principal, bool) {
 	r, ok := ctx.Value(resolvedKey{}).(*resolved)
 	if !ok || r.principal == nil {
 		return nil, false

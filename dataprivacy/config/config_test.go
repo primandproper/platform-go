@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	"github.com/primandproper/platform-go/v14/dataprivacy/auditerasure"
-	"github.com/primandproper/platform-go/v14/dataprivacy/migrations"
-	"github.com/primandproper/platform-go/v14/operations"
-	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+	"github.com/primandproper/platform-go/v15/audit"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	"github.com/primandproper/platform-go/v15/dataprivacy/auditerasure"
+	"github.com/primandproper/platform-go/v15/dataprivacy/migrations"
+	"github.com/primandproper/platform-go/v15/operations"
+	operationsmock "github.com/primandproper/platform-go/v15/operations/mock"
 
 	"github.com/primandproper/primitives-go/v2/compression"
 	"github.com/primandproper/primitives-go/v2/database"

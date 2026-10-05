@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/workqueue/internal/queries"
+	"github.com/primandproper/platform-go/v15/workqueue/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/database/ddl"
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
+	"github.com/primandproper/platform-go/v15/workqueue/internal/workqueuedb"
 
 	"github.com/primandproper/primitives-go/v2/batching"
 	"github.com/primandproper/primitives-go/v2/database/dialect"

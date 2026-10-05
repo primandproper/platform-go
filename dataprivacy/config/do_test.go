@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/audit"
-	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
-	"github.com/primandproper/platform-go/v14/dataprivacy"
-	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
-	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v15/audit"
+	auditmock "github.com/primandproper/platform-go/v15/audit/mock"
+	"github.com/primandproper/platform-go/v15/dataprivacy"
+	dataprivacymock "github.com/primandproper/platform-go/v15/dataprivacy/mock"
+	"github.com/primandproper/platform-go/v15/operations"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"

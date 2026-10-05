@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/webhooks/internal/webhooksdb"
+	"github.com/primandproper/platform-go/v15/webhooks/internal/webhooksdb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"

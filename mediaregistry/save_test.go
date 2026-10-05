@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistrymock "github.com/primandproper/platform-go/v15/mediaregistry/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

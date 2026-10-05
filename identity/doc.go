@@ -12,12 +12,12 @@ thousand hand-written non-test lines, and eighteen of the twenty fields on its
 user type were fields every application has.
 
 So this package owns the four things — users, accounts, memberships, invitations —
-in the same way [github.com/primandproper/platform-go/v14/webhooks] owns
+in the same way [github.com/primandproper/platform-go/v15/webhooks] owns
 endpoints: a Store interface, a SQL implementation of it, the DDL for three
 dialects, and a mock. Over that it owns [Service], the operations that are more
 than one write — a registration, an invitation answered, an ownership
 transferred — each in one transaction with the consumer's own writes joining it
-through [Hooks]. Over that again, [github.com/primandproper/platform-go/v14/identity/grpc]
+through [Hooks]. Over that again, [github.com/primandproper/platform-go/v15/identity/grpc]
 serves it: its RPCs, the .proto they are described by, a typed client,
 and the permissions each one wants. A consumer keeps its policy, its
 authentication, and whatever columns are genuinely its own; it does not keep a
@@ -92,11 +92,11 @@ column on one, each has a lifecycle of its own (a ceremony is begun and
 answered, a reset token is issued and burned, a session expires), and each is
 consumed by exactly one engine. Their home is beside that engine — the same rule
 that put the password hash here, applied to a fact that is not a column.
-Sessions live in [github.com/primandproper/platform-go/v14/sessions], WebAuthn
+Sessions live in [github.com/primandproper/platform-go/v15/sessions], WebAuthn
 ceremony state in
-[github.com/primandproper/platform-go/v14/authentication/webauthnsessions], and
+[github.com/primandproper/platform-go/v15/authentication/webauthnsessions], and
 password reset tokens in
-[github.com/primandproper/platform-go/v14/authentication/passwordreset], which
+[github.com/primandproper/platform-go/v15/authentication/passwordreset], which
 also owns the two properties a consumer writing that table by hand gets wrong:
 the token is stored as a digest, and single use is enforced by the store rather
 than by whoever called it.
@@ -173,7 +173,7 @@ of thing a side table holds well.
 
 # Getting the tables
 
-The DDL lives in [github.com/primandproper/platform-go/v14/identity/migrations],
+The DDL lives in [github.com/primandproper/platform-go/v15/identity/migrations],
 rendered per dialect and table prefix, and hands to database/migrate's
 WithGeneratedMigration so nothing is copied into a consumer's repository. See
 that package for why no numbered migration file ships.
@@ -187,7 +187,7 @@ anybody copying seven names out of the schema.
 
 This package holds the names, the addresses and the credentials, so it meets the
 dataprivacy seam like any other store of personal data.
-[github.com/primandproper/platform-go/v14/identity/privacy] ships the two halves:
+[github.com/primandproper/platform-go/v15/identity/privacy] ships the two halves:
 a dataprivacy.Collector that returns who somebody is to the directory, and a
 dataprivacy.Eraser that destroys them. It is a package of its own rather than two
 methods here, so that a service with a login form and no privacy pipeline does
@@ -218,7 +218,7 @@ they suspended somebody and the suspension is waiting for a token to expire.
 Two things it does not do. It does not tell the three refusing statuses apart:
 one sentinel goes out, because a caller already holding a credential has had the
 remedy conversation and a client is owed one answer. The sign-in door is where
-they are told apart — [github.com/primandproper/platform-go/v14/authentication/signin]
+they are told apart — [github.com/primandproper/platform-go/v15/authentication/signin]
 checks the status before it resolves a principal and answers with its own
 ErrUserUnverified, ErrUserBanned or ErrUserTerminated, the second of those
 carrying the explanation an operator wrote to be shown.
@@ -273,7 +273,7 @@ the consumer this package was extracted from, the layer those replace is a
 little over two thousand lines.
 
 The credential writes are the group that needed an argument, because
-[github.com/primandproper/platform-go/v14/authentication/signin] already writes
+[github.com/primandproper/platform-go/v15/authentication/signin] already writes
 some of them and asks for the current password first. That is the right rule
 for somebody changing their own credential and an impossible one for every flow
 that has no current password to ask for: a reset answering a mailed link, an
@@ -290,6 +290,16 @@ something has to own the transaction they share. [Hooks] is how the consumer
 gets into it — one method per operation, each called inside that transaction,
 so an audit entry, a data change event or a search stamp commits with the row
 or neither does.
+
+A deployment that owes every operation the ordinary pair, an audit entry and a
+domain event, does not write that Hooks itself. [RecordingHooks] is it, built
+over a recording.Recorder: an entry per row an operation wrote, naming it by
+[ResourceTypeUser], [ResourceTypeAccount], [ResourceTypeMembership] or
+[ResourceTypeInvitation], and one event per operation from those [EventCatalog]
+describes. The verification and invitation tokens travel on the event, where
+the outbox consumer mailing the link reads them, and never on an entry. It
+revokes nothing on a suspension; a consumer that wants that embeds it and
+overrides [Hooks.AfterUpdateUserAccountStatus].
 
 What a consumer still writes is the policy, and that is the point of the split.
 Whether a registration requires a password, whether an invitation is required

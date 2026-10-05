@@ -11,13 +11,13 @@ against, that came to roughly four and a half thousand hand-written non-test
 lines, and not one column in them was that application's own.
 
 So this package owns those four, in the same way
-[github.com/primandproper/platform-go/v14/identity] owns users: a Store
+[github.com/primandproper/platform-go/v15/identity] owns users: a Store
 interface, a SQL implementation of it, the DDL for three dialects, and a mock. A
 consumer keeps its checkout flow and every judgement about what a status means;
 it does not keep a subscriptions table.
 
 It also no longer keeps the read side of a service over one.
-[github.com/primandproper/platform-go/v14/billing/grpc] serves a subset of these
+[github.com/primandproper/platform-go/v15/billing/grpc] serves a subset of these
 methods, and the last section here says what crossed, what did not, and why the
 checkout flow and the judgement are still in the first list.
 
@@ -40,7 +40,7 @@ declines to interpret a single one of them: nothing here reads
 deployment's idea of "entitled" could be written.
 
 What that buys is the thing entitlements said it could not have. Its PlanSource
-seam is filled by [github.com/primandproper/platform-go/v14/billing/plans], which
+seam is filled by [github.com/primandproper/platform-go/v15/billing/plans], which
 is this store's current-subscription read plus a function the consumer writes —
 so the policy stays exactly where that package put it, and stops being written
 against a hand-rolled table.
@@ -200,6 +200,17 @@ The two status moves still answer their caller with nothing; it is their hooks
 that are handed the rows, read only when hooks are installed, so the boundary in
 the section above holds for a store with none.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: the entry names the row by one of the four resource types
+beginning [ResourceTypeProduct], the event is one of the types [EventCatalog]
+describes, an update's entry carries the diff while its event names only the
+fields that moved, and a status move records the status it left. An entry about
+a subscription, a purchase or a ledger row names the account it belongs to as
+its subject, so a Recorder filing by subject keeps an account's billing history
+on the account's own chain. Embed it to change one write's record and inherit
+the rest.
+
 # A price is a fact about a moment, not a lookup
 
 [Purchase] and [Transaction] each carry their own amount and currency rather than
@@ -214,7 +225,7 @@ only thing that changes about a purchase is whether the money arrived.
 
 # Getting the tables
 
-The DDL lives in [github.com/primandproper/platform-go/v14/billing/migrations],
+The DDL lives in [github.com/primandproper/platform-go/v15/billing/migrations],
 rendered per dialect and table prefix, and hands to database/migrate's
 WithGeneratedMigration so nothing is copied into a consumer's repository. See that
 package for why no numbered migration file ships.
@@ -236,7 +247,7 @@ saying what a status means for the coarse standing an application gates on —
 which includes a suspension no processor reports.
 
 The webhook endpoint a provider reports to is no longer on that list.
-[github.com/primandproper/platform-go/v14/billing/http] verifies a delivery
+[github.com/primandproper/platform-go/v15/billing/http] verifies a delivery
 through a capitalism.PaymentManager, reconciles it on a transaction, and answers
 with the status code the provider acts on: 400 only for a delivery that failed
 verification or could not be parsed, 200 for one reconciled or redelivered, and
@@ -245,7 +256,7 @@ dropped. What it asks of a deployment is which tenant a delivery is for, from
 the verified event and never from the request.
 
 What that endpoint does with the mapped event is
-[github.com/primandproper/platform-go/v14/billing/sync], which is the
+[github.com/primandproper/platform-go/v15/billing/sync], which is the
 reconciliation itself: the agreement looked up by the provider's identifier, opened if nobody
 holds it, moved if its status or its paid period changed, acknowledged if the
 delivery is a redelivery, and the account's standing written beside it — all on
@@ -258,7 +269,7 @@ them as arguments; the order these methods are called in is not.
 
 # Subject access, and the erasure that is deliberately absent
 
-[github.com/primandproper/platform-go/v14/billing/privacy] is a
+[github.com/primandproper/platform-go/v15/billing/privacy] is a
 dataprivacy.Collector and no Eraser. Financial records carry a statutory retention
 that outranks a right to erasure in every jurisdiction that grants both, so an
 Eraser here would be a seam whose only correct implementation erases nothing.
@@ -266,7 +277,7 @@ That package states the ruling in full.
 
 # There is a transport now, and it does not take the bargain back
 
-[github.com/primandproper/platform-go/v14/billing/grpc] serves a subset of this
+[github.com/primandproper/platform-go/v15/billing/grpc] serves a subset of this
 store's methods over gRPC, with billing.proto shipped inside the module and a
 typed client beside it. The line the module draws between what it stores and
 what it serves has moved for this package, and the README states where it now

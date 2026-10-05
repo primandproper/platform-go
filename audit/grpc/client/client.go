@@ -51,7 +51,7 @@ client is by definition somewhere else.
 package client
 
 import (
-	"github.com/primandproper/platform-go/v14/audit/auditpb"
+	"github.com/primandproper/platform-go/v15/audit/auditpb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

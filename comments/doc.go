@@ -146,6 +146,15 @@ The two sweeps call theirs too, with what they destroyed counted rather than
 listed: the count is the DELETE's own, so a companion written from it covers
 every row the statement removed rather than a page of them read beforehand.
 
+A deployment that owes every write the ordinary pair, an audit entry and a domain
+event, does not write that Hooks itself. [RecordingHooks] is it, built over a
+recording.Recorder: the entry names the comment by [ResourceTypeComment] and is
+attributed to whoever wrote or removed it, the event is one of the types
+[EventCatalog] describes and never carries the body, and an author's erasure
+records its count and never who. A target's sweep records nothing, because the
+consumer's write that removed the target is the record of it. Embed it to change
+one write's record and inherit the rest.
+
 # Tenancy
 
 Every read and write takes a tenancy.Scope, and there is no variant of anything

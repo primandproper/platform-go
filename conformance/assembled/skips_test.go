@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/conformance"
+	"github.com/primandproper/platform-go/v15/conformance"
 )
 
 // expectedSkip is a skip a run of this harness is allowed to make, and why it

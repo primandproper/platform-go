@@ -21,7 +21,7 @@ package client
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"

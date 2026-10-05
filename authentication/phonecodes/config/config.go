@@ -20,8 +20,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes"
-	"github.com/primandproper/platform-go/v14/authentication/phonecodes/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes"
+	"github.com/primandproper/platform-go/v15/authentication/phonecodes/migrations"
 
 	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
 	"github.com/primandproper/primitives-go/v2/database"

@@ -6,8 +6,8 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"

@@ -7,16 +7,16 @@
 // the module's proto directories on protoc's path and imports this file by its
 // canonical name, exactly as identity.proto and filtering.proto already work:
 //
-//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v15)
 //
 //	protoc --proto_path proto/ \
 //	    --proto_path $(PLATFORM_PROTO)/audit/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
-//	    --go_opt=Mprimandproper/platform/audit/v1/audit.proto=github.com/primandproper/platform-go/v14/audit/auditpb \
+//	    --go_opt=Mprimandproper/platform/audit/v1/audit.proto=github.com/primandproper/platform-go/v15/audit/auditpb \
 //	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
 //
 // Go links against the bindings this module already generated, in
-// github.com/primandproper/platform-go/v14/audit/auditpb. Swift, TypeScript and
+// github.com/primandproper/platform-go/v15/audit/auditpb. Swift, TypeScript and
 // Kotlin have no such bindings to link against and generate this file directly,
 // which is the whole point of shipping the schema.
 //

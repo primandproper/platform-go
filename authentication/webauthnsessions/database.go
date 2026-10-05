@@ -6,8 +6,8 @@ import (
 	stderrors "errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions/internal/webauthnsessionsdb"
-	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
+	"github.com/primandproper/platform-go/v15/authentication/webauthnsessions/internal/webauthnsessionsdb"
+	"github.com/primandproper/platform-go/v15/authentication/webauthnsessions/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
 	"github.com/primandproper/primitives-go/v2/clock"

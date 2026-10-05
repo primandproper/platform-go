@@ -1,6 +1,6 @@
 /*
 Package grpc is waitlists on the wire: the gRPC service over
-[github.com/primandproper/platform-go/v14/waitlists]'s Store, the converters
+[github.com/primandproper/platform-go/v15/waitlists]'s Store, the converters
 between the generated messages and its types, a typed client, and the default
 permission fragment a consumer composes into its policy.
 
@@ -19,9 +19,9 @@ on each and where it diverges.
 
 # Who is calling
 
-Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+Who is calling is [github.com/primandproper/platform-go/v15/callers.Principal],
 which a consumer's own authentication interceptor puts on the context and
-[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+[github.com/primandproper/platform-go/v15/callers.PrincipalExtractor] reads
 back. Those are one package for the whole module rather than an interface per
 surface, because a deployment has one authentication interceptor and one notion
 of a caller, and that package's documentation is where the ruling that keeps the
@@ -89,7 +89,7 @@ of the surface is public.
 
 The second is that the scope has two sources and each call has exactly one. A
 request carrying a principal takes its tenant from
-[github.com/primandproper/platform-go/v14/callers.Principal.Scope], which the
+[github.com/primandproper/platform-go/v15/callers.Principal.Scope], which the
 consumer's interceptor proved. A request carrying nobody — which is what a
 signup page looks like, and on a pre-launch list the visitor has nothing to sign
 in to — takes it from a [ScopeResolver] reading the connection, which is
@@ -245,7 +245,7 @@ unchanged.
 
 # What a refused withdrawal says
 
-[github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is what
+[github.com/primandproper/platform-go/v15/callers.ErrTargetNotPermitted] is what
 a [SignupAuthorizer] returns to refuse, and it is never registered as a
 client-safe sentinel. Its text says the caller was refused, and what this
 surface does with it is answer as though nothing had been named — see

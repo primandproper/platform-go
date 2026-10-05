@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/shredding/internal/shreddingdb"
+	"github.com/primandproper/platform-go/v15/shredding/internal/shreddingdb"
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/conformance"
-	"github.com/primandproper/platform-go/v14/identity/identitypb"
+	"github.com/primandproper/platform-go/v15/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v15/conformance"
+	"github.com/primandproper/platform-go/v15/identity/identitypb"
 
 	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"
 	"github.com/primandproper/primitives-go/v2/identifiers"

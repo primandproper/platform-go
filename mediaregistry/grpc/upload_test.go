@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry"
-	mediaregistrygrpc "github.com/primandproper/platform-go/v14/mediaregistry/grpc"
-	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
-	"github.com/primandproper/platform-go/v14/mediaregistry/mediaregistrypb"
+	"github.com/primandproper/platform-go/v15/mediaregistry"
+	mediaregistrygrpc "github.com/primandproper/platform-go/v15/mediaregistry/grpc"
+	mediaregistryhttp "github.com/primandproper/platform-go/v15/mediaregistry/http"
+	"github.com/primandproper/platform-go/v15/mediaregistry/mediaregistrypb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

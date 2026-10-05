@@ -46,6 +46,15 @@ var (
 	// ErrNilConfig indicates NewSQLStore was called without a config. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilConfig = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset store config")
+
+	// ErrNilRecorder indicates a nil recording.Recorder handed to
+	// NewRecordingHooks. It wraps errors.ErrNilInputParameter, so a caller may
+	// check either.
+	ErrNilRecorder = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset recorder")
+
+	// ErrNilToken indicates a nil *Token handed to a RecordingHooks method. It
+	// wraps errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilToken = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset token")
 )
 
 // The sentinels the flow over the store adds. All of them are arguments Service

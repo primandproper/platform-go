@@ -123,6 +123,7 @@ var roster = map[string]entry{
 	// covers the whole tree rather than the part of it a consumer can see.
 	"internal/archivegate":      {tier: domain, why: "the archive grant the domain gRPC surfaces narrow include_archived by"},
 	"internal/cmd":              {tier: root, why: "generators run by make, over the whole tree"},
+	"internal/collapsedruns":    {tier: root, why: "a convention test pinning the two collapsed v14 schemas to the tables their runs left"},
 	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
 	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},
 	"internal/directrequires":   {tier: root, why: "a convention test over go.mod's account of what the module imports"},

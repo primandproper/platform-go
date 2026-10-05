@@ -3,7 +3,7 @@ package meteringcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/metering"
+	"github.com/primandproper/platform-go/v15/metering"
 
 	"github.com/primandproper/primitives-go/v2/analytics"
 	"github.com/primandproper/primitives-go/v2/cache"

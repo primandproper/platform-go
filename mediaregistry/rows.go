@@ -3,7 +3,7 @@ package mediaregistry
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/mediaregistry/internal/registrydb"
+	"github.com/primandproper/platform-go/v15/mediaregistry/internal/registrydb"
 
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"

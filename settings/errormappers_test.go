@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v15/settings"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"

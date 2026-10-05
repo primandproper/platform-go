@@ -1,7 +1,7 @@
 package commentscfg
 
 import (
-	"github.com/primandproper/platform-go/v14/comments"
+	"github.com/primandproper/platform-go/v15/comments"
 
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
