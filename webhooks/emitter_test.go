@@ -2,12 +2,12 @@ package webhooks
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/outbox"
 	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
+	"github.com/primandproper/platform-go/v14/searchsync"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -197,28 +197,30 @@ func TestEmitter_Emit(T *testing.T) {
 		test.EqOp(t, testScope, recorder.deliveries[0].Scope)
 	})
 
-	// The whole point of marshaling once. A queue consumer and a webhook
-	// subscriber read the same bytes, and the bytes a subscriber verifies the
-	// signature over are the bytes that were stored.
-	T.Run("hands both halves the same bytes", func(t *testing.T) {
+	// The outbox gets the caller's value rather than bytes rendered from it,
+	// because a side effect registered on the writer reads its message by type
+	// and a json.RawMessage asserts to nothing. The dispatch gets the bytes.
+	T.Run("hands the outbox the typed payload and the dispatch its rendering", func(t *testing.T) {
 		t.Parallel()
 
 		enqueuer := &fakeEnqueuer{}
 		recorder := &dispatchRecorder{}
 
+		payload := &orderChange{OrderID: "order-1"}
+
 		must.NoError(t, newTestEmitter(t, enqueuer, recorder).Emit(t.Context(), testTx(), testScope, &Event{
 			EventType: orderCreated,
-			Payload:   map[string]string{"id": "order-1"},
+			Payload:   payload,
 		}))
 
 		must.SliceLen(t, 1, enqueuer.got)
 		must.SliceLen(t, 1, recorder.deliveries)
 
-		stored, ok := enqueuer.got[0].Payload.(json.RawMessage)
-		must.True(t, ok, must.Sprintf("outbox payload is %T, want json.RawMessage", enqueuer.got[0].Payload))
+		stored, ok := enqueuer.got[0].Payload.(*orderChange)
+		must.True(t, ok, must.Sprintf("outbox payload is %T, want *orderChange", enqueuer.got[0].Payload))
+		test.EqOp(t, payload, stored)
 
-		test.Eq(t, []byte(stored), []byte(recorder.deliveries[0].Payload))
-		test.EqOp(t, `{"id":"order-1"}`, string(stored))
+		test.EqOp(t, `{"orderID":"order-1"}`, string(recorder.deliveries[0].Payload))
 	})
 
 	// The ruling's gate, stated as a test: an event type nothing may subscribe
@@ -493,14 +495,104 @@ func TestEmitter_OneTransaction(T *testing.T) {
 	})
 }
 
+// TestEmitter_WriterSideEffects runs an Emit through a real writer, because the
+// property under test is one the writer decides: what its side effects are
+// handed, and what it stores.
+func TestEmitter_WriterSideEffects(T *testing.T) {
+	T.Parallel()
+
+	// The composition searchsync's bridge exists for. An emitted data change
+	// derives its index event on the writer exactly as one enqueued directly
+	// does, and the derived message is the writer's own: it carries the
+	// document ID as its key and never reaches the dispatcher's catalog gate.
+	T.Run("an emitted change derives its index event", func(t *testing.T) {
+		t.Parallel()
+
+		effect, err := searchsync.NewSideEffect([]searchsync.Rule{{
+			EventType: orderCreated.String(),
+			Topic:     testIndexTopic,
+			IDKey:     "orderID",
+			Op:        searchsync.OpUpsert,
+		}})
+		must.NoError(t, err)
+
+		client, prefix, emitter := newLiveEmitter(t, outbox.WithWriterSideEffect("search-index", effect))
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return emitter.Emit(t.Context(), tx, testScope, &Event{
+				EventType:   orderCreated,
+				OrderingKey: "subject-1",
+				Payload:     &orderChange{OrderID: "order-1"},
+			})
+		}))
+
+		test.EqOp(t, int64(2), countRows(t, client, prefix+"_outbox_messages"))
+		test.EqOp(t, int64(1), countRows(t, client, prefix+"_webhooks_deliveries"))
+
+		var key string
+
+		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
+			"SELECT partition_key FROM "+prefix+"_outbox_messages WHERE topic = ?", testIndexTopic).Scan(&key))
+		test.EqOp(t, "order-1", key)
+	})
+
+	// Rendering twice is only sound if both renderings agree. A queue consumer
+	// and a webhook subscriber read the same bytes, and the bytes a subscriber
+	// verifies the signature over are the bytes the outbox stored.
+	T.Run("the outbox stores the bytes the dispatch was handed", func(t *testing.T) {
+		t.Parallel()
+
+		client, prefix, emitter := newLiveEmitter(t)
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return emitter.Emit(t.Context(), tx, testScope, &Event{
+				EventType: orderCreated,
+				Payload:   &orderChange{OrderID: "order-1"},
+			})
+		}))
+
+		var stored, delivered []byte
+
+		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
+			"SELECT payload FROM "+prefix+"_outbox_messages").Scan(&stored))
+		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
+			"SELECT payload FROM "+prefix+"_webhooks_deliveries").Scan(&delivered))
+
+		test.EqOp(t, `{"orderID":"order-1"}`, string(stored))
+		test.Eq(t, stored, delivered)
+	})
+}
+
+// testIndexTopic is the topic the side-effect cases derive index events into.
+const testIndexTopic = "orders-index"
+
+// orderChange is an application payload that is also a searchsync.Change, the
+// shape a data-change message takes once it is meant to be indexed.
+type orderChange struct {
+	OrderID string `json:"orderID"`
+}
+
+var _ searchsync.Change = (*orderChange)(nil)
+
+func (*orderChange) IndexEventType() string { return orderCreated.String() }
+
+func (c *orderChange) IndexDocumentID(key string) (string, bool) {
+	if key != "orderID" {
+		return "", false
+	}
+
+	return c.OrderID, true
+}
+
 // newLiveEmitter stands up one SQLite database carrying both schemas under one
 // prefix, registers a subscriber to orderCreated, and returns an Emitter over
-// the real writer and the real dispatcher.
+// the real writer and the real dispatcher. writerOpts are applied to the writer
+// after its table prefix.
 //
 // Both schemas share the prefix deliberately: the two tables are the two halves
 // of one commit, and a test that put them in separate databases would be
 // checking something SQLite cannot give and no deployment would run.
-func newLiveEmitter(t *testing.T) (client database.Client, prefix string, emitter *Emitter) {
+func newLiveEmitter(t *testing.T, writerOpts ...outbox.WriterOption) (client database.Client, prefix string, emitter *Emitter) {
 	t.Helper()
 
 	client, prefix = newSQLiteEnv(t).database(t)
@@ -520,7 +612,7 @@ func newLiveEmitter(t *testing.T) (client database.Client, prefix string, emitte
 	dispatcher, err := NewDispatcher(store, client.Reader(), WithCatalog(testCatalog))
 	must.NoError(t, err)
 
-	writer, err := outbox.NewWriter(dialect.SQLite, outbox.WithWriterTablePrefix(prefix))
+	writer, err := outbox.NewWriter(dialect.SQLite, append([]outbox.WriterOption{outbox.WithWriterTablePrefix(prefix)}, writerOpts...)...)
 	must.NoError(t, err)
 
 	emitter, err = NewEmitter(writer, dispatcher, testTopic)
