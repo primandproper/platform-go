@@ -365,13 +365,16 @@ const lastUpdatedAtField = "lastUpdatedAt"
 //     change record the diff of the two rows.
 //   - The credential operations record that the credential moved and nothing
 //     else. The rows are redacted already, and no entry carries a diff of them.
+//   - A registration is the registrant's when its request carries nobody, which
+//     it ordinarily does not, since the registrant is what it produces. One that
+//     carries a principal — an operator registering somebody — is theirs.
 //
-// What it does not decide is where an entry is filed or who made it; both are
-// the Recorder's, through its ScopeResolver and its principal extractor. Every
-// entry about a person sets Entry.SubjectID — the user, or the member — and
-// every entry about an account names the account, so a resolver filing by
-// subject puts an account's own history on the account's chain, which is the
-// one a member asking about their account reads.
+// What it does not decide is where an entry is filed or, past a registration,
+// who made it; both are the Recorder's, through its ScopeResolver and its
+// principal extractor. Every entry about a person sets Entry.SubjectID — the
+// user, or the member — and every entry about an account names the account, so
+// a resolver filing by subject puts an account's own history on the account's
+// chain, which is the one a member asking about their account reads.
 //
 // Nor does it revoke anything. Hooks.AfterUpdateUserAccountStatus names the two
 // calls that end a suspended user's sessions and refresh-token families, and
@@ -412,7 +415,7 @@ func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scop
 
 	user, account, membership := registration.User, registration.Account, registration.Membership
 
-	return h.record(ctx, tx, scope, EventUserRegistered, user.ID, &UserEvent{
+	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
 		UserID:                        user.ID,
 		AccountID:                     account.ID,
 		MembershipID:                  membership.ID,
@@ -422,6 +425,30 @@ func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scop
 		accountEntry(account, audit.EventCreated, nil, nil),
 		membershipEntry(membership, audit.EventCreated, nil),
 	)
+}
+
+// recordRegistration emits one EventUserRegistered and writes every entry as
+// the registrant, unless the request carries a principal.
+//
+// A registration is the write that mints the principal, so its request
+// ordinarily carries nobody and Record would file all of it as unattributed.
+// An operator registering somebody on their behalf sends a request that does
+// carry one, and then the entries name the operator rather than the registrant.
+func (h *RecordingHooks) recordRegistration(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	user *User,
+	payload *UserEvent,
+	entries ...*recording.Entry,
+) error {
+	event := &webhooks.Event{
+		EventType:   EventUserRegistered,
+		OrderingKey: user.ID,
+		Payload:     payload,
+	}
+
+	return h.recorder.RecordOrAs(ctx, tx, scope, audit.Actor{ID: user.ID, Type: audit.ActorUser}, event, entries...)
 }
 
 // AfterRegisterWithInvitation records the user the registration wrote, the
@@ -447,7 +474,7 @@ func (h *RecordingHooks) AfterRegisterWithInvitation(
 
 	user, invitation, membership := registration.User, registration.Invitation, registration.Membership
 
-	return h.record(ctx, tx, scope, EventUserRegistered, user.ID, &UserEvent{
+	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
 		UserID:                        user.ID,
 		AccountID:                     membership.BelongsToAccount,
 		MembershipID:                  membership.ID,
