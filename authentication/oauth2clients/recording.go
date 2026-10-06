@@ -23,9 +23,9 @@ const ResourceTypeClient = "oauth2clients.client"
 // names for platform's own writes, which is what makes them constants here
 // rather than strings a consumer mints.
 //
-// A subscriber may receive one only if the dispatcher's catalog knows it.
-// [EventCatalog] is the fragment to merge into that catalog; an event type left
-// out of it is still published to the outbox and dispatched to nobody.
+// A subscriber may receive one only if the dispatcher's catalog knows it and
+// does not mark it Internal. [EventCatalog] is the fragment to merge into that
+// catalog, and it marks all three Internal; see it for why.
 const (
 	// EventClientCreated says a client was registered.
 	EventClientCreated webhooks.EventType = "oauth2clients.client.created"
@@ -39,21 +39,27 @@ const (
 // EventCatalog is every event this package emits, described, for a consumer to
 // merge into the catalog its dispatcher is built with:
 //
-//	maps.Copy(catalog, oauth2clients.EventCatalog())
+//	catalog, err := webhooks.Merge(
+//	    webhooks.Catalog{OrderCreated: {Description: "..."}},
+//	    oauth2clients.EventCatalog(),
+//	)
 //
 // It is a function rather than a package-level map so that no caller can
 // mutate the one copy every other caller reads.
 //
-// Unlike passkeys' these are subscribable by default. A registration is a
-// credential, but these events say that an application was admitted to the
-// registry and under what name, which is what an integration directory or an
-// operator's notice is built from; the secret is on none of them, and no event
-// here can carry it, because a *Client is all a hook is ever handed.
+// Like passkeys', every one is marked Internal. The secret is on none of them,
+// and no event here can carry it, because a *Client is all a hook is ever
+// handed; but a client's existence, its redirect URIs and its scopes are an
+// account's security surface, and an application admitted to the registry is
+// what somebody who has taken an account over registers next. The events are
+// still published to the outbox, where a deployment's own consumers — an
+// integration directory, an operator's notice — may read them. One that does
+// want a third party told clears Internal on its own merged copy.
 func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
-		EventClientCreated:  {Description: "An OAuth2 client was registered."},
-		EventClientUpdated:  {Description: "An OAuth2 client's name, description, redirect URIs or scopes changed."},
-		EventClientArchived: {Description: "An OAuth2 client's registration was withdrawn."},
+		EventClientCreated:  {Description: "An OAuth2 client was registered.", Internal: true},
+		EventClientUpdated:  {Description: "An OAuth2 client's name, description, redirect URIs or scopes changed.", Internal: true},
+		EventClientArchived: {Description: "An OAuth2 client's registration was withdrawn.", Internal: true},
 	}
 }
 
