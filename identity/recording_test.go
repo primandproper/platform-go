@@ -51,6 +51,9 @@ type recordingLedger struct {
 	entries    []*audit.Entry
 	deliveries []*webhooks.Delivery
 	published  int
+	// anonymous builds the Recorder over an extractor that finds nobody, as a
+	// registration's own request does.
+	anonymous bool
 }
 
 // optedIn is EventCatalog with Internal cleared on every entry, the catalog of a
@@ -109,7 +112,12 @@ func newRecordingHooksForTest(t *testing.T, l *recordingLedger, opts ...recordin
 	emitter, err := webhooks.NewEmitter(enqueuer, dispatcher, "events")
 	must.NoError(t, err)
 
-	recorder, err := recording.New(entries, emitter, recordingPrincipal, opts...)
+	principals := callers.PrincipalExtractor(recordingPrincipal)
+	if l.anonymous {
+		principals = func(context.Context) (callers.Principal, bool) { return nil, false }
+	}
+
+	recorder, err := recording.New(entries, emitter, principals, opts...)
 	must.NoError(t, err)
 
 	hooks, err := NewRecordingHooks(recorder)
@@ -518,6 +526,38 @@ func TestRecordingHooks(T *testing.T) {
 			EmailAddressVerificationToken: recordingVerificationToken,
 		}, decodeRecorded[UserEvent](t, delivery))
 		test.StrNotContains(t, string(delivery.Payload), recordingPasswordHash)
+	})
+
+	T.Run("a registration whose request carries nobody is the registrant's", func(t *testing.T) {
+		t.Parallel()
+
+		for name, registrant := range map[string]string{"AfterRegister": "user-1", "AfterRegisterWithInvitation": "user-2"} {
+			l := &recordingLedger{anonymous: true}
+			runRecordingInto(t, env, name, l)
+
+			must.SliceLen(t, 3, l.entries, must.Sprintf("%s", name))
+
+			for _, entry := range l.entries {
+				test.Eq(t, audit.Actor{ID: registrant, Type: audit.ActorUser}, entry.Actor, test.Sprintf("%s", name))
+			}
+
+			test.EqOp(t, EventUserRegistered, l.delivery(t).EventType)
+		}
+	})
+
+	T.Run("a registration whose request carries an operator is the operator's", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{"AfterRegister", "AfterRegisterWithInvitation"} {
+			l := runRecording(t, env, name)
+
+			must.SliceLen(t, 3, l.entries, must.Sprintf("%s", name))
+
+			for _, entry := range l.entries {
+				test.EqOp(t, "operator-1", entry.Actor.ID, test.Sprintf("%s", name))
+				test.EqOp(t, audit.ActorUser, entry.Actor.Type, test.Sprintf("%s", name))
+			}
+		}
 	})
 
 	T.Run("a registration by invitation records the invitation as accepted, not created", func(t *testing.T) {

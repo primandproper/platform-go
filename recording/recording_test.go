@@ -420,3 +420,66 @@ func TestRecorder_RecordAs(T *testing.T) {
 		test.SliceEmpty(t, h.got.messages)
 	})
 }
+
+func TestRecorder_RecordOrAs(T *testing.T) {
+	T.Parallel()
+
+	named := audit.Actor{ID: "subject-1", Type: audit.ActorUser}
+
+	T.Run("files every entry under the named actor where the context names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, nobody, false, false)
+
+		must.NoError(t, h.recorder.RecordOrAs(t.Context(), tx(), testScope, named, anEvent(), anEntry("thing-1"), anEntry("thing-2")))
+
+		must.SliceLen(t, 1, h.got.batches)
+		must.SliceLen(t, 2, h.got.batches[0].entries)
+
+		for _, entry := range h.got.batches[0].entries {
+			test.Eq(t, named, entry.Actor)
+		}
+
+		test.SliceLen(t, 1, h.got.messages)
+	})
+
+	T.Run("files every entry under the context's principal where it names somebody", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, somebody("operator-1"), false, false)
+
+		must.NoError(t, h.recorder.RecordOrAs(t.Context(), tx(), testScope, named, anEvent(), anEntry("thing-1"), anEntry("thing-2")))
+
+		must.SliceLen(t, 1, h.got.batches)
+		must.SliceLen(t, 2, h.got.batches[0].entries)
+
+		for _, entry := range h.got.batches[0].entries {
+			test.EqOp(t, "operator-1", entry.Actor.ID)
+			test.EqOp(t, audit.ActorUser, entry.Actor.Type)
+		}
+	})
+
+	T.Run("an actor with no ID is refused whether or not the context names somebody", func(t *testing.T) {
+		t.Parallel()
+
+		for _, principals := range []callers.PrincipalExtractor{nobody, somebody("operator-1")} {
+			h := newHarness(t, principals, false, false)
+
+			err := h.recorder.RecordOrAs(t.Context(), tx(), testScope, audit.Actor{Type: audit.ActorUser}, anEvent(), anEntry("thing-1"))
+			test.ErrorIs(t, err, ErrEmptyActor)
+			test.SliceEmpty(t, h.got.batches)
+			test.SliceEmpty(t, h.got.messages)
+		}
+	})
+
+	T.Run("refuses what Record refuses", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, nobody, false, false)
+
+		test.ErrorIs(t, h.recorder.RecordOrAs(t.Context(), nil, testScope, named, anEvent()), ErrNilExecutor)
+		test.ErrorIs(t, h.recorder.RecordOrAs(t.Context(), tx(), testScope, named, nil), ErrNothingToRecord)
+		test.SliceEmpty(t, h.got.batches)
+		test.SliceEmpty(t, h.got.messages)
+	})
+}
