@@ -399,6 +399,14 @@ func NewSweeper(
 // long after the deployment, and a boolean in a config file somewhere is a poor
 // place to have recorded the answer.
 //
+// resolve names the chains a subject's erasure deletes, and is required
+// whenever the eraser is registered: the environment says whether this
+// deployment erases its own audit records, and only the code that decided how
+// entries are filed can say which records are a subject's. A deployment
+// filing by subject takes it from privacyadapters.AuditScopeResolvers; one
+// scoping entries per user passes auditerasure.SubjectScope. A disabled eraser
+// needs none, and resolve may be nil then.
+//
 // Options for the eraser itself travel as WithAuditEraserOptions, like every
 // other pass-through in this package: the variadic slot is this package's own
 // Option type, so one wiring site's option slice is the one every constructor
@@ -407,6 +415,7 @@ func RegisterAuditEraser(
 	ctx context.Context,
 	cfg *Config,
 	registry *dataprivacy.Registry,
+	resolve dataprivacy.ExecutorScopeResolver,
 	opts ...Option,
 ) (bool, error) {
 	o := newOptions(opts)
@@ -428,7 +437,7 @@ func RegisterAuditEraser(
 		auditerasure.WithTablePrefix(cfg.AuditErasure.TablePrefix),
 	}
 
-	eraser, err := auditerasure.New(cfg.Dialect, append(base, o.auditEraser...)...)
+	eraser, err := auditerasure.New(cfg.Dialect, resolve, append(base, o.auditEraser...)...)
 	if err != nil {
 		return false, errors.Wrap(err, "building dataprivacy audit eraser")
 	}

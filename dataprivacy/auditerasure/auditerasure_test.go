@@ -109,7 +109,7 @@ func (e *auditEnv) countChains(t *testing.T, scope string) int64 {
 // erase runs the eraser inside a transaction, as the dataprivacy Worker does.
 //
 // The request names no confinement, which is the ordinary "forget me entirely"
-// and what the default resolver is written for — it reads the subject's own ID
+// and what SubjectScope is written for — it reads the subject's own ID
 // as their chain and ignores the confinement entirely.
 func (e *auditEnv) erase(t *testing.T, eraser *Eraser, subject dataprivacy.Subject) dataprivacy.ErasureOutcome {
 	t.Helper()
@@ -137,7 +137,7 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-2")
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -164,7 +164,7 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("account-9"), "user-1", "article-4")
 		env.record(t, tenancy.Of("account-9"), "user-7", "article-5")
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -192,7 +192,7 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("account-9"), "user-1", "article-2")
 		env.record(t, tenancy.Of("account-9"), "user-7", "user-1")
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -214,7 +214,7 @@ func TestEraser(T *testing.T) {
 
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -232,9 +232,9 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("tenant-b"), "user-1", "article-2")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(_ context.Context, _ tenancy.Scope, s dataprivacy.Subject) ([]tenancy.Scope, error) {
+			func(context.Context, database.SQLQueryExecutor, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return []tenancy.Scope{tenancy.Of("tenant-a"), tenancy.Of("tenant-b")}, nil
-			}))
+			})
 		must.NoError(t, err)
 
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -243,7 +243,7 @@ func TestEraser(T *testing.T) {
 		test.MapEmpty(t, outcome.Retained)
 	})
 
-	T.Run("the default resolver names the subject's own scope", func(t *testing.T) {
+	T.Run("SubjectScope deletes the subject's own scope", func(t *testing.T) {
 		t.Parallel()
 
 		env := newAuditEnv(t)
@@ -251,7 +251,7 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Global(), "user-1", "config-1")
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -274,9 +274,9 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			func(context.Context, database.SQLQueryExecutor, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return []tenancy.Scope{tenancy.Of("user-1"), {}}, nil
-			}))
+			})
 		must.NoError(t, err)
 
 		erasureErr := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
@@ -298,9 +298,9 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			func(context.Context, database.SQLQueryExecutor, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, nil
-			}))
+			})
 		must.NoError(t, err)
 
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
@@ -318,7 +318,7 @@ func TestEraser(T *testing.T) {
 
 		env.record(t, tenancy.Of("account-9"), "user-1", "article-1")
 
-		eraser, err := New(dialect.SQLite,
+		eraser, err := New(dialect.SQLite, SubjectScope,
 			WithRetentionBasis("kept under Article 17(3)(b)"))
 		must.NoError(t, err)
 
@@ -330,7 +330,7 @@ func TestEraser(T *testing.T) {
 	T.Run("refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		_, err = eraser.Erase(t.Context(), nil, tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
@@ -344,7 +344,7 @@ func TestNew(T *testing.T) {
 	T.Run("rejects an unsupported dialect", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := New(dialect.Dialect("oracle"))
+		_, err := New(dialect.Dialect("oracle"), SubjectScope)
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 
@@ -354,7 +354,7 @@ func TestNew(T *testing.T) {
 		// The rule is audit's, and so is the error: this package renders no
 		// identifier of its own to check one against.
 		for _, prefix := range []string{"drop table;--", "has space", "1leading"} {
-			_, err := New(dialect.SQLite, WithTablePrefix(prefix))
+			_, err := New(dialect.SQLite, SubjectScope, WithTablePrefix(prefix))
 			test.ErrorIs(t, err, ErrInvalidTablePrefix, test.Sprintf("prefix %q", prefix))
 		}
 	})
@@ -364,12 +364,12 @@ func TestNew(T *testing.T) {
 
 		// Naming no prefix and naming the empty one are the same thing, which
 		// is what audit.DefaultTablePrefix is.
-		unnamed, err := New(dialect.SQLite)
+		unnamed, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		test.EqOp(t, "audit_log_entries", unnamed.Describe())
 
-		named, err := New(dialect.SQLite, WithTablePrefix(audit.DefaultTablePrefix))
+		named, err := New(dialect.SQLite, SubjectScope, WithTablePrefix(audit.DefaultTablePrefix))
 		must.NoError(t, err)
 
 		test.EqOp(t, "audit_log_entries", named.Describe())
@@ -378,7 +378,7 @@ func TestNew(T *testing.T) {
 	T.Run("WithTablePrefix names the tables the audit package rendered", func(t *testing.T) {
 		t.Parallel()
 
-		eraser, err := New(dialect.SQLite, WithTablePrefix("custom"))
+		eraser, err := New(dialect.SQLite, SubjectScope, WithTablePrefix("custom"))
 		must.NoError(t, err)
 
 		test.EqOp(t, "custom_audit_log_entries", eraser.Describe())
@@ -390,9 +390,9 @@ func TestNew(T *testing.T) {
 		env := newAuditEnv(t)
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			func(context.Context, database.SQLQueryExecutor, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, platformerrors.New("tenant directory is down")
-			}))
+			})
 		must.NoError(t, err)
 
 		err = env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
@@ -467,7 +467,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 	T.Run("a failing delete is reported", func(t *testing.T) {
 		t.Parallel()
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		_, err = eraser.Erase(t.Context(), database.NewTxForTesting(&failingExecutor{closed: newClosedPool(t)}),
@@ -483,7 +483,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		env := newAuditEnv(t)
 		env.record(t, tenancy.Of("user-1"), "user-1", "article-1")
 
-		eraser, err := New(dialect.SQLite)
+		eraser, err := New(dialect.SQLite, SubjectScope)
 		must.NoError(t, err)
 
 		closed := newClosedPool(t)
@@ -504,9 +504,9 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		t.Parallel()
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			func(context.Context, database.SQLQueryExecutor, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, nil
-			}))
+			})
 		must.NoError(t, err)
 
 		// The delete is skipped entirely, so the only statement is the count —

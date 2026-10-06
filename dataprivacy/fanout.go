@@ -48,6 +48,33 @@ type ScopeResolver func(
 	subject Subject,
 ) ([]tenancy.Scope, error)
 
+// ExecutorScopeResolver is a [ScopeResolver] that reads, and takes the executor
+// its reads run on when it is called rather than when it is built.
+//
+// It is the executor convention every store read here follows: the caller who
+// holds a transaction is the one who knows it, so a resolver that captured a
+// reader at construction would answer from a database that does not yet
+// contain what that transaction wrote. An eraser hands it the erasure's own
+// transaction; a collector, whose executor is fixed when it is built, takes
+// one bound by [ExecutorScopeResolver.On].
+//
+// Each adapter that takes one aliases this type rather than declaring its own,
+// for the reason [ScopeResolver] gives.
+type ExecutorScopeResolver func(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	requestScope tenancy.Scope,
+	subject Subject,
+) ([]tenancy.Scope, error)
+
+// On binds the resolver to q. Pass the executor the collector reads on, so the
+// scopes and the rows in them are read from the same database.
+func (r ExecutorScopeResolver) On(q database.SQLQueryExecutor) ScopeResolver {
+	return func(ctx context.Context, requestScope tenancy.Scope, subject Subject) ([]tenancy.Scope, error) {
+		return r(ctx, q, requestScope, subject)
+	}
+}
+
 // FixedScopes resolves every subject to the same scopes, for a deployment whose
 // tenancy is fixed — most often the single-tenant one, as
 // FixedScopes(tenancy.Global()).

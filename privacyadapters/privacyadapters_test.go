@@ -82,7 +82,7 @@ func everything() *privacyadapters.Adapters {
 			Resolve: billingprivacy.FixedAccounts(tenancy.Global()),
 		},
 		Audit:        &privacyadapters.AuditAdapter{Log: &auditmock.ReaderMock{}, Resolve: resolve},
-		AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.Postgres},
+		AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.Postgres, Resolve: auditerasure.SubjectScope},
 	}
 }
 
@@ -235,7 +235,7 @@ func TestRegisterSkipsWhatADeploymentDoesNotHave(T *testing.T) {
 		keys, err = privacyadapters.Register(registry, &privacyadapters.Adapters{
 			Reader:       stubReader{},
 			Audit:        &privacyadapters.AuditAdapter{Log: &auditmock.ReaderMock{}, Resolve: resolve},
-			AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.SQLite},
+			AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.SQLite, Resolve: auditerasure.SubjectScope},
 		})
 		must.NoError(t, err)
 		test.Eq(t, []string{auditprivacy.DefaultKey}, keys)
@@ -276,6 +276,20 @@ func TestRegisterRefuses(T *testing.T) {
 		test.StrContains(t, err.Error(), commentsprivacy.DefaultKey)
 	})
 
+	// The audit eraser is built from a dialect rather than a store, and is held
+	// to the same rule: no resolver is a refusal, never the subject's own chain.
+	T.Run("the audit eraser named without its resolver", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := privacyadapters.Register(dataprivacy.NewRegistry(), &privacyadapters.Adapters{
+			Reader:       stubReader{},
+			AuditErasure: &privacyadapters.AuditErasureAdapter{Dialect: dialect.SQLite},
+		})
+		must.Error(t, err)
+		test.ErrorIs(t, err, auditerasure.ErrNilScopeResolver)
+		test.StrContains(t, err.Error(), auditerasure.DefaultKey)
+	})
+
 	T.Run("nothing is registered when a later adapter refuses", func(t *testing.T) {
 		t.Parallel()
 
@@ -286,6 +300,7 @@ func TestRegisterRefuses(T *testing.T) {
 		adapters := everything()
 		adapters.AuditErasure = &privacyadapters.AuditErasureAdapter{
 			Dialect: dialect.Postgres,
+			Resolve: auditerasure.SubjectScope,
 			Options: []auditerasure.Option{auditerasure.WithTablePrefix("not a prefix")},
 		}
 

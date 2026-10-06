@@ -51,6 +51,11 @@ type FileBy string
 const (
 	// FileByWrite files every entry under the scope the write ran in. It is the
 	// default, and the right one for a store whose rows belong to a tenant.
+	//
+	// The scopes a subject's entries end up on are then the scopes their
+	// writes ran in, which the module cannot enumerate, so the privacy
+	// adapters' resolvers are the deployment's own and
+	// privacyadapters.AuditScopeResolvers refuses this rule.
 	FileByWrite FileBy = "write"
 
 	// FileBySubject files an entry that names a subject under that subject's
@@ -58,6 +63,10 @@ const (
 	// whose stores are global but whose entries are about a person or an
 	// account, where "what happened to this subject" has to be a chain the log
 	// can walk after the row no longer says. See recording.ScopeResolver.
+	//
+	// A deployment that files this way finds a subject's entries again with
+	// the two resolvers written for it, which privacyadapters.AuditScopeResolvers
+	// hands out together.
 	FileBySubject FileBy = "subject"
 )
 

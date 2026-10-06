@@ -87,7 +87,7 @@ func TestRegisterAuditEraser(T *testing.T) {
 
 		registry := dataprivacy.NewRegistry()
 
-		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry)
+		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry, auditerasure.SubjectScope)
 		must.NoError(t, err)
 
 		test.True(t, registered)
@@ -102,9 +102,23 @@ func TestRegisterAuditEraser(T *testing.T) {
 		cfg := &Config{Dialect: dialect.SQLite}
 		cfg.AuditErasure.Disabled = true
 
-		registered, err := RegisterAuditEraser(t.Context(), cfg, registry)
+		registered, err := RegisterAuditEraser(t.Context(), cfg, registry, nil)
 		must.NoError(t, err)
 
+		test.False(t, registered)
+		test.SliceEmpty(t, registry.EraserKeys())
+	})
+
+	// Which chains are a subject's is decided by how entries are filed, which
+	// nothing in the environment says; enabled with no resolver is refused
+	// rather than read as the subject's own chain.
+	T.Run("refuses no resolver when it registers", func(t *testing.T) {
+		t.Parallel()
+
+		registry := dataprivacy.NewRegistry()
+
+		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry, nil)
+		test.ErrorIs(t, err, auditerasure.ErrNilScopeResolver)
 		test.False(t, registered)
 		test.SliceEmpty(t, registry.EraserKeys())
 	})
@@ -112,7 +126,7 @@ func TestRegisterAuditEraser(T *testing.T) {
 	T.Run("refuses a nil registry", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, nil)
+		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, nil, auditerasure.SubjectScope)
 		test.Error(t, err)
 	})
 
@@ -123,7 +137,7 @@ func TestRegisterAuditEraser(T *testing.T) {
 		// pass-through, which is what "applied after" means. An invalid one is
 		// the observable end of that: it can only have been refused if the
 		// option reached auditerasure.New at all.
-		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, dataprivacy.NewRegistry(),
+		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, dataprivacy.NewRegistry(), auditerasure.SubjectScope,
 			WithAuditEraserOptions(auditerasure.WithTablePrefix("drop table;--")))
 		test.ErrorIs(t, err, auditerasure.ErrInvalidTablePrefix)
 	})
@@ -136,7 +150,7 @@ func TestRegisterAuditEraser(T *testing.T) {
 		// The point of the variadic being this package's Option: one wiring
 		// site's options go to whichever of these functions it calls, and the
 		// ones this function has no use for are ignored rather than refused.
-		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry,
+		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry, auditerasure.SubjectScope,
 			WithLogger(loggingnoop.NewLogger()),
 			WithStoreOptions(nil),
 			nil,
@@ -153,7 +167,7 @@ func TestRegisterAuditEraser(T *testing.T) {
 		cfg := &Config{Dialect: dialect.SQLite}
 		cfg.AuditErasure.TablePrefix = "drop table;--"
 
-		_, err := RegisterAuditEraser(t.Context(), cfg, dataprivacy.NewRegistry())
+		_, err := RegisterAuditEraser(t.Context(), cfg, dataprivacy.NewRegistry(), auditerasure.SubjectScope)
 		test.ErrorIs(t, err, auditerasure.ErrInvalidTablePrefix)
 	})
 }
@@ -376,7 +390,7 @@ func TestRegisterAuditEraser_Failures(T *testing.T) {
 		t.Parallel()
 
 		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.Dialect("oracle")},
-			dataprivacy.NewRegistry())
+			dataprivacy.NewRegistry(), auditerasure.SubjectScope)
 		test.Error(t, err)
 	})
 
@@ -392,7 +406,7 @@ func TestRegisterAuditEraser_Failures(T *testing.T) {
 
 		// An application that registered its own audit eraser and also left the
 		// built-in one enabled is told, rather than having one silently win.
-		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry)
+		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry, auditerasure.SubjectScope)
 		test.ErrorIs(t, err, dataprivacy.ErrDuplicateKey)
 	})
 }
