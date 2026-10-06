@@ -102,7 +102,7 @@ var ErrNilScopeResolver = platformerrors.Wrap(platformerrors.ErrNilInputParamete
 // default, because which chains are a subject's is decided by how the
 // deployment files its entries and nothing here can see that. [SubjectScope]
 // is the answer when entries are scoped per user; [OwnedScopeResolver] is
-// recordingcfg.FileBySubject's, and recordingcfg.Config.ScopeResolvers hands it
+// recordingcfg.FileBySubject's, and privacyadapters.AuditScopeResolvers hands it
 // out beside the collector's for that rule. One that returns too many scopes
 // deletes another tenant's audit log, so it is worth being exact.
 //

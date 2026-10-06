@@ -403,7 +403,7 @@ func NewSweeper(
 // whenever the eraser is registered: the environment says whether this
 // deployment erases its own audit records, and only the code that decided how
 // entries are filed can say which records are a subject's. A deployment
-// filing by subject takes it from recordingcfg.Config.ScopeResolvers; one
+// filing by subject takes it from privacyadapters.AuditScopeResolvers; one
 // scoping entries per user passes auditerasure.SubjectScope. A disabled eraser
 // needs none, and resolve may be nil then.
 //

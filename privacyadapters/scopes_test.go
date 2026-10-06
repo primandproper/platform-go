@@ -1,4 +1,4 @@
-package recordingcfg
+package privacyadapters_test
 
 import (
 	"context"
@@ -9,9 +9,11 @@ import (
 	"github.com/primandproper/platform-go/v15/dataprivacy"
 	"github.com/primandproper/platform-go/v15/identity"
 	identitymock "github.com/primandproper/platform-go/v15/identity/mock"
+	"github.com/primandproper/platform-go/v15/privacyadapters"
+	recordingcfg "github.com/primandproper/platform-go/v15/recording/config"
 
 	"github.com/primandproper/primitives-go/v2/database"
-	"github.com/primandproper/primitives-go/v2/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -53,7 +55,7 @@ func subjectFixtures() (*identitymock.StoreMock, *auditmock.ReaderMock) {
 	return directory, log
 }
 
-func TestConfig_ScopeResolvers(T *testing.T) {
+func TestAuditScopeResolvers(T *testing.T) {
 	T.Parallel()
 
 	subject := dataprivacy.Subject{ID: "user-1"}
@@ -65,7 +67,7 @@ func TestConfig_ScopeResolvers(T *testing.T) {
 
 		directory, log := subjectFixtures()
 
-		collect, erase, err := (&Config{FileBy: FileBySubject}).ScopeResolvers(directory, log)
+		collect, erase, err := privacyadapters.AuditScopeResolvers(recordingcfg.FileBySubject, directory, log)
 		must.NoError(t, err)
 
 		q := database.NewTxForTesting(nil)
@@ -89,10 +91,10 @@ func TestConfig_ScopeResolvers(T *testing.T) {
 
 		directory, log := subjectFixtures()
 
-		for _, cfg := range []*Config{{FileBy: FileByWrite}, {}} {
-			collect, erase, err := cfg.ScopeResolvers(directory, log)
-			test.ErrorIs(t, err, ErrNoShippedScopeResolvers)
-			test.StrContains(t, err.Error(), string(FileByWrite))
+		for _, fileBy := range []recordingcfg.FileBy{recordingcfg.FileByWrite, ""} {
+			collect, erase, err := privacyadapters.AuditScopeResolvers(fileBy, directory, log)
+			test.ErrorIs(t, err, privacyadapters.ErrNoShippedScopeResolvers)
+			test.StrContains(t, err.Error(), string(recordingcfg.FileByWrite))
 			test.Nil(t, collect)
 			test.Nil(t, erase)
 		}
@@ -102,17 +104,11 @@ func TestConfig_ScopeResolvers(T *testing.T) {
 		t.Parallel()
 
 		directory, log := subjectFixtures()
-		cfg := &Config{FileBy: FileBySubject}
 
-		_, _, err := cfg.ScopeResolvers(nil, log)
-		test.ErrorIs(t, err, errors.ErrNilInputParameter)
+		_, _, err := privacyadapters.AuditScopeResolvers(recordingcfg.FileBySubject, nil, log)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 
-		_, _, err = cfg.ScopeResolvers(directory, nil)
-		test.ErrorIs(t, err, errors.ErrNilInputParameter)
-
-		var unset *Config
-
-		_, _, err = unset.ScopeResolvers(directory, log)
-		test.ErrorIs(t, err, errors.ErrNilInputParameter)
+		_, _, err = privacyadapters.AuditScopeResolvers(recordingcfg.FileBySubject, directory, nil)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 	})
 }

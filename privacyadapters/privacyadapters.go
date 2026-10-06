@@ -345,7 +345,7 @@ type AuditErasureAdapter struct {
 	BeforeErase dataprivacy.Eraser
 
 	// Resolve names the chains an erasure deletes, handed the erasure's own
-	// transaction. recordingcfg.Config.ScopeResolvers is FileBySubject's;
+	// transaction. [AuditScopeResolvers] is FileBySubject's;
 	// auditerasure.SubjectScope is per-user scoping's.
 	Resolve dataprivacy.ExecutorScopeResolver
 
