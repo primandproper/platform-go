@@ -26,6 +26,15 @@ type Change interface {
 	// package never interprets it, only compares it.
 	IndexEventType() string
 
+	DocumentIDs
+}
+
+// DocumentIDs is the half of a Change a payload can answer when something else
+// names the event: the IDs it carries, and not which event it is. A payload type
+// that is the body of several events cannot say which one it was handed as, and
+// a wrapper that can — webhooks' envelope is one — answers IndexEventType itself
+// and asks the payload for the rest.
+type DocumentIDs interface {
 	// IndexDocumentID returns the identifier stored under key, reporting false
 	// when the payload carries none.
 	//
