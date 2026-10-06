@@ -124,15 +124,27 @@ func TestNewRecordingHooks(T *testing.T) {
 func TestEventCatalog(T *testing.T) {
 	T.Parallel()
 
-	T.Run("makes no credential event subscribable", func(t *testing.T) {
+	T.Run("defines every event this package emits, and marks each Internal", func(t *testing.T) {
 		t.Parallel()
 
-		catalog := EventCatalog()
-		test.MapEmpty(t, catalog)
+		emitted := []webhooks.EventType{EventPasskeyRegistered, EventPasskeyArchived}
 
-		for _, eventType := range []webhooks.EventType{EventPasskeyRegistered, EventPasskeyArchived} {
-			test.False(t, catalog.Known(eventType), test.Sprintf("%s is subscribable", eventType))
+		catalog := EventCatalog()
+		test.MapLen(t, len(emitted), catalog)
+
+		for _, eventType := range emitted {
+			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
+			test.NotEqOp(t, "", catalog[eventType].Description)
+			test.True(t, catalog[eventType].Internal, test.Sprintf("%s is not Internal", eventType))
+			test.False(t, catalog.Subscribable(eventType), test.Sprintf("%s is subscribable", eventType))
 		}
+	})
+
+	T.Run("hands out a fresh copy each time", func(t *testing.T) {
+		t.Parallel()
+
+		delete(EventCatalog(), EventPasskeyRegistered)
+		test.True(t, EventCatalog().Known(EventPasskeyRegistered))
 	})
 }
 

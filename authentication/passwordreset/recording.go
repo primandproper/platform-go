@@ -21,9 +21,13 @@ const ResourceTypeToken = "passwordreset.token"
 // are platform's names for platform's own writes, so they are constants here
 // rather than strings a consumer mints.
 //
-// A subscriber may receive one only if the dispatcher's catalog knows it.
-// [EventCatalog] is the fragment to merge into that catalog; an event type
-// left out of it is still published to the outbox and dispatched to nobody.
+// A subscriber may receive one only if the dispatcher's catalog knows it and
+// does not mark it Internal. [EventCatalog] is the fragment to merge into that
+// catalog, and it marks both Internal: neither carries the secret, but each
+// says a reset is in flight, or has just landed, for a named user, which is a
+// live feed of an account's takeover to whoever registered an endpoint on it.
+// Both are still published to the outbox for a deployment's own consumers. One
+// that does want them delivered clears Internal on its own merged copy.
 const (
 	// EventTokenIssued says a reset was asked for and a link minted for it. The
 	// payload names the token and the principal, and never carries the secret.
@@ -32,18 +36,21 @@ const (
 	EventTokenRedeemed webhooks.EventType = "passwordreset.token.redeemed"
 )
 
-// EventCatalog is every event this package emits, described, for a consumer to
-// merge into the catalog its dispatcher is built with:
+// EventCatalog is every event this package emits, described and marked
+// Internal as the constants' block says, for a consumer to merge into the
+// catalog its dispatcher is built with:
 //
-//	catalog := webhooks.Catalog{OrderCreated: {Description: "..."}}
-//	maps.Copy(catalog, passwordreset.EventCatalog())
+//	catalog, err := webhooks.Merge(
+//	    webhooks.Catalog{OrderCreated: {Description: "..."}},
+//	    passwordreset.EventCatalog(),
+//	)
 //
 // It is a function rather than a package-level map so that no caller can
 // mutate the one copy every other caller reads.
 func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
-		EventTokenIssued:   {Description: "A password reset was asked for, and a link minted for it."},
-		EventTokenRedeemed: {Description: "A password reset link was spent."},
+		EventTokenIssued:   {Description: "A password reset was asked for, and a link minted for it.", Internal: true},
+		EventTokenRedeemed: {Description: "A password reset link was spent.", Internal: true},
 	}
 }
 

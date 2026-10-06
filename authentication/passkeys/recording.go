@@ -24,11 +24,12 @@ const ResourceTypeCredential = "passkeys.credential"
 //
 // Both are credential events: they are recorded and published to the outbox,
 // where a deployment's own consumers may read them, and they are offered to no
-// webhook subscriber. [EventCatalog] leaves them out, and an event type the
-// dispatcher's catalog does not know is published and dispatched to nobody —
-// see webhooks.Emitter.Emit for the gate. A deployment that does want a third
-// party told when somebody's sign-in methods change adds them to its catalog by
-// name, which is a decision it then has to spell.
+// webhook subscriber. [EventCatalog] lists them marked Internal, which the
+// dispatcher refuses to deliver — see webhooks.Emitter.Emit for the gate. A
+// deployment that does want a third party told when somebody's sign-in methods
+// change clears Internal on its own merged copy, which is a decision it then
+// has to spell; it does not add them by name beside this fragment, because
+// webhooks.Merge refuses an event type two fragments define.
 const (
 	// EventPasskeyRegistered says a passkey was added to somebody's account.
 	//nolint:gosec // G101: an event name; no credential is on the event.
@@ -38,8 +39,9 @@ const (
 	EventPasskeyArchived webhooks.EventType = "passkeys.credential.archived"
 )
 
-// EventCatalog is the fragment of a dispatcher's catalog this package
-// contributes, and it is empty on purpose.
+// EventCatalog is every event this package emits, described, for a consumer to
+// merge into the catalog its dispatcher is built with, and every one of them is
+// marked Internal.
 //
 // A change to how somebody signs in is the event an attacker who has just taken
 // over an account most wants to be invisible, and a webhook endpoint is a third
@@ -47,9 +49,18 @@ const (
 // sign-in history is copied to, for a payload nobody outside the deployment
 // needs in order to act. So the default is the safe one, and a consumer who
 // merges every package's catalog by habit makes no passkey event subscribable
-// by doing so. It exists, and is called, so that habit has nothing to special-case.
+// by doing so. They are listed rather than left out so that the list says
+// "deliberately excluded" where an omission could also mean "forgotten", and
+// so that the Emitter does not count them as constants that fell out of the
+// catalog.
+//
+// It is a function rather than a package-level map so that no caller can
+// mutate the one copy every other caller reads.
 func EventCatalog() webhooks.Catalog {
-	return webhooks.Catalog{}
+	return webhooks.Catalog{
+		EventPasskeyRegistered: {Description: "A passkey was added to somebody's account.", Internal: true},
+		EventPasskeyArchived:   {Description: "A passkey was revoked.", Internal: true},
+	}
 }
 
 // CredentialEvent is the payload of EventPasskeyRegistered and

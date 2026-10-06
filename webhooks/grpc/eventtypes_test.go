@@ -3,6 +3,12 @@ package grpc_test
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/v15/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v15/authentication/passkeys"
+	"github.com/primandproper/platform-go/v15/authentication/passwordreset"
+	"github.com/primandproper/platform-go/v15/authentication/signin"
+	"github.com/primandproper/platform-go/v15/identity"
+	"github.com/primandproper/platform-go/v15/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
 	"github.com/primandproper/platform-go/v15/webhooks/webhookspb"
 
@@ -76,6 +82,46 @@ func TestListEventTypes(T *testing.T) {
 		}
 
 		test.SliceLen(t, 2, res.GetResults())
+	})
+
+	// The harness's catalog proves the gate; this proves it holds for the
+	// fragments the flag was built for, whose credential events a consumer merges
+	// by habit and must never be offered.
+	T.Run("leaves out the credential events platform's own fragments mark internal", func(t *testing.T) {
+		t.Parallel()
+
+		catalog, err := webhooks.Merge(
+			testCatalog(),
+			signin.EventCatalog(),
+			passkeys.EventCatalog(),
+			passwordreset.EventCatalog(),
+			oauth2clients.EventCatalog(),
+			identity.EventCatalog(),
+		)
+		must.NoError(t, err)
+
+		h := newHarness(t, webhooks.WithCatalog(catalog))
+
+		res, err := h.server.ListEventTypes(h.ctx(t), &webhookspb.ListEventTypesRequest{})
+		must.NoError(t, err)
+
+		offered := map[string]bool{}
+		for _, def := range res.GetResults() {
+			offered[def.GetEventType()] = true
+		}
+
+		internal := 0
+
+		for eventType, definition := range catalog {
+			if definition.Internal {
+				internal++
+			}
+
+			test.EqOp(t, !definition.Internal, offered[string(eventType)], test.Sprintf("%s offered", eventType))
+		}
+
+		test.Positive(t, internal)
+		test.SliceLen(t, len(catalog)-internal, res.GetResults())
 	})
 
 	T.Run("it is sorted, so a form renders in a stable order", func(t *testing.T) {

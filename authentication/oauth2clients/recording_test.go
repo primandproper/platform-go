@@ -32,13 +32,29 @@ func operatorPrincipal(context.Context) (callers.Principal, bool) { return testP
 
 // ledger is everything the two halves were handed, in order.
 type ledger struct {
-	refuse     error
+	refuse error
+	// catalog is the dispatcher's, and nil means optedIn.
+	catalog    webhooks.Catalog
 	entries    []*audit.Entry
 	deliveries []*webhooks.Delivery
+	published  int
+}
+
+// optedIn is EventCatalog with Internal cleared on every entry, the catalog of a
+// deployment that chose to deliver the credential events, so that a test reading
+// what a hook dispatched has a delivery to read.
+func optedIn() webhooks.Catalog {
+	catalog := EventCatalog()
+	for eventType, definition := range catalog {
+		definition.Internal = false
+		catalog[eventType] = definition
+	}
+
+	return catalog
 }
 
 // newRecordingHooks builds RecordingHooks over mocks that write into the
-// ledger, with the dispatcher's catalog knowing every event this package emits.
+// ledger, with the dispatcher's catalog the ledger's.
 func newRecordingHooks(t *testing.T, l *ledger) *RecordingHooks {
 	t.Helper()
 
@@ -55,11 +71,21 @@ func newRecordingHooks(t *testing.T, l *ledger) *RecordingHooks {
 	}
 
 	enqueuer := &webhooksmock.EnqueuerMock{
-		EnqueueFunc: func(context.Context, database.Tx, ...outbox.Message) error { return nil },
+		EnqueueFunc: func(_ context.Context, _ database.Tx, msgs ...outbox.Message) error {
+			l.published += len(msgs)
+
+			return nil
+		},
 	}
 
 	dispatcher := &webhooksmock.DispatcherMock{
-		CatalogFunc: EventCatalog,
+		CatalogFunc: func() webhooks.Catalog {
+			if l.catalog != nil {
+				return l.catalog
+			}
+
+			return optedIn()
+		},
 		DispatchFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, delivery *webhooks.Delivery) error {
 			l.deliveries = append(l.deliveries, delivery)
 
@@ -115,13 +141,15 @@ func TestNewRecordingHooks(T *testing.T) {
 func TestEventCatalog(T *testing.T) {
 	T.Parallel()
 
-	T.Run("knows every event this package emits", func(t *testing.T) {
+	T.Run("defines every event this package emits, and marks each Internal", func(t *testing.T) {
 		t.Parallel()
 
 		catalog := EventCatalog()
 		for _, eventType := range []webhooks.EventType{EventClientCreated, EventClientUpdated, EventClientArchived} {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
+			test.True(t, catalog[eventType].Internal, test.Sprintf("%s is not Internal", eventType))
+			test.False(t, catalog.Subscribable(eventType), test.Sprintf("%s is subscribable", eventType))
 		}
 
 		test.MapLen(t, 3, catalog)
@@ -139,6 +167,31 @@ func TestRecordingHooks(T *testing.T) {
 	T.Parallel()
 
 	env := newSQLiteEnv(T)
+
+	T.Run("under EventCatalog every operation is recorded and published, and delivered to nobody", func(t *testing.T) {
+		t.Parallel()
+
+		l := &ledger{catalog: EventCatalog()}
+		svc, _ := newService(t, env, WithHooks(newRecordingHooks(t, l)))
+
+		issued, err := svc.CreateClient(t.Context(), testScope, testOwner, &CreationInput{
+			Name:         "a client",
+			RedirectURIs: []string{testRedirect},
+		})
+		must.NoError(t, err)
+
+		_, err = svc.UpdateClient(t.Context(), testScope, issued.Client.ID, &UpdateInput{
+			Name:         "renamed",
+			RedirectURIs: []string{testRedirect},
+		})
+		must.NoError(t, err)
+
+		must.NoError(t, svc.ArchiveClient(t.Context(), testScope, issued.Client.ID))
+
+		test.SliceLen(t, 3, l.entries)
+		test.EqOp(t, 3, l.published)
+		test.SliceEmpty(t, l.deliveries)
+	})
 
 	T.Run("every operation records one entry and one event naming the registration", func(t *testing.T) {
 		t.Parallel()

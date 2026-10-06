@@ -61,9 +61,11 @@ are written in separate batches, one per chain, because an audit chain is the
 one structure here that must not be appended to across tenants.
 
 Which event types a subscriber may receive is the dispatcher's catalog, as it
-is for every event. An event type outside it is published to the outbox and not
-dispatched, which is how a deployment keeps a credential event internal; see
-webhooks.Emitter.Emit for the gate.
+is for every event. An event type the catalog marks Internal is published to the
+outbox and not dispatched, which is how a store's EventCatalog keeps a
+credential event internal; see webhooks.Emitter.Emit for the gate. One the
+catalog does not list is not dispatched either, and is counted as a constant
+that fell out of it.
 
 # What belongs elsewhere
 

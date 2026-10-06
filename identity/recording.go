@@ -40,9 +40,15 @@ const (
 // three times that somebody arrived would act three times. The audit log holds
 // the row per resource; the event is the one thing that happened.
 //
-// A subscriber may receive one only if the dispatcher's catalog knows it.
-// [EventCatalog] is the fragment to merge into that catalog; an event type left
-// out of it is still published to the outbox and dispatched to nobody.
+// A subscriber may receive one only if the dispatcher's catalog knows it and
+// does not mark it Internal. [EventCatalog] is the fragment to merge into that
+// catalog, and it lists every one of them. The credential events — a password
+// changed or its change forced, a second-factor secret issued or proven, a
+// verification link minted — are marked Internal: published to the outbox for
+// a deployment's own consumers, and offered to no webhook subscriber, because a
+// feed of an account's authentication is the one an attacker who has taken it
+// over most wants copied somewhere its owner cannot see. signin's credential
+// events are marked the same way.
 const (
 	// EventUserRegistered says somebody registered, with an account of their own
 	// or into the one an invitation named. The payload carries the verification
@@ -113,17 +119,25 @@ const (
 )
 
 // EventCatalog is every event this package emits, described, for a consumer to
-// merge into the catalog its dispatcher is built with:
+// merge into the catalog its dispatcher is built with, with the credential
+// events marked Internal as the constants' block says:
 //
-//	catalog := webhooks.Catalog{OrderCreated: {Description: "..."}}
-//	maps.Copy(catalog, identity.EventCatalog())
+//	catalog, err := webhooks.Merge(
+//	    webhooks.Catalog{OrderCreated: {Description: "..."}},
+//	    identity.EventCatalog(),
+//	)
+//
+// A deployment that does want a credential event delivered clears Internal on
+// its own merged copy rather than defining the event again beside this
+// fragment, which Merge refuses.
 //
 // Two of them carry a bearer secret — [EventUserRegistered] the verification
 // link's and [EventInvitationCreated] the invitation's — because the outbox
 // consumer that mails the link has nowhere else to take it from. A deployment
 // that subscribes an endpoint to either is handing that endpoint the link; one
-// that does not want that leaves the two out of the catalog it merges, and the
-// outbox still carries them.
+// that does not want that marks the two Internal on its merged copy, and the
+// outbox still carries them. Marked rather than deleted, so the Emitter does
+// not count them as constants that fell out of the catalog.
 //
 // It is a function rather than a package-level map so that no caller can
 // mutate the one copy every other caller reads.
@@ -135,11 +149,11 @@ func EventCatalog() webhooks.Catalog {
 		EventUserServiceRolesUpdated:            {Description: "A user's service roles changed."},
 		EventUserProfileUpdated:                 {Description: "A user's profile changed."},
 		EventUserAgreementsRecorded:             {Description: "A user accepted the terms of service or the privacy policy."},
-		EventUserPasswordChanged:                {Description: "A user's password changed."},
-		EventUserPasswordChangeRequirementSet:   {Description: "A password change was forced on a user, or released."},
-		EventUserTwoFactorSecretIssued:          {Description: "A user was issued a new two-factor secret."},
-		EventUserTwoFactorSecretVerified:        {Description: "A user verified their two-factor secret."},
-		EventUserEmailAddressVerificationIssued: {Description: "A verification link was issued for a user's email address."},
+		EventUserPasswordChanged:                {Description: "A user's password changed.", Internal: true},
+		EventUserPasswordChangeRequirementSet:   {Description: "A password change was forced on a user, or released.", Internal: true},
+		EventUserTwoFactorSecretIssued:          {Description: "A user was issued a new two-factor secret.", Internal: true},
+		EventUserTwoFactorSecretVerified:        {Description: "A user verified their two-factor secret.", Internal: true},
+		EventUserEmailAddressVerificationIssued: {Description: "A verification link was issued for a user's email address.", Internal: true},
 		EventUserEmailAddressVerified:           {Description: "A user's email address was verified."},
 		EventUserEmailAddressUnverified:         {Description: "A user's email address verification was withdrawn."},
 		EventAccountCreated:                     {Description: "An existing user opened another account."},

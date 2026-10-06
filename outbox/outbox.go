@@ -101,6 +101,9 @@ type Message struct {
 // same statement as the caller's own. Returning an error aborts the enqueue,
 // which leaves the caller's transaction to roll back with it.
 //
+// EnqueueDerived runs an effect the same way and writes only what it returns,
+// not the messages it ran over.
+//
 // msgs holds what the caller passed to Enqueue and never what another side
 // effect derived. Registration order therefore fixes the order the effects run
 // in and the order their messages land in, and nothing else: an effect that
@@ -272,6 +275,61 @@ func (w *Writer) Enqueue(ctx context.Context, q database.Tx, msgs ...Message) er
 		return sideEffectErr
 	}
 
+	return w.write(ctx, op, q, all)
+}
+
+// EnqueueDerived runs the writer's side effects over msgs and enqueues what
+// they derive, and not msgs themselves. It is for a write that owes the derived
+// messages and not the triggering one: a reindex-only correction, a backfill, a
+// write whose data-change event would be a decision about the public event
+// stream rather than about the index.
+//
+// Enqueue is the usual path, because a write worth indexing is nearly always a
+// write worth announcing. This exists for the writes where that is not true,
+// and it runs the effects registered on this Writer rather than a copy the
+// caller kept of them, so the two paths cannot derive different things from
+// the same message.
+//
+// The side effects run exactly as they do inside Enqueue — in registration
+// order, on the caller's executor, each over its own copy of msgs — so rows an
+// effect writes still commit with the caller's transaction. A trigger that
+// derives nothing is not an error: nothing is written, no wakeup is sent, and
+// it returns nil. outbox_messages_enqueued and outbox_enqueue_fanout count the
+// derived messages and their topics, and never the trigger's, which was not
+// written.
+func (w *Writer) EnqueueDerived(ctx context.Context, q database.Tx, msgs ...Message) error {
+	ctx, op := w.o11y.Begin(ctx)
+	defer op.End()
+
+	if q == nil {
+		return op.Error(ErrNilExecutor, "enqueuing derived outbox messages")
+	}
+
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	all, sideEffectErr := w.withSideEffects(ctx, op, q, msgs)
+	if sideEffectErr != nil {
+		return sideEffectErr
+	}
+
+	// withSideEffects returns the caller's messages followed by what was
+	// derived from them, so the derived set is everything past the triggers.
+	derived := all[len(msgs):]
+	if len(derived) == 0 {
+		op.Set(messageCountKey, 0)
+
+		return nil
+	}
+
+	return w.write(ctx, op, q, derived)
+}
+
+// write marshals and inserts messages on the caller's executor, sends the
+// wakeup if one is configured, and counts what it wrote. Both enqueue paths end
+// here, so what is validated, written and counted cannot differ between them.
+func (w *Writer) write(ctx context.Context, op observability.Operation, q database.Tx, all []Message) error {
 	op.Set(messageCountKey, len(all))
 
 	now := w.clock.Now().UTC()

@@ -21,17 +21,24 @@ const ResourceTypeUser = "identity.user"
 // The events this package's hooks emit, one per hook that publishes. They are
 // platform's names for platform's own writes, as waitlists' are.
 //
-// A subscriber may receive one only if the dispatcher's catalog knows it.
-// [EventCatalog] is the fragment to merge into that catalog; an event type left
-// out of it is still published to the outbox and dispatched to nobody, which is
-// how a deployment keeps a credential event internal.
+// A subscriber may receive one only if the dispatcher's catalog knows it and
+// does not mark it Internal. [EventCatalog] is the fragment to merge into that
+// catalog, and it lists every one of them.
 //
-// The password, second-factor and recovery-code events are credential events,
-// and EventCatalog leaves them out: they are recorded and published to the
-// outbox, where a deployment's own consumers may read them, and offered to no
-// webhook subscriber. passkeys' credential events are gated the same way, for
-// the reason its EventCatalog gives. A deployment that does want a third party
-// told when somebody's sign-in methods change adds them to its catalog by name.
+// Every event but an address verified and a login moving account is a
+// credential event, and EventCatalog marks it Internal: a login, a password or
+// second factor moving, a recovery code spent, a link minted, a login ended.
+// Each is recorded and published to the outbox, where a deployment's own
+// consumers may read it, and offered to no webhook subscriber, because a feed
+// of an account's authentication is the one an attacker who has just taken it
+// over most wants copied somewhere they can read and its owner cannot.
+// passkeys' credential events are marked the same way, for the reason its
+// EventCatalog gives.
+//
+// A deployment that does want a third party told when somebody's sign-in
+// methods change clears Internal on its own merged copy. It does not add the
+// event by name beside this fragment: webhooks.Merge refuses an event type two
+// fragments define.
 const (
 	// EventUserAuthenticated says somebody proved a credential, through any
 	// door. The payload says which kind, whether the door was administrative,
@@ -71,22 +78,32 @@ const (
 	EventSignInAccountSwitched webhooks.EventType = "signin.sign_in.account_switched"
 )
 
-// EventCatalog is every event this package emits that a webhook subscriber may
-// receive, described, for a consumer to merge into the catalog its dispatcher is
-// built with. It leaves out the credential events, as the constants' block says:
+// EventCatalog is every event this package emits, described, for a consumer to
+// merge into the catalog its dispatcher is built with. The credential events
+// are in it marked Internal, as the constants' block says, so that a list of
+// what this package emits is the whole list and an omission is a fault rather
+// than a policy:
 //
-//	catalog := webhooks.Catalog{OrderCreated: {Description: "..."}}
-//	maps.Copy(catalog, signin.EventCatalog())
+//	catalog, err := webhooks.Merge(
+//	    webhooks.Catalog{OrderCreated: {Description: "..."}},
+//	    signin.EventCatalog(),
+//	)
 //
 // It is a function rather than a package-level map so that no caller can
 // mutate the one copy every other caller reads.
 func EventCatalog() webhooks.Catalog {
 	return webhooks.Catalog{
-		EventUserAuthenticated:          {Description: "Somebody proved a credential and signed in, or an operator was issued a token to act as them."},
+		EventUserAuthenticated:          {Description: "Somebody proved a credential and signed in, or an operator was issued a token to act as them.", Internal: true},
+		EventPasswordUpdated:            {Description: "A user changed their password.", Internal: true},
+		EventPasswordAttached:           {Description: "A user who held no password was given one.", Internal: true},
+		EventTOTPSecretRefreshed:        {Description: "A user was issued a new two-factor secret.", Internal: true},
+		EventTOTPSecretVerified:         {Description: "A user proved the two-factor secret they hold.", Internal: true},
 		EventEmailAddressVerified:       {Description: "A user answered the verification link mailed to their address."},
-		EventVerificationEmailRequested: {Description: "A user was minted a fresh email verification link."},
-		EventMagicLinkRequested:         {Description: "A user was minted a sign-in link."},
-		EventSignInsRevoked:             {Description: "One or more of a user's logins were ended."},
+		EventVerificationEmailRequested: {Description: "A user was minted a fresh email verification link.", Internal: true},
+		EventMagicLinkRequested:         {Description: "A user was minted a sign-in link.", Internal: true},
+		EventRecoveryCodeUsed:           {Description: "A user spent one of their recovery codes.", Internal: true},
+		EventRecoveryCodesReplaced:      {Description: "A user was issued a fresh set of recovery codes.", Internal: true},
+		EventSignInsRevoked:             {Description: "One or more of a user's logins were ended.", Internal: true},
 		EventSignInAccountSwitched:      {Description: "A login moved to another of its user's accounts."},
 	}
 }
