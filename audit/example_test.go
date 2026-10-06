@@ -128,9 +128,9 @@ func ExampleWithRedaction() {
 	recorder, err := audit.NewRecorder(dialect.SQLite,
 		// Applies to every resource type: this is a rule about the field name.
 		audit.WithRedaction("", audit.Redaction{Drop: []string{"pin"}}),
-		// Rotating a signing key is a real event; the new key is not a thing to
+		// Rotating a license key is a real event; the new key is not a thing to
 		// write down, but "is it the same one as before" still is.
-		audit.WithRedaction("api_key", audit.Redaction{Hash: []string{"signingKey"}}),
+		audit.WithRedaction("api_key", audit.Redaction{Hash: []string{"licenseKey"}}),
 	)
 	if err != nil {
 		panic(err)
@@ -144,7 +144,7 @@ func ExampleWithRedaction() {
 		Changes: map[string]audit.Change{
 			"password":   {New: "hunter2"},
 			"pin":        {New: "1234"},
-			"signingKey": {New: "sk_live_abcdef"},
+			"licenseKey": {New: "sk_live_abcdef"},
 			"label":      {Old: "old label", New: "new label"},
 		},
 	}
@@ -159,13 +159,13 @@ func ExampleWithRedaction() {
 	fmt.Println("password recorded:", recorded)
 	_, recorded = entry.Changes["pin"]
 	fmt.Println("pin recorded:", recorded)
-	fmt.Printf("signingKey recorded as: %.7s...\n", entry.Changes["signingKey"].New)
+	fmt.Printf("licenseKey recorded as: %.7s...\n", entry.Changes["licenseKey"].New)
 	fmt.Println("label recorded as:", entry.Changes["label"].New)
 
 	// Output:
 	// password recorded: false
 	// pin recorded: false
-	// signingKey recorded as: sha256:...
+	// licenseKey recorded as: sha256:...
 	// label recorded as: new label
 }
 

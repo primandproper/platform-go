@@ -106,6 +106,14 @@ func (a triageAuthorizer) AuthorizeReport(ctx context.Context, caller callers.Pr
 	return a.ReporterAuthorizer.AuthorizeReport(ctx, caller, report)
 }
 
+func (a triageAuthorizer) AuthorizeReporter(ctx context.Context, caller callers.Principal, named string) error {
+	if caller != nil && (caller.UserID() == triager || caller.UserID() == archivist) {
+		return nil
+	}
+
+	return a.ReporterAuthorizer.AuthorizeReporter(ctx, caller, named)
+}
+
 type brokenAuthorizer struct {
 	issuereportsgrpc.ReporterAuthorizer
 }
@@ -113,6 +121,10 @@ type brokenAuthorizer struct {
 var errUndecided = platformerrors.New("the issue reports MCP suite's authorizer could not decide")
 
 func (brokenAuthorizer) AuthorizeReport(context.Context, callers.Principal, *issuereports.Report) error {
+	return errUndecided
+}
+
+func (brokenAuthorizer) AuthorizeReporter(context.Context, callers.Principal, string) error {
 	return errUndecided
 }
 
@@ -288,7 +300,7 @@ func TestTools_Schemas(T *testing.T) {
 		byName[tool.Name] = tool
 	}
 
-	must.MapLen(T, 3, byName)
+	must.MapLen(T, 4, byName)
 
 	// schemaOf decodes a listed schema, which is what a model is handed.
 	schemaOf := func(t *testing.T, raw any) map[string]any {
@@ -329,6 +341,13 @@ func TestTools_Schemas(T *testing.T) {
 		filter := properties["filter"].(map[string]any)["properties"].(map[string]any)
 		test.MapContainsKey(t, filter, "maxResponseSize")
 		test.MapContainsKey(t, filter, "sortBy")
+
+		// The reporter is optional: an unnamed one is the caller.
+		byReporter := schemaOf(t, byName[issuereportsmcp.ToolListReportsByReporter].InputSchema)
+		reporterProperties := byReporter["properties"].(map[string]any)
+		test.MapContainsKey(t, reporterProperties, "reporter")
+		test.MapContainsKey(t, reporterProperties, "filter")
+		test.MapNotContainsKey(t, byReporter, "required")
 	})
 
 	T.Run("the output describes the row by its json tags, without the fields it never marshals", func(t *testing.T) {
@@ -581,5 +600,111 @@ func TestTools_ListReportsByStatus(T *testing.T) {
 		result := h.call(t, issuereportsmcp.ToolListReportsByStatus, map[string]any{"status": "closed"})
 
 		test.True(t, result.IsError)
+	})
+}
+
+func TestTools_ListReportsByReporter(T *testing.T) {
+	T.Parallel()
+
+	T.Run("an unnamed reporter is the caller, in the caller's tenant", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, triageAuthorizer{})
+		h.seed(t, testScope, reporter)
+		h.seed(t, testScope, reporter)
+		h.seed(t, testScope, otherReporter)
+		h.seed(t, otherScope, reporter)
+
+		h.as(reporter, testScope)
+		page := decode[filtering.QueryFilteredResult[issuereports.Report]](t,
+			h.call(t, issuereportsmcp.ToolListReportsByReporter, map[string]any{}))
+
+		must.SliceLen(t, 2, page.Data)
+		for _, report := range page.Data {
+			test.EqOp(t, reporter, report.Reporter)
+			test.EqOp(t, testScope, report.Scope)
+		}
+	})
+
+	T.Run("naming somebody else is refused before the read, whether or not they filed anything", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, triageAuthorizer{})
+		h.seed(t, testScope, otherReporter)
+
+		h.as(reporter, testScope)
+
+		for _, named := range []string{otherReporter, "user_who_never_filed"} {
+			result := h.call(t, issuereportsmcp.ToolListReportsByReporter, map[string]any{"reporter": named})
+
+			test.True(t, result.IsError, test.Sprint(named))
+			test.EqOp(t, issuereportsmcp.ErrReporterNotPermitted.Error(), text(t, result), test.Sprint(named))
+		}
+	})
+
+	T.Run("a rule that lets the caller name somebody reads their reports", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, triageAuthorizer{})
+		h.seed(t, testScope, reporter)
+		h.seed(t, testScope, otherReporter)
+
+		h.as(triager, testScope)
+		page := decode[filtering.QueryFilteredResult[issuereports.Report]](t,
+			h.call(t, issuereportsmcp.ToolListReportsByReporter, map[string]any{"reporter": reporter}))
+
+		must.SliceLen(t, 1, page.Data)
+		test.EqOp(t, reporter, page.Data[0].Reporter)
+	})
+
+	T.Run("a caller without the read grant is refused", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, triageAuthorizer{})
+		h.as("user_without_grants", testScope)
+
+		result := h.call(t, issuereportsmcp.ToolListReportsByReporter, map[string]any{})
+
+		test.True(t, result.IsError)
+		test.EqOp(t, mcptool.ErrPermissionDenied.Error(), text(t, result))
+	})
+
+	T.Run("archived reports are honored only for the archive grant", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, triageAuthorizer{})
+		filed := h.seed(t, testScope, reporter)
+		h.seed(t, testScope, reporter)
+
+		must.NoError(t, h.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, err := h.store.ArchiveReport(t.Context(), tx, testScope, filed.ID)
+
+			return err
+		}))
+
+		args := map[string]any{"reporter": reporter, "filter": map[string]any{"includeArchived": true}}
+
+		h.as(reporter, testScope)
+		cleared := decode[filtering.QueryFilteredResult[issuereports.Report]](t,
+			h.call(t, issuereportsmcp.ToolListReportsByReporter, args))
+		test.SliceLen(t, 1, cleared.Data)
+
+		h.as(archivist, testScope)
+		honored := decode[filtering.QueryFilteredResult[issuereports.Report]](t,
+			h.call(t, issuereportsmcp.ToolListReportsByReporter, args))
+		test.SliceLen(t, 2, honored.Data)
+	})
+
+	T.Run("an authorizer that cannot decide is a failure, and its words are not repeated", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, brokenAuthorizer{})
+		h.seed(t, testScope, reporter)
+
+		h.as(reporter, testScope)
+		result := h.call(t, issuereportsmcp.ToolListReportsByReporter, map[string]any{})
+
+		test.True(t, result.IsError)
+		test.EqOp(t, mcptool.ErrToolFailed.Error(), text(t, result))
 	})
 }

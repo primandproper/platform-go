@@ -19,7 +19,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/issuereports.Report github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput
+//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/issuereports.Report github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByReporterInput
 
 // surfaceName scopes this surface's spans, logger and instruments.
 const surfaceName = "issuereports_mcp"
@@ -30,9 +30,10 @@ const archivedClearedKey = "issuereports_mcp.include_archived_cleared"
 
 // The tools this surface serves, by the name a model calls them.
 const (
-	ToolGetReport           = "get_issue_report"
-	ToolListReports         = "list_issue_reports"
-	ToolListReportsByStatus = "list_issue_reports_by_status"
+	ToolGetReport             = "get_issue_report"
+	ToolListReports           = "list_issue_reports"
+	ToolListReportsByStatus   = "list_issue_reports_by_status"
+	ToolListReportsByReporter = "list_issue_reports_by_reporter"
 )
 
 var (
@@ -46,6 +47,12 @@ var (
 	// reports a caller may read. See issuereports/grpc's ReportAuthorizer for
 	// why there is no default.
 	ErrNilReportAuthorizer = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil issue reports authorizer for the MCP tools")
+
+	// ErrReporterNotPermitted is list_issue_reports_by_reporter's answer when
+	// the ReportAuthorizer refuses the person a call names. It is asked before
+	// the read, so it says nothing about whether that person ever filed a
+	// report.
+	ErrReporterNotPermitted = platformerrors.New("the caller may not read the issue reports of the person named")
 )
 
 // Authenticator turns one tool call into the context the principal and grants
@@ -73,6 +80,15 @@ type ListReportsByStatusInput struct {
 	Status issuereports.Status `json:"status"`
 }
 
+// ListReportsByReporterInput is what list_issue_reports_by_reporter takes.
+type ListReportsByReporterInput struct {
+	// Filter is the page to read. Absent reads the first page, oldest first.
+	Filter *filtering.QueryFilter `json:"filter,omitempty"`
+	// Reporter is the person whose reports to page, by the identifier their
+	// reports were filed under. Absent pages the caller's own.
+	Reporter string `json:"reporter,omitempty"`
+}
+
 // Tools is the read-only MCP tool surface over the report queue.
 type Tools struct {
 	store   issuereports.Store
@@ -80,9 +96,10 @@ type Tools struct {
 	targets issuereportsgrpc.ReportAuthorizer
 	surface *mcptool.Surface
 
-	getReport           *sdkmcp.Tool
-	listReports         *sdkmcp.Tool
-	listReportsByStatus *sdkmcp.Tool
+	getReport             *sdkmcp.Tool
+	listReports           *sdkmcp.Tool
+	listReportsByStatus   *sdkmcp.Tool
+	listReportsByReporter *sdkmcp.Tool
 }
 
 // NewTools builds the tool surface over a store.
@@ -154,6 +171,13 @@ func NewTools(
 			OutputSchema: mcptool.Output[filtering.QueryFilteredResult[issuereports.Report]](fieldDocs, types),
 			Annotations:  readOnly(),
 		},
+		listReportsByReporter: &sdkmcp.Tool{
+			Name:         ToolListReportsByReporter,
+			Description:  "Page the issue reports one person filed in the tenant: the caller's own when no reporter is named.",
+			InputSchema:  mcptool.Input[ListReportsByReporterInput](fieldDocs, types),
+			OutputSchema: mcptool.Output[filtering.QueryFilteredResult[issuereports.Report]](fieldDocs, types),
+			Annotations:  readOnly(),
+		},
 	}, nil
 }
 
@@ -162,6 +186,7 @@ func (t *Tools) RegisterOn(srv *sdkmcp.Server) {
 	sdkmcp.AddTool(srv, t.getReport, t.GetReport)
 	sdkmcp.AddTool(srv, t.listReports, t.ListReports)
 	sdkmcp.AddTool(srv, t.listReportsByStatus, t.ListReportsByStatus)
+	sdkmcp.AddTool(srv, t.listReportsByReporter, t.ListReportsByReporter)
 }
 
 // GetReport reads one of the tenant's live reports.
@@ -242,6 +267,55 @@ func (t *Tools) ListReportsByStatus(
 	}
 
 	page, err := t.store.ListReportsByStatus(ctx, t.client.Reader(), call.Scope, in.Status, filter)
+	if err != nil {
+		return nil, nil, call.End(err)
+	}
+
+	return nil, page, call.End(nil)
+}
+
+// ListReportsByReporter pages the reports one person filed, behind the read
+// grant.
+//
+// It is issuereports/grpc's ListReportsByReporter over another transport: an
+// unnamed reporter is the caller's own, and the
+// [issuereportsgrpc.ReportAuthorizer] is asked whether this caller may name
+// that person before anything is read, so a refusal is
+// [ErrReporterNotPermitted] whether or not they ever filed a report.
+// include_archived is honored only for a caller holding the archive grant, as
+// it is there: standing over a reporter is a different question from standing
+// over what was taken out of the queue.
+func (t *Tools) ListReportsByReporter(
+	ctx context.Context,
+	req *sdkmcp.CallToolRequest,
+	in ListReportsByReporterInput,
+) (*sdkmcp.CallToolResult, *filtering.QueryFilteredResult[issuereports.Report], error) {
+	ctx, call, err := t.surface.Begin(ctx, req, ToolListReportsByReporter, issuereportsgrpc.PermissionReadReports)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	reporter := in.Reporter
+	if reporter == "" {
+		reporter = call.Principal.UserID()
+	}
+
+	call.Op.Set("issuereports_mcp.reporter", reporter)
+
+	filter, err := call.Filter(ctx, in.Filter, issuereportsgrpc.PermissionArchiveReports, archivedClearedKey)
+	if err != nil {
+		return nil, nil, call.End(err)
+	}
+
+	if err = t.targets.AuthorizeReporter(ctx, call.Principal, reporter); err != nil {
+		if errors.Is(err, callers.ErrTargetNotPermitted) {
+			return nil, nil, call.End(mcptool.Refuse(ErrReporterNotPermitted))
+		}
+
+		return nil, nil, call.End(err)
+	}
+
+	page, err := t.store.ListReportsByReporter(ctx, t.client.Reader(), call.Scope, reporter, filter)
 	if err != nil {
 		return nil, nil, call.End(err)
 	}

@@ -269,6 +269,45 @@ func TestCredentialRedaction(T *testing.T) {
 		}
 	})
 
+	T.Run("covers the module's own credential names", func(t *testing.T) {
+		t.Parallel()
+
+		// One spelling of each credential this module stores or accepts, by the
+		// name its column or its request message gives it; the both-spellings
+		// subtest above covers the other.
+		r := CredentialRedaction()
+		for _, field := range []string{
+			"current_password",
+			"newPassword",
+			"hashed_password",
+			"two_factor_secret",
+			"totpCode",
+			"recovery_code",
+			"code_hash",
+			"clientSecret",
+			"secret_hash",
+			"code_verifier",
+			"access_token",
+			"refresh_token",
+			"wrapped_key",
+		} {
+			test.SliceContains(t, r.Drop, field)
+		}
+
+		for _, field := range []string{
+			"token",
+			"token_digest",
+			"resetToken",
+			"emailAddressVerificationToken",
+			"email_address_verification_token_digest",
+			"signingKey",
+			"secret_current",
+			"secret_previous",
+		} {
+			test.SliceContains(t, r.Hash, field)
+		}
+	})
+
 	T.Run("returns a fresh value on each call", func(t *testing.T) {
 		t.Parallel()
 

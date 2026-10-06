@@ -381,7 +381,7 @@ no token is issued. Archiving the last passkey of somebody with no other way in 
 
 ## Switching accounts
 
-A person who belongs to several accounts — households, workspaces, organizations — moves
+A person who belongs to several accounts — teams, workspaces, organizations — moves
 between them with `SwitchAccount(refresh_token, account_id)`, and no password. It is anonymous
 for `ExchangeRefreshToken`'s reason, and it answers with the `IssuedToken` an exchange answers
 with: the same login (`family_id` unchanged, listed once by `ListSignIns`), and an access token

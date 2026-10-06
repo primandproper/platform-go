@@ -21,8 +21,9 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// A subject who owns one account, belongs to another, and acted in somebody
-// else's chain: the three sets the two resolvers disagree about.
+// A subject who owns one account alone and shares another they own, belongs to
+// a third, and acted in somebody else's chain: the sets the two resolvers
+// disagree about.
 func subjectFixtures() (*identitymock.StoreMock, *auditmock.ReaderMock) {
 	directory := &identitymock.StoreMock{
 		ListAccountsForUserFunc: func(
@@ -34,8 +35,23 @@ func subjectFixtures() (*identitymock.StoreMock, *auditmock.ReaderMock) {
 		) (*filtering.QueryFilteredResult[identity.Account], error) {
 			return &filtering.QueryFilteredResult[identity.Account]{Data: []*identity.Account{
 				{ID: "account-owned", OwnerUserID: "user-1"},
+				{ID: "account-shared", OwnerUserID: "user-1"},
 				{ID: "account-joined", OwnerUserID: "user-7"},
 			}}, nil
+		},
+		ListAccountMembersFunc: func(
+			_ context.Context,
+			_ database.SQLQueryExecutor,
+			_ tenancy.Scope,
+			accountID string,
+			_ *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[identity.MembershipWithUser], error) {
+			members := []*identity.MembershipWithUser{{BelongsToUser: "user-1"}}
+			if accountID != "account-owned" {
+				members = append(members, &identity.MembershipWithUser{BelongsToUser: "user-7"})
+			}
+
+			return &filtering.QueryFilteredResult[identity.MembershipWithUser]{Data: members}, nil
 		},
 	}
 
@@ -77,6 +93,7 @@ func TestAuditScopeResolvers(T *testing.T) {
 		test.Eq(t, []tenancy.Scope{
 			tenancy.Of("user-1"),
 			tenancy.Of("account-owned"),
+			tenancy.Of("account-shared"),
 			tenancy.Of("account-joined"),
 			tenancy.Of("user-9"),
 		}, collected)
