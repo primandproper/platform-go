@@ -235,9 +235,13 @@ type Registered struct {
 	//
 	// It is what [Service.VerifyEmailAddress] is answered with, which is what
 	// promotes the registrant out of identity.StatusUnverified and lets them
-	// sign in at all — so a consumer that drops this has registered somebody
-	// who cannot get in. Mail it, or queue the mail from the hook identity's
-	// registration fires on the transaction that wrote the row.
+	// sign in at all. A service built [WithVerificationMailer] has already
+	// handed it to that mailer by the time this returns, and a caller that
+	// mails it again sends the registrant two copies of one link. Without a
+	// mailer it is here for an in-process caller to mail; one that drops it has
+	// registered somebody who gets in only by
+	// [Service.RequestVerificationEmailByAddress] or
+	// [Service.CompleteVerification].
 	EmailAddressVerificationToken string `json:"-"`
 }
 
@@ -291,6 +295,25 @@ type Registered struct {
 // returns, or [Service.CompleteVerification] for a consumer who proved what their
 // own registration asked instead. The verification token is minted either way,
 // because it proves the address rather than the standing.
+//
+// # Where the link goes
+//
+// To the [VerificationMailer], once the registration has committed, when the
+// service was built [WithVerificationMailer] — the same seam and the same
+// order the resend doors use, so a deployment writes one verification mail and
+// not two. Without one nothing is mailed and nothing is refused: the link is on
+// the [Registered] this returns, for an in-process caller to mail itself, and a
+// registrant nobody mailed asks for one through
+// [Service.RequestVerificationEmailByAddress] once a mailer is configured. A
+// mailer's error fails the call with the registration already committed, and
+// the call returns that registration beside the error, as identity's Invite
+// does for an invitation it could not mail. Registering again is not the
+// remedy, since the handles are taken; asking for another link is, and it
+// retires the one that failed to send.
+//
+// The link never travels on identity's registration event. A link on an
+// event goes wherever a deployment's catalog sends it, which is why identity's
+// RecordingHooks drops it and why this mailer is the seam rather than the hook.
 //
 // It requires [WithRegistrar] and refuses with [ErrRegistrationNotConfigured]
 // until it has one: a consumer using this service as a credential check over a
@@ -418,7 +441,43 @@ func (s *Service) Register(
 
 	op.Set(userIDKey, registered.User.ID)
 
+	// After the commit and never from inside it, which is the only place this
+	// call can be — identity's registrar committed its own transaction before it
+	// answered — and the place it would be anyway, for the reason identity's
+	// Invite hands its InvitationMailer the token only once the invitation has
+	// committed and resendVerification mails only once its link has: a link
+	// mailed for a registration that then rolled back is a URL in somebody's
+	// inbox that will never answer, and no retry can un-send it.
+	if err = s.mailRegistrationLink(ctx, registered, &user); err != nil {
+		// Committed and unmailed: the caller still gets the registration, as
+		// Invite's caller still gets the invitation, so the registrant who exists
+		// is one they can see.
+		return registered, op.Error(err, "mailing a registrant's verification link")
+	}
+
 	return registered, nil
+}
+
+// mailRegistrationLink hands a registration's verification link to the
+// [VerificationMailer], when the service was built with one, and does nothing
+// when it was not.
+//
+// Nothing is refused for the absence. A registration nobody mailed is an
+// unproven registration like any other, and every way out of that standing
+// still works: [Service.CompleteVerification] for a consumer who proves
+// something else, [Service.RequestVerificationEmailByAddress] once a mailer is
+// configured, or an in-process caller mailing [Registered.EmailAddressVerificationToken]
+// itself.
+func (s *Service) mailRegistrationLink(ctx context.Context, registered *Registered, user *identity.User) error {
+	if s.verificationMailer == nil {
+		return nil
+	}
+
+	return s.verificationMailer.SendVerification(ctx, &VerificationMail{
+		User:      registered.User,
+		Token:     registered.EmailAddressVerificationToken,
+		ExpiresAt: *user.EmailAddressVerificationTokenExpiresAt,
+	})
 }
 
 // answersInvitation reports whether a registration joins an account through an

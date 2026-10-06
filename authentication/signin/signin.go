@@ -512,8 +512,8 @@ type Service struct {
 
 	// verificationMailer is nil until WithVerificationMailer names one, and nil
 	// means RequestVerificationEmail refuses with
-	// ErrVerificationMailerNotConfigured. Registration needs none: it hands its
-	// link back on Registered.
+	// ErrVerificationMailerNotConfigured. Registration needs none: without it,
+	// Register mails nothing and leaves the link on Registered.
 	verificationMailer VerificationMailer
 
 	// magicLinkMailer is nil until WithMagicLinkMailer names one. The request

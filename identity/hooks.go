@@ -276,7 +276,7 @@ type Hooks interface {
 	// Both rows rather than the names of the fields that moved, which is what
 	// AfterUpdateProfile is handed and for a reason that does not carry over: an
 	// account's name, time zone and billing address are an organization's
-	// details rather than a person's, and a record that a household was renamed
+	// details rather than a person's, and a record that a team was renamed
 	// is not much of a record without the name it had. The before row is the
 	// one the save was applied to, read on this transaction before the write, so
 	// a consumer diffing the two sees exactly what this save changed — the

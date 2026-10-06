@@ -363,6 +363,12 @@ proved a phone number, a payment or an operator's approval says so with it. What
 may be proven that way is theirs to decide, which is exactly why there is no RPC:
 the check is one only they can make.
 
+The first link is minted by [Service.Register] and handed to the
+[VerificationMailer] once the registration has committed, when the service was
+built with one; without one nothing is mailed, and the link is on [Registered]
+for an in-process caller. It is never on identity's registration event, which
+goes wherever a deployment's catalog sends it.
+
 Two doors resend a verification link. [Service.RequestVerificationEmailByAddress]
 is anonymous and names an address, for a registrant: an unproven registration is
 refused at the password door with [ErrUserUnverified], so they are never signed

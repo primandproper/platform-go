@@ -81,9 +81,13 @@ func TestService_RequestVerificationEmail(T *testing.T) {
 
 	first := registered.EmailAddressVerificationToken
 
+	// The registration mailed the first link itself.
+	must.EqOp(T, 1, mailbox.count())
+	test.EqOp(T, first, mailbox.last(T).Token)
+
 	must.NoError(T, e.svc.RequestVerificationEmail(T.Context(), testScope, registered.User.ID))
 
-	must.EqOp(T, 1, mailbox.count())
+	must.EqOp(T, 2, mailbox.count())
 	mail := mailbox.last(T)
 
 	test.NotEq(T, "", mail.Token)
@@ -127,7 +131,8 @@ func TestService_RequestVerificationEmail_alreadyVerified(T *testing.T) {
 	err = e.svc.RequestVerificationEmail(T.Context(), testScope, registered.User.ID)
 	test.ErrorIs(T, err, signin.ErrEmailAddressAlreadyVerified)
 
-	test.EqOp(T, 0, mailbox.count())
+	// The registration's own mail, and nothing after it.
+	test.EqOp(T, 1, mailbox.count())
 
 	kept, err := e.store.GetUser(T.Context(), e.client.Reader(), testScope, registered.User.ID)
 	must.NoError(T, err)
@@ -354,7 +359,8 @@ func TestService_RequestVerificationEmail_hookFailureRollsBack(T *testing.T) {
 	err = e.svc.RequestVerificationEmail(T.Context(), testScope, registered.User.ID)
 	test.ErrorIs(T, err, errAuditDown)
 
-	test.EqOp(T, 0, mailbox.count())
+	// The registration's own mail, and nothing after it.
+	test.EqOp(T, 1, mailbox.count())
 	must.NoError(T, e.svc.VerifyEmailAddress(T.Context(), testScope, registered.EmailAddressVerificationToken))
 }
 
@@ -440,7 +446,8 @@ func TestService_RequestVerificationEmailByAddress(T *testing.T) {
 		// Spelled differently from the stored address, which is folded.
 		must.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ADA@example.com"))
 
-		must.EqOp(t, 1, mailbox.count())
+		// The registration's mail, then the resend's.
+		must.EqOp(t, 2, mailbox.count())
 		mail := mailbox.last(t)
 		test.EqOp(t, registered.User.ID, mail.User.ID)
 		test.NotEqOp(t, first, mail.Token)
@@ -476,7 +483,7 @@ func TestService_RequestVerificationEmailByAddress(T *testing.T) {
 		must.NoError(t, err)
 
 		test.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ada@example.com"))
-		test.EqOp(t, 0, mailbox.count())
+		test.EqOp(t, 1, mailbox.count(), test.Sprint("only the registration's own mail"))
 
 		kept, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)
 		must.NoError(t, err)
@@ -497,7 +504,7 @@ func TestService_RequestVerificationEmailByAddress(T *testing.T) {
 		}))
 
 		test.NoError(t, e.svc.RequestVerificationEmailByAddress(t.Context(), testScope, "ada@example.com"))
-		test.EqOp(t, 0, mailbox.count())
+		test.EqOp(t, 1, mailbox.count(), test.Sprint("only the registration's own mail"))
 
 		// The link the registration handed out is untouched.
 		stored, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)

@@ -25,7 +25,8 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// The secrets the fixtures below carry, which no audit entry may mention.
+// The secrets the fixtures below carry, which no audit entry or event may
+// mention.
 const (
 	recordingPasswordHash       = "argon2$secret-hash"
 	recordingTwoFactorSecret    = "totp-secret"
@@ -137,19 +138,35 @@ func (l *recordingLedger) delivery(t *testing.T) *webhooks.Delivery {
 	return l.deliveries[0]
 }
 
-// noSecrets fails if any entry mentions a credential the fixtures carry.
+// noSecrets fails if any entry, any delivery or anything published to the
+// outbox mentions a credential the fixtures carry.
+//
+// The events are held to it as well as the entries, and the verification and
+// invitation tokens are the two it exists for: both reach the hooks, and an
+// event goes wherever a deployment's catalog sends it, so a field carrying
+// either back onto a payload is a link handed to every subscriber.
 func (l *recordingLedger) noSecrets(t *testing.T) {
 	t.Helper()
 
-	rendered, err := json.Marshal(l.entries)
+	entries, err := json.Marshal(l.entries)
 	must.NoError(t, err)
+
+	published, err := json.Marshal(l.published)
+	must.NoError(t, err)
+
+	rendered := []string{string(entries), string(published)}
+	for _, delivery := range l.deliveries {
+		rendered = append(rendered, string(delivery.Payload))
+	}
 
 	for _, secret := range []string{
 		recordingPasswordHash, recordingTwoFactorSecret,
 		recordingVerificationToken, recordingVerificationDigest,
 		recordingInvitationToken, recordingInvitationDigest,
 	} {
-		test.StrNotContains(t, string(rendered), secret)
+		for _, r := range rendered {
+			test.StrNotContains(t, r, secret)
+		}
 	}
 }
 
@@ -180,7 +197,7 @@ func recordingUser(id string) *User {
 }
 
 func recordingAccount(id, owner string) *Account {
-	return &Account{ID: id, Scope: testScope, Name: "Household", OwnerUserID: owner}
+	return &Account{ID: id, Scope: testScope, Name: "Acme", OwnerUserID: owner}
 }
 
 func recordingMembership(id, user, account string) *Membership {
@@ -499,7 +516,7 @@ func TestRecordingHooks(T *testing.T) {
 		}
 	})
 
-	T.Run("a registration records three rows and emits one event carrying the token", func(t *testing.T) {
+	T.Run("a registration records three rows and emits one event, without the token", func(t *testing.T) {
 		t.Parallel()
 
 		l := runRecording(t, env, "AfterRegister")
@@ -521,12 +538,12 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, EventUserRegistered, delivery.EventType)
 		test.EqOp(t, "user-1", delivery.OrderingKey)
 		test.Eq(t, &UserEvent{
-			UserID:                        "user-1",
-			AccountID:                     "account-1",
-			MembershipID:                  "membership-1",
-			EmailAddressVerificationToken: recordingVerificationToken,
+			UserID:       "user-1",
+			AccountID:    "account-1",
+			MembershipID: "membership-1",
 		}, decodeRecorded[UserEvent](t, delivery))
 		test.StrNotContains(t, string(delivery.Payload), recordingPasswordHash)
+		test.StrNotContains(t, string(delivery.Payload), recordingVerificationToken)
 	})
 
 	// UserEvent knows nothing of search and serves every user event, so it
@@ -603,10 +620,10 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, EventUserRegistered, l.delivery(t).EventType)
 		test.EqOp(t, "invitation-1", event.InvitationID)
 		test.EqOp(t, "account-1", event.AccountID)
-		test.EqOp(t, recordingVerificationToken, event.EmailAddressVerificationToken)
+		test.StrNotContains(t, string(l.delivery(t).Payload), recordingVerificationToken)
 	})
 
-	T.Run("an invitation's token travels on the event and nowhere near the entry", func(t *testing.T) {
+	T.Run("an issued invitation's token reaches neither the entry nor the event", func(t *testing.T) {
 		t.Parallel()
 
 		l := runRecording(t, env, "AfterInvite")
@@ -616,16 +633,16 @@ func TestRecordingHooks(T *testing.T) {
 		test.Eq(t, map[string]string{metadataAccountID: "account-1", metadataStatus: "pending"}, l.entries[0].Metadata)
 
 		event := decodeRecorded[InvitationEvent](t, l.delivery(t))
-		test.EqOp(t, recordingInvitationToken, event.Token)
 		test.Nil(t, event.ToUser)
+		test.StrNotContains(t, string(l.delivery(t).Payload), recordingInvitationToken)
 		test.StrNotContains(t, string(l.delivery(t).Payload), "guest@example.com")
 		test.StrNotContains(t, string(l.delivery(t).Payload), recordingInvitationDigest)
 	})
 
-	T.Run("only an issued invitation's event carries a token", func(t *testing.T) {
+	T.Run("no invitation's event carries a token", func(t *testing.T) {
 		t.Parallel()
 
-		for _, name := range []string{"AfterAcceptInvitation", "AfterRejectInvitation", "AfterCancelInvitation"} {
+		for _, name := range []string{"AfterInvite", "AfterAcceptInvitation", "AfterRejectInvitation", "AfterCancelInvitation"} {
 			l := runRecording(t, env, name)
 			test.StrNotContains(t, string(l.delivery(t).Payload), recordingInvitationToken)
 		}
@@ -814,7 +831,7 @@ func TestRecordingHooks(T *testing.T) {
 		l := runRecording(t, env, "AfterUpdateAccount")
 
 		must.SliceLen(t, 1, l.entries)
-		test.EqOp(t, "Household", l.entries[0].Changes["name"].Old)
+		test.EqOp(t, "Acme", l.entries[0].Changes["name"].Old)
 		test.EqOp(t, "Renamed", l.entries[0].Changes["name"].New)
 		test.MapContainsKey(t, l.entries[0].Changes, lastUpdatedAtField)
 		test.Eq(t, []string{"name"}, decodeRecorded[AccountEvent](t, l.delivery(t)).Changed)

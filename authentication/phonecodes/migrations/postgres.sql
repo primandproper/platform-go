@@ -14,7 +14,7 @@
 -- whoever forgot the column.
 --
 -- subject_id is the consumer's own identifier for the person — a contact, a
--- household member, whatever a studio owner typed a number in for. It carries
+-- customer, whoever the application took a number down for. It carries
 -- no REFERENCES: the person is not a user, and binding this table to identity
 -- would make it useless to the application that needs it.
 --

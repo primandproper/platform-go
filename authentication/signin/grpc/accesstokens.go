@@ -17,6 +17,11 @@ import (
 // read in. See WithAccessTokenScope.
 type AccessTokenScope func(ctx context.Context, token *oauth2server.AccessToken) (tenancy.Scope, error)
 
+// AccessTokenAccount decides which account an OAuth2 access token's subject acts
+// in, as an account ID, or the empty string for their default. See
+// WithAccessTokenAccount.
+type AccessTokenAccount func(ctx context.Context, token *oauth2server.AccessToken) (string, error)
+
 // AccessTokenCaller is who an OAuth2 access token turned back into: the
 // principal a PrincipalExtractor built WithAccessTokens puts on a request whose
 // bearer is a token oauth2server minted for this resource.
@@ -43,9 +48,9 @@ func (c *AccessTokenCaller) UserID() string { return c.principal.User.ID }
 // decided.
 func (c *AccessTokenCaller) Scope() tenancy.Scope { return c.scope }
 
-// ActiveAccountID is the subject's default account, as the directory resolved
-// it on this request. See WithAccessTokens for why it is not one the token
-// names.
+// ActiveAccountID is the account the subject acts in on this request: the one
+// WithAccessTokenAccount named, or their default as the directory resolved it.
+// See WithAccessTokens for why the default is the default.
 func (c *AccessTokenCaller) ActiveAccountID() string { return c.principal.ActiveAccountID }
 
 // Identity is the directory's answer for this request: the user, redacted,
@@ -90,12 +95,15 @@ func (c *AccessTokenCaller) Token() *oauth2server.AccessToken { return c.token }
 //
 // # Whose account
 //
-// The token's subject acts in their default account, as the directory
-// resolves it on each request, and not in one the token names. An access token
-// is opaque and outlives the account switch a user makes from a session, and
-// nothing can re-mint it when they do; pinning it to an account would mean a
-// switch silently not applying until the next authorization. The directory the
-// subject is read in is WithAccessTokenScope's.
+// By default the token's subject acts in their default account, as the
+// directory resolves it on each request, and not in one the token names. An
+// access token is opaque and outlives the account switch a user makes from a
+// session, and nothing can re-mint it when they do; reading the default on every
+// request is what makes such a switch apply to the token too. A deployment
+// whose authorization server records the account a grant was made for — a
+// consent screen that asked "which workspace" — pins the token to it with
+// WithAccessTokenAccount instead, and then a switch made from a session does not
+// move it. The directory the subject is read in is WithAccessTokenScope's.
 //
 // # What it carries
 //
@@ -129,9 +137,41 @@ func WithAccessTokenScope(scopeOf AccessTokenScope) ExtractorOption {
 	}
 }
 
+// WithAccessTokenAccount names which account an access token's subject acts in.
+// Absent, and wherever it answers with the empty string, the subject acts in
+// their default account, for the reason WithAccessTokens gives. A deployment
+// that pins a grant to one account says how a token names it — typically from a
+// claim the authorization server's subject authenticator recorded in its
+// Subject.Claims when the user chose the account at consent. A nil function is
+// ignored, leaving the default.
+//
+// It is asked after WithAccessTokenScope, and the account it names is checked
+// against the subject's memberships in that directory, as the active account a
+// sign-in token carries is. An account the subject is not a member of — never
+// was, or has since left — refuses the token rather than falling back to their
+// default: a grant made for one account is not a grant for whichever account
+// they hold now, and the client's remedy is a fresh authorization, which is what
+// codes.Unauthenticated asks it for.
+//
+// An error it returns wrapping ErrUnauthenticated refuses the token; any other
+// is reported as an outage, as a directory that could not be read is.
+func WithAccessTokenAccount(accountOf AccessTokenAccount) ExtractorOption {
+	return func(e *PrincipalExtractor) {
+		if accountOf != nil {
+			e.accessTokenAccount = accountOf
+		}
+	}
+}
+
 // globalAccessTokenScope is the default AccessTokenScope.
 func globalAccessTokenScope(context.Context, *oauth2server.AccessToken) (tenancy.Scope, error) {
 	return tenancy.Global(), nil
+}
+
+// defaultAccessTokenAccount is the default AccessTokenAccount: the empty
+// string, which GetPrincipal answers with the subject's default account.
+func defaultAccessTokenAccount(context.Context, *oauth2server.AccessToken) (string, error) {
+	return "", nil
 }
 
 // authenticateAccessToken resolves one bearer as an OAuth2 access token.
@@ -167,10 +207,18 @@ func (e *PrincipalExtractor) authenticateAccessToken(ctx context.Context, bearer
 		return nil, op.Error(err, "deciding an access token's directory")
 	}
 
+	accountID, err := e.accessTokenAccount(ctx, token)
+	if err != nil {
+		return nil, op.Error(err, "deciding an access token's account")
+	}
+
 	op.Set(scopeKey, scope.String())
 	op.Set(userIDKey, userID)
 
-	principal, err := e.directory.GetPrincipal(ctx, e.client.Reader(), scope, userID, "")
+	// A named account the subject holds no membership in is ErrMembershipNotFound
+	// from the directory, which refusesTheCaller reads as a refusal rather than
+	// an outage, exactly as it reads a sign-in token's stale active account.
+	principal, err := e.directory.GetPrincipal(ctx, e.client.Reader(), scope, userID, accountID)
 	if err != nil {
 		if refusesTheCaller(err) {
 			return nil, op.Error(platformerrors.Join(ErrUnauthenticated, err), "resolving an access token's caller")

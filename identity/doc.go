@@ -296,10 +296,11 @@ domain event, does not write that Hooks itself. [RecordingHooks] is it, built
 over a recording.Recorder: an entry per row an operation wrote, naming it by
 [ResourceTypeUser], [ResourceTypeAccount], [ResourceTypeMembership] or
 [ResourceTypeInvitation], and one event per operation from those [EventCatalog]
-describes. The verification and invitation tokens travel on the event, where
-the outbox consumer mailing the link reads them, and never on an entry. It
-revokes nothing on a suspension; a consumer that wants that embeds it and
-overrides [Hooks.AfterUpdateUserAccountStatus].
+describes. The verification and invitation tokens travel on neither: a link
+goes to its mailbox through a mailer — [InvitationMailer] here, signin's
+VerificationMailer for a registration's — and an event goes wherever a
+deployment's catalog sends it. It revokes nothing on a suspension; a consumer
+that wants that embeds it and overrides [Hooks.AfterUpdateUserAccountStatus].
 
 What a consumer still writes is the policy, and that is the point of the split.
 Whether a registration requires a password, whether an invitation is required
