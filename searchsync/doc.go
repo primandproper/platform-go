@@ -97,7 +97,9 @@ searchsync.
 What the payload owes is two methods, Change.IndexEventType and
 Change.IndexDocumentID, and nothing else. The rest is the table: an event type
 matched, an ID read out of the payload under the key the rule names, an op, a
-topic. Three rules and two entities fit in one screen; nine entities still do.
+topic. A payload emitted through webhooks.Emitter owes neither: the envelope
+around it names the event, and a rule's IDKey is a JSON field name of the
+payload unless the payload says otherwise by implementing DocumentIDs. Three rules and two entities fit in one screen; nine entities still do.
 Written as a switch instead, adding the tenth entity is a case nobody reviewing
 the diff can see is missing, because a missing case adds no line.
 

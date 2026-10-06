@@ -83,12 +83,15 @@ encoding, and the outbox is handed an Envelope around those same bytes — the
 event type, its ID and the scope's owner beside them — so a queue consumer and a
 webhook subscriber read the same payload, and the queue consumer reads it inside
 an envelope that names the event. Decode is the consumer's half. The envelope
-answers searchsync.Change by delegating to the payload, so a side effect
-registered on the writer — searchsync.NewSideEffect, deriving index events from
-a data change — reads an emitted event by type just as it reads one enqueued
-directly. The ordering key
-is one key for both, defaulting to the scope's own identifier, so the broker and
-the subscribers are told one order rather than two configured separately.
+answers searchsync.Change for every event, naming the event itself and reading a
+document ID from the payload's top-level JSON fields unless the payload is a
+searchsync.DocumentIDs and answers for itself. A side effect registered on the
+writer — searchsync.NewSideEffect, deriving index events from a data change —
+therefore reads an emitted event by type just as it reads one enqueued
+directly, and a rule on identity.EventUserRegistered keyed by "userID" matches a
+UserEvent that knows nothing of search. The ordering key is one key for both,
+defaulting to the scope's own identifier, so the broker and the subscribers are
+told one order rather than two configured separately.
 
 An event type outside the catalog is published and not dispatched, rather than
 refused — see Emitter.Emit, where the gate is argued out. An application with no

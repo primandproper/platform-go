@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/platform-go/v15/callers"
 	"github.com/primandproper/platform-go/v15/outbox"
 	"github.com/primandproper/platform-go/v15/recording"
+	"github.com/primandproper/platform-go/v15/searchsync"
 	"github.com/primandproper/platform-go/v15/webhooks"
 	webhooksmock "github.com/primandproper/platform-go/v15/webhooks/mock"
 
@@ -50,7 +51,7 @@ type recordingLedger struct {
 	catalog    webhooks.Catalog
 	entries    []*audit.Entry
 	deliveries []*webhooks.Delivery
-	published  int
+	published  []outbox.Message
 }
 
 // optedIn is EventCatalog with Internal cleared on every entry, the catalog of a
@@ -85,7 +86,7 @@ func newRecordingHooksForTest(t *testing.T, l *recordingLedger, opts ...recordin
 
 	enqueuer := &webhooksmock.EnqueuerMock{
 		EnqueueFunc: func(_ context.Context, _ database.Tx, msgs ...outbox.Message) error {
-			l.published += len(msgs)
+			l.published = append(l.published, msgs...)
 
 			return nil
 		},
@@ -478,7 +479,7 @@ func TestRecordingHooks(T *testing.T) {
 			l := &recordingLedger{catalog: catalog}
 			runRecordingInto(t, env, name, l)
 
-			test.Positive(t, l.published, test.Sprintf("%s published nothing", name))
+			test.SliceNotEmpty(t, l.published, test.Sprintf("%s published nothing", name))
 
 			for _, delivery := range l.deliveries {
 				test.True(t, catalog.Subscribable(delivery.EventType), test.Sprintf("%s delivered %s", name, delivery.EventType))
@@ -518,6 +519,31 @@ func TestRecordingHooks(T *testing.T) {
 			EmailAddressVerificationToken: recordingVerificationToken,
 		}, decodeRecorded[UserEvent](t, delivery))
 		test.StrNotContains(t, string(delivery.Payload), recordingPasswordHash)
+	})
+
+	// UserEvent knows nothing of search and serves every user event, so it
+	// cannot be a searchsync.Change. The envelope Emit wraps it in is one, and
+	// a rule keyed by the payload's JSON field names matches it unchanged.
+	T.Run("a registration feeds an index rule keyed by the payload's field names", func(t *testing.T) {
+		t.Parallel()
+
+		effect, err := searchsync.NewSideEffect([]searchsync.Rule{
+			{EventType: EventUserRegistered.String(), Topic: "users-index", IDKey: "userID", Op: searchsync.OpUpsert},
+			{EventType: EventUserRegistered.String(), Topic: "accounts-index", IDKey: "accountID", Op: searchsync.OpUpsert},
+		})
+		must.NoError(t, err)
+
+		l := runRecording(t, env, "AfterRegister")
+		must.SliceLen(t, 1, l.published)
+
+		derived, err := effect(t.Context(), nil, l.published)
+		must.NoError(t, err)
+		must.SliceLen(t, 2, derived)
+
+		test.EqOp(t, "users-index", derived[0].Topic)
+		test.EqOp(t, "user-1", derived[0].Key)
+		test.EqOp(t, "accounts-index", derived[1].Topic)
+		test.EqOp(t, "account-1", derived[1].Key)
 	})
 
 	T.Run("a registration by invitation records the invitation as accepted, not created", func(t *testing.T) {

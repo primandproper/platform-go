@@ -196,13 +196,17 @@ func NewEmitter(enqueuer Enqueuer, dispatcher Dispatcher, topic string, opts ...
 // of that.
 //
 // The envelope reaches the writer as a value rather than bytes, and it answers
-// searchsync.Change by delegation whenever the payload does. That is what lets
-// a side effect registered on the writer — the searchsync bridge from a data
-// change to the index events it implies is the one this module ships — see an
-// emitted event at all: an effect reads its message by type assertion, and a
-// body that reached it as a json.RawMessage, or as an envelope that hid the
-// payload's methods, would assert to nothing, so every emitted event would
-// derive nothing and the index would drift with no error at any layer.
+// searchsync.Change for every event: the event type is the envelope's, and a
+// document ID is the payload's — asked of it when it is a searchsync.DocumentIDs,
+// and otherwise read as a top-level string field of the rendered JSON. A
+// payload that is a full searchsync.Change answers both for itself. That is
+// what lets a side effect registered on the writer — the searchsync bridge from
+// a data change to the index events it implies is the one this module ships —
+// see an emitted event at all: an effect reads its message by type assertion,
+// and a body that reached it as a json.RawMessage, or as an envelope that was a
+// Change only when its payload was one, would assert to nothing for every
+// payload this module's own recording hooks emit, so a write would derive
+// nothing and the index would drift with no error at any layer.
 //
 // It is rendered here before either write, so a payload that cannot be encoded
 // fails with nothing enqueued rather than between the two halves.
@@ -316,7 +320,7 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 	// envelope carries those same bytes as its payload, so what a queue
 	// consumer unwraps is what the subscriber is signed over; and it is handed
 	// to the writer as a value rather than rendered, so a side effect that
-	// asserts searchsync.Change still finds the payload's own answers.
+	// asserts searchsync.Change finds the event's name and the payload's IDs.
 	if err = e.enqueuer.Enqueue(ctx, tx, outbox.Message{
 		Topic: e.topic,
 		Payload: newOutboundEnvelope(&Envelope{

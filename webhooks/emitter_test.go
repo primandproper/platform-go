@@ -228,9 +228,9 @@ func TestEmitter_Emit(T *testing.T) {
 		test.EqOp(t, `{"orderID":"order-1"}`, string(recorder.deliveries[0].Payload))
 	})
 
-	// The opposite half of the delegation: an envelope that always asserted to
-	// Change would tell every side effect that every event is a data change.
-	T.Run("an envelope around a plain payload is not a change", func(t *testing.T) {
+	// A payload that knows nothing of search is still a change once it is
+	// emitted: the envelope names the event, and the ID is a field of the JSON.
+	T.Run("an envelope around a plain payload names the event and reads its fields", func(t *testing.T) {
 		t.Parallel()
 
 		enqueuer := &fakeEnqueuer{}
@@ -242,8 +242,13 @@ func TestEmitter_Emit(T *testing.T) {
 
 		must.SliceLen(t, 1, enqueuer.got)
 
-		_, isChange := enqueuer.got[0].Payload.(searchsync.Change)
-		test.False(t, isChange)
+		change, ok := enqueuer.got[0].Payload.(searchsync.Change)
+		must.True(t, ok, must.Sprintf("outbox payload is %T, want a searchsync.Change", enqueuer.got[0].Payload))
+		test.EqOp(t, orderCreated.String(), change.IndexEventType())
+
+		documentID, found := change.IndexDocumentID("id")
+		test.True(t, found)
+		test.EqOp(t, "order-1", documentID)
 	})
 
 	// The broker consumer reads an envelope naming the event, and the ID in it

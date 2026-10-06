@@ -1,6 +1,7 @@
 package webhooks
 
 import (
+	"bytes"
 	"encoding/json"
 	"slices"
 
@@ -39,11 +40,33 @@ type Envelope struct {
 }
 
 // outboundEnvelope is the value Emit hands the outbox writer. It renders as the
-// Envelope it points at, and it exists separately from it only so that the
-// writer's side effects still see the payload: they read a message by type
-// assertion, and an Envelope asserts to nothing an application declared.
+// Envelope it points at, and it exists separately from it so that the writer's
+// side effects can read an emitted event by type: an effect asserts its message
+// to an interface, and an Envelope asserts to nothing an application declared.
+//
+// It answers searchsync.Change for every event, whatever the payload, because
+// the two facts a Change states are split between the envelope and the payload
+// and neither can state both alone. A payload type routinely serves several
+// events — identity's UserEvent is the body of every user event — so it cannot
+// say which one it is, and the envelope is the one thing that knows. The
+// payload is what knows its IDs. Answering for every event costs a side effect
+// nothing it did not already pay: a rule is matched on the event type, so an
+// event no rule names derives nothing, exactly as a payload that was not a
+// Change derived nothing before.
 type outboundEnvelope struct {
 	*Envelope
+
+	// payload is the value Emit was handed, kept so that its own answers take
+	// precedence over the envelope's.
+	payload any
+}
+
+var _ searchsync.Change = outboundEnvelope{}
+
+// newOutboundEnvelope wraps envelope for the writer, around the payload value
+// it was rendered from.
+func newOutboundEnvelope(envelope *Envelope, payload any) outboundEnvelope {
+	return outboundEnvelope{Envelope: envelope, payload: payload}
 }
 
 // MarshalJSON renders the envelope alone. Stated rather than left to field
@@ -53,36 +76,49 @@ func (e outboundEnvelope) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.Envelope)
 }
 
-// changeEnvelope is an outboundEnvelope whose payload is a searchsync.Change,
-// and answers for it by delegation. That is what keeps an emitted data change
-// deriving its index events on the writer, as it did when the writer was handed
-// the payload itself.
-//
-// Its own type rather than a method set on outboundEnvelope that answers "no
-// change" for every other payload, because a side effect asks the question by
-// type assertion: an envelope that always asserted to Change would be telling
-// every effect that every event is one.
-type changeEnvelope struct {
-	outboundEnvelope
-	change searchsync.Change
-}
-
-var _ searchsync.Change = changeEnvelope{}
-
-func (e changeEnvelope) IndexEventType() string { return e.change.IndexEventType() }
-
-func (e changeEnvelope) IndexDocumentID(key string) (string, bool) {
-	return e.change.IndexDocumentID(key)
-}
-
-// newOutboundEnvelope wraps envelope for the writer, delegating to payload
-// where payload is a searchsync.Change.
-func newOutboundEnvelope(envelope *Envelope, payload any) any {
-	if change, ok := payload.(searchsync.Change); ok {
-		return changeEnvelope{outboundEnvelope: outboundEnvelope{envelope}, change: change}
+// IndexEventType is the envelope's EventType, unless the payload is a full
+// searchsync.Change, whose own answer is kept: a payload that already names its
+// index event type goes on naming it.
+func (e outboundEnvelope) IndexEventType() string {
+	if change, ok := e.payload.(searchsync.Change); ok {
+		return change.IndexEventType()
 	}
 
-	return outboundEnvelope{envelope}
+	return e.EventType.String()
+}
+
+// IndexDocumentID asks the payload when it is a searchsync.DocumentIDs, and
+// otherwise reads key as a top-level field of the rendered payload.
+//
+// The field is read from the JSON because that is what the payload already is
+// by now, and a JSON field name is what a rule's IDKey is written in. Only a
+// JSON string is an ID, and it is returned verbatim; a field that is absent,
+// null, a number or anything else reports false, as does a payload that is not
+// a JSON object. A payload whose IDs are not top-level strings implements
+// searchsync.DocumentIDs and says where they are.
+func (e outboundEnvelope) IndexDocumentID(key string) (string, bool) {
+	if ids, ok := e.payload.(searchsync.DocumentIDs); ok {
+		return ids.IndexDocumentID(key)
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(e.Payload, &fields); err != nil {
+		return "", false
+	}
+
+	// Checked for a string before decoding, because a JSON null decodes into a
+	// string without error and would read as an empty ID that was found.
+	raw := bytes.TrimSpace(fields[key])
+	if len(raw) == 0 || raw[0] != '"' {
+		return "", false
+	}
+
+	var id string
+	if err := json.Unmarshal(raw, &id); err != nil {
+		return "", false
+	}
+
+	return id, true
 }
 
 // Decode reads an envelope off the broker and unmarshals its payload into v
