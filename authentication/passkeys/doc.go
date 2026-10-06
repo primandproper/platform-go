@@ -68,8 +68,8 @@ hook that refuses rolls its write back.
 A deployment that owes each write an audit entry and a domain event installs
 [RecordingHooks], built over a recording.Recorder, rather than writing one. A
 registration and a revocation are credential events: recorded, published to the
-outbox, and offered to no webhook subscriber, because [EventCatalog] is empty on
-purpose. A refused login records nothing, for the reasons
+outbox, and offered to no webhook subscriber, because [EventCatalog] marks both
+Internal. A refused login records nothing, for the reasons
 [RecordingHooks.AfterFailedPasskeyLogin] gives.
 
 The seams are the consumer's two answers about users, both functions so that

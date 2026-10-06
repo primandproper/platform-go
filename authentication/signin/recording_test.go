@@ -3,6 +3,7 @@ package signin_test
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -54,22 +55,33 @@ type recordingLedger struct {
 	deliveries []*webhooks.Delivery
 }
 
-// credentialEvents are the events EventCatalog leaves out.
+// credentialEvents are the events EventCatalog marks Internal.
 var credentialEvents = []webhooks.EventType{
+	signin.EventUserAuthenticated,
 	signin.EventPasswordUpdated,
 	signin.EventPasswordAttached,
 	signin.EventTOTPSecretRefreshed,
 	signin.EventTOTPSecretVerified,
+	signin.EventVerificationEmailRequested,
+	signin.EventMagicLinkRequested,
 	signin.EventRecoveryCodeUsed,
 	signin.EventRecoveryCodesReplaced,
+	signin.EventSignInsRevoked,
 }
 
-// optedIn is the catalog of a deployment that added the credential events to
-// EventCatalog by name, so every hook's event reaches a subscriber.
+// subscribableEvents are the events EventCatalog offers a subscriber.
+var subscribableEvents = []webhooks.EventType{
+	signin.EventEmailAddressVerified,
+	signin.EventSignInAccountSwitched,
+}
+
+// optedIn is the catalog of a deployment that cleared Internal on its merged
+// copy of EventCatalog, so every hook's event reaches a subscriber.
 func optedIn() webhooks.Catalog {
 	catalog := signin.EventCatalog()
-	for _, eventType := range credentialEvents {
-		catalog[eventType] = webhooks.EventDefinition{Description: "opted in by name"}
+	for eventType, definition := range catalog {
+		definition.Internal = false
+		catalog[eventType] = definition
 	}
 
 	return catalog
@@ -182,33 +194,29 @@ func TestNewRecordingHooks(T *testing.T) {
 func TestEventCatalog(T *testing.T) {
 	T.Parallel()
 
-	T.Run("knows every event a subscriber may receive, each described", func(t *testing.T) {
+	T.Run("defines every event this package emits, each described", func(t *testing.T) {
 		t.Parallel()
 
-		subscribable := []webhooks.EventType{
-			signin.EventUserAuthenticated,
-			signin.EventEmailAddressVerified,
-			signin.EventVerificationEmailRequested,
-			signin.EventMagicLinkRequested,
-			signin.EventSignInsRevoked,
-			signin.EventSignInAccountSwitched,
-		}
-
 		catalog := signin.EventCatalog()
-		test.MapLen(t, len(subscribable), catalog)
+		test.MapLen(t, len(credentialEvents)+len(subscribableEvents), catalog)
 
-		for _, eventType := range subscribable {
+		for _, eventType := range slices.Concat(credentialEvents, subscribableEvents) {
 			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
 			test.NotEqOp(t, "", catalog[eventType].Description)
 		}
 	})
 
-	T.Run("makes no credential event subscribable", func(t *testing.T) {
+	T.Run("marks every credential event Internal, and nothing else", func(t *testing.T) {
 		t.Parallel()
 
 		catalog := signin.EventCatalog()
 		for _, eventType := range credentialEvents {
-			test.False(t, catalog.Known(eventType), test.Sprintf("%s is subscribable", eventType))
+			test.True(t, catalog[eventType].Internal, test.Sprintf("%s is not Internal", eventType))
+			test.False(t, catalog.Subscribable(eventType), test.Sprintf("%s is subscribable", eventType))
+		}
+
+		for _, eventType := range subscribableEvents {
+			test.True(t, catalog.Subscribable(eventType), test.Sprintf("%s is not subscribable", eventType))
 		}
 	})
 
@@ -405,12 +413,21 @@ func TestRecordingHooks_CredentialEventsReachNoSubscriber(T *testing.T) {
 		hooks := newSignInRecordingHooks(t, l, aCaller)
 		tx := database.NewTxForTesting(nil)
 
+		must.NoError(t, hooks.AfterAuthenticate(t.Context(), tx, recordingScope, &signin.Authentication{
+			Principal:      &identity.Principal{User: recordedUser()},
+			CredentialKind: signin.CredentialKindPassword,
+		}))
 		must.NoError(t, hooks.AfterUpdatePassword(t.Context(), tx, recordingScope, recordedUser()))
 		must.NoError(t, hooks.AfterAttachPassword(t.Context(), tx, recordingScope, recordedUser()))
 		must.NoError(t, hooks.AfterRefreshTOTPSecret(t.Context(), tx, recordingScope, recordedUser()))
 		must.NoError(t, hooks.AfterVerifyTOTPSecret(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterRequestVerificationEmail(t.Context(), tx, recordingScope, recordedUser()))
+		must.NoError(t, hooks.AfterRequestMagicLink(t.Context(), tx, recordingScope, recordedUser()))
 		must.NoError(t, hooks.AfterReplaceRecoveryCodes(t.Context(), tx, recordingScope, recordedUser()))
 		must.NoError(t, hooks.AfterRecoveryCodeUsed(t.Context(), tx, recordingScope, recordedUser(), 3))
+		must.NoError(t, hooks.AfterRevokeSignIns(t.Context(), tx, recordingScope, &signin.Revocation{
+			Reason: signin.RevocationSignOut, SubjectID: recordedUserID, FamilyIDs: []string{"family-1"},
+		}))
 
 		test.SliceLen(t, len(credentialEvents), l.entries)
 		test.SliceLen(t, len(credentialEvents), l.published)

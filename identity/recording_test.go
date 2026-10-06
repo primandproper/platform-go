@@ -45,13 +45,29 @@ func recordingPrincipal(context.Context) (callers.Principal, bool) { return reco
 
 // recordingLedger is everything the two halves were handed, in order.
 type recordingLedger struct {
-	refuse     error
+	refuse error
+	// catalog is the dispatcher's, and nil means optedIn.
+	catalog    webhooks.Catalog
 	entries    []*audit.Entry
 	deliveries []*webhooks.Delivery
+	published  int
+}
+
+// optedIn is EventCatalog with Internal cleared on every entry, the catalog of a
+// deployment that chose to deliver the credential events, so that a test reading
+// what a hook dispatched has a delivery to read.
+func optedIn() webhooks.Catalog {
+	catalog := EventCatalog()
+	for eventType, definition := range catalog {
+		definition.Internal = false
+		catalog[eventType] = definition
+	}
+
+	return catalog
 }
 
 // newRecordingHooksForTest builds RecordingHooks over mocks that write into the
-// ledger, with the dispatcher's catalog knowing every event this package emits.
+// ledger, with the dispatcher's catalog the ledger's.
 func newRecordingHooksForTest(t *testing.T, l *recordingLedger, opts ...recording.Option) *RecordingHooks {
 	t.Helper()
 
@@ -68,11 +84,21 @@ func newRecordingHooksForTest(t *testing.T, l *recordingLedger, opts ...recordin
 	}
 
 	enqueuer := &webhooksmock.EnqueuerMock{
-		EnqueueFunc: func(context.Context, database.Tx, ...outbox.Message) error { return nil },
+		EnqueueFunc: func(_ context.Context, _ database.Tx, msgs ...outbox.Message) error {
+			l.published += len(msgs)
+
+			return nil
+		},
 	}
 
 	dispatcher := &webhooksmock.DispatcherMock{
-		CatalogFunc: EventCatalog,
+		CatalogFunc: func() webhooks.Catalog {
+			if l.catalog != nil {
+				return l.catalog
+			}
+
+			return optedIn()
+		},
 		DispatchFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, delivery *webhooks.Delivery) error {
 			l.deliveries = append(l.deliveries, delivery)
 
@@ -322,15 +348,23 @@ func recordingBySubject(_ context.Context, scope tenancy.Scope, entry *recording
 func runRecording(t *testing.T, env *storeEnv, name string, opts ...recording.Option) *recordingLedger {
 	t.Helper()
 
+	l := &recordingLedger{}
+	runRecordingInto(t, env, name, l, opts...)
+
+	return l
+}
+
+// runRecordingInto is runRecording writing into a ledger the caller built, so
+// the caller can choose the dispatcher's catalog.
+func runRecordingInto(t *testing.T, env *storeEnv, name string, l *recordingLedger, opts ...recording.Option) {
+	t.Helper()
+
 	call, ok := recordingCalls()[name]
 	must.True(t, ok, must.Sprintf("no recording call for %s", name))
 
-	l := &recordingLedger{}
 	hooks := newRecordingHooksForTest(t, l, opts...)
 
 	must.NoError(t, env.inTx(t, func(tx database.Tx) error { return call(t.Context(), hooks, tx) }))
-
-	return l
 }
 
 func TestNewRecordingHooks(T *testing.T) {
@@ -354,6 +388,28 @@ func TestEventCatalog(T *testing.T) {
 
 		for eventType, description := range EventCatalog() {
 			test.NotEqOp(t, "", description.Description, test.Sprintf("%s has no description", eventType))
+		}
+	})
+
+	T.Run("marks every credential event Internal, and nothing else", func(t *testing.T) {
+		t.Parallel()
+
+		credential := map[webhooks.EventType]bool{
+			EventUserPasswordChanged:                true,
+			EventUserPasswordChangeRequirementSet:   true,
+			EventUserTwoFactorSecretIssued:          true,
+			EventUserTwoFactorSecretVerified:        true,
+			EventUserEmailAddressVerificationIssued: true,
+		}
+
+		catalog := EventCatalog()
+		for eventType := range credential {
+			test.True(t, catalog.Known(eventType), test.Sprintf("%s is not in the catalog", eventType))
+		}
+
+		for eventType, definition := range catalog {
+			test.EqOp(t, credential[eventType], definition.Internal, test.Sprintf("%s Internal", eventType))
+			test.EqOp(t, !credential[eventType], catalog.Subscribable(eventType), test.Sprintf("%s subscribable", eventType))
 		}
 	})
 
@@ -410,6 +466,27 @@ func TestRecordingHooks(T *testing.T) {
 
 		for eventType := range EventCatalog() {
 			test.True(t, emitted[eventType], test.Sprintf("%s is in the catalog and nothing emits it", eventType))
+		}
+	})
+
+	T.Run("under EventCatalog every event is published, and only the subscribable ones are delivered", func(t *testing.T) {
+		t.Parallel()
+
+		catalog := EventCatalog()
+
+		for name := range recordingCalls() {
+			l := &recordingLedger{catalog: catalog}
+			runRecordingInto(t, env, name, l)
+
+			test.Positive(t, l.published, test.Sprintf("%s published nothing", name))
+
+			for _, delivery := range l.deliveries {
+				test.True(t, catalog.Subscribable(delivery.EventType), test.Sprintf("%s delivered %s", name, delivery.EventType))
+			}
+
+			opted := runRecording(t, env, name)
+			eventType := opted.delivery(t).EventType
+			test.EqOp(t, catalog.Subscribable(eventType), len(l.deliveries) > 0, test.Sprintf("%s emitted %s", name, eventType))
 		}
 	})
 
