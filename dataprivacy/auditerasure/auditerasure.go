@@ -174,7 +174,8 @@ func WithRetentionBasis(basis string) Option {
 // The resolver has no default. The one this package once assumed — the
 // subject's own ID as their one scope — is [SubjectScope], and a deployment
 // that files by subject and kept it would erase the subject's chain and none of
-// the account chains they own, with nothing at any layer to say so.
+// the chains of the accounts that are theirs alone, with nothing at any layer
+// to say so.
 //
 // The dialect must match the database the erasure transaction runs against. The
 // tables are audit.DefaultTablePrefix's unless WithTablePrefix says otherwise,

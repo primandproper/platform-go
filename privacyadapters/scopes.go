@@ -38,7 +38,8 @@ var ErrNoShippedScopeResolvers = platformerrors.New("no shipped audit scope reso
 // Under recordingcfg.FileBySubject that is auditprivacy.MembershipScopeResolver
 // and auditerasure.OwnedScopeResolver: an export reads the subject's own chain,
 // every account they belong to, and every chain holding an entry they acted
-// in; an erasure deletes their own chain and those of the accounts they own.
+// in; an erasure deletes their own chain and those of the accounts they own
+// that nobody else belongs to.
 // Under recordingcfg.FileByWrite, which an empty FileBy defaults to, an entry
 // is on whatever scope its write ran in, which this module cannot enumerate,
 // so it returns [ErrNoShippedScopeResolvers] and the deployment passes

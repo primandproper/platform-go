@@ -138,7 +138,7 @@ func TestRecordingHooks(T *testing.T) {
 		store := env.newStore(t, WithHooks(newRecordingHooks(t, l)))
 
 		in := newInput("avatars/ada.png", "user_1")
-		in.BelongsTo = Subject{Type: "recipe", ID: "recipe_1"}
+		in.BelongsTo = Subject{Type: "document", ID: "document_1"}
 		recorded := env.mustRecord(t, store, testScope, in)
 
 		entry, delivery := l.last(t)
@@ -150,7 +150,7 @@ func TestRecordingHooks(T *testing.T) {
 		test.Eq(t, map[string]string{
 			metadataContentType:   "image/png",
 			metadataSize:          "1024",
-			metadataBelongsToType: "recipe",
+			metadataBelongsToType: "document",
 		}, entry.Metadata)
 		test.EqOp(t, EventObjectRecorded, delivery.EventType)
 		test.EqOp(t, recorded.ID, delivery.OrderingKey)
@@ -160,7 +160,7 @@ func TestRecordingHooks(T *testing.T) {
 		test.Eq(t, ObjectEvent{
 			ObjectID:    recorded.ID,
 			OwnerID:     "user_1",
-			BelongsTo:   Subject{Type: "recipe", ID: "recipe_1"},
+			BelongsTo:   Subject{Type: "document", ID: "document_1"},
 			Key:         "avatars/ada.png",
 			ContentType: "image/png",
 			Size:        1024,

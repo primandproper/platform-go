@@ -226,35 +226,73 @@ func redactMetadata(metadata map[string]string, rules map[string]disposition) (m
 // a row type's own credential fields belong behind the audit:"-" tag, and a
 // deployment's names for them in a WithRedaction of its own.
 //
+// The names are the ones this module's own credentials go by: its columns,
+// which a sqlc-shaped row carries as its json tags, and the fields of its
+// request messages, which protojson spells in camelCase. Most of the module's
+// row types keep a credential out of JSON altogether, so the list is what
+// catches the same credential arriving by a row or a request that does not.
 // Every field is listed in both JSON spellings, because Diff keys on the json
 // tag and the module's rows use camelCase where a sqlc-shaped row uses
 // snake_case.
 //
 // The tokens are hashed rather than dropped because the question an
-// investigation asks of a reset or verification token is whether the one
-// presented was the one issued, and a digest answers it; rotating a credential
-// is a real event worth recording, and the new credential is not a thing to
-// write down. The secrets are dropped because no question about them is
-// answered by a digest that is not better answered by the event itself.
+// investigation asks of a reset, verification or invitation token is whether
+// the one presented was the one issued, and a digest answers it; a column that
+// already holds a token's digest is hashed for the same reason, and so is a
+// signing key, whose rotation is a real event worth recording and whose new
+// value is not a thing to write down. The secrets are dropped because no
+// question about them is answered by a digest that is not better answered by
+// the event itself. For the short ones — a one-time code, a recovery code — a
+// digest would not even be a redaction: there are few enough codes that
+// hashing every one of them finds the one recorded. A digest a store keeps in
+// place of a secret is dropped with the secret, because it is what a guess is
+// tested against.
 //
 // Each call returns a fresh value, so extending what one call returned
 // changes nothing another caller holds.
 func CredentialRedaction() Redaction {
 	return Redaction{
 		Drop: []string{
+			// Passwords, and the digest kept in place of one.
 			"password",
+			"current_password", "currentPassword",
+			"new_password", "newPassword",
 			"hashed_password", "hashedPassword",
+			// Second factors: the enrolled secret, and the codes presented in
+			// place of it or beside it.
 			"two_factor_secret", "twoFactorSecret",
+			"totp_code", "totpCode",
 			"totp_token", "totpToken",
+			"recovery_code", "recoveryCode",
+			"recovery_codes", "recoveryCodes",
+			"code_hash", "codeHash",
+			// OAuth2: a client's secret and the digest kept in place of it, the
+			// PKCE verifier, and the tokens a grant issues.
 			"client_secret", "clientSecret",
+			"secret_hash", "secretHash",
+			"code_verifier", "codeVerifier",
 			"access_token", "accessToken",
 			"refresh_token", "refreshToken",
+			// A shredding key in its wrapped form: a copy that outlives the
+			// shred undoes it.
+			"wrapped_key", "wrappedKey",
 			"secret",
 		},
 		Hash: []string{
+			// Tokens a link or a request carries, and the digests a store
+			// keeps in place of them.
 			"token",
+			"token_digest", "tokenDigest",
+			"reset_token", "resetToken",
 			"email_verification_token", "emailVerificationToken",
+			"email_address_verification_token", "emailAddressVerificationToken",
+			"email_address_verification_token_digest", "emailAddressVerificationTokenDigest",
 			"api_key", "apiKey",
+			// Signing keys: a webhook's current and previous secrets.
+			"signing_key", "signingKey",
+			"signing_keys", "signingKeys",
+			"secret_current", "secretCurrent",
+			"secret_previous", "secretPrevious",
 		},
 	}
 }

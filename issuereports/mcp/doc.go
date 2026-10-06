@@ -8,22 +8,25 @@ It is imported as issuereportsmcp, and the MCP Go SDK beside it as sdkmcp:
 	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "reports"}, nil)
 	tools.RegisterOn(server)
 
-The tools are get_issue_report, list_issue_reports and
-list_issue_reports_by_status. Mounting the server behind a bearer check is
-primitives-go's authentication/oauth2server/mcp, whose Protect puts the verified
-token on each call's req.Extra.TokenInfo — which is what the authenticator here
-reads.
+The tools are get_issue_report, list_issue_reports,
+list_issue_reports_by_status and list_issue_reports_by_reporter. Mounting the
+server behind a bearer check is primitives-go's authentication/oauth2server/mcp,
+whose Protect puts the verified token on each call's req.Extra.TokenInfo —
+which is what the authenticator here reads.
 
 # The same rules as issuereports/grpc, over another transport
 
 Each tool requires the permission its gRPC counterpart requires —
-PermissionReadReports for the keyed read, PermissionTriageReports for the two
-queue reads — checked against the same authorization.GrantsExtractor, so a
-policy written for one transport governs both. The keyed read asks the same
-issuereports/grpc.ReportAuthorizer once the row is in hand, and a refusal reads
-as an absent report, as it does there. include_archived is honored only for a
-caller holding PermissionArchiveReports. The tenant comes off the principal and
-never off an argument.
+PermissionReadReports for the keyed read and for one person's reports,
+PermissionTriageReports for the two queue reads — checked against the same
+authorization.GrantsExtractor, so a policy written for one transport governs
+both. The keyed read asks the same issuereports/grpc.ReportAuthorizer once the
+row is in hand, and a refusal reads as an absent report, as it does there. The
+reporter read asks it before the read, about the person named — the caller,
+when the call names nobody — and a refusal is [ErrReporterNotPermitted], which
+says nothing about whether that person ever filed one. include_archived is
+honored only for a caller holding PermissionArchiveReports. The tenant comes off
+the principal and never off an argument.
 
 # The schema is the row's
 
@@ -45,10 +48,11 @@ over the store or the gRPC surface it already has.
 # Errors
 
 A tool's error text goes to the model verbatim. A refusal is answered in its
-own words — no principal, no grant, an argument the schema refused, or one of
-issuereports.ClientSafeSentinels — and every other failure is
-internal/mcptool's ErrToolFailed, with the cause on the call's log line and span.
+own words — no principal, no grant, an argument the schema refused, a reporter
+the caller may not name, or one of issuereports.ClientSafeSentinels — and every
+other failure is internal/mcptool's ErrToolFailed, with the cause on the call's
+log line and span.
 */
 package mcp
 
-//platform:transport resource surface: read-only MCP tools — one report, the queue, the queue by status — over `issuereports.Store`
+//platform:transport resource surface: read-only MCP tools — one report, the queue, the queue by status, one person's reports — over `issuereports.Store`

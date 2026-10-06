@@ -25,6 +25,10 @@ var fieldDocs = mcptool.Docs{
 	"github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput": {
 		"reportID": "ReportID is the identifier of the report to read.",
 	},
+	"github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByReporterInput": {
+		"filter":   "Filter is the page to read. Absent reads the first page, oldest first.",
+		"reporter": "Reporter is the person whose reports to page, by the identifier their reports were filed under. Absent pages the caller's own.",
+	},
 	"github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput": {
 		"filter": "Filter is the page to read. Absent reads the first page, oldest first.",
 		"status": "Status is the triage queue to page: the status every report on the page is in.",

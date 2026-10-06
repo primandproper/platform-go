@@ -631,7 +631,7 @@ the whole list.
 | `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request, and download an export — over `dataprivacy.Service`                        |
 | `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                              |
 | `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                                         |
-| `issuereports/mcp`                  | resource surface | read-only MCP tools — one report, the queue, the queue by status — over `issuereports.Store`                                   |
+| `issuereports/mcp`                  | resource surface | read-only MCP tools — one report, the queue, the queue by status, one person's reports — over `issuereports.Store`             |
 | `mediaregistry/grpc`                | resource surface | uploading, registering and reading back the caller's objects — over `mediaregistry.Store` and `uploads.UploadManager`          |
 | `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`                             |
 | `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                                               |
