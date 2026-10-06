@@ -126,7 +126,8 @@ func WithWriterNotifyChannel(channel string) WriterOption {
 }
 
 // WithWriterSideEffect registers a named derived write, run inside every
-// Enqueue on the caller's executor and in registration order.
+// Enqueue and EnqueueDerived on the caller's executor and in registration
+// order.
 //
 // It moves an obligation off the call sites and onto the wiring: an event every
 // write to this outbox owes — the search index event, a webhook dispatch row
