@@ -96,9 +96,11 @@ var ErrInvalidTablePrefix = audit.ErrInvalidTablePrefix
 //
 // The default treats the subject's own ID as a scope, which is right when audit
 // entries are scoped per user or per account — the arrangement the audit
-// package's Scope field is designed for. An application that scopes differently
-// must supply this, and one that returns too many scopes here deletes another
-// tenant's audit log, so it is worth being exact.
+// package's Scope field is designed for. It misses the chains of accounts the
+// subject owns, which recordingcfg.FileBySubject files account entries on, and
+// [OwnedScopeResolver] is the resolver for that rule. An application that
+// scopes differently must supply this, and one that returns too many scopes
+// here deletes another tenant's audit log, so it is worth being exact.
 //
 // Returning no scopes is legitimate: it means nothing is deletable and
 // everything is reported as retained. Returning a scope that names nobody is
@@ -128,7 +130,7 @@ type ScopeResolver = dataprivacy.ScopeResolver
 // either. What lives here is the part that is genuinely this package's: which
 // scopes belong to a subject, and the basis retained entries are kept under.
 type Eraser struct {
-	resolve ScopeResolver
+	resolve ExecutorScopeResolver
 	erasure *audit.Erasure
 	basis   string
 	prefix  string
@@ -158,6 +160,26 @@ func WithTablePrefix(prefix string) Option {
 func WithScopeResolver(resolve ScopeResolver) Option {
 	return func(e *Eraser) {
 		if resolve != nil {
+			e.resolve = func(
+				ctx context.Context,
+				_ database.SQLQueryExecutor,
+				requestScope tenancy.Scope,
+				subject dataprivacy.Subject,
+			) ([]tenancy.Scope, error) {
+				return resolve(ctx, requestScope, subject)
+			}
+		}
+	}
+}
+
+// WithExecutorScopeResolver replaces the mapping from subject to deletable
+// audit scopes with one that reads, and hands it the erasure's transaction on
+// every call. [OwnedScopeResolver] is the one this package ships.
+//
+// It and WithScopeResolver set the same thing, so the later of the two wins.
+func WithExecutorScopeResolver(resolve ExecutorScopeResolver) Option {
+	return func(e *Eraser) {
+		if resolve != nil {
 			e.resolve = resolve
 		}
 	}
@@ -185,7 +207,7 @@ func New(d dialect.Dialect, opts ...Option) (*Eraser, error) {
 	e := &Eraser{
 		prefix: audit.DefaultTablePrefix,
 		basis:  DefaultRetentionBasis,
-		resolve: func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
+		resolve: func(_ context.Context, _ database.SQLQueryExecutor, _ tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
 			return []tenancy.Scope{tenancy.Of(subject.ID)}, nil
 		},
 	}
@@ -224,7 +246,7 @@ func (e *Eraser) Erase(
 		return dataprivacy.ErasureOutcome{}, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
 	}
 
-	scopes, err := e.resolve(ctx, requestScope, subject)
+	scopes, err := e.resolve(ctx, tx, requestScope, subject)
 	if err != nil {
 		return dataprivacy.ErasureOutcome{}, platformerrors.Wrap(err, "resolving audit scopes for subject")
 	}

@@ -128,6 +128,13 @@ gives there is no default. A deployment that scopes audit entries per user
 returns the user's own scope beside the tenants they belong to; a single-tenant
 one returns tenancy.Global().
 
+A deployment whose recorder files by subject — recordingcfg.FileBySubject —
+has the resolver already: [MembershipScopeResolver] reads the chains that rule
+put the subject's entries on, which are their own, their accounts', and every
+chain holding an entry they acted in. Under recordingcfg.FileByWrite the
+entries are on whatever scopes the writes ran in, which this module cannot
+enumerate, so that rule has no shipped resolver.
+
 # Where the executor comes from
 
 audit.Reader runs every read on an executor its caller supplies, and
