@@ -78,12 +78,15 @@ outbox is a transport for domain events and must not learn what a webhook is,
 while this package already knows it is dispatching one. webhooks.Enqueuer is the
 half of outbox.Writer it uses.
 
-The outbox writer is handed the payload as the caller's value and renders it
-itself, so a side effect registered on the writer — searchsync.NewSideEffect,
-deriving index events from a data change — reads an emitted event by type just
-as it reads one enqueued directly. The dispatch is handed the same value
-rendered by the same JSON encoding, so a queue consumer and a webhook subscriber
-read byte-identical bodies. The ordering key
+The dispatch is handed the payload rendered by the outbox writer's JSON
+encoding, and the outbox is handed an Envelope around those same bytes — the
+event type, its ID and the scope's owner beside them — so a queue consumer and a
+webhook subscriber read the same payload, and the queue consumer reads it inside
+an envelope that names the event. Decode is the consumer's half. The envelope
+answers searchsync.Change by delegating to the payload, so a side effect
+registered on the writer — searchsync.NewSideEffect, deriving index events from
+a data change — reads an emitted event by type just as it reads one enqueued
+directly. The ordering key
 is one key for both, defaulting to the scope's own identifier, so the broker and
 the subscribers are told one order rather than two configured separately.
 

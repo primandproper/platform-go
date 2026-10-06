@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
@@ -48,8 +49,10 @@ type Event struct {
 	// and fifty call sites is a hundred and fifty places to forget to check the
 	// error.
 	Payload any
-	// ID identifies the delivery this event produces, and is what Replay names
-	// and what a subscriber deduplicates on. Generated when empty.
+	// ID identifies the event: it is the envelope's ID on the broker and the
+	// ID of the delivery the fan-out produces, which is what Replay names and
+	// what a subscriber deduplicates on. Generated when empty, whether or not
+	// the event is dispatched, because the broker consumer needs one either way.
 	//
 	// A caller that will need to name the delivery later mints one and passes it,
 	// because an Emit that gated out its dispatch produced no delivery to answer
@@ -181,23 +184,25 @@ func NewEmitter(enqueuer Enqueuer, dispatcher Dispatcher, topic string, opts ...
 //
 // # The payload
 //
-// The outbox is handed the payload as the caller's value, and the writer
-// renders it. That is what lets a side effect registered on the writer — the
-// searchsync bridge from a data change to the index events it implies is the
-// one this module ships — see an emitted event at all: an effect reads its
-// message by type assertion, and a body rendered here first would reach it as a
-// json.RawMessage that asserts to nothing, so every emitted event would derive
-// nothing and the index would drift with no error at any layer.
+// The payload is rendered once, here, by the JSON encoding the writer pins. The
+// dispatch is handed those bytes bare, and they are what a subscriber verifies
+// the signature over. The outbox is handed an Envelope around the same bytes —
+// the event type, the ID and the scope's owner beside them — because the relay
+// publishes a stored body verbatim and the broker has nowhere else to carry
+// the event's name; a payload type that serves several events would otherwise
+// reach a queue consumer with nothing saying which one it was. A queue consumer
+// and a webhook subscriber therefore read byte-identical payloads, the one
+// inside an envelope and the other without, and Decode is the consumer's side
+// of that.
 //
-// The dispatch is handed bytes, rendered here by the same JSON encoding the
-// writer pins, from the same value, inside the same call. A queue consumer and a
-// webhook subscriber therefore read byte-identical bodies for any payload whose
-// encoding is a function of its value — every struct, map and slice
-// encoding/json renders is — and what a subscriber verifies the signature over
-// is what the outbox stored. A payload with a MarshalJSON of its own that reads
-// a clock or a random source would render twice differently; such a payload
-// owes its stability to itself, or arrives already rendered as a
-// json.RawMessage, which encodes to itself on both sides.
+// The envelope reaches the writer as a value rather than bytes, and it answers
+// searchsync.Change by delegation whenever the payload does. That is what lets
+// a side effect registered on the writer — the searchsync bridge from a data
+// change to the index events it implies is the one this module ships — see an
+// emitted event at all: an effect reads its message by type assertion, and a
+// body that reached it as a json.RawMessage, or as an envelope that hid the
+// payload's methods, would assert to nothing, so every emitted event would
+// derive nothing and the index would drift with no error at any layer.
 //
 // It is rendered here before either write, so a payload that cannot be encoded
 // fails with nothing enqueued rather than between the two halves.
@@ -234,9 +239,10 @@ func NewEmitter(enqueuer Enqueuer, dispatcher Dispatcher, topic string, opts ...
 // fan-out exactly as Dispatch's does. It is also the default ordering key, so
 // an event that names no subject still gets per-tenant order on both sides.
 //
-// The event is not written to. An event that named no ID has one minted onto the
-// delivery this builds, which is the only place the fan-out was ever going to
-// put it.
+// The event is not written to. An event that named no ID has one minted here,
+// ahead of the gate, and it is the envelope's ID and the delivery's both: the
+// broker consumer is owed one whether or not any subscriber may receive the
+// event, and the two audiences are told the same one.
 func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope, event *Event) error {
 	ctx, op := e.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
@@ -289,6 +295,16 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 		op.Set(orderingKeyKey, key)
 	}
 
+	// Minted ahead of the gate rather than by Dispatch, because the envelope
+	// names the event whether or not any subscriber may receive it, and the
+	// broker consumer and the subscriber must be told the same ID.
+	id := event.ID
+	if id == "" {
+		id = identifiers.New()
+	}
+
+	op.Set(deliveryIDKey, id)
+
 	// Rendered before either write, so a payload that cannot be encoded fails
 	// before anything has been enqueued rather than between the two halves.
 	payload, err := e.marshaler.Marshal(ctx, event.Payload)
@@ -296,14 +312,20 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 		return op.Error(err, "marshaling domain event %q", event.EventType)
 	}
 
-	// The outbox gets the value and the dispatch gets the bytes. The writer runs
-	// its side effects over the typed message before rendering it with the same
-	// encoding as above, so what it stores is what the subscriber is signed
-	// over — and an effect that asserts the payload's type finds it.
+	// The outbox gets the envelope and the dispatch gets the bare bytes. The
+	// envelope carries those same bytes as its payload, so what a queue
+	// consumer unwraps is what the subscriber is signed over; and it is handed
+	// to the writer as a value rather than rendered, so a side effect that
+	// asserts searchsync.Change still finds the payload's own answers.
 	if err = e.enqueuer.Enqueue(ctx, tx, outbox.Message{
-		Topic:   e.topic,
-		Payload: event.Payload,
-		Key:     key,
+		Topic: e.topic,
+		Payload: newOutboundEnvelope(&Envelope{
+			EventType: event.EventType,
+			ID:        id,
+			Scope:     scope.Owner(),
+			Payload:   json.RawMessage(payload),
+		}, event.Payload),
+		Key: key,
 	}); err != nil {
 		return op.Error(err, "enqueuing domain event %q", event.EventType)
 	}
@@ -334,7 +356,7 @@ func (e *Emitter) Emit(ctx context.Context, tx database.Tx, scope tenancy.Scope,
 	op.Set(subscribableKey, true)
 
 	if err = e.dispatcher.Dispatch(ctx, tx, scope, &Delivery{
-		ID:        event.ID,
+		ID:        id,
 		EventType: event.EventType,
 		// Not scoped. It is compared only against other dispatches for the same
 		// endpoint, and an endpoint belongs to one scope, so the scope would add

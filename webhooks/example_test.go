@@ -96,7 +96,8 @@ func ExampleEmitter_Emit() {
 			// the same order rather than two configured separately.
 			OrderingKey: order.ID,
 			// Marshaled once, so a queue consumer and a webhook subscriber read
-			// byte-identical bodies.
+			// byte-identical payloads — the consumer's inside an envelope that
+			// names the event.
 			Payload: order,
 		})
 	})
@@ -126,6 +127,27 @@ func ExampleEmitter_Emit() {
 	// <nil>
 	// <nil>
 	// 2 published
+}
+
+// A queue consumer reads an envelope off the broker. Decode routes on its event
+// type and unmarshals the payload only for the events the handler asked for.
+func ExampleDecode() {
+	// What the relay publishes for one emitted event.
+	msg := []byte(`{"eventType":"order.updated","id":"evt_7","scope":"acct_7","payload":{"id":"order-7"}}`)
+
+	var order struct {
+		ID string `json:"id"`
+	}
+
+	eventType, matched, err := webhooks.Decode(msg, &order, OrderCreated, OrderUpdated)
+	fmt.Println(eventType, matched, order.ID, err)
+
+	eventType, matched, err = webhooks.Decode(msg, &order, OrderCreated)
+	fmt.Println(eventType, matched, err)
+
+	// Output:
+	// order.updated true order-7 <nil>
+	// order.updated false <nil>
 }
 
 // An endpoint belongs to somebody, and fan-out is bounded by whose event it is:

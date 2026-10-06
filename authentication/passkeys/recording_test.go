@@ -2,6 +2,7 @@ package passkeys
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/audit"
@@ -92,12 +93,19 @@ func (l *ledger) last(t *testing.T) (*audit.Entry, *CredentialEvent) {
 	must.SliceNotEmpty(t, l.entries)
 	must.SliceNotEmpty(t, l.published)
 
-	// The emitter hands the outbox the payload as the hook built it, so a side
-	// effect registered on the writer can read it by type; so can this.
-	event, ok := l.published[len(l.published)-1].Payload.(*CredentialEvent)
-	must.True(t, ok, must.Sprintf("payload is %T", l.published[len(l.published)-1].Payload))
+	// The emitter hands the outbox an envelope around the payload, and this
+	// reads it the way a queue consumer would: rendered, then decoded by the
+	// event type it names.
+	rendered, err := json.Marshal(l.published[len(l.published)-1].Payload)
+	must.NoError(t, err)
 
-	return l.entries[len(l.entries)-1], event
+	var event CredentialEvent
+
+	eventType, matched, err := webhooks.Decode(rendered, &event, EventPasskeyRegistered, EventPasskeyArchived)
+	must.NoError(t, err)
+	must.True(t, matched, must.Sprintf("published event type is %q", eventType))
+
+	return l.entries[len(l.entries)-1], &event
 }
 
 func TestNewRecordingHooks(T *testing.T) {
