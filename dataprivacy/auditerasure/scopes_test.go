@@ -102,6 +102,26 @@ func TestOwnedScopeResolver(T *testing.T) {
 	})
 }
 
+func TestSubjectScope(T *testing.T) {
+	T.Parallel()
+
+	T.Run("the subject's own ID and nothing else", func(t *testing.T) {
+		t.Parallel()
+
+		scopes, err := SubjectScope(t.Context(), nil, tenancy.Of("tenant-1"), dataprivacy.Subject{ID: "user-1"})
+		must.NoError(t, err)
+		test.Eq(t, []tenancy.Scope{tenancy.Of("user-1")}, scopes)
+	})
+
+	T.Run("refuses a subject with no ID rather than naming the global chain", func(t *testing.T) {
+		t.Parallel()
+
+		scopes, err := SubjectScope(t.Context(), nil, tenancy.Scope{}, dataprivacy.Subject{})
+		test.ErrorIs(t, err, ErrAnonymousSubject)
+		test.SliceEmpty(t, scopes)
+	})
+}
+
 func TestEraser_OwnedScopeResolver(T *testing.T) {
 	T.Parallel()
 
@@ -127,7 +147,7 @@ func TestEraser_OwnedScopeResolver(T *testing.T) {
 			&identity.Account{ID: "account-2", OwnerUserID: "user-7"},
 		)
 
-		eraser, err := New(dialect.SQLite, WithExecutorScopeResolver(OwnedScopeResolver(directory)))
+		eraser, err := New(dialect.SQLite, OwnedScopeResolver(directory))
 		must.NoError(t, err)
 
 		var outcome dataprivacy.ErasureOutcome
@@ -152,17 +172,11 @@ func TestEraser_OwnedScopeResolver(T *testing.T) {
 		test.StrContains(t, outcome.Retained["entries"], "1 ")
 	})
 
-	T.Run("WithScopeResolver after it wins", func(t *testing.T) {
+	T.Run("New refuses no resolver rather than assuming one", func(t *testing.T) {
 		t.Parallel()
 
-		eraser, err := New(dialect.SQLite,
-			WithExecutorScopeResolver(OwnedScopeResolver(&identitymock.StoreMock{})),
-			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
-				return nil, errDirectoryUnavailable
-			}))
-		must.NoError(t, err)
-
-		_, err = eraser.Erase(t.Context(), database.NewTxForTesting(nil), tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
-		test.ErrorIs(t, err, errDirectoryUnavailable)
+		eraser, err := New(dialect.SQLite, nil)
+		test.ErrorIs(t, err, ErrNilScopeResolver)
+		test.Nil(t, eraser)
 	})
 }

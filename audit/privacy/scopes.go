@@ -25,30 +25,15 @@ var (
 	ErrAnonymousSubject = platformerrors.Wrap(platformerrors.ErrInvalidIDProvided, "audit privacy subject names no ID")
 )
 
-// ExecutorScopeResolver is a [ScopeResolver] that reads, and takes the executor
-// its reads run on when it is called rather than when it is built.
-//
-// It is the executor convention every store read here follows: the caller who
-// holds a transaction is the one who knows it, so a resolver that captured a
-// reader at construction would answer from a database that does not yet
-// contain what that transaction wrote. [ExecutorScopeResolver.On] binds it to
-// one executor, which is the shape [NewCollector] takes.
-type ExecutorScopeResolver func(
-	ctx context.Context,
-	q database.SQLQueryExecutor,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
-
-// On binds the resolver to q. Pass the executor the collector reads on, so the
-// scopes and the entries in them are read from the same database:
+// ExecutorScopeResolver is a [ScopeResolver] that reads, and takes the
+// executor its reads run on when it is called rather than when it is built. Its
+// On method binds it to one executor, which is the shape [NewCollector] takes:
 //
 //	privacy.NewCollector(log, q, privacy.MembershipScopeResolver(directory, log).On(q))
-func (r ExecutorScopeResolver) On(q database.SQLQueryExecutor) ScopeResolver {
-	return func(ctx context.Context, requestScope tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
-		return r(ctx, q, requestScope, subject)
-	}
-}
+//
+// It is [dataprivacy.ExecutorScopeResolver] under this package's name, for the
+// reason [ScopeResolver] is an alias too.
+type ExecutorScopeResolver = dataprivacy.ExecutorScopeResolver
 
 // MembershipScopeResolver resolves a subject's collectable chains under
 // recordingcfg.FileBySubject: their own, every account they belong to, and

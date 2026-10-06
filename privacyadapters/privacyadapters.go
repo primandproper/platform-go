@@ -329,9 +329,10 @@ type AuditAdapter struct {
 // AuditErasureAdapter registers dataprivacy/auditerasure's eraser.
 //
 // It is the one adapter whose seam is not a store: auditerasure.New renders
-// audit's own statements, so it takes the dialect they are rendered for and
-// everything else as options — including its resolver, which defaults to
-// treating the subject's own id as a scope.
+// audit's own statements, so it takes the dialect they are rendered for, the
+// resolver naming the chains a subject's erasure deletes, and everything else
+// as options. The resolver is required, as it is for every adapter here; see
+// auditerasure.New for why it has no default.
 //
 // A deployment reading the "do we erase our own audit records" policy off the
 // environment uses dataprivacycfg.RegisterAuditEraser instead and leaves this
@@ -342,6 +343,11 @@ type AuditErasureAdapter struct {
 	// BeforeErase runs inside the erasure's transaction, ahead of the chain
 	// erasure, and is nil in ordinary wiring. See precede.
 	BeforeErase dataprivacy.Eraser
+
+	// Resolve names the chains an erasure deletes, handed the erasure's own
+	// transaction. recordingcfg.Config.ScopeResolvers is FileBySubject's;
+	// auditerasure.SubjectScope is per-user scoping's.
+	Resolve dataprivacy.ExecutorScopeResolver
 
 	Dialect dialect.Dialect
 	Options []auditerasure.Option
@@ -616,7 +622,7 @@ func (a *Adapters) build() ([]registration, error) {
 	if a.AuditErasure != nil {
 		// The eraser alone, and the one adapter built from a dialect rather
 		// than a store.
-		eraser, err := auditerasure.New(a.AuditErasure.Dialect, a.AuditErasure.Options...)
+		eraser, err := auditerasure.New(a.AuditErasure.Dialect, a.AuditErasure.Resolve, a.AuditErasure.Options...)
 		if err != nil {
 			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", auditerasure.DefaultKey)
 		}

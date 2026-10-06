@@ -18,23 +18,43 @@ var (
 	ErrNilDirectory = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit erasure identity directory")
 
 	// ErrAnonymousSubject indicates a subject with no ID handed to
-	// [OwnedScopeResolver]. tenancy.Of("") is the global scope, which
+	// [SubjectScope] or [OwnedScopeResolver]. tenancy.Of("") is the global scope, which
 	// audit.Erasure.DeleteScopes refuses anyway; refusing it here names the
 	// cause rather than the symptom.
 	ErrAnonymousSubject = platformerrors.Wrap(platformerrors.ErrInvalidIDProvided, "audit erasure subject names no ID")
 )
 
-// ExecutorScopeResolver is a [ScopeResolver] that reads, and takes the executor
-// its reads run on when it is called rather than when it is built. Registered
-// through [WithExecutorScopeResolver], it is handed the erasure's own
-// transaction, so it reads the directory as that transaction sees it — an
-// ownership another eraser transferred earlier in the same request included.
-type ExecutorScopeResolver func(
-	ctx context.Context,
-	q database.SQLQueryExecutor,
-	requestScope tenancy.Scope,
+// ExecutorScopeResolver is a [ScopeResolver] that reads, and takes the
+// executor its reads run on when it is called rather than when it is built.
+// [New] hands it the erasure's own transaction, so it reads the directory as
+// that transaction sees it — an ownership another eraser transferred earlier in
+// the same request included.
+//
+// It is [dataprivacy.ExecutorScopeResolver] under this package's name, for the
+// reason [ScopeResolver] is an alias too.
+type ExecutorScopeResolver = dataprivacy.ExecutorScopeResolver
+
+// SubjectScope resolves the subject's own ID as their one deletable scope,
+// which is right when audit entries are scoped per user — the arrangement the
+// audit package's Scope field is designed for — and is what an Eraser did by
+// default before it took its resolver as an argument.
+//
+// It misses the chains of accounts the subject owns, which
+// recordingcfg.FileBySubject files account entries on; [OwnedScopeResolver] is
+// that rule's answer. requestScope is ignored, because a subject's own chain is
+// theirs whichever tenant asked.
+func SubjectScope(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	_ tenancy.Scope,
 	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
+) ([]tenancy.Scope, error) {
+	if subject.ID == "" {
+		return nil, ErrAnonymousSubject
+	}
+
+	return []tenancy.Scope{tenancy.Of(subject.ID)}, nil
+}
 
 // OwnedScopeResolver resolves the chains an erasure may delete under
 // recordingcfg.FileBySubject: the subject's own, and those of the accounts
@@ -65,7 +85,7 @@ type ExecutorScopeResolver func(
 // archived ones are included: an account archived before its owner asked to
 // be forgotten still holds the owner's chain.
 //
-// requestScope is ignored, for the reason the default resolver ignores it: a
+// requestScope is ignored, for the reason [SubjectScope] ignores it: a
 // subject's chain is theirs whichever tenant asked.
 func OwnedScopeResolver(directory identity.Store) ExecutorScopeResolver {
 	return func(

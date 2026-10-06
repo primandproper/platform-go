@@ -91,16 +91,20 @@ const DefaultRetentionBasis = "audit records retained under legitimate interest 
 // not know which package the check moved to.
 var ErrInvalidTablePrefix = audit.ErrInvalidTablePrefix
 
+// ErrNilScopeResolver indicates an Eraser built with no resolver. There is no
+// default to fall back to; see [New].
+var ErrNilScopeResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit erasure scope resolver")
+
 // ScopeResolver names the audit scopes that belong to a subject and may
 // therefore be deleted whole.
 //
-// The default treats the subject's own ID as a scope, which is right when audit
-// entries are scoped per user or per account — the arrangement the audit
-// package's Scope field is designed for. It misses the chains of accounts the
-// subject owns, which recordingcfg.FileBySubject files account entries on, and
-// [OwnedScopeResolver] is the resolver for that rule. An application that
-// scopes differently must supply this, and one that returns too many scopes
-// here deletes another tenant's audit log, so it is worth being exact.
+// An Eraser takes the [ExecutorScopeResolver] form, positionally and with no
+// default, because which chains are a subject's is decided by how the
+// deployment files its entries and nothing here can see that. [SubjectScope]
+// is the answer when entries are scoped per user; [OwnedScopeResolver] is
+// recordingcfg.FileBySubject's, and recordingcfg.Config.ScopeResolvers hands it
+// out beside the collector's for that rule. One that returns too many scopes
+// deletes another tenant's audit log, so it is worth being exact.
 //
 // Returning no scopes is legitimate: it means nothing is deletable and
 // everything is reported as retained. Returning a scope that names nobody is
@@ -109,8 +113,8 @@ var ErrInvalidTablePrefix = audit.ErrInvalidTablePrefix
 // came back empty is a resolver that has not answered.
 //
 // requestScope is the confinement the privacy request named, handed over beside
-// the subject. The default ignores it, because a subject's own chain is theirs
-// whichever tenant asked; a deployment whose audit scopes are tenants reads it
+// the subject. The shipped resolvers ignore it, because a subject's own chain
+// is theirs whichever tenant asked; a deployment whose audit scopes are tenants reads it
 // as the instruction to delete inside that one, and one whose requests never
 // name a confinement will only ever see the zero Scope.
 //
@@ -155,36 +159,6 @@ func WithTablePrefix(prefix string) Option {
 	}
 }
 
-// WithScopeResolver replaces the mapping from subject to deletable audit
-// scopes.
-func WithScopeResolver(resolve ScopeResolver) Option {
-	return func(e *Eraser) {
-		if resolve != nil {
-			e.resolve = func(
-				ctx context.Context,
-				_ database.SQLQueryExecutor,
-				requestScope tenancy.Scope,
-				subject dataprivacy.Subject,
-			) ([]tenancy.Scope, error) {
-				return resolve(ctx, requestScope, subject)
-			}
-		}
-	}
-}
-
-// WithExecutorScopeResolver replaces the mapping from subject to deletable
-// audit scopes with one that reads, and hands it the erasure's transaction on
-// every call. [OwnedScopeResolver] is the one this package ships.
-//
-// It and WithScopeResolver set the same thing, so the later of the two wins.
-func WithExecutorScopeResolver(resolve ExecutorScopeResolver) Option {
-	return func(e *Eraser) {
-		if resolve != nil {
-			e.resolve = resolve
-		}
-	}
-}
-
 // WithRetentionBasis replaces the wording recorded against retained entries.
 func WithRetentionBasis(basis string) Option {
 	return func(e *Eraser) {
@@ -194,22 +168,30 @@ func WithRetentionBasis(basis string) Option {
 	}
 }
 
-// New builds an Eraser over the audit tables.
+// New builds an Eraser over the audit tables, deleting the chains resolve
+// names. resolve is handed the erasure's own transaction on every call.
+//
+// The resolver has no default. The one this package once assumed — the
+// subject's own ID as their one scope — is [SubjectScope], and a deployment
+// that files by subject and kept it would erase the subject's chain and none of
+// the account chains they own, with nothing at any layer to say so.
 //
 // The dialect must match the database the erasure transaction runs against. The
 // tables are audit.DefaultTablePrefix's unless WithTablePrefix says otherwise,
 // in which case the prefix must match the audit tables' own.
-func New(d dialect.Dialect, opts ...Option) (*Eraser, error) {
+func New(d dialect.Dialect, resolve ExecutorScopeResolver, opts ...Option) (*Eraser, error) {
 	if !d.Valid() {
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "audit erasure dialect %q", d)
 	}
 
+	if resolve == nil {
+		return nil, ErrNilScopeResolver
+	}
+
 	e := &Eraser{
-		prefix: audit.DefaultTablePrefix,
-		basis:  DefaultRetentionBasis,
-		resolve: func(_ context.Context, _ database.SQLQueryExecutor, _ tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
-			return []tenancy.Scope{tenancy.Of(subject.ID)}, nil
-		},
+		prefix:  audit.DefaultTablePrefix,
+		basis:   DefaultRetentionBasis,
+		resolve: resolve,
 	}
 	for _, opt := range opts {
 		if opt != nil {
