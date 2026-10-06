@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,9 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // The registration suite. It runs against the same live SQLite database and
@@ -379,21 +383,45 @@ func TestService_Register_withoutAMailerMailsNothing(T *testing.T) {
 	must.NoError(T, e.svc.VerifyEmailAddress(T.Context(), testScope, registered.EmailAddressVerificationToken))
 }
 
-// A mailer that fails fails the registration, which has already committed: the
-// caller is told, and handed the registrant who now exists beside the error, as
-// identity's Invite hands back an invitation it could not mail.
+// A mailer that fails does not fail the registration, which has committed and
+// is complete: the caller is handed the registrant with no error, and the
+// failure is on the span for an operator, without the link.
 func TestService_Register_mailerFailure(T *testing.T) {
 	T.Parallel()
 
 	errMailDown := platformerrors.New("mail provider refused the message")
 
-	e, mailbox := newResendEnv(T)
+	spans := tracetest.NewSpanRecorder()
+	e, mailbox := newResendEnv(T,
+		signin.WithTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))))
 	mailbox.err = errMailDown
 
 	registered, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
-	test.ErrorIs(T, err, errMailDown)
+	must.NoError(T, err)
 	must.NotNil(T, registered)
 	must.NotNil(T, registered.User)
+	must.NotEq(T, "", registered.EmailAddressVerificationToken)
+
+	var failed sdktrace.ReadOnlySpan
+
+	for _, span := range spans.Ended() {
+		if span.Status().Code == codes.Error {
+			failed = span
+		}
+	}
+
+	must.NotNil(T, failed, must.Sprint("the failed send was recorded on no span"))
+
+	recorded := false
+
+	for _, event := range failed.Events() {
+		for _, attr := range event.Attributes {
+			test.StrNotContains(T, attr.Value.String(), registered.EmailAddressVerificationToken)
+			recorded = recorded || strings.Contains(attr.Value.String(), errMailDown.Error())
+		}
+	}
+
+	test.True(T, recorded, test.Sprint("the mailer's error was not recorded on the span"))
 
 	stored, err := e.store.GetUser(T.Context(), e.client.Reader(), testScope, registered.User.ID)
 	must.NoError(T, err)

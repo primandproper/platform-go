@@ -305,11 +305,12 @@ type Registered struct {
 // the [Registered] this returns, for an in-process caller to mail itself, and a
 // registrant nobody mailed asks for one through
 // [Service.RequestVerificationEmailByAddress] once a mailer is configured. A
-// mailer's error fails the call with the registration already committed, and
-// the call returns that registration beside the error, as identity's Invite
-// does for an invitation it could not mail. Registering again is not the
-// remedy, since the handles are taken; asking for another link is, and it
-// retires the one that failed to send.
+// mailer's error does not fail the call: the registration is complete and
+// committed, a link that did not go out is an operational fault the registrant
+// fixes by asking for another — which retires the one that failed to send — and
+// an error here would invite a retry of Register, which can only fail on the
+// user it already created. The failure is logged, traced and counted for an
+// operator instead; see mailRegistrationLink.
 //
 // The link never travels on identity's registration event. A link on an
 // event goes wherever a deployment's catalog sends it, which is why identity's
@@ -448,12 +449,7 @@ func (s *Service) Register(
 	// committed and resendVerification mails only once its link has: a link
 	// mailed for a registration that then rolled back is a URL in somebody's
 	// inbox that will never answer, and no retry can un-send it.
-	if err = s.mailRegistrationLink(ctx, registered, &user); err != nil {
-		// Committed and unmailed: the caller still gets the registration, as
-		// Invite's caller still gets the invitation, so the registrant who exists
-		// is one they can see.
-		return registered, op.Error(err, "mailing a registrant's verification link")
-	}
+	s.mailRegistrationLink(ctx, op, registered, &user)
 
 	return registered, nil
 }
@@ -466,18 +462,41 @@ func (s *Service) Register(
 // unproven registration like any other, and every way out of that standing
 // still works: [Service.CompleteVerification] for a consumer who proves
 // something else, [Service.RequestVerificationEmailByAddress] once a mailer is
-// configured, or an in-process caller mailing [Registered.EmailAddressVerificationToken]
-// itself.
-func (s *Service) mailRegistrationLink(ctx context.Context, registered *Registered, user *identity.User) error {
+// configured, or an in-process caller mailing
+// [Registered.EmailAddressVerificationToken] itself.
+//
+// Nor is anything refused for a send that failed, and that is the decision this
+// function exists to hold. The registration is complete and committed; a link
+// that did not go out is an operational fault, and the registrant's remedy is a
+// resend, which mints a fresh link and retires this one. An error handed back
+// from Register would read as a registration that did not happen and invite
+// the one retry that cannot succeed — registering again, against handles the
+// first attempt already took. So the failure is made loud where an operator
+// reads it instead: logged at error level against the registrant's user ID,
+// which op carries by now, recorded on the span with an error status, and
+// counted as a failure of its own series. The token and the address go on none
+// of them.
+func (s *Service) mailRegistrationLink(
+	ctx context.Context,
+	op observability.Operation,
+	registered *Registered,
+	user *identity.User,
+) {
 	if s.verificationMailer == nil {
-		return nil
+		return
 	}
 
-	return s.verificationMailer.SendVerification(ctx, &VerificationMail{
+	attr := operationAttr(opMailRegistrationLink)
+	s.instruments.Attempt(ctx, attr)
+
+	if err := s.verificationMailer.SendVerification(ctx, &VerificationMail{
 		User:      registered.User,
 		Token:     registered.EmailAddressVerificationToken,
 		ExpiresAt: *user.EmailAddressVerificationTokenExpiresAt,
-	})
+	}); err != nil {
+		s.instruments.Failed(ctx, attr)
+		op.Acknowledge(err, "mailing a registrant's verification link")
+	}
 }
 
 // answersInvitation reports whether a registration joins an account through an
