@@ -2,6 +2,7 @@ package webhooks
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -197,30 +198,151 @@ func TestEmitter_Emit(T *testing.T) {
 		test.EqOp(t, testScope, recorder.deliveries[0].Scope)
 	})
 
-	// The outbox gets the caller's value rather than bytes rendered from it,
-	// because a side effect registered on the writer reads its message by type
-	// and a json.RawMessage asserts to nothing. The dispatch gets the bytes.
-	T.Run("hands the outbox the typed payload and the dispatch its rendering", func(t *testing.T) {
+	// The outbox gets a value rather than bytes, because a side effect
+	// registered on the writer reads its message by type and a
+	// json.RawMessage asserts to nothing. The value is the envelope, and it
+	// answers searchsync.Change with the payload's own answers. The dispatch
+	// gets the bare bytes.
+	T.Run("hands the outbox a typed envelope and the dispatch the bare rendering", func(t *testing.T) {
 		t.Parallel()
 
 		enqueuer := &fakeEnqueuer{}
 		recorder := &dispatchRecorder{}
 
-		payload := &orderChange{OrderID: "order-1"}
-
 		must.NoError(t, newTestEmitter(t, enqueuer, recorder).Emit(t.Context(), testTx(), testScope, &Event{
 			EventType: orderCreated,
-			Payload:   payload,
+			Payload:   &orderChange{OrderID: "order-1"},
 		}))
 
 		must.SliceLen(t, 1, enqueuer.got)
 		must.SliceLen(t, 1, recorder.deliveries)
 
-		stored, ok := enqueuer.got[0].Payload.(*orderChange)
-		must.True(t, ok, must.Sprintf("outbox payload is %T, want *orderChange", enqueuer.got[0].Payload))
-		test.EqOp(t, payload, stored)
+		change, ok := enqueuer.got[0].Payload.(searchsync.Change)
+		must.True(t, ok, must.Sprintf("outbox payload is %T, want a searchsync.Change", enqueuer.got[0].Payload))
+		test.EqOp(t, orderCreated.String(), change.IndexEventType())
+
+		documentID, found := change.IndexDocumentID("orderID")
+		test.True(t, found)
+		test.EqOp(t, "order-1", documentID)
 
 		test.EqOp(t, `{"orderID":"order-1"}`, string(recorder.deliveries[0].Payload))
+	})
+
+	// The opposite half of the delegation: an envelope that always asserted to
+	// Change would tell every side effect that every event is a data change.
+	T.Run("an envelope around a plain payload is not a change", func(t *testing.T) {
+		t.Parallel()
+
+		enqueuer := &fakeEnqueuer{}
+
+		must.NoError(t, newTestEmitter(t, enqueuer, &dispatchRecorder{}).Emit(t.Context(), testTx(), testScope, &Event{
+			EventType: orderCreated,
+			Payload:   map[string]string{"id": "order-1"},
+		}))
+
+		must.SliceLen(t, 1, enqueuer.got)
+
+		_, isChange := enqueuer.got[0].Payload.(searchsync.Change)
+		test.False(t, isChange)
+	})
+
+	// The broker consumer reads an envelope naming the event, and the ID in it
+	// is the delivery's: one event, one name, whichever audience saw it.
+	T.Run("the envelope names the event and shares the delivery's ID", func(t *testing.T) {
+		t.Parallel()
+
+		enqueuer := &fakeEnqueuer{}
+		recorder := &dispatchRecorder{}
+
+		must.NoError(t, newTestEmitter(t, enqueuer, recorder).Emit(t.Context(), testTx(), testScope, &Event{
+			EventType: orderCreated,
+			Payload:   map[string]string{"id": "order-1"},
+		}))
+
+		must.SliceLen(t, 1, recorder.deliveries)
+
+		envelope := storedEnvelope(t, enqueuer)
+		test.EqOp(t, orderCreated, envelope.EventType)
+		test.NotEq(t, "", envelope.ID)
+		test.EqOp(t, recorder.deliveries[0].ID, envelope.ID)
+		test.EqOp(t, testScope.Owner(), envelope.Scope)
+		test.EqOp(t, string(recorder.deliveries[0].Payload), string(envelope.Payload))
+	})
+
+	T.Run("keeps a caller's ID", func(t *testing.T) {
+		t.Parallel()
+
+		enqueuer := &fakeEnqueuer{}
+		recorder := &dispatchRecorder{}
+
+		event := &Event{
+			ID:        "event-1",
+			EventType: orderCreated,
+			Payload:   map[string]string{"id": "order-1"},
+		}
+
+		must.NoError(t, newTestEmitter(t, enqueuer, recorder).Emit(t.Context(), testTx(), testScope, event))
+
+		must.SliceLen(t, 1, recorder.deliveries)
+		test.EqOp(t, "event-1", storedEnvelope(t, enqueuer).ID)
+		test.EqOp(t, "event-1", recorder.deliveries[0].ID)
+	})
+
+	// The gate decides whether a delivery exists, and nothing about whether the
+	// broker consumer is owed an ID: an event no subscriber may receive is
+	// still named on the broker, and the event is still not written to.
+	T.Run("mints an ID for an event the gate keeps from dispatch", func(t *testing.T) {
+		t.Parallel()
+
+		enqueuer := &fakeEnqueuer{}
+		recorder := &dispatchRecorder{}
+
+		event := &Event{
+			EventType: orderDeleted,
+			Payload:   map[string]string{"id": "order-1"},
+		}
+
+		must.NoError(t, newTestEmitter(t, enqueuer, recorder).Emit(t.Context(), testTx(), testScope, event))
+
+		test.SliceEmpty(t, recorder.deliveries)
+		test.NotEq(t, "", storedEnvelope(t, enqueuer).ID)
+		test.EqOp(t, "", event.ID)
+	})
+
+	// Global's owner is the empty identifier, and an envelope renders it by
+	// omission rather than as "<global>".
+	T.Run("omits the global scope", func(t *testing.T) {
+		t.Parallel()
+
+		enqueuer := &fakeEnqueuer{}
+
+		must.NoError(t, newTestEmitter(t, enqueuer, &dispatchRecorder{}).Emit(t.Context(), testTx(), tenancy.Global(), &Event{
+			EventType: orderDeleted,
+			Payload:   map[string]string{"id": "order-1"},
+		}))
+
+		must.SliceLen(t, 1, enqueuer.got)
+
+		rendered, err := json.Marshal(enqueuer.got[0].Payload)
+		must.NoError(t, err)
+		test.StrNotContains(t, string(rendered), `"scope"`)
+	})
+
+	// A payload that already names its own type is wrapped like any other: a
+	// special case for it would put two shapes on one topic.
+	T.Run("wraps a payload that carries a type of its own", func(t *testing.T) {
+		t.Parallel()
+
+		enqueuer := &fakeEnqueuer{}
+
+		must.NoError(t, newTestEmitter(t, enqueuer, &dispatchRecorder{}).Emit(t.Context(), testTx(), testScope, &Event{
+			EventType: orderCreated,
+			Payload:   map[string]string{"eventType": "something.else"},
+		}))
+
+		envelope := storedEnvelope(t, enqueuer)
+		test.EqOp(t, orderCreated, envelope.EventType)
+		test.EqOp(t, `{"eventType":"something.else"}`, string(envelope.Payload))
 	})
 
 	// The ruling's gate, stated as a test: an event type nothing may subscribe
@@ -536,10 +658,10 @@ func TestEmitter_WriterSideEffects(T *testing.T) {
 		test.EqOp(t, "order-1", key)
 	})
 
-	// Rendering twice is only sound if both renderings agree. A queue consumer
-	// and a webhook subscriber read the same bytes, and the bytes a subscriber
-	// verifies the signature over are the bytes the outbox stored.
-	T.Run("the outbox stores the bytes the dispatch was handed", func(t *testing.T) {
+	// A queue consumer and a webhook subscriber read the same payload bytes,
+	// the consumer's inside an envelope, and the bytes a subscriber verifies
+	// the signature over are the bytes the outbox stored as that payload.
+	T.Run("the outbox stores the bytes the dispatch was handed, in an envelope", func(t *testing.T) {
 		t.Parallel()
 
 		client, prefix, emitter := newLiveEmitter(t)
@@ -558,9 +680,45 @@ func TestEmitter_WriterSideEffects(T *testing.T) {
 		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
 			"SELECT payload FROM "+prefix+"_webhooks_deliveries").Scan(&delivered))
 
-		test.EqOp(t, `{"orderID":"order-1"}`, string(stored))
-		test.Eq(t, stored, delivered)
+		var envelope Envelope
+		must.NoError(t, json.Unmarshal(stored, &envelope))
+
+		test.EqOp(t, orderCreated, envelope.EventType)
+		test.EqOp(t, testScope.Owner(), envelope.Scope)
+		test.EqOp(t, `{"orderID":"order-1"}`, string(delivered))
+		test.EqOp(t, string(delivered), string(envelope.Payload))
+
+		var deliveryID string
+
+		must.NoError(t, client.Reader().QueryRowContext(t.Context(),
+			"SELECT id FROM "+prefix+"_webhooks_deliveries").Scan(&deliveryID))
+		test.EqOp(t, deliveryID, envelope.ID)
+
+		// And what Decode hands a consumer is the payload the subscriber got.
+		var decoded orderChange
+
+		eventType, matched, err := Decode(stored, &decoded, orderCreated)
+		must.NoError(t, err)
+		test.True(t, matched)
+		test.EqOp(t, orderCreated, eventType)
+		test.EqOp(t, "order-1", decoded.OrderID)
 	})
+}
+
+// storedEnvelope renders the one message an Emit handed the outbox the way the
+// writer will, and reads it back as the envelope a queue consumer receives.
+func storedEnvelope(t *testing.T, enqueuer *fakeEnqueuer) Envelope {
+	t.Helper()
+
+	must.SliceLen(t, 1, enqueuer.got)
+
+	rendered, err := json.Marshal(enqueuer.got[0].Payload)
+	must.NoError(t, err)
+
+	var envelope Envelope
+	must.NoError(t, json.Unmarshal(rendered, &envelope))
+
+	return envelope
 }
 
 // testIndexTopic is the topic the side-effect cases derive index events into.
