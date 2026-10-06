@@ -49,7 +49,9 @@ writes nobody has yet decided an actor for; it is never recorded with an empty
 actor, which audit refuses. The one exception is the write that establishes who
 is acting, a sign-in, whose request carries no principal because the principal
 is what it produces; RecordAs takes the actor from the service that minted it,
-and is for that write alone.
+and is for that write alone. A registration establishes who is acting too, but
+may be made by an operator on somebody's behalf, so RecordOrAs names the
+registrant only when the context names nobody.
 
 Where an entry is filed is the write's scope unless a ScopeResolver says
 otherwise. The default is right for a store whose rows belong to a tenant. It is

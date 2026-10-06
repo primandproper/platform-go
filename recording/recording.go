@@ -217,7 +217,7 @@ func (r *Recorder) Record(
 	event *webhooks.Event,
 	entries ...*Entry,
 ) error {
-	return r.record(ctx, tx, scope, nil, event, entries)
+	return r.record(ctx, tx, scope, nil, nil, event, entries)
 }
 
 // RecordAs is Record for the one write whose actor the context cannot know yet:
@@ -245,16 +245,42 @@ func (r *Recorder) RecordAs(
 	event *webhooks.Event,
 	entries ...*Entry,
 ) error {
-	return r.record(ctx, tx, scope, &actor, event, entries)
+	return r.record(ctx, tx, scope, &actor, nil, event, entries)
 }
 
-// record is Record and RecordAs: the actor is the one named when there is one,
-// and the context's otherwise.
+// RecordOrAs is Record when the context carries a principal, and RecordAs actor
+// when it carries none.
+//
+// It is for the write that establishes who is acting but may be made on
+// somebody's behalf. A registration is that write: its request ordinarily
+// carries nobody, because the registrant is what it produces, so its entries
+// are the registrant's; but an operator registering somebody sends a request
+// that carries the operator, and then the entries are the operator's. The
+// context is read through the same extractor Record reads, so the two cannot
+// disagree about whether anybody is there.
+//
+// The caveat on RecordAs holds here too: it is not how an ordinary write is
+// attributed. An actor with no ID is refused with ErrEmptyActor whichever way
+// the context answers, so a call that is wrong is wrong on every request.
+func (r *Recorder) RecordOrAs(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	actor audit.Actor,
+	event *webhooks.Event,
+	entries ...*Entry,
+) error {
+	return r.record(ctx, tx, scope, nil, &actor, event, entries)
+}
+
+// record is Record, RecordAs and RecordOrAs: the actor is the one named when
+// there is one, the context's when the context carries a principal, the
+// fallback when there is one of those, and the named absence otherwise.
 func (r *Recorder) record(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
-	named *audit.Actor,
+	named, fallback *audit.Actor,
 	event *webhooks.Event,
 	entries []*Entry,
 ) error {
@@ -279,13 +305,17 @@ func (r *Recorder) record(
 		op.Set(eventTypeKey, event.EventType.String())
 	}
 
-	actor := r.actor(ctx)
-	if named != nil {
-		if named.ID == "" {
-			return op.Error(ErrEmptyActor, "recording a write")
-		}
+	actor, attributed := r.actor(ctx)
 
+	if (named != nil && named.ID == "") || (fallback != nil && fallback.ID == "") {
+		return op.Error(ErrEmptyActor, "recording a write")
+	}
+
+	switch {
+	case named != nil:
 		actor = *named
+	case fallback != nil && !attributed:
+		actor = *fallback
 	}
 
 	op.Set(actorKey, actor.ID)
@@ -311,13 +341,13 @@ func (r *Recorder) record(
 }
 
 // actor is who the context says is writing, or the named absence when it says
-// nobody.
-func (r *Recorder) actor(ctx context.Context) audit.Actor {
+// nobody, and whether it said somebody.
+func (r *Recorder) actor(ctx context.Context) (audit.Actor, bool) {
 	if principal, ok := r.principals(ctx); ok && principal != nil {
-		return audit.PrincipalActor(principal)
+		return audit.PrincipalActor(principal), true
 	}
 
-	return audit.Actor{ID: audit.ActorUnattributed, Type: audit.ActorUnattributed}
+	return audit.Actor{ID: audit.ActorUnattributed, Type: audit.ActorUnattributed}, false
 }
 
 // file resolves each entry's scope and groups the entries by it, keeping the

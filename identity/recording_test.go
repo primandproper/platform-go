@@ -52,6 +52,9 @@ type recordingLedger struct {
 	entries    []*audit.Entry
 	deliveries []*webhooks.Delivery
 	published  []outbox.Message
+	// anonymous builds the Recorder over an extractor that finds nobody, as a
+	// registration's own request does.
+	anonymous bool
 }
 
 // optedIn is EventCatalog with Internal cleared on every entry, the catalog of a
@@ -110,7 +113,12 @@ func newRecordingHooksForTest(t *testing.T, l *recordingLedger, opts ...recordin
 	emitter, err := webhooks.NewEmitter(enqueuer, dispatcher, "events")
 	must.NoError(t, err)
 
-	recorder, err := recording.New(entries, emitter, recordingPrincipal, opts...)
+	principals := callers.PrincipalExtractor(recordingPrincipal)
+	if l.anonymous {
+		principals = func(context.Context) (callers.Principal, bool) { return nil, false }
+	}
+
+	recorder, err := recording.New(entries, emitter, principals, opts...)
 	must.NoError(t, err)
 
 	hooks, err := NewRecordingHooks(recorder)
@@ -546,6 +554,38 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, "account-1", derived[1].Key)
 	})
 
+	T.Run("a registration whose request carries nobody is the registrant's", func(t *testing.T) {
+		t.Parallel()
+
+		for name, registrant := range map[string]string{"AfterRegister": "user-1", "AfterRegisterWithInvitation": "user-2"} {
+			l := &recordingLedger{anonymous: true}
+			runRecordingInto(t, env, name, l)
+
+			must.SliceLen(t, 3, l.entries, must.Sprintf("%s", name))
+
+			for _, entry := range l.entries {
+				test.Eq(t, audit.Actor{ID: registrant, Type: audit.ActorUser}, entry.Actor, test.Sprintf("%s", name))
+			}
+
+			test.EqOp(t, EventUserRegistered, l.delivery(t).EventType)
+		}
+	})
+
+	T.Run("a registration whose request carries an operator is the operator's", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{"AfterRegister", "AfterRegisterWithInvitation"} {
+			l := runRecording(t, env, name)
+
+			must.SliceLen(t, 3, l.entries, must.Sprintf("%s", name))
+
+			for _, entry := range l.entries {
+				test.EqOp(t, "operator-1", entry.Actor.ID, test.Sprintf("%s", name))
+				test.EqOp(t, audit.ActorUser, entry.Actor.Type, test.Sprintf("%s", name))
+			}
+		}
+	})
+
 	T.Run("a registration by invitation records the invitation as accepted, not created", func(t *testing.T) {
 		t.Parallel()
 
@@ -589,6 +629,28 @@ func TestRecordingHooks(T *testing.T) {
 			l := runRecording(t, env, name)
 			test.StrNotContains(t, string(l.delivery(t).Payload), recordingInvitationToken)
 		}
+	})
+
+	T.Run("an unanswered invitation is filed on its account's chain, not the write's", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{"AfterInvite", "AfterRejectInvitation", "AfterCancelInvitation"} {
+			l := runRecording(t, env, name, recording.WithScopeResolver(recordingBySubject))
+
+			must.SliceLen(t, 1, l.entries, must.Sprintf("%s", name))
+			test.EqOp(t, ResourceTypeInvitation, l.entries[0].ResourceType, test.Sprintf("%s", name))
+			test.EqOp(t, tenancy.Of("account-1"), l.entries[0].Scope, test.Sprintf("%s", name))
+		}
+	})
+
+	T.Run("an answered invitation is filed on its recipient's chain", func(t *testing.T) {
+		t.Parallel()
+
+		l := runRecording(t, env, "AfterAcceptInvitation", recording.WithScopeResolver(recordingBySubject))
+
+		must.SliceLen(t, 2, l.entries)
+		test.EqOp(t, ResourceTypeInvitation, l.entries[0].ResourceType)
+		test.EqOp(t, tenancy.Of("user-2"), l.entries[0].Scope)
 	})
 
 	T.Run("an archival records an entry per ended membership, each on its member's chain", func(t *testing.T) {
@@ -842,4 +904,31 @@ func TestRecordingHooks(T *testing.T) {
 		l.noSecrets(t)
 		test.StrNotContains(t, string(l.delivery(t).Payload), "argon2$ada")
 	})
+}
+
+func TestInvitationEntry(T *testing.T) {
+	T.Parallel()
+
+	guest := "user-2"
+
+	for name, tc := range map[string]struct {
+		toUser  *string
+		subject string
+		status  InvitationStatus
+	}{
+		"pending":   {status: InvitationPending, subject: "account-1"},
+		"cancelled": {status: InvitationCancelled, subject: "account-1"},
+		"rejected":  {status: InvitationRejected, subject: "account-1"},
+		"accepted":  {status: InvitationAccepted, toUser: &guest, subject: guest},
+	} {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			entry := invitationEntry(recordingInvitation(tc.status, tc.toUser), audit.EventUpdated)
+
+			test.EqOp(t, tc.subject, entry.SubjectID)
+			test.EqOp(t, "invitation-1", entry.ResourceID)
+			test.Eq(t, map[string]string{metadataAccountID: "account-1", metadataStatus: tc.status.String()}, entry.Metadata)
+		})
+	}
 }

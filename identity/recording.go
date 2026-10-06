@@ -365,13 +365,16 @@ const lastUpdatedAtField = "lastUpdatedAt"
 //     change record the diff of the two rows.
 //   - The credential operations record that the credential moved and nothing
 //     else. The rows are redacted already, and no entry carries a diff of them.
+//   - A registration is the registrant's when its request carries nobody, which
+//     it ordinarily does not, since the registrant is what it produces. One that
+//     carries a principal — an operator registering somebody — is theirs.
 //
-// What it does not decide is where an entry is filed or who made it; both are
-// the Recorder's, through its ScopeResolver and its principal extractor. Every
-// entry about a person sets Entry.SubjectID — the user, or the member — and
-// every entry about an account names the account, so a resolver filing by
-// subject puts an account's own history on the account's chain, which is the
-// one a member asking about their account reads.
+// What it does not decide is where an entry is filed or, past a registration,
+// who made it; both are the Recorder's, through its ScopeResolver and its
+// principal extractor. Every entry about a person sets Entry.SubjectID — the
+// user, or the member — and every entry about an account names the account, so
+// a resolver filing by subject puts an account's own history on the account's
+// chain, which is the one a member asking about their account reads.
 //
 // Nor does it revoke anything. Hooks.AfterUpdateUserAccountStatus names the two
 // calls that end a suspended user's sessions and refresh-token families, and
@@ -412,7 +415,7 @@ func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scop
 
 	user, account, membership := registration.User, registration.Account, registration.Membership
 
-	return h.record(ctx, tx, scope, EventUserRegistered, user.ID, &UserEvent{
+	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
 		UserID:                        user.ID,
 		AccountID:                     account.ID,
 		MembershipID:                  membership.ID,
@@ -422,6 +425,30 @@ func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scop
 		accountEntry(account, audit.EventCreated, nil, nil),
 		membershipEntry(membership, audit.EventCreated, nil),
 	)
+}
+
+// recordRegistration emits one EventUserRegistered and writes every entry as
+// the registrant, unless the request carries a principal.
+//
+// A registration is the write that mints the principal, so its request
+// ordinarily carries nobody and Record would file all of it as unattributed.
+// An operator registering somebody on their behalf sends a request that does
+// carry one, and then the entries name the operator rather than the registrant.
+func (h *RecordingHooks) recordRegistration(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	user *User,
+	payload *UserEvent,
+	entries ...*recording.Entry,
+) error {
+	event := &webhooks.Event{
+		EventType:   EventUserRegistered,
+		OrderingKey: user.ID,
+		Payload:     payload,
+	}
+
+	return h.recorder.RecordOrAs(ctx, tx, scope, audit.Actor{ID: user.ID, Type: audit.ActorUser}, event, entries...)
 }
 
 // AfterRegisterWithInvitation records the user the registration wrote, the
@@ -447,7 +474,7 @@ func (h *RecordingHooks) AfterRegisterWithInvitation(
 
 	user, invitation, membership := registration.User, registration.Invitation, registration.Membership
 
-	return h.record(ctx, tx, scope, EventUserRegistered, user.ID, &UserEvent{
+	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
 		UserID:                        user.ID,
 		AccountID:                     membership.BelongsToAccount,
 		MembershipID:                  membership.ID,
@@ -1034,25 +1061,29 @@ func membershipEntry(membership *Membership, eventType audit.EventType, extra ma
 
 // invitationEntry is an entry about an invitation, carrying the account it
 // joins and the status the write left it in. It names the recipient as its
-// subject once there is one; before an answer, the recipient is an address,
-// and no entry here carries an address. Nor does it read the token, which is
-// the point of building it field by field.
+// subject once there is one. Before an answer the recipient is an address, and
+// no entry here carries an address, so the invitation is the account's until it
+// is somebody's: its issue, and a cancellation or refusal that leaves it
+// unanswered, are filed by subject on the account's chain, beside the account's
+// own entries, where whoever administers the account reads who was invited and
+// when. Nor does it read the token, which is the point of building it field by
+// field.
 func invitationEntry(invitation *Invitation, eventType audit.EventType) *recording.Entry {
-	entry := &recording.Entry{
+	subject := invitation.BelongsToAccount
+	if invitation.ToUser != nil {
+		subject = *invitation.ToUser
+	}
+
+	return &recording.Entry{
 		ResourceType: ResourceTypeInvitation,
 		ResourceID:   invitation.ID,
+		SubjectID:    subject,
 		EventType:    eventType,
 		Metadata: map[string]string{
 			metadataAccountID: invitation.BelongsToAccount,
 			metadataStatus:    invitation.Status.String(),
 		},
 	}
-
-	if invitation.ToUser != nil {
-		entry.SubjectID = *invitation.ToUser
-	}
-
-	return entry
 }
 
 // invitationEvent is the payload naming an invitation, without its token.
