@@ -171,6 +171,11 @@ const (
 	// The anonymous resend, a series apart from the signed-in one because a
 	// dashboard watching for a stranger filling somebody's inbox watches it.
 	opRequestVerificationEmailByAddress = "request_verification_email_by_address"
+	// The first verification link's delivery, a series apart from registering
+	// because a failed send does not fail the registration: counted under
+	// "register" it would be invisible, and it is the series that says how many
+	// registrants are waiting on a resend.
+	opMailRegistrationLink = "mail_registration_link"
 	// The passwordless door, both halves. It is a series of its own for the
 	// reason registering is: what a dashboard asks of it is how many people
 	// arrive without a password, which is a different question from how often
@@ -512,8 +517,8 @@ type Service struct {
 
 	// verificationMailer is nil until WithVerificationMailer names one, and nil
 	// means RequestVerificationEmail refuses with
-	// ErrVerificationMailerNotConfigured. Registration needs none: it hands its
-	// link back on Registered.
+	// ErrVerificationMailerNotConfigured. Registration needs none: without it,
+	// Register mails nothing and leaves the link on Registered.
 	verificationMailer VerificationMailer
 
 	// magicLinkMailer is nil until WithMagicLinkMailer names one. The request

@@ -51,8 +51,7 @@ const (
 // events are marked the same way.
 const (
 	// EventUserRegistered says somebody registered, with an account of their own
-	// or into the one an invitation named. The payload carries the verification
-	// link's secret when the caller minted one.
+	// or into the one an invitation named.
 	EventUserRegistered webhooks.EventType = "identity.user.registered"
 	// EventUserArchived says a user was archived, and names the memberships the
 	// archival ended.
@@ -106,9 +105,7 @@ const (
 	// EventMembershipRemoved says somebody left or was removed from an account.
 	EventMembershipRemoved webhooks.EventType = "identity.membership.removed"
 
-	// EventInvitationCreated says an invitation was issued. The payload carries
-	// the link's secret when the Service hands it to the hook, which is when it
-	// was built without an InvitationMailer.
+	// EventInvitationCreated says an invitation was issued.
 	EventInvitationCreated webhooks.EventType = "identity.invitation.created"
 	// EventInvitationAccepted says an existing user accepted an invitation.
 	EventInvitationAccepted webhooks.EventType = "identity.invitation.accepted"
@@ -131,13 +128,17 @@ const (
 // its own merged copy rather than defining the event again beside this
 // fragment, which Merge refuses.
 //
-// Two of them carry a bearer secret — [EventUserRegistered] the verification
-// link's and [EventInvitationCreated] the invitation's — because the outbox
-// consumer that mails the link has nowhere else to take it from. A deployment
-// that subscribes an endpoint to either is handing that endpoint the link; one
-// that does not want that marks the two Internal on its merged copy, and the
-// outbox still carries them. Marked rather than deleted, so the Emitter does
-// not count them as constants that fell out of the catalog.
+// None of them carries a bearer secret, and the two that might have are
+// [EventUserRegistered] and [EventInvitationCreated]. A registration's
+// verification link promotes the registrant and an invitation's joins an
+// account, and an event goes wherever a deployment's catalog sends it — so a
+// link on one is a link in every subscriber's logs, delivered by a merge that
+// never mentioned it. The links reach the mailbox they were minted for through
+// a mailer instead: [InvitationMailer] for an invitation's, and signin's
+// VerificationMailer for a registration's. The hook arguments still carry both
+// tokens, and a deployment that queues its mail on the operation's transaction
+// rather than through a mailer writes that row from a hook of its own, onto a
+// topic no subscriber reads.
 //
 // It is a function rather than a package-level map so that no caller can
 // mutate the one copy every other caller reads.
@@ -195,12 +196,6 @@ type UserEvent struct {
 	// InvitationID is the invitation a registration answered.
 	InvitationID string `json:"invitationID,omitempty"`
 
-	// EmailAddressVerificationToken is the secret a registrant's verification
-	// link carries, on EventUserRegistered when the caller minted one. It is
-	// here and on no audit entry: the column holds a digest, so this is the one
-	// place the outbox consumer mailing the link can read it from.
-	EmailAddressVerificationToken string `json:"emailAddressVerificationToken,omitempty"`
-
 	// AccountStatus and PreviousAccountStatus are where the user stands after
 	// and before EventUserAccountStatusUpdated.
 	AccountStatus         AccountStatus `json:"accountStatus,omitempty"`
@@ -237,7 +232,7 @@ type UserEvent struct {
 // AccountEvent is the payload of every account event.
 //
 // It names the account and its owner by ID, and not by name: an account is
-// often a household or a person's own, and its name is theirs.
+// often an organization's, a team's or a person's own, and its name is theirs.
 type AccountEvent struct {
 	_ struct{} `json:"-"`
 
@@ -307,11 +302,6 @@ type InvitationEvent struct {
 	Status InvitationStatus `json:"status"`
 	// MembershipID is what an acceptance minted.
 	MembershipID string `json:"membershipID,omitempty"`
-
-	// Token is the secret half of the link, on EventInvitationCreated when the
-	// Service handed it to the hook. It is here and on no audit entry, for the
-	// reason UserEvent.EmailAddressVerificationToken is.
-	Token string `json:"token,omitempty"`
 }
 
 // The metadata keys an audit entry here carries, read back by whoever reads the
@@ -353,10 +343,11 @@ const lastUpdatedAtField = "lastUpdatedAt"
 //     one event. An archival records an entry per membership it ended, each
 //     naming that member as its subject, so a Recorder filing by subject puts it
 //     on their chain.
-//   - Secrets travel on the event and never on an entry. The verification token
-//     a registration carries and the token an issued invitation carries are
-//     what the outbox consumer builds the link from; see [EventCatalog] for what
-//     that means for a webhook subscriber. No entry is ever handed one.
+//   - No secret travels on an entry or an event. The verification token a
+//     registration's hook is handed and the token an issued invitation's may be
+//     are dropped here, for the reason [EventCatalog] gives; the link goes to
+//     the mailbox through a mailer. A consumer that queues its mail from the
+//     hook instead embeds this type and writes that row from an override.
 //   - A value the column no longer holds goes in the entry's metadata: the
 //     previous owner, the previous default, both role sets, and the flags the
 //     credential writes cleared on their way past.
@@ -398,8 +389,8 @@ func NewRecordingHooks(recorder *recording.Recorder) (*RecordingHooks, error) {
 }
 
 // AfterRegister records the user, the account and the membership a
-// registration wrote, and emits one EventUserRegistered carrying the
-// verification token, which no entry sees.
+// registration wrote, and emits one EventUserRegistered. The verification token
+// the registration carries is on neither.
 func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scope tenancy.Scope, registration *Registration) error {
 	if registration == nil || registration.User == nil {
 		return ErrNilUser
@@ -416,10 +407,9 @@ func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scop
 	user, account, membership := registration.User, registration.Account, registration.Membership
 
 	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
-		UserID:                        user.ID,
-		AccountID:                     account.ID,
-		MembershipID:                  membership.ID,
-		EmailAddressVerificationToken: registration.EmailAddressVerificationToken,
+		UserID:       user.ID,
+		AccountID:    account.ID,
+		MembershipID: membership.ID,
 	},
 		userEntry(user, audit.EventCreated, nil, nil),
 		accountEntry(account, audit.EventCreated, nil, nil),
@@ -475,11 +465,10 @@ func (h *RecordingHooks) AfterRegisterWithInvitation(
 	user, invitation, membership := registration.User, registration.Invitation, registration.Membership
 
 	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
-		UserID:                        user.ID,
-		AccountID:                     membership.BelongsToAccount,
-		MembershipID:                  membership.ID,
-		InvitationID:                  invitation.ID,
-		EmailAddressVerificationToken: registration.EmailAddressVerificationToken,
+		UserID:       user.ID,
+		AccountID:    membership.BelongsToAccount,
+		MembershipID: membership.ID,
+		InvitationID: invitation.ID,
 	},
 		userEntry(user, audit.EventCreated, nil, nil),
 		invitationEntry(invitation, audit.EventUpdated),
@@ -487,18 +476,15 @@ func (h *RecordingHooks) AfterRegisterWithInvitation(
 	)
 }
 
-// AfterInvite records the invitation issued, and emits EventInvitationCreated
-// carrying its token when the Service handed it one. The entry is built from
-// the invitation's identifiers and never sees the token.
+// AfterInvite records the invitation issued, and emits EventInvitationCreated.
+// Both are built from the invitation's identifiers, so neither sees the token
+// the Service hands this hook when it was built without an InvitationMailer.
 func (h *RecordingHooks) AfterInvite(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *Invitation) error {
 	if invitation == nil {
 		return ErrNilInvitation
 	}
 
-	payload := invitationEvent(invitation)
-	payload.Token = invitation.Token
-
-	return h.record(ctx, tx, scope, EventInvitationCreated, invitation.ID, payload,
+	return h.record(ctx, tx, scope, EventInvitationCreated, invitation.ID, invitationEvent(invitation),
 		invitationEntry(invitation, audit.EventCreated),
 	)
 }

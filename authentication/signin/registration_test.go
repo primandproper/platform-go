@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,9 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // The registration suite. It runs against the same live SQLite database and
@@ -264,6 +268,173 @@ func TestService_Register_aDeadInvitationTakesTheUserWithIt(T *testing.T) {
 
 	_, err = e.store.GetUserByUsername(T.Context(), e.client.Reader(), testScope, "ada")
 	test.ErrorIs(T, err, identity.ErrUserNotFound)
+}
+
+// The first link goes where every later one does: a service built with a
+// VerificationMailer hands it the registration's link, once, carrying the token
+// the registration minted, the registrant it is for and the deadline stored
+// beside its digest — and the link it mailed is the one that verifies.
+func TestService_Register_mailsTheFirstLink(T *testing.T) {
+	T.Parallel()
+
+	T.Run("an ordinary registration", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		registered, err := e.svc.Register(t.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+		must.NoError(t, err)
+
+		must.EqOp(t, 1, mailbox.count())
+		mail := mailbox.last(t)
+
+		test.EqOp(t, registered.EmailAddressVerificationToken, mail.Token)
+		must.NotNil(t, mail.User)
+		test.EqOp(t, registered.User.ID, mail.User.ID)
+		test.EqOp(t, "ada@example.com", mail.User.EmailAddress)
+		test.EqOp(t, "", mail.User.HashedPassword, test.Sprint("the mail's user was not redacted"))
+		test.EqOp(t, "", mail.User.EmailAddressVerificationToken)
+
+		stored, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registered.User.ID)
+		must.NoError(t, err)
+		must.NotNil(t, stored.EmailAddressVerificationTokenExpiresAt)
+		// Within a second rather than equal: SQLite keeps the column to the second.
+		drift := mail.ExpiresAt.Sub(*stored.EmailAddressVerificationTokenExpiresAt).Abs()
+		test.True(t, drift < time.Second,
+			test.Sprintf("mailed %s, stored %s", mail.ExpiresAt, *stored.EmailAddressVerificationTokenExpiresAt))
+
+		must.NoError(t, e.svc.VerifyEmailAddress(t.Context(), testScope, mail.Token))
+	})
+
+	T.Run("a registration answering an invitation", func(t *testing.T) {
+		t.Parallel()
+
+		e, mailbox := newResendEnv(t)
+
+		invitation, err := e.directory.Invite(t.Context(), testScope, &identity.Invitation{
+			Scope:            testScope,
+			FromUser:         e.user.ID,
+			BelongsToAccount: e.accountID,
+			ToEmail:          "ada@example.com",
+			Token:            "invitation-token",
+			Roles:            []string{"member"},
+			ExpiresAt:        time.Now().UTC().Add(time.Hour),
+		})
+		must.NoError(t, err)
+
+		registration := newRegistration("ada", signin.Password("hunter2 hunter2"))
+		registration.InvitationID = invitation.ID
+		registration.InvitationToken = "invitation-token"
+
+		registered, err := e.svc.Register(t.Context(), testScope, registration)
+		must.NoError(t, err)
+
+		// The invitation proved nothing about the address — anybody holding the
+		// link types it — so the registrant is mailed a link like any other.
+		must.EqOp(t, 1, mailbox.count())
+		mail := mailbox.last(t)
+		test.EqOp(t, registered.EmailAddressVerificationToken, mail.Token)
+		test.EqOp(t, registered.User.ID, mail.User.ID)
+		test.EqOp(t, "ada@example.com", mail.User.EmailAddress)
+	})
+}
+
+// The mail is sent once the registration has committed: a mailer reading the
+// registrant back on a connection of its own finds them, which a send made from
+// inside the registration's transaction would not.
+func TestService_Register_mailsAfterTheCommit(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T)
+
+	var found *identity.User
+
+	mailer := signin.VerificationMailerFunc(func(ctx context.Context, mail *signin.VerificationMail) error {
+		user, err := e.store.GetUser(ctx, e.client.Reader(), testScope, mail.User.ID)
+		found = user
+
+		return err
+	})
+
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer, []string{"owner"},
+		signin.WithRegistrar(e.directory),
+		signin.WithVerificationMailer(mailer),
+	)
+	must.NoError(T, err)
+
+	registered, err := svc.Register(T.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+	must.NoError(T, err)
+
+	must.NotNil(T, found)
+	test.EqOp(T, registered.User.ID, found.ID)
+}
+
+// A service built without a mailer registers exactly as before: nothing is
+// refused, and the link is on the result for an in-process caller to deliver.
+func TestService_Register_withoutAMailerMailsNothing(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T, signin.WithVerificationMailer(nil))
+
+	registered, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+	must.NoError(T, err)
+	must.NotEq(T, "", registered.EmailAddressVerificationToken)
+
+	must.NoError(T, e.svc.VerifyEmailAddress(T.Context(), testScope, registered.EmailAddressVerificationToken))
+}
+
+// A mailer that fails does not fail the registration, which has committed and
+// is complete: the caller is handed the registrant with no error, and the
+// failure is on the span for an operator, without the link.
+func TestService_Register_mailerFailure(T *testing.T) {
+	T.Parallel()
+
+	errMailDown := platformerrors.New("mail provider refused the message")
+
+	spans := tracetest.NewSpanRecorder()
+	e, mailbox := newResendEnv(T,
+		signin.WithTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))))
+	mailbox.err = errMailDown
+
+	registered, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+	must.NoError(T, err)
+	must.NotNil(T, registered)
+	must.NotNil(T, registered.User)
+	must.NotEq(T, "", registered.EmailAddressVerificationToken)
+
+	var failed sdktrace.ReadOnlySpan
+
+	for _, span := range spans.Ended() {
+		if span.Status().Code == codes.Error {
+			failed = span
+		}
+	}
+
+	must.NotNil(T, failed, must.Sprint("the failed send was recorded on no span"))
+
+	recorded := false
+
+	for _, event := range failed.Events() {
+		for _, attr := range event.Attributes {
+			test.StrNotContains(T, attr.Value.String(), registered.EmailAddressVerificationToken)
+			recorded = recorded || strings.Contains(attr.Value.String(), errMailDown.Error())
+		}
+	}
+
+	test.True(T, recorded, test.Sprint("the mailer's error was not recorded on the span"))
+
+	stored, err := e.store.GetUser(T.Context(), e.client.Reader(), testScope, registered.User.ID)
+	must.NoError(T, err)
+	test.EqOp(T, "ada", stored.Username)
+
+	// The remedy is a resend, which mints another link and retires this one.
+	mailbox.mu.Lock()
+	mailbox.err = nil
+	mailbox.mu.Unlock()
+
+	must.NoError(T, e.svc.RequestVerificationEmailByAddress(T.Context(), testScope, "ada@example.com"))
+	must.EqOp(T, 1, mailbox.count())
+	test.NotEqOp(T, registered.EmailAddressVerificationToken, mailbox.last(T).Token)
 }
 
 func TestService_VerifyEmailAddress(T *testing.T) {

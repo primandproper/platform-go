@@ -793,9 +793,10 @@ func WithMagicLinkTTL(ttl time.Duration) ServiceOption {
 // It is a mailer of its own rather than a reuse of MagicLinkMailer, for the
 // reason the two doors are separate: a consumer implements only the mail for the
 // doors they mount, and a verification link and a sign-in link are different
-// messages with different URLs. Registration does not use it — Register hands
-// its link back on Registered, since a registration has already told its caller
-// the account exists.
+// messages with different URLs. Registration uses it too: Register hands the
+// first link to it once the registration has committed, and a service built
+// without one registers without mailing, leaving the link on Registered for an
+// in-process caller.
 func WithVerificationMailer(mailer VerificationMailer) ServiceOption {
 	return func(s *Service) {
 		if mailer != nil {

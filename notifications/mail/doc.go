@@ -41,11 +41,11 @@ transaction there is, and what it buys is stated rather than implied:
     them refuses on purpose: a mail enqueued inside the write is a mail for a
     row that may still roll back, and once drained it cannot be taken back.
 
-Registration's verification mail is not on this list, because it is not on
-any seam. A registration's token reaches the consumer on the
-identity.user.registered event, inside the registration's own transaction,
-and a deployment that mails from that event is mailing from the event's
-transport.
+Registration's verification mail is on this list without a seam of its own:
+signin's Register hands the first link to the same signin.VerificationMailer
+the resend doors use, once the registration has committed. It does not travel
+on the identity.user.registered event, which carries no token, so a deployment
+mailing from that event has nothing to build the link from.
 
 # The secret rides on the message
 

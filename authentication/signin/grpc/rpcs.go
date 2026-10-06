@@ -494,11 +494,13 @@ func (s *Server) VerifyTOTPSecret(
 // one this schema exists to prevent. So is an unspecified agreement.
 //
 // What comes back carries no verification token. The secret that promotes this
-// registrant out of the unverified standing travels to them in mail the consumer
-// sends from inside the transaction that wrote their row, and never back to
-// whoever called this. A second factor the policy minted does come back:
-// enrolling it is the point of minting it, and this response is the only place
-// it is handed over.
+// registrant out of the unverified standing travels to them through the
+// service's signin.VerificationMailer once the registration has committed, and
+// never back to whoever called this — so a deployment that mounts this RPC
+// builds its service with one, or every registrant over the wire waits on
+// RequestVerificationEmailByAddress for a first link. A second factor the
+// policy minted does come back: enrolling it is the point of minting it, and
+// this response is the only place it is handed over.
 func (s *Server) Register(
 	ctx context.Context,
 	request *signinpb.RegisterRequest,

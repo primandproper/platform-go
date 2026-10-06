@@ -247,9 +247,10 @@ type PrincipalExtractor struct {
 	fallback callers.PrincipalExtractor
 	signIns  SignInChecker
 
-	accessTokens      *oauth2server.Verifier
-	accessTokenScope  AccessTokenScope
-	accessTokenScopes []string
+	accessTokens       *oauth2server.Verifier
+	accessTokenScope   AccessTokenScope
+	accessTokenAccount AccessTokenAccount
+	accessTokenScopes  []string
 
 	gate *PasswordChangeGate
 
@@ -433,11 +434,12 @@ func NewPrincipalExtractor(
 	}
 
 	e := &PrincipalExtractor{
-		verifier:         verifier,
-		client:           client,
-		directory:        directory,
-		ordinary:         keepNoServiceRoles,
-		accessTokenScope: globalAccessTokenScope,
+		verifier:           verifier,
+		client:             client,
+		directory:          directory,
+		ordinary:           keepNoServiceRoles,
+		accessTokenScope:   globalAccessTokenScope,
+		accessTokenAccount: defaultAccessTokenAccount,
 	}
 
 	for _, opt := range opts {

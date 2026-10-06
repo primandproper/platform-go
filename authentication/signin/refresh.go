@@ -749,7 +749,7 @@ func (s *Service) ExchangeRefreshToken(
 // SwitchAccount spends a refresh token and answers with a fresh pair for
 // another of its subject's accounts: the same login, moved.
 //
-// It is how a person who belongs to several accounts — households, workspaces,
+// It is how a person who belongs to several accounts — teams, workspaces,
 // organizations — moves between them without proving a credential again. The
 // refresh token is its whole authority, exactly as it is
 // [Service.ExchangeRefreshToken]'s, and it is a separate door from that one

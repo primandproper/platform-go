@@ -434,8 +434,9 @@ type VerificationMail struct {
 	Token string `json:"-"`
 }
 
-// VerificationMailer delivers the link [Service.RequestVerificationEmail]
-// mints.
+// VerificationMailer delivers the verification links this service mints: the
+// first, which [Service.Register] mints with the registrant, and every one
+// [Service.RequestVerificationEmail] and its anonymous sibling mint after it.
 //
 // It is a seam rather than a dependency on an email package for the reason
 // [MagicLinkMailer] is: the sender, the template, the wording and the URL the
@@ -446,7 +447,9 @@ type VerificationMail struct {
 // An error from a mailer fails RequestVerificationEmail, and by then the link is
 // committed — so the new link exists, the previous one is retired, and nobody
 // has either. That is the honest reading of a send that failed, and asking again
-// mints another.
+// mints another. It does not fail Register: the registration has committed and
+// is complete, so the failure is logged, traced and counted for an operator,
+// and the registrant's remedy is the anonymous resend.
 type VerificationMailer interface {
 	SendVerification(ctx context.Context, mail *VerificationMail) error
 }

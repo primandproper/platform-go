@@ -97,14 +97,14 @@ func TestPrincipalExtractor_WithAccessTokens(T *testing.T) {
 	h := newExtractorHarness(T)
 
 	tokens := accessTokenStore{
-		"member-token":     accessToken(h.member.User.ID, []string{thisResource}, "recipes:read"),
-		"operator-token":   accessToken(h.admin.User.ID, []string{thisResource}, "recipes:read"),
-		"sibling-token":    accessToken(h.member.User.ID, []string{siblingResource}, "recipes:read"),
-		"no-audience":      accessToken(h.member.User.ID, nil, "recipes:read"),
+		"member-token":     accessToken(h.member.User.ID, []string{thisResource}, "widgets:read"),
+		"operator-token":   accessToken(h.admin.User.ID, []string{thisResource}, "widgets:read"),
+		"sibling-token":    accessToken(h.member.User.ID, []string{siblingResource}, "widgets:read"),
+		"no-audience":      accessToken(h.member.User.ID, nil, "widgets:read"),
 		"read-only-token":  accessToken(h.member.User.ID, []string{thisResource}),
-		"nobody-token":     accessToken("no-such-user", []string{thisResource}, "recipes:read"),
-		"other-dir-token":  accessToken(h.staff.User.ID, []string{thisResource}, "recipes:read"),
-		"global-dir-token": accessToken(h.member.User.ID, []string{thisResource}, "recipes:read"),
+		"nobody-token":     accessToken("no-such-user", []string{thisResource}, "widgets:read"),
+		"other-dir-token":  accessToken(h.staff.User.ID, []string{thisResource}, "widgets:read"),
+		"global-dir-token": accessToken(h.member.User.ID, []string{thisResource}, "widgets:read"),
 	}
 
 	verifier := verifierOver(T, tokens)
@@ -113,7 +113,7 @@ func TestPrincipalExtractor_WithAccessTokens(T *testing.T) {
 		t.Helper()
 
 		return h.extractor(t, append([]signingrpc.ExtractorOption{
-			signingrpc.WithAccessTokens(verifier, "recipes:read"),
+			signingrpc.WithAccessTokens(verifier, "widgets:read"),
 			signingrpc.WithAccessTokenScope(inTestScope),
 		}, opts...)...)
 	}
@@ -262,7 +262,7 @@ func TestPrincipalExtractor_WithAccessTokens(T *testing.T) {
 		t.Parallel()
 
 		fresh := newExtractorHarness(t)
-		banned := accessToken(fresh.member.User.ID, []string{thisResource}, "recipes:read")
+		banned := accessToken(fresh.member.User.ID, []string{thisResource}, "widgets:read")
 
 		must.NoError(t, fresh.db.WithTransaction(t.Context(), func(tx database.Tx) error {
 			return fresh.store.UpdateUserAccountStatus(t.Context(), tx, testScope, fresh.member.User.ID, identity.StatusBanned, "")
@@ -273,7 +273,7 @@ func TestPrincipalExtractor_WithAccessTokens(T *testing.T) {
 
 		consulted := false
 		e := fresh.extractor(t,
-			signingrpc.WithAccessTokens(verifierOver(t, freshTokens), "recipes:read"),
+			signingrpc.WithAccessTokens(verifierOver(t, freshTokens), "widgets:read"),
 			signingrpc.WithAccessTokenScope(inTestScope),
 			signingrpc.WithFallback(func(context.Context) (callers.Principal, bool) {
 				consulted = true
@@ -330,6 +330,138 @@ func TestPrincipalExtractor_WithAccessTokens(T *testing.T) {
 	})
 }
 
+// pinnedAccessToken is accessToken with the account its grant was made for
+// recorded in the subject's claims, as an authorization server whose consent
+// screen asked "which account" records it.
+func pinnedAccessToken(subject, accountID string) *oauth2server.AccessToken {
+	token := accessToken(subject, []string{thisResource}, "widgets:read")
+	token.Subject.Claims = map[string]string{"account": accountID}
+
+	return token
+}
+
+// accountFromClaim is the AccessTokenAccount a deployment pinning grants to an
+// account writes: the claim the consent recorded, or the default without one.
+func accountFromClaim(_ context.Context, token *oauth2server.AccessToken) (string, error) {
+	return token.Subject.Claims["account"], nil
+}
+
+func TestPrincipalExtractor_WithAccessTokenAccount(T *testing.T) {
+	T.Parallel()
+
+	h := newExtractorHarness(T)
+
+	// The member belongs to the operator's account as well as their own, so
+	// their default and the account a grant may name differ.
+	must.NoError(T, h.db.WithTransaction(T.Context(), func(tx database.Tx) error {
+		_, err := h.store.CreateMembership(T.Context(), tx, testScope, &identity.Membership{
+			Scope:            testScope,
+			BelongsToUser:    h.member.User.ID,
+			BelongsToAccount: h.admin.Account.ID,
+			Roles:            []string{"member"},
+		})
+
+		return err
+	}))
+
+	tokens := accessTokenStore{
+		"unpinned-token":  accessToken(h.member.User.ID, []string{thisResource}, "widgets:read"),
+		"pinned-token":    pinnedAccessToken(h.member.User.ID, h.admin.Account.ID),
+		"nonmember-token": pinnedAccessToken(h.admin.User.ID, h.member.Account.ID),
+	}
+
+	verifier := verifierOver(T, tokens)
+
+	extractor := func(t *testing.T, opts ...signingrpc.ExtractorOption) *signingrpc.PrincipalExtractor {
+		t.Helper()
+
+		return h.extractor(t, append([]signingrpc.ExtractorOption{
+			signingrpc.WithAccessTokens(verifier, "widgets:read"),
+			signingrpc.WithAccessTokenScope(inTestScope),
+		}, opts...)...)
+	}
+
+	activeAccount := func(t *testing.T, saw seen) string {
+		t.Helper()
+
+		must.NotNil(t, saw.principal)
+
+		caller, ok := saw.principal.(*signingrpc.AccessTokenCaller)
+		must.True(t, ok)
+		test.EqOp(t, caller.ActiveAccountID(), caller.Identity().ActiveAccountID)
+
+		return caller.ActiveAccountID()
+	}
+
+	T.Run("absent, a token acts in its subject's default account whatever it names", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, h.member.Account.ID, activeAccount(t, serveThrough(t, extractor(t), "Bearer pinned-token")))
+	})
+
+	T.Run("an account the deployment names is the one the subject acts in", func(t *testing.T) {
+		t.Parallel()
+
+		e := extractor(t, signingrpc.WithAccessTokenAccount(accountFromClaim))
+
+		test.EqOp(t, h.admin.Account.ID, activeAccount(t, serveThrough(t, e, "Bearer pinned-token")))
+	})
+
+	T.Run("naming no account leaves the subject in their default", func(t *testing.T) {
+		t.Parallel()
+
+		e := extractor(t, signingrpc.WithAccessTokenAccount(accountFromClaim))
+
+		test.EqOp(t, h.member.Account.ID, activeAccount(t, serveThrough(t, e, "Bearer unpinned-token")))
+	})
+
+	T.Run("an account the subject is not a member of refuses the token, and is no fallback's", func(t *testing.T) {
+		t.Parallel()
+
+		consulted := false
+		e := extractor(t,
+			signingrpc.WithAccessTokenAccount(accountFromClaim),
+			signingrpc.WithFallback(func(context.Context) (callers.Principal, bool) {
+				consulted = true
+
+				return &testPrincipal{userID: "legacy"}, true
+			}),
+		)
+
+		saw := serveThrough(t, e, "Bearer nonmember-token")
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+		test.False(t, consulted)
+	})
+
+	T.Run("an account decision that fails is an outage, and one refusing the token is not", func(t *testing.T) {
+		t.Parallel()
+
+		failing := extractor(t, signingrpc.WithAccessTokenAccount(func(context.Context, *oauth2server.AccessToken) (string, error) {
+			return "", platformerrors.New("the grants service is down")
+		}))
+		test.EqOp(t, http.StatusServiceUnavailable, serveThrough(t, failing, "Bearer pinned-token").code)
+
+		refusing := extractor(t, signingrpc.WithAccessTokenAccount(func(context.Context, *oauth2server.AccessToken) (string, error) {
+			return "", platformerrors.Wrap(signingrpc.ErrUnauthenticated, "no account claim")
+		}))
+		saw := serveThrough(t, refusing, "Bearer pinned-token")
+		test.EqOp(t, http.StatusNoContent, saw.code)
+		test.Nil(t, saw.principal)
+	})
+
+	T.Run("a nil account decision is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		e := extractor(t,
+			signingrpc.WithAccessTokenAccount(accountFromClaim),
+			signingrpc.WithAccessTokenAccount(nil),
+		)
+
+		test.EqOp(t, h.admin.Account.ID, activeAccount(t, serveThrough(t, e, "Bearer pinned-token")))
+	})
+}
+
 // TestPrincipalExtractor_WithAccessTokens_interceptor is an access token on a
 // real connection, through the interceptor in front of the sign-in surface.
 func TestPrincipalExtractor_WithAccessTokens_interceptor(T *testing.T) {
@@ -338,9 +470,10 @@ func TestPrincipalExtractor_WithAccessTokens_interceptor(T *testing.T) {
 	h := newExtractorHarness(T)
 
 	tokens := accessTokenStore{
-		"member-token":    accessToken(h.member.User.ID, []string{thisResource}, "recipes:read"),
-		"sibling-token":   accessToken(h.member.User.ID, []string{siblingResource}, "recipes:read"),
+		"member-token":    accessToken(h.member.User.ID, []string{thisResource}, "widgets:read"),
+		"sibling-token":   accessToken(h.member.User.ID, []string{siblingResource}, "widgets:read"),
 		"read-only-token": accessToken(h.member.User.ID, []string{thisResource}),
+		"nonmember-token": pinnedAccessToken(h.admin.User.ID, h.member.Account.ID),
 	}
 
 	dial := func(t *testing.T, e *signingrpc.PrincipalExtractor) *signinclient.Client {
@@ -383,7 +516,7 @@ func TestPrincipalExtractor_WithAccessTokens_interceptor(T *testing.T) {
 	}
 
 	client := dial(T, h.extractor(T,
-		signingrpc.WithAccessTokens(verifierOver(T, tokens), "recipes:read"),
+		signingrpc.WithAccessTokens(verifierOver(T, tokens), "widgets:read"),
 		signingrpc.WithAccessTokenScope(inTestScope),
 	))
 
@@ -399,6 +532,19 @@ func TestPrincipalExtractor_WithAccessTokens_interceptor(T *testing.T) {
 		t.Parallel()
 
 		_, err := client.GetSelf(bearer(t.Context(), "sibling-token"), &signinpb.GetSelfRequest{})
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+
+	T.Run("a token pinned to an account its subject is not a member of is unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		pinned := dial(t, h.extractor(t,
+			signingrpc.WithAccessTokens(verifierOver(t, tokens), "widgets:read"),
+			signingrpc.WithAccessTokenScope(inTestScope),
+			signingrpc.WithAccessTokenAccount(accountFromClaim),
+		))
+
+		_, err := pinned.GetSelf(bearer(t.Context(), "nonmember-token"), &signinpb.GetSelfRequest{})
 		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 	})
 
