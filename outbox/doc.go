@@ -58,6 +58,13 @@ endpoint, an audit row — is not being chosen by anybody, and leaving it a
 parameter means a method that omits it compiles, reviews clean, and is wrong.
 Register those.
 
+The trigger can be declined without declining what it implies. A reindex-only
+correction or a backfill owes the index its events and owes nobody an
+announcement, and EnqueueDerived is that write: it runs the registered side
+effects over the messages it is given, exactly as Enqueue does, and enqueues
+only what they derive. It runs the Writer's own registrations rather than a copy
+the caller kept of them, which is the copy that would drift.
+
 Side effects see the messages the caller passed and never what another side
 effect derived, so registration order fixes what runs when and nothing more.
 Registrations are refused at construction — unnamed, duplicated, or nil — rather

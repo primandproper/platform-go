@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -721,6 +722,274 @@ func TestWriter_Enqueue_fanoutHistogram(T *testing.T) {
 
 		test.SliceEmpty(t, hist.observed())
 	})
+}
+
+func TestWriter_EnqueueDerived(T *testing.T) {
+	T.Parallel()
+
+	// enqueueDerived runs EnqueueDerived inside a transaction, the way a caller
+	// would.
+	enqueueDerived := func(t *testing.T, client database.Client, w *Writer, msgs ...Message) error {
+		t.Helper()
+
+		return client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return w.EnqueueDerived(t.Context(), q, msgs...)
+		})
+	}
+
+	orders := []Message{
+		{Topic: "orders", Key: "order-1", Payload: map[string]any{"id": "order-1"}},
+		{Topic: "orders", Key: "order-2", Payload: map[string]any{"id": "order-2"}},
+	}
+
+	T.Run("writes what the side effects derive and not the trigger", func(t *testing.T) {
+		t.Parallel()
+
+		var ran []string
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(), WithWriterSideEffect("index", derive(&ran, "index", "orders-index")))
+
+		must.NoError(t, enqueueDerived(t, client, w, orders...))
+
+		test.Eq(t, []string{"index"}, ran)
+		test.EqOp(t, 2, countRows(t, client, "1=1"))
+		test.EqOp(t, 0, countRows(t, client, "topic = 'orders'"))
+		test.EqOp(t, 1, countRows(t, client, "topic = 'orders-index' AND partition_key = 'order-1'"))
+		test.EqOp(t, 1, countRows(t, client, "topic = 'orders-index' AND partition_key = 'order-2'"))
+	})
+
+	// The same withSideEffects the ordinary path runs: registration order, and
+	// each effect over the triggers alone rather than another's output.
+	T.Run("runs side effects as Enqueue does", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			ran  []string
+			seen []string
+		)
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(),
+			WithWriterSideEffect("first", derive(&ran, "first", "first-derived")),
+			WithWriterSideEffect("second", derive(&ran, "second", "second-derived")),
+			WithWriterSideEffect("observing", func(_ context.Context, _ database.Tx, msgs []Message) ([]Message, error) {
+				for _, msg := range msgs {
+					seen = append(seen, msg.Topic)
+				}
+
+				return nil, nil
+			}))
+
+		must.NoError(t, enqueueDerived(t, client, w, orders[0]))
+
+		test.Eq(t, []string{"first", "second"}, ran)
+		test.Eq(t, []string{"orders"}, seen)
+		test.EqOp(t, 1, countRows(t, client, "topic = 'first-derived'"))
+		test.EqOp(t, 1, countRows(t, client, "topic = 'second-derived'"))
+		test.EqOp(t, 0, countRows(t, client, "topic = 'orders'"))
+	})
+
+	T.Run("writes nothing for a trigger that derives nothing", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(),
+			WithWriterSideEffect("silent", func(context.Context, database.Tx, []Message) ([]Message, error) {
+				return nil, nil
+			}))
+
+		var counter *countingExecutor
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			counter = &countingExecutor{SQLQueryExecutor: q}
+
+			return w.EnqueueDerived(t.Context(), database.NewTxForTesting(counter), orders...)
+		}))
+
+		test.EqOp(t, 0, counter.execs)
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	T.Run("writes nothing when no side effect is registered", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock())
+
+		must.NoError(t, enqueueDerived(t, client, w, orders...))
+
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	T.Run("runs no side effects for no messages", func(t *testing.T) {
+		t.Parallel()
+
+		var ran []string
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(), WithWriterSideEffect("index", derive(&ran, "index", "orders-index")))
+
+		must.NoError(t, enqueueDerived(t, client, w))
+
+		test.SliceEmpty(t, ran)
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	T.Run("refuses a nil executor", func(t *testing.T) {
+		t.Parallel()
+
+		w := newSideEffectWriter(t, newStubClock())
+
+		test.ErrorIs(t, w.EnqueueDerived(t.Context(), nil, orders...), ErrNilExecutor)
+	})
+
+	// Rows an effect writes rather than returns ride the caller's transaction
+	// here too, and there is no trigger row for them to commit beside.
+	T.Run("commits rows a side effect writes", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		createDispatchTable(t, client)
+
+		w := newSideEffectWriter(t, newStubClock(), WithWriterSideEffect("webhooks", dispatchWebhooks))
+
+		must.NoError(t, enqueueDerived(t, client, w, orders[0]))
+
+		test.EqOp(t, 1, countDispatches(t, client))
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	T.Run("aborts when a side effect fails", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		createDispatchTable(t, client)
+
+		boom := platformerrors.New("index unavailable")
+
+		w := newSideEffectWriter(t, newStubClock(),
+			WithWriterSideEffect("webhooks", dispatchWebhooks),
+			WithWriterSideEffect("failing", func(context.Context, database.Tx, []Message) ([]Message, error) {
+				return nil, boom
+			}))
+
+		test.ErrorIs(t, enqueueDerived(t, client, w, orders[0]), boom)
+		test.EqOp(t, 0, countDispatches(t, client))
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	// What is derived is validated exactly as a caller's own message would be.
+	T.Run("refuses a derived message with no topic", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(),
+			WithWriterSideEffect("broken", func(context.Context, database.Tx, []Message) ([]Message, error) {
+				return []Message{{Payload: map[string]any{"id": "x"}}}, nil
+			}))
+
+		test.ErrorIs(t, enqueueDerived(t, client, w, orders[0]), ErrEmptyTopic)
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	T.Run("names the side effects and the derived count on the span", func(t *testing.T) {
+		t.Parallel()
+
+		var ran []string
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(), WithWriterSideEffect("index", derive(&ran, "index", "orders-index")))
+
+		obs := observability.NewRecordingObserver()
+		w.o11y = obs
+
+		must.NoError(t, enqueueDerived(t, client, w, orders...))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			sideEffectsKey:  []string{"index"},
+			messageCountKey: 2,
+			keys.TopicKey:   []string{"orders-index", "orders-index"},
+		})
+	})
+
+	// The trigger was not written, so neither instrument may count it: the
+	// enqueued counter would overstate the topic's publish backlog, and a
+	// fan-out sample against it would describe a write that never happened.
+	T.Run("counts the derived topics and never the trigger's", func(t *testing.T) {
+		t.Parallel()
+
+		var ran []string
+
+		counter := &recordingCounter{}
+		hist := &recordingHistogram{}
+		base := metricsnoop.NewMetricsProvider()
+
+		provider := &metricsmock.ProviderMock{
+			NewInt64CounterFunc: func(name string, o ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+				if name == fmt.Sprintf("%s_messages_enqueued", serviceName) {
+					return counter, nil
+				}
+
+				return base.NewInt64Counter(name, o...)
+			},
+			NewFloat64HistogramFunc: func(name string, o ...metric.Float64HistogramOption) (metrics.Float64Histogram, error) {
+				if name == fmt.Sprintf("%s_enqueue_fanout", serviceName) {
+					return hist, nil
+				}
+
+				return base.NewFloat64Histogram(name, o...)
+			},
+		}
+
+		client := newTestClient(t)
+		w := newSideEffectWriter(t, newStubClock(),
+			WithWriterMetricsProvider(provider),
+			WithWriterSideEffect("index", derive(&ran, "index", "orders-index")))
+
+		must.NoError(t, enqueueDerived(t, client, w, orders...))
+
+		test.Eq(t, map[string]int64{"orders-index": 2}, counter.observed())
+		test.Eq(t, []fanoutRecord{{topic: "orders-index", value: 2}}, hist.observed())
+	})
+}
+
+// recordingCounter captures what it was asked to add, totalled per topic
+// attribute.
+type recordingCounter struct {
+	totals map[string]int64
+	mu     sync.Mutex
+}
+
+var _ metrics.Int64Counter = (*recordingCounter)(nil)
+
+func (c *recordingCounter) Add(_ context.Context, incr int64, opts ...metric.AddOption) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var topic string
+
+	set := metric.NewAddConfig(opts).Attributes()
+
+	attrs := set.ToSlice()
+	for i := range attrs {
+		if string(attrs[i].Key) == keys.TopicKey {
+			topic = attrs[i].Value.AsString()
+		}
+	}
+
+	if c.totals == nil {
+		c.totals = map[string]int64{}
+	}
+
+	c.totals[topic] += incr
+}
+
+func (c *recordingCounter) observed() map[string]int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return maps.Clone(c.totals)
 }
 
 func TestNewWriter_instrumentFailures(T *testing.T) {
