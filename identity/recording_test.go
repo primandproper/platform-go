@@ -605,6 +605,28 @@ func TestRecordingHooks(T *testing.T) {
 		}
 	})
 
+	T.Run("an unanswered invitation is filed on its account's chain, not the write's", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{"AfterInvite", "AfterRejectInvitation", "AfterCancelInvitation"} {
+			l := runRecording(t, env, name, recording.WithScopeResolver(recordingBySubject))
+
+			must.SliceLen(t, 1, l.entries, must.Sprintf("%s", name))
+			test.EqOp(t, ResourceTypeInvitation, l.entries[0].ResourceType, test.Sprintf("%s", name))
+			test.EqOp(t, tenancy.Of("account-1"), l.entries[0].Scope, test.Sprintf("%s", name))
+		}
+	})
+
+	T.Run("an answered invitation is filed on its recipient's chain", func(t *testing.T) {
+		t.Parallel()
+
+		l := runRecording(t, env, "AfterAcceptInvitation", recording.WithScopeResolver(recordingBySubject))
+
+		must.SliceLen(t, 2, l.entries)
+		test.EqOp(t, ResourceTypeInvitation, l.entries[0].ResourceType)
+		test.EqOp(t, tenancy.Of("user-2"), l.entries[0].Scope)
+	})
+
 	T.Run("an archival records an entry per ended membership, each on its member's chain", func(t *testing.T) {
 		t.Parallel()
 
@@ -856,4 +878,31 @@ func TestRecordingHooks(T *testing.T) {
 		l.noSecrets(t)
 		test.StrNotContains(t, string(l.delivery(t).Payload), "argon2$ada")
 	})
+}
+
+func TestInvitationEntry(T *testing.T) {
+	T.Parallel()
+
+	guest := "user-2"
+
+	for name, tc := range map[string]struct {
+		toUser  *string
+		subject string
+		status  InvitationStatus
+	}{
+		"pending":   {status: InvitationPending, subject: "account-1"},
+		"cancelled": {status: InvitationCancelled, subject: "account-1"},
+		"rejected":  {status: InvitationRejected, subject: "account-1"},
+		"accepted":  {status: InvitationAccepted, toUser: &guest, subject: guest},
+	} {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			entry := invitationEntry(recordingInvitation(tc.status, tc.toUser), audit.EventUpdated)
+
+			test.EqOp(t, tc.subject, entry.SubjectID)
+			test.EqOp(t, "invitation-1", entry.ResourceID)
+			test.Eq(t, map[string]string{metadataAccountID: "account-1", metadataStatus: tc.status.String()}, entry.Metadata)
+		})
+	}
 }

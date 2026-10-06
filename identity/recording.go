@@ -1061,25 +1061,29 @@ func membershipEntry(membership *Membership, eventType audit.EventType, extra ma
 
 // invitationEntry is an entry about an invitation, carrying the account it
 // joins and the status the write left it in. It names the recipient as its
-// subject once there is one; before an answer, the recipient is an address,
-// and no entry here carries an address. Nor does it read the token, which is
-// the point of building it field by field.
+// subject once there is one. Before an answer the recipient is an address, and
+// no entry here carries an address, so the invitation is the account's until it
+// is somebody's: its issue, and a cancellation or refusal that leaves it
+// unanswered, are filed by subject on the account's chain, beside the account's
+// own entries, where whoever administers the account reads who was invited and
+// when. Nor does it read the token, which is the point of building it field by
+// field.
 func invitationEntry(invitation *Invitation, eventType audit.EventType) *recording.Entry {
-	entry := &recording.Entry{
+	subject := invitation.BelongsToAccount
+	if invitation.ToUser != nil {
+		subject = *invitation.ToUser
+	}
+
+	return &recording.Entry{
 		ResourceType: ResourceTypeInvitation,
 		ResourceID:   invitation.ID,
+		SubjectID:    subject,
 		EventType:    eventType,
 		Metadata: map[string]string{
 			metadataAccountID: invitation.BelongsToAccount,
 			metadataStatus:    invitation.Status.String(),
 		},
 	}
-
-	if invitation.ToUser != nil {
-		entry.SubjectID = *invitation.ToUser
-	}
-
-	return entry
 }
 
 // invitationEvent is the payload naming an invitation, without its token.
