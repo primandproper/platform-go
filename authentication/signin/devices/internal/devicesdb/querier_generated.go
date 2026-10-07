@@ -42,6 +42,11 @@ import (
 // membership rather than its negation, and let the caller decide what an empty
 // set means before it calls.
 type Querier interface {
+	// DeleteSignInDeviceForFamily runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	DeleteSignInDeviceForFamily(ctx context.Context, db DBTX, arg DeleteSignInDeviceForFamilyParams) (int64, error)
 	// DeleteSignInDevicesForUser runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

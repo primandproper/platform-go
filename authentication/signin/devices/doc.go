@@ -15,7 +15,8 @@ records nothing, exactly as before.
   - [SQLStore] keeps a row per login, keyed on signin's family identifier, in
     the table the migrations package renders for every supported engine.
   - [NewHooks] wraps a signin.Hooks so that every mint records the device on
-    the token's own transaction.
+    the token's own transaction, and every login ended deletes it on the
+    revocation's.
   - [NewAnnotator] reads what was recorded back into the attributes
     signin/grpc's listing RPCs answer each login with.
   - The privacy package exports a person's rows and erases them.
@@ -74,11 +75,16 @@ signin/grpc's annotator contract already refuses to give at read time.
 
 # How long a row lives
 
-As long as its login could: until the refresh token would lapse, or, for a
-login minted without one, until the access token does. The sweep deletes it
-after that. A login ended early — signed out, or ended from the screen — leaves
-its row until the same deadline, unread: the annotator only answers for the
-families a listing returns, and an ended login is not among them.
+As long as its login does. A login ended early — signed out, ended from the
+screen, ended by an operator or by a detected refresh-token reuse — has its row
+deleted by the hook, in the transaction that ended it. A login that lapses on
+its own ends with nobody to run a hook, so the row keeps its deadline: until
+the refresh token would lapse, or, for a login minted without one, until the
+access token does. The sweep deletes it after that.
+
+So what the table holds for a person is their live logins and the lapsed ones
+the sweep has not reached yet, never one they ended — which is what the export
+the privacy package makes answers with.
 
 # Privacy
 

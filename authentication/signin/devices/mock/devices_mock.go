@@ -23,6 +23,9 @@ var _ devices.Store = &StoreMock{}
 //
 //		// make and configure a mocked devices.Store
 //		mockedStore := &StoreMock{
+//			DeleteForFamiliesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, familyIDs []string) (int64, error) {
+//				panic("mock out the DeleteForFamilies method")
+//			},
 //			DeleteForUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
 //				panic("mock out the DeleteForUser method")
 //			},
@@ -42,6 +45,9 @@ var _ devices.Store = &StoreMock{}
 //
 //	}
 type StoreMock struct {
+	// DeleteForFamiliesFunc mocks the DeleteForFamilies method.
+	DeleteForFamiliesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, familyIDs []string) (int64, error)
+
 	// DeleteForUserFunc mocks the DeleteForUser method.
 	DeleteForUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
 
@@ -56,6 +62,19 @@ type StoreMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// DeleteForFamilies holds details about calls to the DeleteForFamilies method.
+		DeleteForFamilies []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+			// FamilyIDs is the familyIDs argument value.
+			FamilyIDs []string
+		}
 		// DeleteForUser holds details about calls to the DeleteForUser method.
 		DeleteForUser []struct {
 			// Ctx is the ctx argument value.
@@ -103,10 +122,59 @@ type StoreMock struct {
 			Sighting *devices.Sighting
 		}
 	}
-	lockDeleteForUser   sync.RWMutex
-	lockListForFamilies sync.RWMutex
-	lockListForUser     sync.RWMutex
-	lockRecord          sync.RWMutex
+	lockDeleteForFamilies sync.RWMutex
+	lockDeleteForUser     sync.RWMutex
+	lockListForFamilies   sync.RWMutex
+	lockListForUser       sync.RWMutex
+	lockRecord            sync.RWMutex
+}
+
+// DeleteForFamilies calls DeleteForFamiliesFunc.
+func (mock *StoreMock) DeleteForFamilies(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, familyIDs []string) (int64, error) {
+	if mock.DeleteForFamiliesFunc == nil {
+		panic("StoreMock.DeleteForFamiliesFunc: method is nil but Store.DeleteForFamilies was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		UserID    string
+		FamilyIDs []string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		UserID:    userID,
+		FamilyIDs: familyIDs,
+	}
+	mock.lockDeleteForFamilies.Lock()
+	mock.calls.DeleteForFamilies = append(mock.calls.DeleteForFamilies, callInfo)
+	mock.lockDeleteForFamilies.Unlock()
+	return mock.DeleteForFamiliesFunc(ctx, tx, scope, userID, familyIDs)
+}
+
+// DeleteForFamiliesCalls gets all the calls that were made to DeleteForFamilies.
+// Check the length with:
+//
+//	len(mockedStore.DeleteForFamiliesCalls())
+func (mock *StoreMock) DeleteForFamiliesCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	UserID    string
+	FamilyIDs []string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		UserID    string
+		FamilyIDs []string
+	}
+	mock.lockDeleteForFamilies.RLock()
+	calls = mock.calls.DeleteForFamilies
+	mock.lockDeleteForFamilies.RUnlock()
+	return calls
 }
 
 // DeleteForUser calls DeleteForUserFunc.

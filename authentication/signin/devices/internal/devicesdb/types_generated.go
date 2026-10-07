@@ -11,6 +11,13 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+// DeleteSignInDeviceForFamilyParams are the arguments to DeleteSignInDeviceForFamily.
+type DeleteSignInDeviceForFamilyParams struct {
+	Scope    tenancy.Scope
+	UserID   string
+	FamilyID string
+}
+
 // DeleteSignInDevicesForUserParams are the arguments to DeleteSignInDevicesForUser.
 type DeleteSignInDevicesForUserParams struct {
 	Scope  tenancy.Scope

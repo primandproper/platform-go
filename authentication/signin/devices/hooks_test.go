@@ -60,6 +60,12 @@ func (h *innerHooks) AfterIssueToken(context.Context, database.Tx, tenancy.Scope
 	return h.err
 }
 
+func (h *innerHooks) AfterRevokeSignIns(context.Context, database.Tx, tenancy.Scope, *signin.Revocation) error {
+	h.calls++
+
+	return h.err
+}
+
 func TestNewHooks(T *testing.T) {
 	T.Parallel()
 
@@ -214,5 +220,88 @@ func TestHooks_AfterIssueToken(T *testing.T) {
 		must.NoError(t, err)
 
 		test.ErrorIs(t, hooks.AfterIssueToken(t.Context(), nil, hookScope, signInFor("user_1")), errStoreFailed)
+	})
+}
+
+func TestHooks_AfterRevokeSignIns(T *testing.T) {
+	T.Parallel()
+
+	revocation := &signin.Revocation{
+		Reason:    signin.RevocationSignOut,
+		SubjectID: "user_1",
+		ActorID:   "user_1",
+		FamilyIDs: []string{"family_1", "family_2"},
+	}
+
+	T.Run("deletes the ended logins' rows on the revocation's transaction, after the wrapped hooks", func(t *testing.T) {
+		t.Parallel()
+
+		inner := &innerHooks{}
+
+		store := &devicesmock.StoreMock{
+			DeleteForFamiliesFunc: func(
+				_ context.Context,
+				_ database.Tx,
+				scope tenancy.Scope,
+				userID string,
+				familyIDs []string,
+			) (int64, error) {
+				test.EqOp(t, 1, inner.calls)
+				test.EqOp(t, hookScope, scope)
+				test.EqOp(t, "user_1", userID)
+				test.Eq(t, []string{"family_1", "family_2"}, familyIDs)
+
+				return 2, nil
+			},
+		}
+
+		hooks, err := devices.NewHooks(inner, store, readsLaptop)
+		must.NoError(t, err)
+
+		must.NoError(t, hooks.AfterRevokeSignIns(t.Context(), nil, hookScope, revocation))
+		test.SliceLen(t, 1, store.DeleteForFamiliesCalls())
+	})
+
+	T.Run("deletes nothing when the wrapped hooks refuse", func(t *testing.T) {
+		t.Parallel()
+
+		store := &devicesmock.StoreMock{}
+
+		hooks, err := devices.NewHooks(&innerHooks{err: errInnerRefused}, store, readsLaptop)
+		must.NoError(t, err)
+
+		test.ErrorIs(t, hooks.AfterRevokeSignIns(t.Context(), nil, hookScope, revocation), errInnerRefused)
+		test.SliceEmpty(t, store.DeleteForFamiliesCalls())
+	})
+
+	// A delete that fails fails the revocation: signin does not end a login it
+	// could not record ending.
+	T.Run("fails the revocation when the delete fails", func(t *testing.T) {
+		t.Parallel()
+
+		store := &devicesmock.StoreMock{
+			DeleteForFamiliesFunc: func(context.Context, database.Tx, tenancy.Scope, string, []string) (int64, error) {
+				return 0, errStoreFailed
+			},
+		}
+
+		hooks, err := devices.NewHooks(nil, store, readsLaptop)
+		must.NoError(t, err)
+
+		test.ErrorIs(t, hooks.AfterRevokeSignIns(t.Context(), nil, hookScope, revocation), errStoreFailed)
+	})
+
+	T.Run("deletes nothing for a revocation naming nobody or no login", func(t *testing.T) {
+		t.Parallel()
+
+		store := &devicesmock.StoreMock{}
+
+		hooks, err := devices.NewHooks(nil, store, readsLaptop)
+		must.NoError(t, err)
+
+		must.NoError(t, hooks.AfterRevokeSignIns(t.Context(), nil, hookScope, nil))
+		must.NoError(t, hooks.AfterRevokeSignIns(t.Context(), nil, hookScope, &signin.Revocation{FamilyIDs: []string{"family_1"}}))
+		must.NoError(t, hooks.AfterRevokeSignIns(t.Context(), nil, hookScope, &signin.Revocation{SubjectID: "user_1"}))
+		test.SliceEmpty(t, store.DeleteForFamiliesCalls())
 	})
 }

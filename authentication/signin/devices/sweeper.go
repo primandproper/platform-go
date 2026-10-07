@@ -22,10 +22,10 @@ const backgroundSweepFailure = "background sweep of expired sign-in device rows 
 // Sweep removes the row of every login that can no longer be alive, reporting
 // how many it removed.
 //
-// It is not what hides an ended login's device — the annotator only answers for
-// the logins a listing returns, so a row this has not reached yet is already
-// unread. What it does is stop the table holding an address somebody signed in
-// from for longer than anybody could be shown it.
+// It is what reaches a login that lapsed on its own, which nothing ends and so
+// no hook deletes; a login somebody ended has no row left for it. What it does
+// is stop the table holding an address somebody signed in from for longer than
+// anybody could be shown it.
 //
 // It takes neither a transaction nor a scope, which is the carve-out CLAUDE.md
 // names for a component's own machinery: a worker on a timer is this store

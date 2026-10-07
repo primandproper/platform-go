@@ -140,6 +140,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		ListDevicesForFamiliesQuery,
 		ListDevicesForUserQuery,
 		DeleteDevicesForUserQuery,
+		DeleteDeviceForFamilyQuery,
 		SweepDevicesQuery,
 	}
 
@@ -190,6 +191,7 @@ func TestRender_ScopesEveryStatement(T *testing.T) {
 				ListDevicesForFamiliesQuery,
 				ListDevicesForUserQuery,
 				DeleteDevicesForUserQuery,
+				DeleteDeviceForFamilyQuery,
 				SweepDevicesQuery,
 			} {
 				body := statement(t, rendered, name)
@@ -244,6 +246,23 @@ func TestRender_TheAnnotatorReadNamesThePerson(T *testing.T) {
 
 			test.StrContains(t, body, UserIDColumn+" = sqlc.arg("+UserIDColumn+")")
 			test.StrContains(t, body, FamilyIDsArg)
+		})
+	}
+}
+
+// TestRender_TheLoginDeleteNamesThePerson pins the same predicate on the delete
+// a revocation makes: a caller passing somebody else's family deletes nothing.
+func TestRender_TheLoginDeleteNamesThePerson(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			body := statement(t, Render(d), DeleteDeviceForFamilyQuery)
+
+			test.StrContains(t, body, UserIDColumn+" = sqlc.arg("+UserIDColumn+")")
+			test.StrContains(t, body, FamilyIDColumn+" = sqlc.arg("+FamilyIDColumn+")")
 		})
 	}
 }

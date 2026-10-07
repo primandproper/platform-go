@@ -67,6 +67,12 @@ DELETE FROM signin_devices
 WHERE scope = sqlc.arg(scope)
 	AND user_id = sqlc.arg(user_id);
 
+-- name: DeleteSignInDeviceForFamily :execrows
+DELETE FROM signin_devices
+WHERE scope = sqlc.arg(scope)
+	AND user_id = sqlc.arg(user_id)
+	AND family_id = sqlc.arg(family_id);
+
 -- name: SweepSignInDevices :execrows
 DELETE FROM signin_devices
 WHERE expires_at <= sqlc.arg(expires_before);
