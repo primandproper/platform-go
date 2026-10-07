@@ -28,6 +28,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
+	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/profiling"
@@ -179,6 +180,34 @@ func TestRegister(T *testing.T) {
 		client, err := do.Invoke[database.Client](i)
 		must.NoError(t, err)
 		test.NotNil(t, client)
+	})
+
+	T.Run("the outbox writer takes the options the application registered", func(t *testing.T) {
+		t.Parallel()
+
+		// do refuses a second *outbox.Writer provider, so an application whose
+		// writer needs an option contributes it here or not at all. A notify
+		// channel on SQLite is refused by the leaf package, which is what
+		// proves the option reached the Writer this Config built.
+		path := filepath.Join(t.TempDir(), "test.db")
+		cfg := &Config{
+			Name: "example",
+			Database: &databasecfg.Config{
+				Provider:        databasecfg.ProviderSQLite,
+				ReadConnection:  databasecfg.ConnectionDetails{Database: path},
+				WriteConnection: databasecfg.ConnectionDetails{Database: path},
+			},
+			Outbox: &outboxcfg.Config{
+				Queue: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
+			},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue(i, outboxcfg.WriterOptions{outbox.WithWriterNotifyChannel("outbox")})
+
+		_, err := do.Invoke[*outbox.Writer](i)
+		test.ErrorIs(t, err, outbox.ErrNotifyUnsupported)
 	})
 
 	T.Run("every sub-config field registers something", func(t *testing.T) {
