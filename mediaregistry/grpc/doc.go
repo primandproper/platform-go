@@ -63,6 +63,14 @@ mediaregistry.StoreAndRecord with it; that is what the domain's upload RPCs are
 for, and this surface does not replace them. There is no seam for authorizing
 other subjects here until a second consumer asks for one.
 
+What such an RPC does share with this surface is the receiving. Its messages
+wrap UploadObjectRequest, so it hands NewUploadReader a function unwrapping
+each one, and gets the reader UploadObject itself reads through: the cap
+enforced as bytes pass, a second header refused, and the client's mistake
+(Refusal, INVALID_ARGUMENT) kept apart from a stream that stopped delivering
+(Broken, answered with StreamBrokenCode). ValidName is the rule a header's name
+is held to before a key is built from it.
+
 The self-attachment is what an avatar is: a user uploads attached to
 themselves, and ListObjectsBySubject answers with it. What "the avatar" means —
 the newest, a pointer row, an event — is the consumer's reading of that list,

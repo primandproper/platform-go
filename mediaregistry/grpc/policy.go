@@ -184,9 +184,13 @@ func KeysUnderPrefix(keys KeyFunc) RecordKeyPolicy {
 	}
 }
 
-// validName reports whether a client's object name can be the last segment of
+// ValidName reports whether a client's object name can be the last segment of
 // a key: present, one segment, and not one of the two that name a directory.
-func validName(name string) bool {
+// It is the rule that keeps a name like "../../<somebody>/x.png" from walking
+// out of the caller's part of the bucket, and UploadObject refuses a name that
+// fails it with ErrInvalidObjectName. A consumer's own upload RPC asks it of
+// the header's name before building a key from it, for the same reason.
+func ValidName(name string) bool {
 	switch {
 	case name == "", name == ".", name == "..":
 		return false
