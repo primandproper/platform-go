@@ -120,7 +120,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"GetUserIncludingArchived",
 		"GetUserByUsername", "GetUserByEmailAddress", "GetUserByEmailVerificationTokenDigest",
 		"GetUserIDByUsername", "GetUserIDByEmailAddress",
-		"GetOwnedAccountIDForUser",
+		"GetOwnedAccountIDForUser", "GetAccountByPaymentProcessorCustomerID",
 		"GetMembershipByUserAndAccount", "GetMembershipIDByUserAndAccount",
 		"GetMembershipFallbackAccountID", "GetMembershipIDForUser",
 		"ListUsersByIDs", "ListUserRolesByUserIDs",

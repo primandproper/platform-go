@@ -580,6 +580,27 @@ type DirectoryReader interface {
 	// checks Account.Archived on what comes back.
 	GetAccount(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, accountID string) (*Account, error)
 
+	// GetAccountByPaymentProcessorCustomerID reads the scope's live account
+	// holding the processor's customer — the read a processor delivery needs,
+	// since it names the customer and not the account. It returns an error
+	// wrapping ErrAccountNotFound when no live account here holds it, so a
+	// caller can tell "no such account" apart from a failure.
+	//
+	// The executor is the caller's, so a read inside a transaction sees a
+	// customer that transaction attached through
+	// SetAccountPaymentProcessorCustomerID. An empty customer is refused with an
+	// error wrapping errors.ErrEmptyInputParameter: it is how "not created at the
+	// processor" is stored, and every account that never was would match it.
+	//
+	// Nothing makes the column unique. Should two accounts ever hold one
+	// customer, the one with the lowest id is returned, every time.
+	GetAccountByPaymentProcessorCustomerID(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		customerID string,
+	) (*Account, error)
+
 	// ListAccounts pages the scope's accounts, ordered by id and filtered
 	// through the whole QueryFilter — see ListUsers.
 	ListAccounts(

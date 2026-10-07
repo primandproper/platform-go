@@ -595,6 +595,14 @@ func accountFromArchivedRow(r *identitydb.GetArchivedAccountRow) *Account {
 	return accountFromRow(&row)
 }
 
+// accountFromCustomerRow casts for the same reason: the read by customer
+// projects GetAccount's columns and keys on another one.
+func accountFromCustomerRow(r *identitydb.GetAccountByPaymentProcessorCustomerIDRow) *Account {
+	row := identitydb.GetAccountRow(*r)
+
+	return accountFromRow(&row)
+}
+
 func accountPageRow(r *identitydb.ListAccountsRow) pageRow[Account] {
 	return pageRow[Account]{
 		value: accountFromRow(&identitydb.GetAccountRow{
