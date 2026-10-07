@@ -64,8 +64,8 @@ var (
 )
 
 // PrincipalIssuer mints a sign-in for a subject a credential has already
-// proven. *signin.Service satisfies it, and it is the only door FinishLogin
-// reaches a token through.
+// proven. *signin.Service satisfies it, and it is the only door FinishLogin and
+// AdminFinishLogin reach a token through.
 //
 // It is an interface so that a test can stand in for the issuer, and so that
 // nothing else on signin.Service is reachable from here: this package holds

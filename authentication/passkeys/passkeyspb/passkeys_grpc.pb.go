@@ -92,6 +92,7 @@ const (
 	PasskeysService_FinishRegistration_FullMethodName = "/primandproper.platform.passkeys.v1.PasskeysService/FinishRegistration"
 	PasskeysService_BeginLogin_FullMethodName         = "/primandproper.platform.passkeys.v1.PasskeysService/BeginLogin"
 	PasskeysService_FinishLogin_FullMethodName        = "/primandproper.platform.passkeys.v1.PasskeysService/FinishLogin"
+	PasskeysService_AdminFinishLogin_FullMethodName   = "/primandproper.platform.passkeys.v1.PasskeysService/AdminFinishLogin"
 	PasskeysService_ListPasskeys_FullMethodName       = "/primandproper.platform.passkeys.v1.PasskeysService/ListPasskeys"
 	PasskeysService_ArchivePasskey_FullMethodName     = "/primandproper.platform.passkeys.v1.PasskeysService/ArchivePasskey"
 )
@@ -106,6 +107,11 @@ type PasskeysServiceClient interface {
 	// Signing in with one. Both are anonymous.
 	BeginLogin(ctx context.Context, in *BeginLoginRequest, opts ...grpc.CallOption) (*BeginLoginResponse, error)
 	FinishLogin(ctx context.Context, in *FinishLoginRequest, opts ...grpc.CallOption) (*FinishLoginResponse, error)
+	// Signing an operator in with one: FinishLogin through the administrative
+	// door, anonymous like it. The token carries the administrative claim and
+	// lifetimes, and a subject who holds no administrative role is refused only
+	// after the assertion is proven, so the role is not an oracle.
+	AdminFinishLogin(ctx context.Context, in *AdminFinishLoginRequest, opts ...grpc.CallOption) (*AdminFinishLoginResponse, error)
 	// The settings page.
 	ListPasskeys(ctx context.Context, in *ListPasskeysRequest, opts ...grpc.CallOption) (*ListPasskeysResponse, error)
 	ArchivePasskey(ctx context.Context, in *ArchivePasskeyRequest, opts ...grpc.CallOption) (*ArchivePasskeyResponse, error)
@@ -159,6 +165,16 @@ func (c *passkeysServiceClient) FinishLogin(ctx context.Context, in *FinishLogin
 	return out, nil
 }
 
+func (c *passkeysServiceClient) AdminFinishLogin(ctx context.Context, in *AdminFinishLoginRequest, opts ...grpc.CallOption) (*AdminFinishLoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminFinishLoginResponse)
+	err := c.cc.Invoke(ctx, PasskeysService_AdminFinishLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *passkeysServiceClient) ListPasskeys(ctx context.Context, in *ListPasskeysRequest, opts ...grpc.CallOption) (*ListPasskeysResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListPasskeysResponse)
@@ -189,6 +205,11 @@ type PasskeysServiceServer interface {
 	// Signing in with one. Both are anonymous.
 	BeginLogin(context.Context, *BeginLoginRequest) (*BeginLoginResponse, error)
 	FinishLogin(context.Context, *FinishLoginRequest) (*FinishLoginResponse, error)
+	// Signing an operator in with one: FinishLogin through the administrative
+	// door, anonymous like it. The token carries the administrative claim and
+	// lifetimes, and a subject who holds no administrative role is refused only
+	// after the assertion is proven, so the role is not an oracle.
+	AdminFinishLogin(context.Context, *AdminFinishLoginRequest) (*AdminFinishLoginResponse, error)
 	// The settings page.
 	ListPasskeys(context.Context, *ListPasskeysRequest) (*ListPasskeysResponse, error)
 	ArchivePasskey(context.Context, *ArchivePasskeyRequest) (*ArchivePasskeyResponse, error)
@@ -213,6 +234,9 @@ func (UnimplementedPasskeysServiceServer) BeginLogin(context.Context, *BeginLogi
 }
 func (UnimplementedPasskeysServiceServer) FinishLogin(context.Context, *FinishLoginRequest) (*FinishLoginResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinishLogin not implemented")
+}
+func (UnimplementedPasskeysServiceServer) AdminFinishLogin(context.Context, *AdminFinishLoginRequest) (*AdminFinishLoginResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AdminFinishLogin not implemented")
 }
 func (UnimplementedPasskeysServiceServer) ListPasskeys(context.Context, *ListPasskeysRequest) (*ListPasskeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPasskeys not implemented")
@@ -313,6 +337,24 @@ func _PasskeysService_FinishLogin_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PasskeysService_AdminFinishLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminFinishLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PasskeysServiceServer).AdminFinishLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PasskeysService_AdminFinishLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PasskeysServiceServer).AdminFinishLogin(ctx, req.(*AdminFinishLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _PasskeysService_ListPasskeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListPasskeysRequest)
 	if err := dec(in); err != nil {
@@ -371,6 +413,10 @@ var PasskeysService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FinishLogin",
 			Handler:    _PasskeysService_FinishLogin_Handler,
+		},
+		{
+			MethodName: "AdminFinishLogin",
+			Handler:    _PasskeysService_AdminFinishLogin_Handler,
 		},
 		{
 			MethodName: "ListPasskeys",

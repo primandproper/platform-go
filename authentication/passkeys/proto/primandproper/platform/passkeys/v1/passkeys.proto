@@ -170,6 +170,38 @@ message FinishLoginResponse {
   primandproper.platform.signin.v1.IssuedToken token = 1;
 }
 
+// AdminFinishLoginRequest is FinishLogin through the administrative door, as
+// signin.v1's AdminLoginForTokenRequest is LoginForToken through it. It
+// finishes the same ceremony -- BeginLogin's options are the same for either
+// door -- and is a message of its own so that the two doors can diverge
+// without either becoming a field on the other.
+//
+// It carries no totp_code. The administrative door takes no code: the
+// passkey has to have been two factors on its own, which is an authenticator
+// that verified the person, and one asserted on a key tap alone is refused
+// MULTI_FACTOR_REQUIRED however many codes came with it. A client signing an
+// operator in asks BeginLogin's options for userVerification "required" and
+// never meets that refusal.
+message AdminFinishLoginRequest {
+  reserved "scope", "totp_code";
+  reserved 4;
+
+  // username is the one BeginLogin was sent, empty for a discoverable login.
+  string username = 1;
+
+  // response is the PublicKeyCredential JSON navigator.credentials.get
+  // resolved with.
+  bytes response = 2;
+
+  // active_account_id is the account the token should be issued for, read
+  // exactly as signin.v1's Credentials reads it.
+  string active_account_id = 3 [json_name = "activeAccountID"];
+}
+
+message AdminFinishLoginResponse {
+  primandproper.platform.signin.v1.IssuedToken token = 1;
+}
+
 message ListPasskeysRequest {
   reserved "scope";
 }
@@ -199,6 +231,12 @@ service PasskeysService {
   // Signing in with one. Both are anonymous.
   rpc BeginLogin(BeginLoginRequest) returns (BeginLoginResponse);
   rpc FinishLogin(FinishLoginRequest) returns (FinishLoginResponse);
+
+  // Signing an operator in with one: FinishLogin through the administrative
+  // door, anonymous like it. The token carries the administrative claim and
+  // lifetimes, and a subject who holds no administrative role is refused only
+  // after the assertion is proven, so the role is not an oracle.
+  rpc AdminFinishLogin(AdminFinishLoginRequest) returns (AdminFinishLoginResponse);
 
   // The settings page.
   rpc ListPasskeys(ListPasskeysRequest) returns (ListPasskeysResponse);

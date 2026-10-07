@@ -163,19 +163,10 @@ func (s *Server) FinishLogin(
 
 	defer func() { done(err) }()
 
-	var login *passkeys.Login
-
-	if username := request.GetUsername(); username == "" {
-		login, err = s.svc.FinishDiscoverableLogin(ctx, req.scope, request.GetResponse())
-	} else {
-		login, err = s.svc.FinishLogin(ctx, req.scope, username, request.GetResponse())
-	}
-
+	login, err := s.finishLogin(ctx, req, request.GetUsername(), request.GetResponse())
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "finishing a passkey login")
 	}
-
-	req.op.Set(userIDKey, login.Credential.BelongsToUser)
 
 	opts := []signin.IssueOption{signin.WithCredentialKind(CredentialKind)}
 	if login.UserVerified {
@@ -190,6 +181,81 @@ func (s *Server) FinishLogin(
 	}
 
 	return &passkeyspb.FinishLoginResponse{Token: signingrpc.IssuedTokenToProto(signedIn)}, nil
+}
+
+// AdminFinishLogin is FinishLogin through the administrative door, as
+// signin's AdminLoginForToken is LoginForToken through it: the token is minted
+// with signin.Administrative, so it carries signin.ClaimAdministrative and the
+// administrative lifetimes, and an operator who signs in with a passkey holds
+// their operator grants wherever ClaimAdministrative is honored.
+//
+// It finishes the ceremony BeginLogin began — the options are the same for
+// either door — and refuses it exactly as FinishLogin does.
+//
+// # Two factors, always
+//
+// The administrative door takes no second-factor code, so signin.MultiFactor is
+// passed when passkeys.Login.UserVerified says the authenticator verified the
+// person and not otherwise. A passkey asserted on a key tap alone is
+// signin.ErrMultiFactorRequired, and no code rescues it.
+//
+// # The order of the refusals
+//
+// The assertion is proven before sign-in is asked anything, and sign-in checks
+// the role before the second factor, so a subject who holds no administrative
+// role learns that only by proving who they are — the order AdminLoginForToken
+// keeps, and the reason the role is not an oracle. A service that named no
+// administrative roles refuses every call signin.ErrAdminLoginDisabled.
+func (s *Server) AdminFinishLogin(
+	ctx context.Context,
+	request *passkeyspb.AdminFinishLoginRequest,
+) (*passkeyspb.AdminFinishLoginResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, passkeyspb.PasskeysService_AdminFinishLogin_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	login, err := s.finishLogin(ctx, req, request.GetUsername(), request.GetResponse())
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "finishing an administrative passkey login")
+	}
+
+	opts := []signin.IssueOption{signin.WithCredentialKind(CredentialKind), signin.Administrative()}
+	if login.UserVerified {
+		opts = append(opts, signin.MultiFactor())
+	}
+
+	signedIn, err := s.issuer.IssueForPrincipal(ctx, req.scope, login.Credential.BelongsToUser, request.GetActiveAccountId(), opts...)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "issuing a token for an administrative passkey login")
+	}
+
+	return &passkeyspb.AdminFinishLoginResponse{Token: signingrpc.IssuedTokenToProto(signedIn)}, nil
+}
+
+// finishLogin verifies an assertion for either door: the named login when the
+// request carries a username, the discoverable one when it does not.
+func (s *Server) finishLogin(ctx context.Context, req *request, username string, response []byte) (*passkeys.Login, error) {
+	var (
+		login *passkeys.Login
+		err   error
+	)
+
+	if username == "" {
+		login, err = s.svc.FinishDiscoverableLogin(ctx, req.scope, response)
+	} else {
+		login, err = s.svc.FinishLogin(ctx, req.scope, username, response)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.op.Set(userIDKey, login.Credential.BelongsToUser)
+
+	return login, nil
 }
 
 // ListPasskeys answers with the caller's live passkeys, oldest first.

@@ -34,6 +34,21 @@ directory. The callers these assertions enroll are asked for there, the reading
 conformance/passwordreset takes of the same question, and a subject with no
 callers there declines and the assertions skip.
 
+# The administrative door
+
+AdminFinishLogin is FinishLogin through sign-in's administrative door, and is
+asserted the way conformance/signin asserts AdminLoginForToken: an enrollee is
+made an operator by granting them Seams.Roles.Administrator through identity's
+SetUserServiceRoles, and a subject that names no such role, or mounts no
+identity surface to grant it through, skips those assertions. An operator's
+verified passkey signs them in to a token carrying the administrative claim, by
+name and discoverably; the same operator through the ordinary door is not
+given one. A key tap alone is refused MULTI_FACTOR_REQUIRED, since the door
+takes no code — a deployment whose relying party refuses to enroll such a key
+skips that assertion, since no key tap reaches it. Somebody who is no operator
+is refused PermissionDenied, and only once their assertion is proven: one that
+proves nothing is refused as a bad assertion is anywhere.
+
 # What each assertion needs
 
 Most need only the surface. Reading whom a token names needs the sign-in

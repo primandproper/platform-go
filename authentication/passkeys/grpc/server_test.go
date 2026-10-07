@@ -62,6 +62,15 @@ func (h *harness) finish(t *testing.T, username string, response []byte, totpCod
 	})
 }
 
+func (h *harness) adminFinish(t *testing.T, username string, response []byte) (*passkeyspb.AdminFinishLoginResponse, error) {
+	t.Helper()
+
+	return h.client.AdminFinishLogin(t.Context(), &passkeyspb.AdminFinishLoginRequest{
+		Username: username,
+		Response: response,
+	})
+}
+
 func TestNewServer(T *testing.T) {
 	T.Parallel()
 
@@ -277,6 +286,96 @@ func TestSecondFactor(T *testing.T) {
 
 		_, err = h.finish(t, "jane", h.assertion(t, "jane", device, nil), totpCode(t, secret))
 		test.NoError(t, err)
+	})
+}
+
+func TestAdminFinishLogin(T *testing.T) {
+	T.Parallel()
+
+	T.Run("an operator's verified passkey mints an administrative token", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		operator := h.registerUser(t, "olive", serviceAdminRole)
+		device := newDevice(t)
+		h.enroll(t, operator, device)
+
+		signedIn, err := h.adminFinish(t, "olive", h.assertion(t, "olive", device, nil))
+		must.NoError(t, err)
+		test.EqOp(t, "token-for-"+operator.ID, signedIn.GetToken().GetToken())
+		test.True(t, signedIn.GetToken().GetAdministrative())
+		test.Eq(t, []signin.CredentialKind{passkeysgrpc.CredentialKind}, h.signIns.recorded())
+	})
+
+	T.Run("the discoverable login reaches the administrative door too", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		operator := h.registerUser(t, "olive", serviceAdminRole)
+		device := newDevice(t)
+		_, handle := h.enroll(t, operator, device)
+
+		signedIn, err := h.adminFinish(t, "", h.assertion(t, "", device, handle))
+		must.NoError(t, err)
+		test.True(t, signedIn.GetToken().GetAdministrative())
+	})
+
+	T.Run("the ordinary door still mints an ordinary token for an operator", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		operator := h.registerUser(t, "olive", serviceAdminRole)
+		device := newDevice(t)
+		h.enroll(t, operator, device)
+
+		signedIn, err := h.finish(t, "olive", h.assertion(t, "olive", device, nil), "")
+		must.NoError(t, err)
+		test.False(t, signedIn.GetToken().GetAdministrative())
+	})
+
+	T.Run("somebody who is no operator is refused after the assertion is proven", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		device := newDevice(t)
+		h.enroll(t, h.jane, device)
+
+		_, err := h.adminFinish(t, "jane", h.assertion(t, "jane", device, nil))
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.ErrorIs(t, err, signin.ErrNotAnAdministrator)
+		test.SliceEmpty(t, h.signIns.recorded())
+	})
+
+	T.Run("a key tap alone is refused, with no code to rescue it", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		operator := h.registerUser(t, "olive", serviceAdminRole)
+		device := newDevice(t, webauthntest.WithoutUserVerification())
+		h.enroll(t, operator, device)
+
+		_, err := h.adminFinish(t, "olive", h.assertion(t, "olive", device, nil))
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.ErrorIs(t, err, signin.ErrMultiFactorRequired)
+		test.SliceEmpty(t, h.signIns.recorded())
+	})
+
+	T.Run("a refused ceremony is refused before sign-in is asked anything", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		operator := h.registerUser(t, "olive", serviceAdminRole)
+		device := newDevice(t)
+		h.enroll(t, operator, device)
+
+		response := h.assertion(t, "olive", device, nil)
+
+		_, err := h.adminFinish(t, "olive", response)
+		must.NoError(t, err)
+
+		_, err = h.adminFinish(t, "olive", response)
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+		test.ErrorIs(t, err, passkeys.ErrLoginFailed)
 	})
 }
 

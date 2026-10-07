@@ -18,13 +18,16 @@ import (
 // here decides that for it.
 
 // AnonymousMethods are the RPCs that require no caller: the two halves of a
-// login. The assertion the second carries is the whole of its authority, and
-// requiring a principal would require somebody to be signed in before they
-// could sign in.
+// login, and the administrative door's finish. The assertion a finish carries
+// is the whole of its authority, and requiring a principal would require
+// somebody to be signed in before they could sign in. AdminFinishLogin is no
+// exception: whether its subject is an operator is sign-in's question, asked of
+// the subject the assertion proved, and not a permission a caller holds.
 func AnonymousMethods() []string {
 	return []string{
 		passkeyspb.PasskeysService_BeginLogin_FullMethodName,
 		passkeyspb.PasskeysService_FinishLogin_FullMethodName,
+		passkeyspb.PasskeysService_AdminFinishLogin_FullMethodName,
 	}
 }
 
