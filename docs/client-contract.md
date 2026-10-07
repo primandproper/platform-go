@@ -372,7 +372,8 @@ deployment honoring the administrative claim grants operator roles on. An ordina
 never does, whoever signs in. It takes no `totp_code`: an assertion the authenticator did not
 verify the person for is refused `MULTI_FACTOR_REQUIRED`, so an admin client asks `BeginLogin`'s
 options for `userVerification: "required"`. A subject who is no operator is refused
-`ADMIN_SIGNIN_UNAVAILABLE`, and only once the assertion has proven who they are.
+`NOT_AN_ADMINISTRATOR`, and only once the assertion has proven who they are; a deployment that
+named no administrative roles refuses everybody `ADMIN_SIGNIN_UNAVAILABLE`.
 
 A refused login is `UNAUTHENTICATED` whatever refused it, an unknown username included, and a
 `BeginLogin` for a username nobody holds answers exactly as one for a username somebody does —
