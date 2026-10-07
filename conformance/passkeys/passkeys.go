@@ -68,6 +68,10 @@ func run(t *testing.T, s *conformance.Session) {
 		t.Parallel()
 		lastPasskey(t, s)
 	})
+	t.Run("administrative door", func(t *testing.T) {
+		t.Parallel()
+		administrative(t, s)
+	})
 }
 
 // newDevice mints an authenticator answering as the deployment's relying
@@ -92,13 +96,15 @@ func enrollee(t *testing.T, s *conformance.Session, extra ...string) *conformanc
 }
 
 // doors mints a caller whose connection the login half is reached through with
-// nobody on the call, skipping where the subject reserves either door.
-func doors(t *testing.T, s *conformance.Session) *conformance.Subject {
+// nobody on the call, and any extra door, skipping where the subject reserves
+// any of them.
+func doors(t *testing.T, s *conformance.Session, extra ...string) *conformance.Subject {
 	t.Helper()
 
-	s.NeedsPublic(t, beginLogin, finishLogin)
+	calls := append([]string{beginLogin, finishLogin}, extra...)
+	s.NeedsPublic(t, calls...)
 
-	return s.Subject(t, conformance.Making(beginLogin, finishLogin))
+	return s.Subject(t, conformance.Making(calls...))
 }
 
 // options is the part of a begin's JSON the suite reads: the challenge every
@@ -136,7 +142,17 @@ type enrolled struct {
 func enroll(t *testing.T, s *conformance.Session, sub *conformance.Subject) *enrolled {
 	t.Helper()
 
-	device := newDevice(t, s)
+	key, err := enrollDevice(t, sub, newDevice(t, s))
+	must.NoError(t, err, must.Sprint("finishing a passkey registration"))
+
+	return key
+}
+
+// enrollDevice runs a whole registration as sub with device, answering with
+// what finishing it was refused with rather than failing on it.
+func enrollDevice(t *testing.T, sub *conformance.Subject, device *webauthntest.Authenticator) (*enrolled, error) {
+	t.Helper()
+
 	ctx := sub.Context(t.Context())
 
 	begun, err := sub.Surfaces.Passkeys.BeginRegistration(ctx, &passkeyspb.BeginRegistrationRequest{})
@@ -154,9 +170,11 @@ func enroll(t *testing.T, s *conformance.Session, sub *conformance.Subject) *enr
 		FriendlyName: "Conformance key",
 		Response:     response,
 	})
-	must.NoError(t, err, must.Sprint("finishing a passkey registration"))
+	if err != nil {
+		return nil, err
+	}
 
-	return &enrolled{device: device, passkey: finished.GetPasskey(), response: response, handle: handle}
+	return &enrolled{device: device, passkey: finished.GetPasskey(), response: response, handle: handle}, nil
 }
 
 // assertion begins a login for username — empty for a discoverable one — and
