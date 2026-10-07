@@ -92,9 +92,20 @@ func (h *Hooks) AfterIssueToken(ctx context.Context, tx database.Tx, scope tenan
 // row of every login the revocation ended, on the revocation's own transaction.
 // A login that is over is not one anybody can be shown, and a row kept until
 // the sweep reached it would be an address a subject access request exported
-// from a login that had already ended. A delete that fails fails the
-// revocation, which is signin's bargain for every hook: a service that cannot
-// record ending a login does not end it.
+// from a login that had already ended.
+//
+// A delete that fails fails the revocation, which is signin's bargain for every
+// hook. signin carves one case out of that bargain, and this hook is exempt
+// from the carve-out rather than an instance of it. For a detected
+// refresh-token reuse, rolling the revocation back leaves a stolen family live,
+// so signin asks a hook that can fail for reasons the revocation should survive
+// to write an outbox row instead. This hook cannot fail that way. It deletes by
+// key, on the revocation's own transaction against the same database, from a
+// table with no constraint a delete could trip, so it fails only when the
+// revocation's own commit would fail too — and on Postgres a failed statement
+// aborts the transaction whatever the hook returns, so swallowing the error
+// would not save the revocation anyway. A hook copying this one that writes
+// anywhere else does not inherit the exemption.
 //
 // Every door that ends a login runs it, impersonated families included; a login
 // that never had a row deletes nothing.
