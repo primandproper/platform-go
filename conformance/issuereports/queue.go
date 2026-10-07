@@ -2,6 +2,7 @@ package issuereports
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -15,40 +16,52 @@ import (
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
-// listing is one of the paged reads, reduced to "which reports did it
-// answer with", for the properties every one of them shares.
+// maxPages bounds a walk through a queue this suite does not own. A
+// deployment may file every report in one scope its callers share, so the
+// report an assertion just filed need not be on the first page — and a walk
+// with no bound is a test that never ends against a cursor that never does.
+const maxPages = 100
+
+// listing is one of the paged reads, walked to its last page and reduced to
+// "which reports did it answer with", for the properties every one of them
+// shares.
 type listing func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error)
+
+// onePage is one request of a listing: the reports the page held, and the
+// cursor to the next one, empty on the last.
+type onePage func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) (ids []string, next string, err error)
 
 // listings are all of them, each asked the question that should find report —
 // the caller's own, open, about the subject it was filed about.
 func listings() map[string]listing {
 	return map[string]listing{
-		"ListReports": func(ctx context.Context, sub *conformance.Subject, _ *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error) {
+		"ListReports": walked(func(ctx context.Context, sub *conformance.Subject, _ *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, string, error) {
 			page, err := sub.Surfaces.IssueReports.ListReports(ctx, &issuereportspb.ListReportsRequest{Filter: filter})
 
-			return reportIDs(page.GetResults()), err
-		},
-		"ListReportsByStatus": func(ctx context.Context, sub *conformance.Subject, _ *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error) {
+			return reportIDs(page.GetResults()), page.GetPagination().GetCursor(), err
+		}),
+		"ListReportsByStatus": walked(func(ctx context.Context, sub *conformance.Subject, _ *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, string, error) {
 			page, err := sub.Surfaces.IssueReports.ListReportsByStatus(ctx,
 				&issuereportspb.ListReportsByStatusRequest{Status: statusOpen, Filter: filter})
 
-			return reportIDs(page.GetResults()), err
-		},
-		"ListReportsByReporter": func(ctx context.Context, sub *conformance.Subject, _ *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error) {
+			return reportIDs(page.GetResults()), page.GetPagination().GetCursor(), err
+		}),
+		"ListReportsByReporter": walked(func(ctx context.Context, sub *conformance.Subject, _ *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, string, error) {
 			page, err := sub.Surfaces.IssueReports.ListReportsByReporter(ctx,
 				&issuereportspb.ListReportsByReporterRequest{Reporter: sub.UserID, Filter: filter})
 
-			return reportIDs(page.GetResults()), err
-		},
-		"ListReportsBySubjectType": func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error) {
+			return reportIDs(page.GetResults()), page.GetPagination().GetCursor(), err
+		}),
+		"ListReportsBySubjectType": walked(func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, string, error) {
 			page, err := sub.Surfaces.IssueReports.ListReportsBySubjectType(ctx,
 				&issuereportspb.ListReportsBySubjectTypeRequest{SubjectType: report.GetSubjectType(), Filter: filter})
 
-			return reportIDs(page.GetResults()), err
-		},
-		"ListReportsForSubject": func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error) {
+			return reportIDs(page.GetResults()), page.GetPagination().GetCursor(), err
+		}),
+		"ListReportsForSubject": walked(func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, string, error) {
 			page, err := sub.Surfaces.IssueReports.ListReportsForSubject(ctx,
 				&issuereportspb.ListReportsForSubjectRequest{
 					SubjectType: report.GetSubjectType(),
@@ -56,9 +69,54 @@ func listings() map[string]listing {
 					Filter:      filter,
 				})
 
-			return reportIDs(page.GetResults()), err
-		},
+			return reportIDs(page.GetResults()), page.GetPagination().GetCursor(), err
+		}),
 	}
+}
+
+// walked is read paged to its end, asking every page with what filter asked
+// the first.
+//
+// Every page rather than the first, because a queue may be shared with the rest
+// of the run: once it holds more reports than one page does, the one an
+// assertion just filed need not be on page one, and "absent from page one" is
+// not "absent" either — which is the half that would pass an archived report
+// still being listed.
+func walked(read onePage) listing {
+	return func(ctx context.Context, sub *conformance.Subject, report *issuereportspb.IssueReport, filter *filteringpb.QueryFilter) ([]string, error) {
+		var seen []string
+
+		for range maxPages {
+			ids, next, err := read(ctx, sub, report, filter)
+			if err != nil {
+				return nil, err
+			}
+
+			seen = append(seen, ids...)
+
+			if next == "" || len(ids) == 0 {
+				return seen, nil
+			}
+
+			filter = withCursor(filter, next)
+		}
+
+		return nil, fmt.Errorf("conformance: the listing was still paging after %d pages", maxPages)
+	}
+}
+
+// withCursor is filter asking for the page cursor names. Cursor has explicit
+// presence, so it is set only once there is one: an empty cursor is a cursor,
+// not the absence of one.
+func withCursor(filter *filteringpb.QueryFilter, cursor string) *filteringpb.QueryFilter {
+	next := &filteringpb.QueryFilter{}
+	if filter != nil {
+		next = proto.CloneOf(filter)
+	}
+
+	next.Cursor = &cursor
+
+	return next
 }
 
 // includeArchived is the filter a client sets to ask for the reports taken out
@@ -288,11 +346,12 @@ func byStatus(t *testing.T, s *conformance.Session) {
 		resolved := fileOne(t, mine)
 		move(t, mine, resolved.GetId(), statusOpen, statusResolved, "done")
 
-		page, err := mine.Surfaces.IssueReports.ListReportsByStatus(mine.Context(t.Context()),
-			&issuereportspb.ListReportsByStatusRequest{Status: statusOpen})
+		// Walked rather than read off page one: every open report in the
+		// caller's scope is in this queue, and the scope may be one the whole
+		// run files into.
+		ids, err := listings()["ListReportsByStatus"](mine.Context(t.Context()), mine, open, nil)
 		must.NoError(t, err)
 
-		ids := reportIDs(page.GetResults())
 		test.SliceContains(t, ids, open.GetId())
 		test.SliceNotContains(t, ids, resolved.GetId())
 	})
