@@ -15,6 +15,8 @@ import (
 	passwordresetprivacy "github.com/primandproper/platform-go/v15/authentication/passwordreset/privacy"
 	"github.com/primandproper/platform-go/v15/authentication/phonecodes"
 	phonecodesprivacy "github.com/primandproper/platform-go/v15/authentication/phonecodes/privacy"
+	"github.com/primandproper/platform-go/v15/authentication/signin/devices"
+	devicesprivacy "github.com/primandproper/platform-go/v15/authentication/signin/devices/privacy"
 	"github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes"
 	recoverycodesprivacy "github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/privacy"
 	"github.com/primandproper/platform-go/v15/billing"
@@ -86,6 +88,7 @@ type Adapters struct {
 	PasswordReset *PasswordResetAdapter
 	PhoneCodes    *PhoneCodesAdapter
 	RecoveryCodes *RecoveryCodesAdapter
+	SignInDevices *SignInDevicesAdapter
 	Identity      *IdentityAdapter
 	Notifications *NotificationsAdapter
 	Billing       *BillingAdapter
@@ -241,6 +244,19 @@ type RecoveryCodesAdapter struct {
 	_ struct{} `json:"-" yaml:"-"`
 
 	Store   recoverycodes.Store
+	Resolve dataprivacy.ScopeResolver
+	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
+	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
+	// cannot replace it — see precede for why the seam is not a wrapper.
+	BeforeErase dataprivacy.Eraser
+}
+
+// SignInDevicesAdapter registers authentication/signin/devices/privacy's
+// collector and eraser.
+type SignInDevicesAdapter struct {
+	_ struct{} `json:"-" yaml:"-"`
+
+	Store   devices.Store
 	Resolve dataprivacy.ScopeResolver
 	// BeforeErase runs inside the erasure's transaction, ahead of this domain's
 	// own eraser, and is nil in ordinary wiring. It precedes that eraser and
@@ -567,6 +583,14 @@ func (a *Adapters) build() ([]registration, error) {
 
 		built = append(built, registration{key: recoverycodesprivacy.DefaultKey, collector: collector, eraser: precede(a.RecoveryCodes.BeforeErase, eraser)})
 	}
+	if a.SignInDevices != nil {
+		collector, eraser, err := a.SignInDevices.build(a.Reader)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", devicesprivacy.DefaultKey)
+		}
+
+		built = append(built, registration{key: devicesprivacy.DefaultKey, collector: collector, eraser: precede(a.SignInDevices.BeforeErase, eraser)})
+	}
 	if a.Identity != nil {
 		collector, eraser, err := a.Identity.build(a.Reader)
 		if err != nil {
@@ -802,6 +826,22 @@ func (c *RecoveryCodesAdapter) build(
 	}
 
 	eraser, err := recoverycodesprivacy.NewEraser(c.Store, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return collector, eraser, nil
+}
+
+func (c *SignInDevicesAdapter) build(
+	reader database.SQLQueryExecutor,
+) (dataprivacy.Collector, dataprivacy.Eraser, error) {
+	collector, err := devicesprivacy.NewCollector(c.Store, reader, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	eraser, err := devicesprivacy.NewEraser(c.Store, c.Resolve)
 	if err != nil {
 		return nil, nil, err
 	}

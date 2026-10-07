@@ -18,6 +18,7 @@ import (
 	passkeysmigrations "github.com/primandproper/platform-go/v15/authentication/passkeys/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v15/authentication/passwordreset/migrations"
 	phonecodesmigrations "github.com/primandproper/platform-go/v15/authentication/phonecodes/migrations"
+	devicesmigrations "github.com/primandproper/platform-go/v15/authentication/signin/devices/migrations"
 	magiclinksmigrations "github.com/primandproper/platform-go/v15/authentication/signin/magiclinks/migrations"
 	recoverycodesmigrations "github.com/primandproper/platform-go/v15/authentication/signin/recoverycodes/migrations"
 	refreshtokensmigrations "github.com/primandproper/platform-go/v15/authentication/signin/refreshtokens/migrations"
@@ -79,6 +80,7 @@ var renderers = map[string]renderer{
 	"authentication/passkeys":             passkeysmigrations.Statements,
 	"authentication/passwordreset":        passwordresetmigrations.Statements,
 	"authentication/phonecodes":           phonecodesmigrations.Statements,
+	"authentication/signin/devices":       devicesmigrations.Statements,
 	"authentication/signin/magiclinks":    magiclinksmigrations.Statements,
 	"authentication/signin/recoverycodes": recoverycodesmigrations.Statements,
 	"authentication/signin/refreshtokens": refreshtokensmigrations.Statements,
@@ -225,6 +227,14 @@ var exempt = map[string]exemption{
 	// archive kept could come back.
 	"signin_recovery_codes": {recoverycodesmigrations.Statements,
 		"minted as a set, spent once each and deleted by the set that replaces it; issued_at is the creation time and used_at is the row's only mutation"},
+
+	// signin_devices is notifications_devices' shape keyed on a login: one row
+	// per family, renewed by every refresh and swept once the login can no
+	// longer be alive. first_seen_at is the creation time under the name the
+	// pair with last_seen_at reads as, and both are the store's clock rather
+	// than a server default, so no row holds times from two clocks.
+	"signin_devices": {devicesmigrations.Statements,
+		"one row per login, renewed by every refresh and swept on expires_at; first_seen_at is the creation time and last_seen_at is when the login was last renewed, not a last mutation"},
 
 	// audit_log_entries is exempt for three reasons, the first fatal. recorded_at
 	// is folded into every entry's hash before the INSERT, so a database-assigned

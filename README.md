@@ -63,6 +63,7 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/signin/magiclinks` | The sign-in links the passwordless door mails: digest at rest, single use, and a redemption that proves the address it was sent to | postgres, mysql, sqlite          |
 | `authentication/signin/recoverycodes` | The recovery codes a person keeps on paper for a lost authenticator: digest at rest, single use, spent by the door they prove, and `authentication/signin/recoverycodes/privacy` | postgres, mysql, sqlite          |
+| `authentication/signin/devices`    | Opt-in: where each login was last renewed from, recorded by a hook over `signin.Hooks`, read back by a `SignInAnnotator`, swept at the login's deadline, and `authentication/signin/devices/privacy` (seam: `Extractor`) | postgres, mysql, sqlite          |
 | `authentication/phonecodes`        | Short codes texted to a person who is not a user: digest at rest, single use, dead after too many wrong guesses, one live code per number, and `authentication/phonecodes/privacy` | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` (seam: `Hooks`) | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
@@ -174,15 +175,18 @@ an application with no users has nobody to sign in, and because the refusals it
 collapses are a product decision rather than a mechanism. A package like it is the
 shape to expect as more domains arrive: the flows over the nouns, after the nouns.
 
-It gained three tables without becoming one, and the split is where the sentence
+It gained four tables without becoming one, and the split is where the sentence
 stays true. Refresh-token rotation needs rows — a digest, a family, a deadline —
 so those live in `authentication/signin/refreshtokens`; the passwordless door
 needs rows of its own for the same reason, so those live in
 `authentication/signin/magiclinks`; and the recovery codes that stand in for a
 lost authenticator are a set of single-use rows too, so those live in
-`authentication/signin/recoverycodes`. Each is a noun with a table like any
-other, while the flow above them holds the seams rather than the schemas. None of
-the three is a row of its own in the tier sort for the reason `links/database`
+`authentication/signin/recoverycodes`. The fourth is the one `signin` never
+reaches for: a deployment that wants its "where you're signed in" screen to say
+where wires `authentication/signin/devices` over the hooks and the annotator seam
+`signin` already exposes, and one that does not records nothing. Each is a noun
+with a table like any other, while the flow above them holds the seams rather than
+the schemas. None of the four is a row of its own in the tier sort for the reason `links/database`
 and `sessions/database` are not: a nested package inherits its parent's tier by
 longest-prefix match, so it is classified by construction and a row would be a
 second answer with nothing checking it. A service that names none of the stores
@@ -774,6 +778,7 @@ here.
 | `authentication/passkeys`             | ✓        | ✓     | ✓      |
 | `authentication/passwordreset`        | ✓        | ✓     | ✓      |
 | `authentication/phonecodes`           | ✓        | ✓     | ✓      |
+| `authentication/signin/devices`       | ✓        | ✓     | ✓      |
 | `authentication/signin/magiclinks`    | ✓        | ✓     | ✓      |
 | `authentication/signin/recoverycodes` | ✓        | ✓     | ✓      |
 | `authentication/signin/refreshtokens` | ✓        | ✓     | ✓      |
