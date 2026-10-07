@@ -340,9 +340,13 @@ const lastUpdatedAtField = "lastUpdatedAt"
 // The decisions it makes, once, so that no consumer remakes them:
 //
 //   - An operation that writes several rows records an entry per row and emits
-//     one event. An archival records an entry per membership it ended, each
-//     naming that member as its subject, so a Recorder filing by subject puts it
-//     on their chain.
+//     one event. An archival records entries for every membership it ended.
+//   - A change to who belongs to an account — a membership created, its roles
+//     set, removed, or ended by an archival — records two entries, one naming
+//     the member as its subject and one naming the account, so a Recorder
+//     filing by subject puts it on both chains: the member's, and the one an
+//     account's administrator reads to see who joined and who left. A default
+//     account set is the member's alone, being nobody else's business.
 //   - No secret travels on an entry or an event. The verification token a
 //     registration's hook is handed and the token an issued invitation's may be
 //     are dropped here, for the reason [EventCatalog] gives; the link goes to
@@ -364,8 +368,9 @@ const lastUpdatedAtField = "lastUpdatedAt"
 // who made it; both are the Recorder's, through its ScopeResolver and its
 // principal extractor. Every entry about a person sets Entry.SubjectID — the
 // user, or the member — and every entry about an account names the account, so
-// a resolver filing by subject puts an account's own history on the account's
-// chain, which is the one a member asking about their account reads.
+// a resolver filing by subject puts an account's own history, its roster's
+// comings and goings included, on the account's chain, which is the one a
+// member asking about their account reads.
 //
 // Nor does it revoke anything. Hooks.AfterUpdateUserAccountStatus names the two
 // calls that end a suspended user's sessions and refresh-token families, and
@@ -389,7 +394,8 @@ func NewRecordingHooks(recorder *recording.Recorder) (*RecordingHooks, error) {
 }
 
 // AfterRegister records the user, the account and the membership a
-// registration wrote, and emits one EventUserRegistered. The verification token
+// registration wrote — the membership on the member's chain and the account's
+// both — and emits one EventUserRegistered. The verification token
 // the registration carries is on neither.
 func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scope tenancy.Scope, registration *Registration) error {
 	if registration == nil || registration.User == nil {
@@ -406,15 +412,16 @@ func (h *RecordingHooks) AfterRegister(ctx context.Context, tx database.Tx, scop
 
 	user, account, membership := registration.User, registration.Account, registration.Membership
 
+	entries := append([]*recording.Entry{
+		userEntry(user, audit.EventCreated, nil, nil),
+		accountEntry(account, audit.EventCreated, nil, nil),
+	}, membershipEntries(membership, audit.EventCreated, nil)...)
+
 	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
 		UserID:       user.ID,
 		AccountID:    account.ID,
 		MembershipID: membership.ID,
-	},
-		userEntry(user, audit.EventCreated, nil, nil),
-		accountEntry(account, audit.EventCreated, nil, nil),
-		membershipEntry(membership, audit.EventCreated, nil),
-	)
+	}, entries...)
 }
 
 // recordRegistration emits one EventUserRegistered and writes every entry as
@@ -464,16 +471,17 @@ func (h *RecordingHooks) AfterRegisterWithInvitation(
 
 	user, invitation, membership := registration.User, registration.Invitation, registration.Membership
 
+	entries := append([]*recording.Entry{
+		userEntry(user, audit.EventCreated, nil, nil),
+		invitationEntry(invitation, audit.EventUpdated),
+	}, membershipEntries(membership, audit.EventCreated, nil)...)
+
 	return h.recordRegistration(ctx, tx, scope, user, &UserEvent{
 		UserID:       user.ID,
 		AccountID:    membership.BelongsToAccount,
 		MembershipID: membership.ID,
 		InvitationID: invitation.ID,
-	},
-		userEntry(user, audit.EventCreated, nil, nil),
-		invitationEntry(invitation, audit.EventUpdated),
-		membershipEntry(membership, audit.EventCreated, nil),
-	)
+	}, entries...)
 }
 
 // AfterInvite records the invitation issued, and emits EventInvitationCreated.
@@ -490,7 +498,7 @@ func (h *RecordingHooks) AfterInvite(ctx context.Context, tx database.Tx, scope 
 }
 
 // AfterAcceptInvitation records the invitation answered and the membership the
-// answer minted.
+// answer minted, on the member's chain and the account's.
 func (h *RecordingHooks) AfterAcceptInvitation(ctx context.Context, tx database.Tx, scope tenancy.Scope, acceptance *Acceptance) error {
 	if acceptance == nil || acceptance.Invitation == nil {
 		return ErrNilInvitation
@@ -503,10 +511,11 @@ func (h *RecordingHooks) AfterAcceptInvitation(ctx context.Context, tx database.
 	payload := invitationEvent(acceptance.Invitation)
 	payload.MembershipID = acceptance.Membership.ID
 
-	return h.record(ctx, tx, scope, EventInvitationAccepted, acceptance.Invitation.ID, payload,
+	entries := append([]*recording.Entry{
 		invitationEntry(acceptance.Invitation, audit.EventUpdated),
-		membershipEntry(acceptance.Membership, audit.EventCreated, nil),
-	)
+	}, membershipEntries(acceptance.Membership, audit.EventCreated, nil)...)
+
+	return h.record(ctx, tx, scope, EventInvitationAccepted, acceptance.Invitation.ID, payload, entries...)
 }
 
 // AfterRejectInvitation records the recipient declining.
@@ -519,7 +528,8 @@ func (h *RecordingHooks) AfterCancelInvitation(ctx context.Context, tx database.
 	return h.recordInvitationAnswer(ctx, tx, scope, invitation, EventInvitationCancelled)
 }
 
-// AfterCreateAccount records the account and its owner membership.
+// AfterCreateAccount records the account and its owner membership, the
+// membership on the owner's chain and the account's.
 func (h *RecordingHooks) AfterCreateAccount(
 	ctx context.Context,
 	tx database.Tx,
@@ -535,14 +545,15 @@ func (h *RecordingHooks) AfterCreateAccount(
 		return ErrNilMembership
 	}
 
+	entries := append([]*recording.Entry{
+		accountEntry(account, audit.EventCreated, nil, nil),
+	}, membershipEntries(membership, audit.EventCreated, nil)...)
+
 	return h.record(ctx, tx, scope, EventAccountCreated, account.ID, &AccountEvent{
 		AccountID:    account.ID,
 		OwnerUserID:  account.OwnerUserID,
 		MembershipID: membership.ID,
-	},
-		accountEntry(account, audit.EventCreated, nil, nil),
-		membershipEntry(membership, audit.EventCreated, nil),
-	)
+	}, entries...)
 }
 
 // AfterTransferAccountOwnership records the account under its new owner, with
@@ -603,8 +614,10 @@ func (h *RecordingHooks) AfterSetDefaultAccount(
 	)
 }
 
-// AfterArchiveUser records the user archived and one entry per membership the
-// archival ended, and emits one EventUserArchived naming them.
+// AfterArchiveUser records the user archived and each membership the archival
+// ended, on the user's chain and its account's, so every account the user was
+// in sees them leave, and emits one EventUserArchived
+// naming them.
 func (h *RecordingHooks) AfterArchiveUser(
 	ctx context.Context,
 	tx database.Tx,
@@ -629,10 +642,11 @@ func (h *RecordingHooks) AfterArchiveUser(
 	}, entries...)
 }
 
-// AfterArchiveAccount records the account archived and one entry per
-// membership the archival ended, each naming its member as the subject, so a
+// AfterArchiveAccount records the account archived and each membership the
+// archival ended, on its member's chain and the account's, so a
 // Recorder filing by subject puts the account's end on the chain of everybody
-// it ended for. It emits one EventAccountArchived naming them.
+// it ended for, and each ending on the account's own. It emits one
+// EventAccountArchived naming them.
 func (h *RecordingHooks) AfterArchiveAccount(
 	ctx context.Context,
 	tx database.Tx,
@@ -789,7 +803,7 @@ func (h *RecordingHooks) AfterRecordAgreement(
 }
 
 // AfterSetMembershipRoles records both role sets, for the reason
-// AfterSetUserServiceRoles does.
+// AfterSetUserServiceRoles does, on the member's chain and the account's.
 func (h *RecordingHooks) AfterSetMembershipRoles(
 	ctx context.Context,
 	tx database.Tx,
@@ -806,12 +820,13 @@ func (h *RecordingHooks) AfterSetMembershipRoles(
 	payload.PreviousRoles = slices.Clone(previousRoles)
 
 	return h.record(ctx, tx, scope, EventMembershipRolesUpdated, membership.BelongsToUser, payload,
-		membershipEntry(membership, audit.EventUpdated, roleMetadata(previousRoles, membership.Roles)),
+		membershipEntries(membership, audit.EventUpdated, roleMetadata(previousRoles, membership.Roles))...,
 	)
 }
 
-// AfterRemoveMembership records the membership ended, with the account the
-// user's default moved to in the metadata when the removal moved one.
+// AfterRemoveMembership records the membership ended, on the member's chain and
+// the account's, with the account the user's default moved to in the metadata
+// when the removal moved one.
 func (h *RecordingHooks) AfterRemoveMembership(
 	ctx context.Context,
 	tx database.Tx,
@@ -827,7 +842,7 @@ func (h *RecordingHooks) AfterRemoveMembership(
 	payload.NewDefaultAccountID = newDefaultAccountID
 
 	return h.record(ctx, tx, scope, EventMembershipRemoved, membership.BelongsToUser, payload,
-		membershipEntry(membership, audit.EventArchived, nonEmpty(metadataNewDefaultAccountID, newDefaultAccountID)),
+		membershipEntries(membership, audit.EventArchived, nonEmpty(metadataNewDefaultAccountID, newDefaultAccountID))...,
 	)
 }
 
@@ -1030,8 +1045,33 @@ func accountEntry(account *Account, eventType audit.EventType, changes map[strin
 	}
 }
 
+// membershipEntries are the two entries a change to who belongs to an account
+// owes: membershipEntry's, on the member's chain, and the same entry naming the
+// account as its subject, on the account's. Somebody joining or leaving is a
+// fact about both — "which accounts was I in" is the member's question, and
+// "who joined us, and who left" is the first one an account's administrator
+// asks of its log — so it is filed on both, as a transfer is filed on the
+// account's chain and both owners'. Filed by write, the two are the same
+// write's, on its chain.
+//
+// The account's copy names the member by the membership it is about and by
+// nothing else, for the reason recording.Entry.SubjectID gives for keeping a
+// person's ID out of metadata: a departed member's erasure leaves the copy on
+// a surviving account's chain, and an ID it could not count would outlive them
+// unreported.
+func membershipEntries(membership *Membership, eventType audit.EventType, extra map[string]string) []*recording.Entry {
+	member := membershipEntry(membership, eventType, extra)
+
+	account := membershipEntry(membership, eventType, extra)
+	account.SubjectID = membership.BelongsToAccount
+
+	return []*recording.Entry{member, account}
+}
+
 // membershipEntry is an entry about a membership, naming the member as its
-// subject and the account in its metadata, beside whatever extra says.
+// subject and the account in its metadata, beside whatever extra says. On its
+// own it is a change only the member's chain needs — which account is their
+// default — and membershipEntries is the pair for everything else.
 func membershipEntry(membership *Membership, eventType audit.EventType, extra map[string]string) *recording.Entry {
 	metadata := map[string]string{metadataAccountID: membership.BelongsToAccount}
 	maps.Copy(metadata, extra)
@@ -1098,11 +1138,11 @@ func membershipEvent(membership *Membership) *MembershipEvent {
 	}
 }
 
-// endMemberships is the payload and the archived entry for each membership an
-// archival ended.
+// endMemberships is the payload and the archived entries for each membership
+// an archival ended.
 func endMemberships(memberships []*Membership) ([]*MembershipEvent, []*recording.Entry, error) {
 	events := make([]*MembershipEvent, 0, len(memberships))
-	entries := make([]*recording.Entry, 0, len(memberships)+1)
+	entries := make([]*recording.Entry, 0, 2*len(memberships)+1)
 
 	for _, membership := range memberships {
 		if membership == nil {
@@ -1110,7 +1150,7 @@ func endMemberships(memberships []*Membership) ([]*MembershipEvent, []*recording
 		}
 
 		events = append(events, membershipEvent(membership))
-		entries = append(entries, membershipEntry(membership, audit.EventArchived, nil))
+		entries = append(entries, membershipEntries(membership, audit.EventArchived, nil)...)
 	}
 
 	return events, entries, nil

@@ -296,7 +296,9 @@ domain event, does not write that Hooks itself. [RecordingHooks] is it, built
 over a recording.Recorder: an entry per row an operation wrote, naming it by
 [ResourceTypeUser], [ResourceTypeAccount], [ResourceTypeMembership] or
 [ResourceTypeInvitation], and one event per operation from those [EventCatalog]
-describes. The verification and invitation tokens travel on neither: a link
+describes. A change to who belongs to an account is recorded twice, naming the
+member and naming the account, so a Recorder filing by subject puts somebody
+joining or leaving on the account's chain as well as theirs. The verification and invitation tokens travel on neither: a link
 goes to its mailbox through a mailer — [InvitationMailer] here, signin's
 VerificationMailer for a registration's — and an event goes wherever a
 deployment's catalog sends it. It revokes nothing on a suspension; a consumer
