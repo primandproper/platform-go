@@ -471,9 +471,14 @@ asking.** A principal without the `sid` is `FAILED_PRECONDITION` with reason
 `SIGN_IN_NOT_IDENTIFIED`; nothing is ended. It is the same wiring gap that leaves `current` false,
 and a client that wants every login ended regardless calls `SignOutEverywhere`.
 
-No device, browser or address is listed, and none will be: whether those are recorded at all is
-the consumer's decision, keyed on `family_id` from the `AfterIssueToken` hook, and a client that
-shows them reads them from the consumer's own surface.
+No device, browser or address is a field of `ActiveSignIn`, and none will be: whether those are
+recorded at all is the consumer's decision, keyed on `family_id` from the `AfterIssueToken` hook.
+What a server recorded arrives in each login's `attributes`, filled by the `SignInAnnotator` it was
+built with; a server built with none sends every login with no attributes. A deployment that wires
+`authentication/signin/devices` answers under `ip_address`, `user_agent` and `device_name`, naming
+only what it read — so a client renders whichever keys are present and never branches on one being
+absent. Every value is what a client said about itself or what the deployment's edge said about the
+client: display, never evidence.
 
 An operator listing or ending somebody else's sessions is not on these RPCs and will not be:
 they name nobody, so there is no field an administrator could use. That act is

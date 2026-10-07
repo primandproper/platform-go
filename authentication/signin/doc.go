@@ -117,6 +117,13 @@ listing RPCs' answer as each login's attributes, so a consumer showing it keeps
 no list of logins of their own. An annotator that fails fails the listing
 rather than answering with the logins and none of their devices.
 
+A consumer who decides to record them need not build that table:
+authentication/signin/devices is the opt-in package that fills both seams — a
+hook over the one signin is built with, an annotator, the privacy adapter and
+a sweep — and leaves the consumer only the decision of which parts of a request
+to believe. Nothing here imports it, so a deployment that does not wire it
+still records nothing.
+
 # Ending a login, and the hook that records it
 
 Every door that ends a login runs [Hooks.AfterRevokeSignIns] in the transaction

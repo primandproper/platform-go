@@ -43,6 +43,7 @@ COMPONENTS=(
   "./authentication/phonecodes ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/passkeys ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/passwordreset ./internal/queriesgen internal/queries postgres mysql sqlite"
+  "./authentication/signin/devices ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/signin/magiclinks ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/signin/recoverycodes ./internal/queriesgen internal/queries postgres mysql sqlite"
   "./authentication/signin/refreshtokens ./internal/queriesgen internal/queries postgres mysql sqlite"

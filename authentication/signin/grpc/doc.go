@@ -110,7 +110,8 @@ documentation draws: the platform lists the logins and records how each one
 happened, and the consumer annotates the device. [WithSignInAnnotator] is the
 seam, asked once per listing for every family in it; a server built without one
 lists every login with no attributes, and one whose annotator fails answers the
-RPC with that error rather than with half the screen.
+RPC with that error rather than with half the screen. authentication/signin/devices
+ships one, over a table it also records into, for a deployment that wants it.
 
 # What a consumer still owes
 
