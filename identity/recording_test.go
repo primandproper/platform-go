@@ -521,7 +521,7 @@ func TestRecordingHooks(T *testing.T) {
 
 		l := runRecording(t, env, "AfterRegister")
 
-		must.SliceLen(t, 3, l.entries)
+		must.SliceLen(t, 4, l.entries)
 		test.EqOp(t, ResourceTypeUser, l.entries[0].ResourceType)
 		test.EqOp(t, "user-1", l.entries[0].ResourceID)
 		test.EqOp(t, ResourceTypeAccount, l.entries[1].ResourceType)
@@ -529,6 +529,9 @@ func TestRecordingHooks(T *testing.T) {
 		test.EqOp(t, ResourceTypeMembership, l.entries[2].ResourceType)
 		test.EqOp(t, "membership-1", l.entries[2].ResourceID)
 		test.Eq(t, map[string]string{metadataAccountID: "account-1"}, l.entries[2].Metadata)
+		test.EqOp(t, ResourceTypeMembership, l.entries[3].ResourceType)
+		test.EqOp(t, "membership-1", l.entries[3].ResourceID)
+		test.Eq(t, l.entries[2].Metadata, l.entries[3].Metadata)
 
 		for _, entry := range l.entries {
 			test.EqOp(t, audit.EventCreated, entry.EventType)
@@ -578,7 +581,7 @@ func TestRecordingHooks(T *testing.T) {
 			l := &recordingLedger{anonymous: true}
 			runRecordingInto(t, env, name, l)
 
-			must.SliceLen(t, 3, l.entries, must.Sprintf("%s", name))
+			must.SliceLen(t, 4, l.entries, must.Sprintf("%s", name))
 
 			for _, entry := range l.entries {
 				test.Eq(t, audit.Actor{ID: registrant, Type: audit.ActorUser}, entry.Actor, test.Sprintf("%s", name))
@@ -594,7 +597,7 @@ func TestRecordingHooks(T *testing.T) {
 		for _, name := range []string{"AfterRegister", "AfterRegisterWithInvitation"} {
 			l := runRecording(t, env, name)
 
-			must.SliceLen(t, 3, l.entries, must.Sprintf("%s", name))
+			must.SliceLen(t, 4, l.entries, must.Sprintf("%s", name))
 
 			for _, entry := range l.entries {
 				test.EqOp(t, "operator-1", entry.Actor.ID, test.Sprintf("%s", name))
@@ -608,13 +611,14 @@ func TestRecordingHooks(T *testing.T) {
 
 		l := runRecording(t, env, "AfterRegisterWithInvitation")
 
-		must.SliceLen(t, 3, l.entries)
+		must.SliceLen(t, 4, l.entries)
 		test.EqOp(t, ResourceTypeUser, l.entries[0].ResourceType)
 		test.EqOp(t, audit.EventCreated, l.entries[0].EventType)
 		test.EqOp(t, ResourceTypeInvitation, l.entries[1].ResourceType)
 		test.EqOp(t, audit.EventUpdated, l.entries[1].EventType)
 		test.Eq(t, map[string]string{metadataAccountID: "account-1", metadataStatus: "accepted"}, l.entries[1].Metadata)
 		test.EqOp(t, ResourceTypeMembership, l.entries[2].ResourceType)
+		test.EqOp(t, ResourceTypeMembership, l.entries[3].ResourceType)
 
 		event := decodeRecorded[UserEvent](t, l.delivery(t))
 		test.EqOp(t, EventUserRegistered, l.delivery(t).EventType)
@@ -665,25 +669,34 @@ func TestRecordingHooks(T *testing.T) {
 
 		l := runRecording(t, env, "AfterAcceptInvitation", recording.WithScopeResolver(recordingBySubject))
 
-		must.SliceLen(t, 2, l.entries)
+		must.SliceLen(t, 3, l.entries)
 		test.EqOp(t, ResourceTypeInvitation, l.entries[0].ResourceType)
 		test.EqOp(t, tenancy.Of("user-2"), l.entries[0].Scope)
 	})
 
-	T.Run("an archival records an entry per ended membership, each on its member's chain", func(t *testing.T) {
+	T.Run("an archival records each ended membership on its member's chain and the account's", func(t *testing.T) {
 		t.Parallel()
 
 		l := runRecording(t, env, "AfterArchiveAccount", recording.WithScopeResolver(recordingBySubject))
 
-		must.SliceLen(t, 3, l.entries)
+		// The recorder writes a chain at a time, so the account's own end comes
+		// first with each ending beside it, then each member's.
+		must.SliceLen(t, 5, l.entries)
 		test.EqOp(t, ResourceTypeAccount, l.entries[0].ResourceType)
 		test.EqOp(t, audit.EventArchived, l.entries[0].EventType)
-		// The account's own end is on the account's chain, beside its members'.
-		test.EqOp(t, tenancy.Of("account-1"), l.entries[0].Scope)
-		test.EqOp(t, "membership-1", l.entries[1].ResourceID)
-		test.EqOp(t, tenancy.Of("user-1"), l.entries[1].Scope)
-		test.EqOp(t, "membership-2", l.entries[2].ResourceID)
-		test.EqOp(t, tenancy.Of("user-2"), l.entries[2].Scope)
+
+		filed := make([]string, 0, len(l.entries))
+		for _, entry := range l.entries {
+			filed = append(filed, entry.ResourceID+"@"+entry.Scope.Owner())
+		}
+
+		test.Eq(t, []string{
+			"account-1@account-1",
+			"membership-1@account-1",
+			"membership-2@account-1",
+			"membership-1@user-1",
+			"membership-2@user-2",
+		}, filed)
 
 		for _, entry := range l.entries[1:] {
 			test.EqOp(t, audit.EventArchived, entry.EventType)
@@ -726,11 +739,13 @@ func TestRecordingHooks(T *testing.T) {
 
 		l := runRecording(t, env, "AfterCreateAccount", recording.WithScopeResolver(recordingBySubject))
 
-		must.SliceLen(t, 2, l.entries)
+		must.SliceLen(t, 3, l.entries)
 		test.EqOp(t, ResourceTypeAccount, l.entries[0].ResourceType)
 		test.EqOp(t, tenancy.Of("account-2"), l.entries[0].Scope)
 		test.EqOp(t, ResourceTypeMembership, l.entries[1].ResourceType)
-		test.EqOp(t, tenancy.Of("user-1"), l.entries[1].Scope)
+		test.EqOp(t, tenancy.Of("account-2"), l.entries[1].Scope)
+		test.EqOp(t, ResourceTypeMembership, l.entries[2].ResourceType)
+		test.EqOp(t, tenancy.Of("user-1"), l.entries[2].Scope)
 	})
 
 	T.Run("a transfer is on the account's chain and both owners'", func(t *testing.T) {
@@ -759,11 +774,14 @@ func TestRecordingHooks(T *testing.T) {
 
 		l := runRecording(t, env, "AfterArchiveUser")
 
-		must.SliceLen(t, 3, l.entries)
+		must.SliceLen(t, 5, l.entries)
 		test.EqOp(t, ResourceTypeUser, l.entries[0].ResourceType)
 		test.EqOp(t, audit.EventArchived, l.entries[0].EventType)
-		test.EqOp(t, ResourceTypeMembership, l.entries[1].ResourceType)
-		test.EqOp(t, ResourceTypeMembership, l.entries[2].ResourceType)
+
+		for _, entry := range l.entries[1:] {
+			test.EqOp(t, ResourceTypeMembership, entry.ResourceType)
+			test.EqOp(t, audit.EventArchived, entry.EventType)
+		}
 
 		event := decodeRecorded[UserEvent](t, l.delivery(t))
 		must.SliceLen(t, 2, event.EndedMemberships)
@@ -785,9 +803,79 @@ func TestRecordingHooks(T *testing.T) {
 			},
 		} {
 			l := runRecording(t, env, name)
-			must.SliceLen(t, 1, l.entries)
-			test.Eq(t, want, l.entries[0].Metadata, test.Sprintf("%s", name))
-			test.MapEmpty(t, l.entries[0].Changes, test.Sprintf("%s", name))
+			must.SliceNotEmpty(t, l.entries)
+
+			// A membership change's second entry is its account's copy, and
+			// carries the same metadata.
+			for _, entry := range l.entries {
+				test.Eq(t, want, entry.Metadata, test.Sprintf("%s", name))
+				test.MapEmpty(t, entry.Changes, test.Sprintf("%s", name))
+			}
+		}
+	})
+
+	T.Run("a change to who belongs to an account is on the member's chain and the account's", func(t *testing.T) {
+		t.Parallel()
+
+		for name, member := range map[string]string{
+			"AfterRegister":               "user-1",
+			"AfterRegisterWithInvitation": "user-2",
+			"AfterAcceptInvitation":       "user-2",
+			"AfterCreateAccount":          "user-1",
+			"AfterSetMembershipRoles":     "user-2",
+			"AfterRemoveMembership":       "user-1",
+			"AfterArchiveUser":            "user-1",
+			"AfterArchiveAccount":         "user-1",
+		} {
+			l := runRecording(t, env, name, recording.WithScopeResolver(recordingBySubject))
+
+			chains := map[string][]tenancy.Scope{}
+			for _, entry := range l.entries {
+				if entry.ResourceType == ResourceTypeMembership {
+					chains[entry.ResourceID] = append(chains[entry.ResourceID], entry.Scope)
+				}
+			}
+
+			must.MapNotEmpty(t, chains, must.Sprintf("%s", name))
+
+			var sawMember bool
+			for _, entry := range l.entries {
+				if entry.ResourceType != ResourceTypeMembership {
+					continue
+				}
+
+				account := tenancy.Of(entry.Metadata[metadataAccountID])
+				filed := chains[entry.ResourceID]
+				must.SliceLen(t, 2, filed, must.Sprintf("%s: %s", name, entry.ResourceID))
+				test.NotEqOp(t, filed[0], filed[1], test.Sprintf("%s: %s", name, entry.ResourceID))
+				test.True(t, slices.Contains(filed, account), test.Sprintf("%s: %s is not on its account's chain", name, entry.ResourceID))
+
+				sawMember = sawMember || slices.Contains(filed, tenancy.Of(member))
+			}
+
+			test.True(t, sawMember, test.Sprintf("%s filed nothing on %s's chain", name, member))
+		}
+	})
+
+	T.Run("a default account set is the member's alone", func(t *testing.T) {
+		t.Parallel()
+
+		l := runRecording(t, env, "AfterSetDefaultAccount", recording.WithScopeResolver(recordingBySubject))
+
+		must.SliceLen(t, 1, l.entries)
+		test.EqOp(t, ResourceTypeMembership, l.entries[0].ResourceType)
+		test.EqOp(t, tenancy.Of("user-1"), l.entries[0].Scope)
+	})
+
+	T.Run("filed by write, a membership's two entries are the write's", func(t *testing.T) {
+		t.Parallel()
+
+		l := runRecording(t, env, "AfterRemoveMembership")
+
+		must.SliceLen(t, 2, l.entries)
+
+		for _, entry := range l.entries {
+			test.EqOp(t, testScope, entry.Scope)
 		}
 	})
 
@@ -913,10 +1001,11 @@ func TestRecordingHooks(T *testing.T) {
 
 		registration := registerAda(t, service, "ada")
 
-		must.SliceLen(t, 3, l.entries)
+		must.SliceLen(t, 4, l.entries)
 		test.EqOp(t, registration.User.ID, l.entries[0].ResourceID)
 		test.EqOp(t, registration.Account.ID, l.entries[1].ResourceID)
 		test.EqOp(t, registration.Membership.ID, l.entries[2].ResourceID)
+		test.EqOp(t, registration.Membership.ID, l.entries[3].ResourceID)
 		test.EqOp(t, EventUserRegistered, l.delivery(t).EventType)
 		l.noSecrets(t)
 		test.StrNotContains(t, string(l.delivery(t).Payload), "argon2$ada")
