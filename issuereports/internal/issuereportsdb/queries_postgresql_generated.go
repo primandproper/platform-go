@@ -86,6 +86,24 @@ WHERE {{prefix}}issue_reports.archived_at IS NULL
 	AND {{prefix}}issue_reports.id = $1
 	AND {{prefix}}issue_reports.scope = $2`
 
+const getReportAcrossScopesPostgreSQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.archived_at IS NULL
+	AND {{prefix}}issue_reports.id = $1`
+
 const listReportsPostgreSQL = `SELECT
 	{{prefix}}issue_reports.id,
 	{{prefix}}issue_reports.scope,
@@ -879,6 +897,7 @@ type postgresqlQueries struct {
 	deleteReportsByReporter                   string
 	getArchivedReport                         string
 	getReport                                 string
+	getReportAcrossScopes                     string
 	listReports                               string
 	listReportsAcrossScopes                   string
 	listReportsAcrossScopesDescending         string
@@ -906,6 +925,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		deleteReportsByReporter:                   strings.ReplaceAll(deleteReportsByReporterPostgreSQL, prefixMarker, prefix),
 		getArchivedReport:                         strings.ReplaceAll(getArchivedReportPostgreSQL, prefixMarker, prefix),
 		getReport:                                 strings.ReplaceAll(getReportPostgreSQL, prefixMarker, prefix),
+		getReportAcrossScopes:                     strings.ReplaceAll(getReportAcrossScopesPostgreSQL, prefixMarker, prefix),
 		listReports:                               strings.ReplaceAll(listReportsPostgreSQL, prefixMarker, prefix),
 		listReportsAcrossScopes:                   strings.ReplaceAll(listReportsAcrossScopesPostgreSQL, prefixMarker, prefix),
 		listReportsAcrossScopesDescending:         strings.ReplaceAll(listReportsAcrossScopesDescendingPostgreSQL, prefixMarker, prefix),
@@ -1005,6 +1025,33 @@ func (q *postgresqlQueries) GetReport(ctx context.Context, db DBTX, arg GetRepor
 	)
 
 	var i GetReportRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Reporter,
+		&i.Kind,
+		&i.Details,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.Status,
+		&i.Resolution,
+		&i.ClosedAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetReportAcrossScopes runs the :one query against postgresql.
+func (q *postgresqlQueries) GetReportAcrossScopes(ctx context.Context, db DBTX, arg GetReportAcrossScopesParams) (GetReportAcrossScopesRow, error) {
+	row := db.QueryRowContext(ctx, q.getReportAcrossScopes,
+		arg.ID,
+	)
+
+	var i GetReportAcrossScopesRow
 
 	err := row.Scan(
 		&i.ID,
@@ -1874,6 +1921,24 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetReportRow{})
+	_ = struct {
+		ID string
+	}(GetReportAcrossScopesParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetReportAcrossScopesRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

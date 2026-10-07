@@ -104,10 +104,11 @@ argument's, not the value's. A Report whose Scope names a different tenant is
 [ErrScopeMismatch] and one that names none adopts the argument — see [Store] for
 why the entity's field is not what the statement binds.
 
-The exception is the operator's, and it is two reads spelled apart:
+The exception is the operator's, and it is three reads spelled apart:
 [Store.ListReportsAcrossScopes] and [Store.ListReportsByStatusAcrossScopes] page
 every tenant's reports, because triage across tenants is what an operator
-console is for. They are separately named methods rather than a scoped read that
+console is for, and [Store.GetReportAcrossScopes] opens one of the reports they
+listed. They are separately named methods rather than a scoped read that
 widens when its scope is absent, and issuereports/grpc serves them behind a
 permission of their own that nothing in this module grants. See [Store] for the
 ruling, and why a caller-supplied list of scopes was not the answer.

@@ -72,10 +72,10 @@ import (
 //
 // # The scope is an argument, on every method
 //
-// Every method but two takes a tenancy.Scope, and an implementation must filter
-// on it rather than treat it as a hint. A deployment with one tenant passes
-// tenancy.Global() everywhere and behaves exactly as it would have without the
-// column. The two are the operator's, below.
+// Every method but three takes a tenancy.Scope, and an implementation must
+// filter on it rather than treat it as a hint. A deployment with one tenant
+// passes tenancy.Global() everywhere and behaves exactly as it would have
+// without the column. The three are the operator's, below.
 //
 // That includes the two writes that take a whole [Report]. They read the scope
 // off the argument rather than off Report.Scope, and the alternative — letting
@@ -88,25 +88,33 @@ import (
 // A Report.Scope that disagrees with the argument is [ErrScopeMismatch] rather
 // than either value quietly winning; an unset one adopts the argument.
 //
-// # The operator's two reads, which name no scope
+// # The operator's three reads, which name no scope
 //
 // [Store.ListReportsAcrossScopes] and [Store.ListReportsByStatusAcrossScopes]
-// page every tenant's reports, and they are a stated exception to the module's
+// page every tenant's reports, and [Store.GetReportAcrossScopes] reads the one
+// an operator opens from that page. They are a stated exception to the module's
 // rule that no read path omits the scope. Triage across tenants is the reason an
 // operator console exists, and an operator who had to list the scopes they
 // administer and page each would be doing by hand the read this table can do in
-// one statement.
+// one statement. A queue whose rows could be listed and not opened would be one
+// whose every detail view answered not-found for every tenant but the
+// operator's own.
+//
+// The writes are not among them. Each already takes its scope as an argument,
+// and a Go caller holding a row read across scopes has that row's Scope to pass;
+// an operator's decision on another tenant's report is then the ordinary write,
+// in the tenant the row says it belongs to.
 //
 // What keeps the exception narrow is that it is spelled apart. The scoped reads
 // take a tenancy.Scope, not a pointer to one, so no tenant-facing caller can
 // widen a read by losing its scope — a nil that widens is the scopeless call the
-// type exists to rule out. The wide read is a different method, with a
+// type exists to rule out. Each wide read is a different method, with a
 // different name, which a transport serves behind a permission of its own that
 // nothing in this module grants: issuereports/grpc's PermissionReadAnyReports.
 // A Go caller holding the store is inside the trust boundary, and reaching for
 // one of these is a decision the method name makes visible in review.
 //
-// They are not a read over a caller-supplied set of scopes. The operator's
+// The lists are not a read over a caller-supplied set of scopes. The operator's
 // question is "every tenant", not "these tenants", and a set bound into a paged
 // read is not expressible on two of the three dialects this package serves
 // anyway.
@@ -165,6 +173,18 @@ type Store interface {
 
 	// ListReportsForSubject pages every report about one particular thing.
 	ListReportsForSubject(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subjectType, subjectID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Report], error)
+
+	// GetReportAcrossScopes reads one live report whatever tenant it belongs
+	// to: the report an operator opened from ListReportsAcrossScopes. The
+	// report carries its Scope, so the caller learns whose it is from the row.
+	// It returns an error wrapping ErrReportNotFound when the report does not
+	// exist or has been archived. A nil q is an error wrapping ErrNilExecutor.
+	//
+	// It takes no scope, for ListReportsAcrossScopes' reason and behind the
+	// same permission: it is an operator's read, and a tenant-facing caller
+	// wants GetReport. The id alone names one row because it is the table's
+	// key, so there is no second fact for the read to ask for.
+	GetReportAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, reportID string) (*Report, error)
 
 	// ListReportsAcrossScopes pages every tenant's reports, in the direction
 	// the filter names: the operator's queue. Each report carries its Scope, so

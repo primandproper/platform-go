@@ -43,6 +43,8 @@ type Querier interface {
 	GetArchivedReport(ctx context.Context, db DBTX, arg GetArchivedReportParams) (GetArchivedReportRow, error)
 	// GetReport runs the :one query.
 	GetReport(ctx context.Context, db DBTX, arg GetReportParams) (GetReportRow, error)
+	// GetReportAcrossScopes runs the :one query.
+	GetReportAcrossScopes(ctx context.Context, db DBTX, arg GetReportAcrossScopesParams) (GetReportAcrossScopesRow, error)
 	// ListReports runs the :many query.
 	ListReports(ctx context.Context, db DBTX, arg ListReportsParams) ([]ListReportsRow, error)
 	// ListReportsAcrossScopes runs the :many query.

@@ -62,12 +62,12 @@ const (
 	// spelling it as a grant is what lets a consumer's policy audit who has one.
 	PermissionTriageReports authorization.Permission = "issues.reports.triage"
 
-	// PermissionReadAnyReports covers paging every tenant's reports: the
-	// operator's queue, whole or by status.
+	// PermissionReadAnyReports covers reading every tenant's reports: the
+	// operator's queue, whole or by status, and any one report opened from it.
 	//
 	// It is the one grant here whose reach is not the caller's tenant, and this
 	// module grants it to nobody. The scoped reads cannot be widened into it —
-	// the two RPCs it covers are separate methods, and the store reads behind
+	// the three RPCs it covers are separate methods, and the store reads behind
 	// them are the stated exception to "no read path omits the scope" — so a
 	// deployment that gives it to its operators has decided to, in its own
 	// policy, where an audit of who holds it finds the decision.
@@ -131,6 +131,7 @@ func Permissions() map[string][]authorization.Permission {
 		issuereportspb.IssueReportsService_ListReportsBySubjectType_FullMethodName: {PermissionTriageReports},
 		issuereportspb.IssueReportsService_ListReportsForSubject_FullMethodName:    {PermissionTriageReports},
 
+		issuereportspb.IssueReportsService_GetReportAcrossScopes_FullMethodName:           {PermissionReadAnyReports},
 		issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName:         {PermissionReadAnyReports},
 		issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName: {PermissionReadAnyReports},
 

@@ -124,6 +124,48 @@ func (s *Server) GetReport(
 	return &issuereportspb.GetReportResponse{Result: ReportToProto(report)}, nil
 }
 
+// GetReportAcrossScopes reads one report whatever tenant it was filed in: the
+// one an operator opened from [Server.ListReportsAcrossScopes].
+//
+// It is that listing's exception, taken for the same reason and gated the same
+// way — [PermissionReadAnyReports] on the method, which this module grants to
+// nobody. A queue an operator could page and not open would answer not-found
+// for every row outside their own tenant, because [Server.GetReport] reads
+// only the scope the connection resolved and must go on doing so.
+//
+// It does not ask [ReportAuthorizer], for the reason the operator's listings do
+// not: the grant is the whole of an operator's standing, and the listing that
+// handed them this id asked nothing either. The caller's scope is still
+// resolved and recorded on the span, so the trace says who opened somebody
+// else's report.
+//
+// The answer is a ScopedIssueReport, so the console learns whose report it
+// opened from the row rather than from the request.
+func (s *Server) GetReportAcrossScopes(
+	ctx context.Context,
+	request *issuereportspb.GetReportAcrossScopesRequest,
+) (*issuereportspb.GetReportAcrossScopesResponse, error) {
+	ctx, req, done, err := s.caller(ctx, issuereportspb.IssueReportsService_GetReportAcrossScopes_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	id := request.GetReportId()
+	req.op.Set(reportIDKey, id)
+
+	report, err := s.store.GetReportAcrossScopes(ctx, s.client.Reader(), id)
+	if err != nil {
+		err = grpcerrors.PrepareAndLogGRPCStatus(err,
+			req.op.Logger(), req.op.Span(), codes.Internal, "reading issue report %q across scopes", id)
+
+		return nil, err
+	}
+
+	return &issuereportspb.GetReportAcrossScopesResponse{Result: ScopedReportToProto(report)}, nil
+}
+
 // UpdateReport revises what a report says: the kind, the details, and what it is
 // about.
 //

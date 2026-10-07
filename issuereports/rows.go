@@ -177,6 +177,16 @@ func reportFromArchivedRow(r *issuereportsdb.GetArchivedReportRow) *Report {
 	return reportFromRow(&row)
 }
 
+// reportFromAcrossScopesRow converts the operator's keyed read, which casts for
+// reportFromArchivedRow's reason: it projects the list GetReport does and
+// differs only in naming no scope, so the cast is the assertion that the two
+// projections still agree.
+func reportFromAcrossScopesRow(r *issuereportsdb.GetReportAcrossScopesRow) *Report {
+	row := issuereportsdb.GetReportRow(*r)
+
+	return reportFromRow(&row)
+}
+
 // reportPageRow is the one conversion from a list row, and every list converts
 // through it.
 //

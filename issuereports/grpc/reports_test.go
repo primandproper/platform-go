@@ -214,6 +214,64 @@ func TestGetReport(T *testing.T) {
 	})
 }
 
+// TestGetReportAcrossScopes is the operator opening a report from the queue that
+// pages every tenant's.
+func TestGetReportAcrossScopes(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reads another tenant's report and says whose it is", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		theirs := h.seedReport(t, otherScope, otherReporter)
+
+		// The caller's connection resolves testScope, and the report is in
+		// otherScope: the read GetReport refuses is the one this exists for.
+		res, err := h.server.GetReportAcrossScopes(h.ctx(t, triager),
+			&issuereportspb.GetReportAcrossScopesRequest{ReportId: theirs.ID})
+		must.NoError(t, err)
+		test.EqOp(t, theirs.ID, res.GetResult().GetReport().GetId())
+		test.EqOp(t, otherReporter, res.GetResult().GetReport().GetReporter())
+		test.EqOp(t, otherScope.Owner(), res.GetResult().GetScope(), test.Sprint(
+			"the operator opened a report without learning whose it is"))
+	})
+
+	T.Run("asks no authorizer, because the grant is the operator's standing", func(t *testing.T) {
+		t.Parallel()
+
+		// An authorizer that fails every question: a handler that asked it
+		// would answer Internal.
+		h := newHarnessWithAuthorizer(t, &brokenAuthorizer{err: errAuthorizerUnavailable})
+		theirs := h.seedReport(t, otherScope, otherReporter)
+
+		_, err := h.server.GetReportAcrossScopes(h.ctx(t, triager),
+			&issuereportspb.GetReportAcrossScopesRequest{ReportId: theirs.ID})
+		test.NoError(t, err)
+	})
+
+	T.Run("an identifier that names nothing is an absence", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		_, err := h.server.GetReportAcrossScopes(h.ctx(t, triager),
+			&issuereportspb.GetReportAcrossScopesRequest{ReportId: "nonexistent"})
+		must.Error(t, err)
+		test.ErrorIs(t, err, issuereports.ErrReportNotFound)
+		test.EqOp(t, codes.NotFound, status.Code(err))
+	})
+
+	T.Run("a caller with nobody on the request is unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		_, err := h.server.GetReportAcrossScopes(t.Context(),
+			&issuereportspb.GetReportAcrossScopesRequest{ReportId: "whatever"})
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+}
+
 // TestUpdateReport covers the revision, and the three fields it must not assign.
 func TestUpdateReport(T *testing.T) {
 	T.Parallel()

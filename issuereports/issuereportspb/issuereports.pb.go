@@ -61,12 +61,13 @@
 // field; it comes off the principal the consumer's interceptor put on the
 // context. See identity.proto, which says this at greater length.
 //
-// One message says whose a report is, and no request does. The operator's two
+// One message says whose a report is, and no request does. The operator's three
 // reads -- [ListReportsAcrossScopesRequest] and
-// [ListReportsByStatusAcrossScopesRequest] -- page every tenant's reports, so
-// each row they answer with is a [ScopedIssueReport], which carries the scope as
-// output. Everywhere else a row's scope is the one the connection resolved, and
-// a field repeating it would tell a client something it supplied.
+// [ListReportsByStatusAcrossScopesRequest], which page every tenant's reports,
+// and [GetReportAcrossScopesRequest], which opens one of them -- answer with a
+// [ScopedIssueReport], which carries the scope as output. Everywhere else a
+// row's scope is the one the connection resolved, and a field repeating it
+// would tell a client something it supplied.
 //
 // No reporter on any write. A report is filed by whoever is calling, and the
 // name is taken off the principal for the same reason the scope is: a reporter a
@@ -1356,6 +1357,99 @@ func (x *ScopedIssueReport) GetReport() *IssueReport {
 	return nil
 }
 
+// GetReportAcrossScopesRequest reads one report whatever tenant it was filed
+// in: the one an operator opened from ListReportsAcrossScopes. The identifier
+// alone names it, and the scope comes back on the answer rather than going out
+// on the request -- behind issues.reports.read_any, the grant the operator's
+// listings take.
+type GetReportAcrossScopesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReportId      string                 `protobuf:"bytes,1,opt,name=report_id,json=reportID,proto3" json:"report_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReportAcrossScopesRequest) Reset() {
+	*x = GetReportAcrossScopesRequest{}
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReportAcrossScopesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReportAcrossScopesRequest) ProtoMessage() {}
+
+func (x *GetReportAcrossScopesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReportAcrossScopesRequest.ProtoReflect.Descriptor instead.
+func (*GetReportAcrossScopesRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GetReportAcrossScopesRequest) GetReportId() string {
+	if x != nil {
+		return x.ReportId
+	}
+	return ""
+}
+
+type GetReportAcrossScopesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *ScopedIssueReport     `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReportAcrossScopesResponse) Reset() {
+	*x = GetReportAcrossScopesResponse{}
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReportAcrossScopesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReportAcrossScopesResponse) ProtoMessage() {}
+
+func (x *GetReportAcrossScopesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReportAcrossScopesResponse.ProtoReflect.Descriptor instead.
+func (*GetReportAcrossScopesResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *GetReportAcrossScopesResponse) GetResult() *ScopedIssueReport {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
 // ListReportsAcrossScopesRequest pages every tenant's reports. There is no
 // scope to name, which is the point: this is the operator's queue, and it is
 // behind issues.reports.read_any, a grant this module gives to nobody.
@@ -1371,7 +1465,7 @@ type ListReportsAcrossScopesRequest struct {
 
 func (x *ListReportsAcrossScopesRequest) Reset() {
 	*x = ListReportsAcrossScopesRequest{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[18]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1383,7 +1477,7 @@ func (x *ListReportsAcrossScopesRequest) String() string {
 func (*ListReportsAcrossScopesRequest) ProtoMessage() {}
 
 func (x *ListReportsAcrossScopesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[18]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1490,7 @@ func (x *ListReportsAcrossScopesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReportsAcrossScopesRequest.ProtoReflect.Descriptor instead.
 func (*ListReportsAcrossScopesRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{18}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListReportsAcrossScopesRequest) GetFilter() *filteringpb.QueryFilter {
@@ -1416,7 +1510,7 @@ type ListReportsAcrossScopesResponse struct {
 
 func (x *ListReportsAcrossScopesResponse) Reset() {
 	*x = ListReportsAcrossScopesResponse{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[19]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1428,7 +1522,7 @@ func (x *ListReportsAcrossScopesResponse) String() string {
 func (*ListReportsAcrossScopesResponse) ProtoMessage() {}
 
 func (x *ListReportsAcrossScopesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[19]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1441,7 +1535,7 @@ func (x *ListReportsAcrossScopesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReportsAcrossScopesResponse.ProtoReflect.Descriptor instead.
 func (*ListReportsAcrossScopesResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{19}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListReportsAcrossScopesResponse) GetPagination() *filteringpb.Pagination {
@@ -1475,7 +1569,7 @@ type ListReportsByStatusAcrossScopesRequest struct {
 
 func (x *ListReportsByStatusAcrossScopesRequest) Reset() {
 	*x = ListReportsByStatusAcrossScopesRequest{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[20]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1487,7 +1581,7 @@ func (x *ListReportsByStatusAcrossScopesRequest) String() string {
 func (*ListReportsByStatusAcrossScopesRequest) ProtoMessage() {}
 
 func (x *ListReportsByStatusAcrossScopesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[20]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1500,7 +1594,7 @@ func (x *ListReportsByStatusAcrossScopesRequest) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use ListReportsByStatusAcrossScopesRequest.ProtoReflect.Descriptor instead.
 func (*ListReportsByStatusAcrossScopesRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{20}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListReportsByStatusAcrossScopesRequest) GetStatus() ReportStatus {
@@ -1527,7 +1621,7 @@ type ListReportsByStatusAcrossScopesResponse struct {
 
 func (x *ListReportsByStatusAcrossScopesResponse) Reset() {
 	*x = ListReportsByStatusAcrossScopesResponse{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[21]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1539,7 +1633,7 @@ func (x *ListReportsByStatusAcrossScopesResponse) String() string {
 func (*ListReportsByStatusAcrossScopesResponse) ProtoMessage() {}
 
 func (x *ListReportsByStatusAcrossScopesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[21]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1552,7 +1646,7 @@ func (x *ListReportsByStatusAcrossScopesResponse) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use ListReportsByStatusAcrossScopesResponse.ProtoReflect.Descriptor instead.
 func (*ListReportsByStatusAcrossScopesResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{21}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListReportsByStatusAcrossScopesResponse) GetPagination() *filteringpb.Pagination {
@@ -1579,7 +1673,7 @@ type UpdateReportRequest struct {
 
 func (x *UpdateReportRequest) Reset() {
 	*x = UpdateReportRequest{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[22]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1591,7 +1685,7 @@ func (x *UpdateReportRequest) String() string {
 func (*UpdateReportRequest) ProtoMessage() {}
 
 func (x *UpdateReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[22]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1604,7 +1698,7 @@ func (x *UpdateReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateReportRequest.ProtoReflect.Descriptor instead.
 func (*UpdateReportRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{22}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UpdateReportRequest) GetReportId() string {
@@ -1632,7 +1726,7 @@ type UpdateReportResponse struct {
 
 func (x *UpdateReportResponse) Reset() {
 	*x = UpdateReportResponse{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[23]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1644,7 +1738,7 @@ func (x *UpdateReportResponse) String() string {
 func (*UpdateReportResponse) ProtoMessage() {}
 
 func (x *UpdateReportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[23]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1657,7 +1751,7 @@ func (x *UpdateReportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateReportResponse.ProtoReflect.Descriptor instead.
 func (*UpdateReportResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{23}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UpdateReportResponse) GetResult() *IssueReport {
@@ -1690,7 +1784,7 @@ type TransitionReportRequest struct {
 
 func (x *TransitionReportRequest) Reset() {
 	*x = TransitionReportRequest{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[24]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1702,7 +1796,7 @@ func (x *TransitionReportRequest) String() string {
 func (*TransitionReportRequest) ProtoMessage() {}
 
 func (x *TransitionReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[24]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1715,7 +1809,7 @@ func (x *TransitionReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransitionReportRequest.ProtoReflect.Descriptor instead.
 func (*TransitionReportRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{24}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *TransitionReportRequest) GetReportId() string {
@@ -1757,7 +1851,7 @@ type TransitionReportResponse struct {
 
 func (x *TransitionReportResponse) Reset() {
 	*x = TransitionReportResponse{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[25]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1769,7 +1863,7 @@ func (x *TransitionReportResponse) String() string {
 func (*TransitionReportResponse) ProtoMessage() {}
 
 func (x *TransitionReportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[25]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1782,7 +1876,7 @@ func (x *TransitionReportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransitionReportResponse.ProtoReflect.Descriptor instead.
 func (*TransitionReportResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{25}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *TransitionReportResponse) GetResult() *IssueReport {
@@ -1801,7 +1895,7 @@ type ArchiveReportRequest struct {
 
 func (x *ArchiveReportRequest) Reset() {
 	*x = ArchiveReportRequest{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[26]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1813,7 +1907,7 @@ func (x *ArchiveReportRequest) String() string {
 func (*ArchiveReportRequest) ProtoMessage() {}
 
 func (x *ArchiveReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[26]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1826,7 +1920,7 @@ func (x *ArchiveReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveReportRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveReportRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{26}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ArchiveReportRequest) GetReportId() string {
@@ -1844,7 +1938,7 @@ type ArchiveReportResponse struct {
 
 func (x *ArchiveReportResponse) Reset() {
 	*x = ArchiveReportResponse{}
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[27]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1856,7 +1950,7 @@ func (x *ArchiveReportResponse) String() string {
 func (*ArchiveReportResponse) ProtoMessage() {}
 
 func (x *ArchiveReportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[27]
+	mi := &file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1869,7 +1963,7 @@ func (x *ArchiveReportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveReportResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveReportResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{27}
+	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{29}
 }
 
 var File_primandproper_platform_issuereports_v1_issuereports_proto protoreflect.FileDescriptor
@@ -1960,7 +2054,11 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\aresults\x18\x02 \x03(\v23.primandproper.platform.issuereports.v1.IssueReportR\aresultsR\x05scope\"v\n" +
 	"\x11ScopedIssueReport\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12K\n" +
-	"\x06report\x18\x02 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06report\"q\n" +
+	"\x06report\x18\x02 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06report\"B\n" +
+	"\x1cGetReportAcrossScopesRequest\x12\x1b\n" +
+	"\treport_id\x18\x01 \x01(\tR\breportIDR\x05scope\"y\n" +
+	"\x1dGetReportAcrossScopesResponse\x12Q\n" +
+	"\x06result\x18\x01 \x01(\v29.primandproper.platform.issuereports.v1.ScopedIssueReportR\x06resultR\x05scope\"q\n" +
 	"\x1eListReportsAcrossScopesRequest\x12H\n" +
 	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xce\x01\n" +
 	"\x1fListReportsAcrossScopesResponse\x12O\n" +
@@ -1998,7 +2096,7 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\x12REPORT_STATUS_OPEN\x10\x01\x12\x1e\n" +
 	"\x1aREPORT_STATUS_ACKNOWLEDGED\x10\x02\x12\x1a\n" +
 	"\x16REPORT_STATUS_RESOLVED\x10\x03\x12\x1a\n" +
-	"\x16REPORT_STATUS_DECLINED\x10\x042\xf1\x0e\n" +
+	"\x16REPORT_STATUS_DECLINED\x10\x042\x98\x10\n" +
 	"\x13IssueReportsService\x12\x89\x01\n" +
 	"\fCreateReport\x12;.primandproper.platform.issuereports.v1.CreateReportRequest\x1a<.primandproper.platform.issuereports.v1.CreateReportResponse\x12\x80\x01\n" +
 	"\tGetReport\x128.primandproper.platform.issuereports.v1.GetReportRequest\x1a9.primandproper.platform.issuereports.v1.GetReportResponse\x12\x86\x01\n" +
@@ -2006,7 +2104,8 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\x13ListReportsByStatus\x12B.primandproper.platform.issuereports.v1.ListReportsByStatusRequest\x1aC.primandproper.platform.issuereports.v1.ListReportsByStatusResponse\x12\xa4\x01\n" +
 	"\x15ListReportsByReporter\x12D.primandproper.platform.issuereports.v1.ListReportsByReporterRequest\x1aE.primandproper.platform.issuereports.v1.ListReportsByReporterResponse\x12\xad\x01\n" +
 	"\x18ListReportsBySubjectType\x12G.primandproper.platform.issuereports.v1.ListReportsBySubjectTypeRequest\x1aH.primandproper.platform.issuereports.v1.ListReportsBySubjectTypeResponse\x12\xa4\x01\n" +
-	"\x15ListReportsForSubject\x12D.primandproper.platform.issuereports.v1.ListReportsForSubjectRequest\x1aE.primandproper.platform.issuereports.v1.ListReportsForSubjectResponse\x12\xaa\x01\n" +
+	"\x15ListReportsForSubject\x12D.primandproper.platform.issuereports.v1.ListReportsForSubjectRequest\x1aE.primandproper.platform.issuereports.v1.ListReportsForSubjectResponse\x12\xa4\x01\n" +
+	"\x15GetReportAcrossScopes\x12D.primandproper.platform.issuereports.v1.GetReportAcrossScopesRequest\x1aE.primandproper.platform.issuereports.v1.GetReportAcrossScopesResponse\x12\xaa\x01\n" +
 	"\x17ListReportsAcrossScopes\x12F.primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest\x1aG.primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse\x12\xc2\x01\n" +
 	"\x1fListReportsByStatusAcrossScopes\x12N.primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest\x1aO.primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse\x12\x89\x01\n" +
 	"\fUpdateReport\x12;.primandproper.platform.issuereports.v1.UpdateReportRequest\x1a<.primandproper.platform.issuereports.v1.UpdateReportResponse\x12\x95\x01\n" +
@@ -2026,7 +2125,7 @@ func file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(
 }
 
 var file_primandproper_platform_issuereports_v1_issuereports_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_primandproper_platform_issuereports_v1_issuereports_proto_goTypes = []any{
 	(ReportStatus)(0),                               // 0: primandproper.platform.issuereports.v1.ReportStatus
 	(*IssueReport)(nil),                             // 1: primandproper.platform.issuereports.v1.IssueReport
@@ -2047,87 +2146,92 @@ var file_primandproper_platform_issuereports_v1_issuereports_proto_goTypes = []a
 	(*ListReportsForSubjectRequest)(nil),            // 16: primandproper.platform.issuereports.v1.ListReportsForSubjectRequest
 	(*ListReportsForSubjectResponse)(nil),           // 17: primandproper.platform.issuereports.v1.ListReportsForSubjectResponse
 	(*ScopedIssueReport)(nil),                       // 18: primandproper.platform.issuereports.v1.ScopedIssueReport
-	(*ListReportsAcrossScopesRequest)(nil),          // 19: primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest
-	(*ListReportsAcrossScopesResponse)(nil),         // 20: primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse
-	(*ListReportsByStatusAcrossScopesRequest)(nil),  // 21: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest
-	(*ListReportsByStatusAcrossScopesResponse)(nil), // 22: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse
-	(*UpdateReportRequest)(nil),                     // 23: primandproper.platform.issuereports.v1.UpdateReportRequest
-	(*UpdateReportResponse)(nil),                    // 24: primandproper.platform.issuereports.v1.UpdateReportResponse
-	(*TransitionReportRequest)(nil),                 // 25: primandproper.platform.issuereports.v1.TransitionReportRequest
-	(*TransitionReportResponse)(nil),                // 26: primandproper.platform.issuereports.v1.TransitionReportResponse
-	(*ArchiveReportRequest)(nil),                    // 27: primandproper.platform.issuereports.v1.ArchiveReportRequest
-	(*ArchiveReportResponse)(nil),                   // 28: primandproper.platform.issuereports.v1.ArchiveReportResponse
-	(*timestamppb.Timestamp)(nil),                   // 29: google.protobuf.Timestamp
-	(*filteringpb.QueryFilter)(nil),                 // 30: primandproper.platform.filtering.v1.QueryFilter
-	(*filteringpb.Pagination)(nil),                  // 31: primandproper.platform.filtering.v1.Pagination
+	(*GetReportAcrossScopesRequest)(nil),            // 19: primandproper.platform.issuereports.v1.GetReportAcrossScopesRequest
+	(*GetReportAcrossScopesResponse)(nil),           // 20: primandproper.platform.issuereports.v1.GetReportAcrossScopesResponse
+	(*ListReportsAcrossScopesRequest)(nil),          // 21: primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest
+	(*ListReportsAcrossScopesResponse)(nil),         // 22: primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse
+	(*ListReportsByStatusAcrossScopesRequest)(nil),  // 23: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest
+	(*ListReportsByStatusAcrossScopesResponse)(nil), // 24: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse
+	(*UpdateReportRequest)(nil),                     // 25: primandproper.platform.issuereports.v1.UpdateReportRequest
+	(*UpdateReportResponse)(nil),                    // 26: primandproper.platform.issuereports.v1.UpdateReportResponse
+	(*TransitionReportRequest)(nil),                 // 27: primandproper.platform.issuereports.v1.TransitionReportRequest
+	(*TransitionReportResponse)(nil),                // 28: primandproper.platform.issuereports.v1.TransitionReportResponse
+	(*ArchiveReportRequest)(nil),                    // 29: primandproper.platform.issuereports.v1.ArchiveReportRequest
+	(*ArchiveReportResponse)(nil),                   // 30: primandproper.platform.issuereports.v1.ArchiveReportResponse
+	(*timestamppb.Timestamp)(nil),                   // 31: google.protobuf.Timestamp
+	(*filteringpb.QueryFilter)(nil),                 // 32: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),                  // 33: primandproper.platform.filtering.v1.Pagination
 }
 var file_primandproper_platform_issuereports_v1_issuereports_proto_depIdxs = []int32{
-	29, // 0: primandproper.platform.issuereports.v1.IssueReport.created_at:type_name -> google.protobuf.Timestamp
-	29, // 1: primandproper.platform.issuereports.v1.IssueReport.last_updated_at:type_name -> google.protobuf.Timestamp
-	29, // 2: primandproper.platform.issuereports.v1.IssueReport.archived_at:type_name -> google.protobuf.Timestamp
-	29, // 3: primandproper.platform.issuereports.v1.IssueReport.closed_at:type_name -> google.protobuf.Timestamp
+	31, // 0: primandproper.platform.issuereports.v1.IssueReport.created_at:type_name -> google.protobuf.Timestamp
+	31, // 1: primandproper.platform.issuereports.v1.IssueReport.last_updated_at:type_name -> google.protobuf.Timestamp
+	31, // 2: primandproper.platform.issuereports.v1.IssueReport.archived_at:type_name -> google.protobuf.Timestamp
+	31, // 3: primandproper.platform.issuereports.v1.IssueReport.closed_at:type_name -> google.protobuf.Timestamp
 	0,  // 4: primandproper.platform.issuereports.v1.IssueReport.status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
 	2,  // 5: primandproper.platform.issuereports.v1.CreateReportRequest.input:type_name -> primandproper.platform.issuereports.v1.IssueReportCreationInput
 	1,  // 6: primandproper.platform.issuereports.v1.CreateReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	1,  // 7: primandproper.platform.issuereports.v1.GetReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	30, // 8: primandproper.platform.issuereports.v1.ListReportsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 9: primandproper.platform.issuereports.v1.ListReportsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 8: primandproper.platform.issuereports.v1.ListReportsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 9: primandproper.platform.issuereports.v1.ListReportsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 10: primandproper.platform.issuereports.v1.ListReportsResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	0,  // 11: primandproper.platform.issuereports.v1.ListReportsByStatusRequest.status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
-	30, // 12: primandproper.platform.issuereports.v1.ListReportsByStatusRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 13: primandproper.platform.issuereports.v1.ListReportsByStatusResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 12: primandproper.platform.issuereports.v1.ListReportsByStatusRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 13: primandproper.platform.issuereports.v1.ListReportsByStatusResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 14: primandproper.platform.issuereports.v1.ListReportsByStatusResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	30, // 15: primandproper.platform.issuereports.v1.ListReportsByReporterRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 16: primandproper.platform.issuereports.v1.ListReportsByReporterResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 15: primandproper.platform.issuereports.v1.ListReportsByReporterRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 16: primandproper.platform.issuereports.v1.ListReportsByReporterResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 17: primandproper.platform.issuereports.v1.ListReportsByReporterResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	30, // 18: primandproper.platform.issuereports.v1.ListReportsBySubjectTypeRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 19: primandproper.platform.issuereports.v1.ListReportsBySubjectTypeResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 18: primandproper.platform.issuereports.v1.ListReportsBySubjectTypeRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 19: primandproper.platform.issuereports.v1.ListReportsBySubjectTypeResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 20: primandproper.platform.issuereports.v1.ListReportsBySubjectTypeResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	30, // 21: primandproper.platform.issuereports.v1.ListReportsForSubjectRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 22: primandproper.platform.issuereports.v1.ListReportsForSubjectResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 21: primandproper.platform.issuereports.v1.ListReportsForSubjectRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 22: primandproper.platform.issuereports.v1.ListReportsForSubjectResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 23: primandproper.platform.issuereports.v1.ListReportsForSubjectResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	1,  // 24: primandproper.platform.issuereports.v1.ScopedIssueReport.report:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	30, // 25: primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 26: primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	18, // 27: primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse.results:type_name -> primandproper.platform.issuereports.v1.ScopedIssueReport
-	0,  // 28: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest.status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
-	30, // 29: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	31, // 30: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	18, // 31: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse.results:type_name -> primandproper.platform.issuereports.v1.ScopedIssueReport
-	3,  // 32: primandproper.platform.issuereports.v1.UpdateReportRequest.input:type_name -> primandproper.platform.issuereports.v1.IssueReportUpdateInput
-	1,  // 33: primandproper.platform.issuereports.v1.UpdateReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	0,  // 34: primandproper.platform.issuereports.v1.TransitionReportRequest.expected_status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
-	0,  // 35: primandproper.platform.issuereports.v1.TransitionReportRequest.target_status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
-	1,  // 36: primandproper.platform.issuereports.v1.TransitionReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	4,  // 37: primandproper.platform.issuereports.v1.IssueReportsService.CreateReport:input_type -> primandproper.platform.issuereports.v1.CreateReportRequest
-	6,  // 38: primandproper.platform.issuereports.v1.IssueReportsService.GetReport:input_type -> primandproper.platform.issuereports.v1.GetReportRequest
-	8,  // 39: primandproper.platform.issuereports.v1.IssueReportsService.ListReports:input_type -> primandproper.platform.issuereports.v1.ListReportsRequest
-	10, // 40: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatus:input_type -> primandproper.platform.issuereports.v1.ListReportsByStatusRequest
-	12, // 41: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByReporter:input_type -> primandproper.platform.issuereports.v1.ListReportsByReporterRequest
-	14, // 42: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsBySubjectType:input_type -> primandproper.platform.issuereports.v1.ListReportsBySubjectTypeRequest
-	16, // 43: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsForSubject:input_type -> primandproper.platform.issuereports.v1.ListReportsForSubjectRequest
-	19, // 44: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsAcrossScopes:input_type -> primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest
-	21, // 45: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatusAcrossScopes:input_type -> primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest
-	23, // 46: primandproper.platform.issuereports.v1.IssueReportsService.UpdateReport:input_type -> primandproper.platform.issuereports.v1.UpdateReportRequest
-	25, // 47: primandproper.platform.issuereports.v1.IssueReportsService.TransitionReport:input_type -> primandproper.platform.issuereports.v1.TransitionReportRequest
-	27, // 48: primandproper.platform.issuereports.v1.IssueReportsService.ArchiveReport:input_type -> primandproper.platform.issuereports.v1.ArchiveReportRequest
-	5,  // 49: primandproper.platform.issuereports.v1.IssueReportsService.CreateReport:output_type -> primandproper.platform.issuereports.v1.CreateReportResponse
-	7,  // 50: primandproper.platform.issuereports.v1.IssueReportsService.GetReport:output_type -> primandproper.platform.issuereports.v1.GetReportResponse
-	9,  // 51: primandproper.platform.issuereports.v1.IssueReportsService.ListReports:output_type -> primandproper.platform.issuereports.v1.ListReportsResponse
-	11, // 52: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatus:output_type -> primandproper.platform.issuereports.v1.ListReportsByStatusResponse
-	13, // 53: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByReporter:output_type -> primandproper.platform.issuereports.v1.ListReportsByReporterResponse
-	15, // 54: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsBySubjectType:output_type -> primandproper.platform.issuereports.v1.ListReportsBySubjectTypeResponse
-	17, // 55: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsForSubject:output_type -> primandproper.platform.issuereports.v1.ListReportsForSubjectResponse
-	20, // 56: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsAcrossScopes:output_type -> primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse
-	22, // 57: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatusAcrossScopes:output_type -> primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse
-	24, // 58: primandproper.platform.issuereports.v1.IssueReportsService.UpdateReport:output_type -> primandproper.platform.issuereports.v1.UpdateReportResponse
-	26, // 59: primandproper.platform.issuereports.v1.IssueReportsService.TransitionReport:output_type -> primandproper.platform.issuereports.v1.TransitionReportResponse
-	28, // 60: primandproper.platform.issuereports.v1.IssueReportsService.ArchiveReport:output_type -> primandproper.platform.issuereports.v1.ArchiveReportResponse
-	49, // [49:61] is the sub-list for method output_type
-	37, // [37:49] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	18, // 25: primandproper.platform.issuereports.v1.GetReportAcrossScopesResponse.result:type_name -> primandproper.platform.issuereports.v1.ScopedIssueReport
+	32, // 26: primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 27: primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	18, // 28: primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse.results:type_name -> primandproper.platform.issuereports.v1.ScopedIssueReport
+	0,  // 29: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest.status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
+	32, // 30: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 31: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	18, // 32: primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse.results:type_name -> primandproper.platform.issuereports.v1.ScopedIssueReport
+	3,  // 33: primandproper.platform.issuereports.v1.UpdateReportRequest.input:type_name -> primandproper.platform.issuereports.v1.IssueReportUpdateInput
+	1,  // 34: primandproper.platform.issuereports.v1.UpdateReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
+	0,  // 35: primandproper.platform.issuereports.v1.TransitionReportRequest.expected_status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
+	0,  // 36: primandproper.platform.issuereports.v1.TransitionReportRequest.target_status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
+	1,  // 37: primandproper.platform.issuereports.v1.TransitionReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
+	4,  // 38: primandproper.platform.issuereports.v1.IssueReportsService.CreateReport:input_type -> primandproper.platform.issuereports.v1.CreateReportRequest
+	6,  // 39: primandproper.platform.issuereports.v1.IssueReportsService.GetReport:input_type -> primandproper.platform.issuereports.v1.GetReportRequest
+	8,  // 40: primandproper.platform.issuereports.v1.IssueReportsService.ListReports:input_type -> primandproper.platform.issuereports.v1.ListReportsRequest
+	10, // 41: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatus:input_type -> primandproper.platform.issuereports.v1.ListReportsByStatusRequest
+	12, // 42: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByReporter:input_type -> primandproper.platform.issuereports.v1.ListReportsByReporterRequest
+	14, // 43: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsBySubjectType:input_type -> primandproper.platform.issuereports.v1.ListReportsBySubjectTypeRequest
+	16, // 44: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsForSubject:input_type -> primandproper.platform.issuereports.v1.ListReportsForSubjectRequest
+	19, // 45: primandproper.platform.issuereports.v1.IssueReportsService.GetReportAcrossScopes:input_type -> primandproper.platform.issuereports.v1.GetReportAcrossScopesRequest
+	21, // 46: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsAcrossScopes:input_type -> primandproper.platform.issuereports.v1.ListReportsAcrossScopesRequest
+	23, // 47: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatusAcrossScopes:input_type -> primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesRequest
+	25, // 48: primandproper.platform.issuereports.v1.IssueReportsService.UpdateReport:input_type -> primandproper.platform.issuereports.v1.UpdateReportRequest
+	27, // 49: primandproper.platform.issuereports.v1.IssueReportsService.TransitionReport:input_type -> primandproper.platform.issuereports.v1.TransitionReportRequest
+	29, // 50: primandproper.platform.issuereports.v1.IssueReportsService.ArchiveReport:input_type -> primandproper.platform.issuereports.v1.ArchiveReportRequest
+	5,  // 51: primandproper.platform.issuereports.v1.IssueReportsService.CreateReport:output_type -> primandproper.platform.issuereports.v1.CreateReportResponse
+	7,  // 52: primandproper.platform.issuereports.v1.IssueReportsService.GetReport:output_type -> primandproper.platform.issuereports.v1.GetReportResponse
+	9,  // 53: primandproper.platform.issuereports.v1.IssueReportsService.ListReports:output_type -> primandproper.platform.issuereports.v1.ListReportsResponse
+	11, // 54: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatus:output_type -> primandproper.platform.issuereports.v1.ListReportsByStatusResponse
+	13, // 55: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByReporter:output_type -> primandproper.platform.issuereports.v1.ListReportsByReporterResponse
+	15, // 56: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsBySubjectType:output_type -> primandproper.platform.issuereports.v1.ListReportsBySubjectTypeResponse
+	17, // 57: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsForSubject:output_type -> primandproper.platform.issuereports.v1.ListReportsForSubjectResponse
+	20, // 58: primandproper.platform.issuereports.v1.IssueReportsService.GetReportAcrossScopes:output_type -> primandproper.platform.issuereports.v1.GetReportAcrossScopesResponse
+	22, // 59: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsAcrossScopes:output_type -> primandproper.platform.issuereports.v1.ListReportsAcrossScopesResponse
+	24, // 60: primandproper.platform.issuereports.v1.IssueReportsService.ListReportsByStatusAcrossScopes:output_type -> primandproper.platform.issuereports.v1.ListReportsByStatusAcrossScopesResponse
+	26, // 61: primandproper.platform.issuereports.v1.IssueReportsService.UpdateReport:output_type -> primandproper.platform.issuereports.v1.UpdateReportResponse
+	28, // 62: primandproper.platform.issuereports.v1.IssueReportsService.TransitionReport:output_type -> primandproper.platform.issuereports.v1.TransitionReportResponse
+	30, // 63: primandproper.platform.issuereports.v1.IssueReportsService.ArchiveReport:output_type -> primandproper.platform.issuereports.v1.ArchiveReportResponse
+	51, // [51:64] is the sub-list for method output_type
+	38, // [38:51] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_issuereports_v1_issuereports_proto_init() }
@@ -2141,7 +2245,7 @@ func file_primandproper_platform_issuereports_v1_issuereports_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc), len(file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

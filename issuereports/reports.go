@@ -426,6 +426,29 @@ func (s *SQLStore) ListReportsForSubject(
 	}), filter), nil
 }
 
+// GetReportAcrossScopes reads one live report whatever tenant it belongs to:
+// the report an operator opened from the cross-scope queue. See
+// [Store.GetReportAcrossScopes] for why it takes no scope, and who may reach it.
+func (s *SQLStore) GetReportAcrossScopes(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	reportID string,
+) (*Report, error) {
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(reportIDKey, reportID))
+	defer op.End()
+
+	if q == nil {
+		return nil, op.Error(ErrNilExecutor, "reading issue report %q across scopes", reportID)
+	}
+
+	row, err := s.q.GetReportAcrossScopes(ctx, q, issuereportsdb.GetReportAcrossScopesParams{ID: reportID})
+	if err != nil {
+		return nil, op.Error(notFound(err, ErrReportNotFound), "reading issue report %q across scopes", reportID)
+	}
+
+	return reportFromAcrossScopesRow(&row), nil
+}
+
 // ListReportsAcrossScopes pages every tenant's reports: the operator's queue.
 // See [Store.ListReportsAcrossScopes] for why it takes no scope, and who may
 // reach it.

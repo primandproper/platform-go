@@ -387,6 +387,7 @@ var staffOnly = []string{
 
 	commentspb.CommentsService_ListCommentsByTargetType_FullMethodName,
 
+	issuereportspb.IssueReportsService_GetReportAcrossScopes_FullMethodName,
 	issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName,
 	issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
 

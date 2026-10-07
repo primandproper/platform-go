@@ -111,6 +111,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"ListReportsByReporter", "ListReportsByReporterDescending",
 		"ListReportsBySubjectType", "ListReportsBySubjectTypeDescending",
 		"ListReportsForSubject", "ListReportsForSubjectDescending",
+		"GetReportAcrossScopes",
 		"ListReportsAcrossScopes", "ListReportsAcrossScopesDescending",
 		"ListReportsByStatusAcrossScopes", "ListReportsByStatusAcrossScopesDescending",
 	}
@@ -136,7 +137,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 // — names it as a column it stores. A statement added without one would be a
 // read that answers across tenants, and nothing about its result would say so.
 //
-// The exceptions are the operator's two, named in acrossScopes, and they are
+// The exceptions are the operator's three, named in acrossScopes, and they are
 // named here too rather than detected: a third statement that omits the scope
 // fails this test until somebody adds it to that list and argues for it there.
 // They still project the scope, which is asserted, so a row read across tenants
@@ -170,12 +171,12 @@ func TestRender_ScopesEveryStatement(T *testing.T) {
 	}
 }
 
-// readsAcrossScopes reports whether a statement is one of the two operator reads,
-// in either direction.
+// readsAcrossScopes reports whether a statement is one of the operator's reads,
+// the lists in either direction.
 func readsAcrossScopes(name string) bool {
 	base := strings.TrimSuffix(name, "Descending")
 
-	return base == AcrossScopesListName || base == AcrossScopesByStatusListName
+	return base == AcrossScopesGetName || base == AcrossScopesListName || base == AcrossScopesByStatusListName
 }
 
 // TestRender_GuardsTheTransition pins the predicate the lifecycle rests on.

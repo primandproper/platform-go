@@ -735,12 +735,53 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 		test.SliceLen(t, 2, page.Data)
 	})
 
+	t.Run("the operator opens a report from any tenant and learns whose it is", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		elsewhere := newReport(otherReporter, "bug", "theirs")
+		elsewhere.Scope = otherScope
+		theirs := filed(t, env, store, elsewhere)
+
+		got, err := store.GetReportAcrossScopes(t.Context(), env.reader(), theirs.ID)
+		must.NoError(t, err)
+		test.EqOp(t, theirs.ID, got.ID)
+		test.EqOp(t, otherScope, got.Scope)
+		test.EqOp(t, "theirs", got.Details)
+		test.EqOp(t, otherReporter, got.Reporter)
+
+		// The tenant's own read still cannot reach it, which is the point of the
+		// operator's being a different method.
+		_, err = store.GetReport(t.Context(), env.reader(), testScope, theirs.ID)
+		test.ErrorIs(t, err, ErrReportNotFound)
+	})
+
+	t.Run("the operator's keyed read sees no archived or absent report", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		removed := filed(t, env, store, newReport(testReporter, "bug", "removed"))
+		_, err := env.archive(t, store, testScope, removed.ID)
+		must.NoError(t, err)
+
+		_, err = store.GetReportAcrossScopes(t.Context(), env.reader(), removed.ID)
+		test.ErrorIs(t, err, ErrReportNotFound)
+
+		_, err = store.GetReportAcrossScopes(t.Context(), env.reader(), "nobody-filed-this")
+		test.ErrorIs(t, err, ErrReportNotFound)
+	})
+
 	t.Run("the operator's queue refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
 
-		_, err := store.ListReportsAcrossScopes(t.Context(), nil, nil)
+		_, err := store.GetReportAcrossScopes(t.Context(), nil, "whatever")
+		test.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ListReportsAcrossScopes(t.Context(), nil, nil)
 		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.ListReportsByStatusAcrossScopes(t.Context(), nil, StatusOpen, nil)

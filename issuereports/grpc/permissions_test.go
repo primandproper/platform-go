@@ -132,6 +132,7 @@ func TestReadingEveryTenantIsItsOwnGrant(T *testing.T) {
 	permissions := issuereportsgrpc.Permissions()
 
 	acrossScopes := []string{
+		issuereportspb.IssueReportsService_GetReportAcrossScopes_FullMethodName,
 		issuereportspb.IssueReportsService_ListReportsAcrossScopes_FullMethodName,
 		issuereportspb.IssueReportsService_ListReportsByStatusAcrossScopes_FullMethodName,
 	}

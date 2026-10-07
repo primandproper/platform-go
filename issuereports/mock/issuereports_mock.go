@@ -36,6 +36,9 @@ var _ issuereports.Store = &StoreMock{}
 //			GetReportFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, reportID string) (*issuereports.Report, error) {
 //				panic("mock out the GetReport method")
 //			},
+//			GetReportAcrossScopesFunc: func(ctx context.Context, q database.SQLQueryExecutor, reportID string) (*issuereports.Report, error) {
+//				panic("mock out the GetReportAcrossScopes method")
+//			},
 //			ListReportsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
 //				panic("mock out the ListReports method")
 //			},
@@ -81,6 +84,9 @@ type StoreMock struct {
 
 	// GetReportFunc mocks the GetReport method.
 	GetReportFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, reportID string) (*issuereports.Report, error)
+
+	// GetReportAcrossScopesFunc mocks the GetReportAcrossScopes method.
+	GetReportAcrossScopesFunc func(ctx context.Context, q database.SQLQueryExecutor, reportID string) (*issuereports.Report, error)
 
 	// ListReportsFunc mocks the ListReports method.
 	ListReportsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error)
@@ -152,6 +158,15 @@ type StoreMock struct {
 			Q database.SQLQueryExecutor
 			// Scope is the scope argument value.
 			Scope tenancy.Scope
+			// ReportID is the reportID argument value.
+			ReportID string
+		}
+		// GetReportAcrossScopes holds details about calls to the GetReportAcrossScopes method.
+		GetReportAcrossScopes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
 			// ReportID is the reportID argument value.
 			ReportID string
 		}
@@ -273,6 +288,7 @@ type StoreMock struct {
 	lockCreateReport                    sync.RWMutex
 	lockDeleteReportsByReporter         sync.RWMutex
 	lockGetReport                       sync.RWMutex
+	lockGetReportAcrossScopes           sync.RWMutex
 	lockListReports                     sync.RWMutex
 	lockListReportsAcrossScopes         sync.RWMutex
 	lockListReportsByReporter           sync.RWMutex
@@ -457,6 +473,46 @@ func (mock *StoreMock) GetReportCalls() []struct {
 	mock.lockGetReport.RLock()
 	calls = mock.calls.GetReport
 	mock.lockGetReport.RUnlock()
+	return calls
+}
+
+// GetReportAcrossScopes calls GetReportAcrossScopesFunc.
+func (mock *StoreMock) GetReportAcrossScopes(ctx context.Context, q database.SQLQueryExecutor, reportID string) (*issuereports.Report, error) {
+	if mock.GetReportAcrossScopesFunc == nil {
+		panic("StoreMock.GetReportAcrossScopesFunc: method is nil but Store.GetReportAcrossScopes was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Q        database.SQLQueryExecutor
+		ReportID string
+	}{
+		Ctx:      ctx,
+		Q:        q,
+		ReportID: reportID,
+	}
+	mock.lockGetReportAcrossScopes.Lock()
+	mock.calls.GetReportAcrossScopes = append(mock.calls.GetReportAcrossScopes, callInfo)
+	mock.lockGetReportAcrossScopes.Unlock()
+	return mock.GetReportAcrossScopesFunc(ctx, q, reportID)
+}
+
+// GetReportAcrossScopesCalls gets all the calls that were made to GetReportAcrossScopes.
+// Check the length with:
+//
+//	len(mockedStore.GetReportAcrossScopesCalls())
+func (mock *StoreMock) GetReportAcrossScopesCalls() []struct {
+	Ctx      context.Context
+	Q        database.SQLQueryExecutor
+	ReportID string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Q        database.SQLQueryExecutor
+		ReportID string
+	}
+	mock.lockGetReportAcrossScopes.RLock()
+	calls = mock.calls.GetReportAcrossScopes
+	mock.lockGetReportAcrossScopes.RUnlock()
 	return calls
 }
 

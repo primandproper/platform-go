@@ -83,6 +83,28 @@ type GetReportRow struct {
 	ArchivedAt    *time.Time
 }
 
+// GetReportAcrossScopesParams are the arguments to GetReportAcrossScopes.
+type GetReportAcrossScopesParams struct {
+	ID string
+}
+
+// GetReportAcrossScopesRow is one row of GetReportAcrossScopes's result.
+type GetReportAcrossScopesRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Reporter      string
+	Kind          string
+	Details       string
+	SubjectType   string
+	SubjectID     string
+	Status        string
+	Resolution    string
+	ClosedAt      *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // ListReportsParams are the arguments to ListReports.
 type ListReportsParams struct {
 	CreatedAfter    *time.Time

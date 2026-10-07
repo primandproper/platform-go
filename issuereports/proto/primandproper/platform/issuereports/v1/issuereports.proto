@@ -61,12 +61,13 @@
 // field; it comes off the principal the consumer's interceptor put on the
 // context. See identity.proto, which says this at greater length.
 //
-// One message says whose a report is, and no request does. The operator's two
+// One message says whose a report is, and no request does. The operator's three
 // reads -- [ListReportsAcrossScopesRequest] and
-// [ListReportsByStatusAcrossScopesRequest] -- page every tenant's reports, so
-// each row they answer with is a [ScopedIssueReport], which carries the scope as
-// output. Everywhere else a row's scope is the one the connection resolved, and
-// a field repeating it would tell a client something it supplied.
+// [ListReportsByStatusAcrossScopesRequest], which page every tenant's reports,
+// and [GetReportAcrossScopesRequest], which opens one of them -- answer with a
+// [ScopedIssueReport], which carries the scope as output. Everywhere else a
+// row's scope is the one the connection resolved, and a field repeating it
+// would tell a client something it supplied.
 //
 // No reporter on any write. A report is filed by whoever is calling, and the
 // name is taken off the principal for the same reason the scope is: a reporter a
@@ -447,6 +448,23 @@ message ScopedIssueReport {
   IssueReport report = 2;
 }
 
+// GetReportAcrossScopesRequest reads one report whatever tenant it was filed
+// in: the one an operator opened from ListReportsAcrossScopes. The identifier
+// alone names it, and the scope comes back on the answer rather than going out
+// on the request -- behind issues.reports.read_any, the grant the operator's
+// listings take.
+message GetReportAcrossScopesRequest {
+  reserved "scope";
+
+  string report_id = 1 [json_name = "reportID"];
+}
+
+message GetReportAcrossScopesResponse {
+  reserved "scope";
+
+  ScopedIssueReport result = 1;
+}
+
 // ListReportsAcrossScopesRequest pages every tenant's reports. There is no
 // scope to name, which is the point: this is the operator's queue, and it is
 // behind issues.reports.read_any, a grant this module gives to nobody.
@@ -556,11 +574,13 @@ message ArchiveReportResponse {}
 // The tenant is not among any method's arguments. It comes off the principal
 // the consumer's interceptor resolved, and no request can name another one.
 //
-// The two exceptions are the operator's, and they are exceptions by being
+// The three exceptions are the operator's, and they are exceptions by being
 // separate methods rather than by a request field: ListReportsAcrossScopes and
-// ListReportsByStatusAcrossScopes read every tenant's reports, behind
-// issues.reports.read_any, which issuereports/grpc declares and grants to
-// nobody. A deployment gives it to its operators or to no one.
+// ListReportsByStatusAcrossScopes page every tenant's reports and
+// GetReportAcrossScopes opens one, behind issues.reports.read_any, which
+// issuereports/grpc declares and grants to nobody. A deployment gives it to its
+// operators or to no one. The writes have no such form: an operator moves a
+// report in the tenant their own connection resolves.
 service IssueReportsService {
   rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
   rpc GetReport(GetReportRequest) returns (GetReportResponse);
@@ -569,6 +589,7 @@ service IssueReportsService {
   rpc ListReportsByReporter(ListReportsByReporterRequest) returns (ListReportsByReporterResponse);
   rpc ListReportsBySubjectType(ListReportsBySubjectTypeRequest) returns (ListReportsBySubjectTypeResponse);
   rpc ListReportsForSubject(ListReportsForSubjectRequest) returns (ListReportsForSubjectResponse);
+  rpc GetReportAcrossScopes(GetReportAcrossScopesRequest) returns (GetReportAcrossScopesResponse);
   rpc ListReportsAcrossScopes(ListReportsAcrossScopesRequest) returns (ListReportsAcrossScopesResponse);
   rpc ListReportsByStatusAcrossScopes(ListReportsByStatusAcrossScopesRequest) returns (ListReportsByStatusAcrossScopesResponse);
   rpc UpdateReport(UpdateReportRequest) returns (UpdateReportResponse);

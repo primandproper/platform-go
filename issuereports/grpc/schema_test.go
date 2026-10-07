@@ -261,16 +261,16 @@ func TestTheStatusEnumCarriesItsNoun(T *testing.T) {
 	test.EqOp(T, protoreflect.Name("REPORT_STATUS_UNSPECIFIED"), values.ByNumber(0).Name())
 }
 
-// TestTheServiceIsTwelveMethods pins the count the .proto's service comment
-// argues for, so that a thirteenth arrives with a failing test naming the
+// TestTheServiceIsThirteenMethods pins the count the .proto's service comment
+// argues for, so that a fourteenth arrives with a failing test naming the
 // argument rather than as a diff nobody weighed against it.
-func TestTheServiceIsTwelveMethods(T *testing.T) {
+func TestTheServiceIsThirteenMethods(T *testing.T) {
 	T.Parallel()
 
 	methods := issuereportspb.File_primandproper_platform_issuereports_v1_issuereports_proto.
 		Services().ByName("IssueReportsService").Methods()
 
-	test.EqOp(T, 12, methods.Len())
+	test.EqOp(T, 13, methods.Len())
 }
 
 func reserves(message protoreflect.MessageDescriptor, name protoreflect.Name) bool {
