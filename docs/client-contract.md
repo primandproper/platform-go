@@ -346,6 +346,7 @@ nobody else.
 | `FinishRegistration(friendly_name, response)` | send back what `create` resolved with |
 | `BeginLogin(username)` | hand `options` to `navigator.credentials.get`; an empty `username` is the discoverable login |
 | `FinishLogin(username, response, active_account_id, totp_code)` | send back what `get` resolved with, and the same `username` |
+| `AdminFinishLogin(username, response, active_account_id)` | the same, for an operator: the administrative door |
 | `ListPasskeys()` / `ArchivePasskey(id)` | the settings page |
 
 The ceremony travels as the JSON the WebAuthn specification defines, in `bytes` fields: the
@@ -363,6 +364,15 @@ a proven second factor who signs in with it is refused `SECOND_FACTOR_REQUIRED` 
 a password: prompt for a code and send `FinishLogin` again with `totp_code` and a fresh
 assertion, since the first one's challenge is spent. A client that requests
 `userVerification: "required"` never meets this.
+
+**R21 — an operator's passkey goes through the administrative door.** `AdminFinishLogin` is
+`FinishLogin` as `AdminLoginForToken` is `LoginForToken`: it finishes the ceremony `BeginLogin`
+began, and answers with an `IssuedToken` whose `administrative` is set, which is the token a
+deployment honoring the administrative claim grants operator roles on. An ordinary `FinishLogin`
+never does, whoever signs in. It takes no `totp_code`: an assertion the authenticator did not
+verify the person for is refused `MULTI_FACTOR_REQUIRED`, so an admin client asks `BeginLogin`'s
+options for `userVerification: "required"`. A subject who is no operator is refused
+`ADMIN_SIGNIN_UNAVAILABLE`, and only once the assertion has proven who they are.
 
 A refused login is `UNAUTHENTICATED` whatever refused it, an unknown username included, and a
 `BeginLogin` for a username nobody holds answers exactly as one for a username somebody does —

@@ -48,6 +48,10 @@ const (
 	testOrigin = "https://example.com"
 )
 
+// serviceAdminRole is the service role the harness's sign-in service admits
+// through its administrative door.
+const serviceAdminRole = "service_admin"
+
 // testScope is a named tenant, deliberately not Global, so a surface that
 // dropped its scope fails rather than passing under the empty identifier.
 var testScope = tenancy.Of("tenant_a")
@@ -223,7 +227,7 @@ func newHarnessWith(t *testing.T, srvOpts []passkeysgrpc.Option, svcOpts ...pass
 	signIns := &recordingSignInHooks{}
 
 	signInSvc, err := signin.NewService(db, store, argon2.NewArgon2Authenticator(), &fakeTokens{}, []string{"owner"},
-		signin.WithTOTPIssuer("Example"), signin.WithHooks(signIns))
+		signin.WithTOTPIssuer("Example"), signin.WithHooks(signIns), signin.WithAdminServiceRoles(serviceAdminRole))
 	must.NoError(t, err)
 
 	credentials, err := passkeys.NewSQLStore(db, passkeys.WithTablePrefix(prefix))
@@ -295,7 +299,7 @@ func newHarnessWith(t *testing.T, srvOpts []passkeysgrpc.Option, svcOpts ...pass
 	return h
 }
 
-func (h *harness) registerUser(t *testing.T, username string) *identity.User {
+func (h *harness) registerUser(t *testing.T, username string, serviceRoles ...string) *identity.User {
 	t.Helper()
 
 	identitySvc, err := identity.NewService(h.db, h.store)
@@ -307,6 +311,7 @@ func (h *harness) registerUser(t *testing.T, username string) *identity.User {
 			EmailAddress:  username + "@example.com",
 			AccountStatus: identity.StatusGood,
 			Scope:         testScope,
+			ServiceRoles:  serviceRoles,
 		},
 		&identity.Account{Name: username + "'s", Scope: testScope},
 		[]string{"owner"},

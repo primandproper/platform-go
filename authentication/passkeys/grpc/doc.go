@@ -23,12 +23,24 @@ SignInService like any other, and signin's hooks see it stamped
 IssueForPrincipal has no transport of its own, and still does not: its caller
 vouches for who is signing in, so it belongs behind a verification of the
 credential and never behind a request that names a user. FinishLogin is that
-verification, and it is the only path here that reaches the issuer.
+verification, and with AdminFinishLogin the only path here that reaches the
+issuer.
 
 A passkey is two factors only when the authenticator verified the person, so
 signin.MultiFactor is passed only then. A key tap alone is one factor, and a
 person holding a proven second factor is asked for it — FinishLogin carries a
 totp_code for that, read as a password sign-in reads it.
+
+# The administrative door
+
+AdminFinishLogin is FinishLogin minted with signin.Administrative, as
+signin's AdminLoginForToken is LoginForToken: the token carries
+signin.ClaimAdministrative, which is what an extractor that keeps service roles
+only on an administrative token reads, so an operator who signs in with a
+passkey there holds their operator grants. It takes no code — the
+administrative door demands a credential that was two factors on its own, so
+only a user-verified assertion is admitted — and a subject who is no operator
+is refused only after the assertion has proven who they are.
 
 # The two seams, and the third
 

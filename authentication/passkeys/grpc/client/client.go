@@ -22,7 +22,7 @@ can be refused by sign-in's own sentinels for a second factor.
 
 # Why there is no idempotency interceptor
 
-FinishLogin answers with a live token, and a store whose purpose is to hand
+FinishLogin and AdminFinishLogin answer with a live token, and a store whose purpose is to hand
 the same response back a second time is no place for one — the reading
 authentication/signin's client takes of its own doors. The other writes are
 safe to retry without one: a finished ceremony's challenge is spent, so a

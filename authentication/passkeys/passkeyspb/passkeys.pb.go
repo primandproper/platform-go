@@ -592,6 +592,127 @@ func (x *FinishLoginResponse) GetToken() *signinpb.IssuedToken {
 	return nil
 }
 
+// AdminFinishLoginRequest is FinishLogin through the administrative door, as
+// signin.v1's AdminLoginForTokenRequest is LoginForToken through it. It
+// finishes the same ceremony -- BeginLogin's options are the same for either
+// door -- and is a message of its own so that the two doors can diverge
+// without either becoming a field on the other.
+//
+// It carries no totp_code. The administrative door takes no code: the
+// passkey has to have been two factors on its own, which is an authenticator
+// that verified the person, and one asserted on a key tap alone is refused
+// MULTI_FACTOR_REQUIRED however many codes came with it. A client signing an
+// operator in asks BeginLogin's options for userVerification "required" and
+// never meets that refusal.
+type AdminFinishLoginRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// username is the one BeginLogin was sent, empty for a discoverable login.
+	Username string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	// response is the PublicKeyCredential JSON navigator.credentials.get
+	// resolved with.
+	Response []byte `protobuf:"bytes,2,opt,name=response,proto3" json:"response,omitempty"`
+	// active_account_id is the account the token should be issued for, read
+	// exactly as signin.v1's Credentials reads it.
+	ActiveAccountId string `protobuf:"bytes,3,opt,name=active_account_id,json=activeAccountID,proto3" json:"active_account_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AdminFinishLoginRequest) Reset() {
+	*x = AdminFinishLoginRequest{}
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminFinishLoginRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminFinishLoginRequest) ProtoMessage() {}
+
+func (x *AdminFinishLoginRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminFinishLoginRequest.ProtoReflect.Descriptor instead.
+func (*AdminFinishLoginRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *AdminFinishLoginRequest) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *AdminFinishLoginRequest) GetResponse() []byte {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+func (x *AdminFinishLoginRequest) GetActiveAccountId() string {
+	if x != nil {
+		return x.ActiveAccountId
+	}
+	return ""
+}
+
+type AdminFinishLoginResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         *signinpb.IssuedToken  `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminFinishLoginResponse) Reset() {
+	*x = AdminFinishLoginResponse{}
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminFinishLoginResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminFinishLoginResponse) ProtoMessage() {}
+
+func (x *AdminFinishLoginResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminFinishLoginResponse.ProtoReflect.Descriptor instead.
+func (*AdminFinishLoginResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AdminFinishLoginResponse) GetToken() *signinpb.IssuedToken {
+	if x != nil {
+		return x.Token
+	}
+	return nil
+}
+
 type ListPasskeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -600,7 +721,7 @@ type ListPasskeysRequest struct {
 
 func (x *ListPasskeysRequest) Reset() {
 	*x = ListPasskeysRequest{}
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[9]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -612,7 +733,7 @@ func (x *ListPasskeysRequest) String() string {
 func (*ListPasskeysRequest) ProtoMessage() {}
 
 func (x *ListPasskeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[9]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -625,7 +746,7 @@ func (x *ListPasskeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPasskeysRequest.ProtoReflect.Descriptor instead.
 func (*ListPasskeysRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{9}
+	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{11}
 }
 
 type ListPasskeysResponse struct {
@@ -638,7 +759,7 @@ type ListPasskeysResponse struct {
 
 func (x *ListPasskeysResponse) Reset() {
 	*x = ListPasskeysResponse{}
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[10]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -650,7 +771,7 @@ func (x *ListPasskeysResponse) String() string {
 func (*ListPasskeysResponse) ProtoMessage() {}
 
 func (x *ListPasskeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[10]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -663,7 +784,7 @@ func (x *ListPasskeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPasskeysResponse.ProtoReflect.Descriptor instead.
 func (*ListPasskeysResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{10}
+	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListPasskeysResponse) GetPasskeys() []*Passkey {
@@ -684,7 +805,7 @@ type ArchivePasskeyRequest struct {
 
 func (x *ArchivePasskeyRequest) Reset() {
 	*x = ArchivePasskeyRequest{}
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[11]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -696,7 +817,7 @@ func (x *ArchivePasskeyRequest) String() string {
 func (*ArchivePasskeyRequest) ProtoMessage() {}
 
 func (x *ArchivePasskeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[11]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -709,7 +830,7 @@ func (x *ArchivePasskeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchivePasskeyRequest.ProtoReflect.Descriptor instead.
 func (*ArchivePasskeyRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{11}
+	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ArchivePasskeyRequest) GetId() string {
@@ -728,7 +849,7 @@ type ArchivePasskeyResponse struct {
 
 func (x *ArchivePasskeyResponse) Reset() {
 	*x = ArchivePasskeyResponse{}
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[12]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -740,7 +861,7 @@ func (x *ArchivePasskeyResponse) String() string {
 func (*ArchivePasskeyResponse) ProtoMessage() {}
 
 func (x *ArchivePasskeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[12]
+	mi := &file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -753,7 +874,7 @@ func (x *ArchivePasskeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchivePasskeyResponse.ProtoReflect.Descriptor instead.
 func (*ArchivePasskeyResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{12}
+	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ArchivePasskeyResponse) GetPasskey() *Passkey {
@@ -799,6 +920,12 @@ const file_primandproper_platform_passkeys_v1_passkeys_proto_rawDesc = "" +
 	"\x11active_account_id\x18\x03 \x01(\tR\x0factiveAccountID\x12\x1b\n" +
 	"\ttotp_code\x18\x04 \x01(\tR\btotpCodeR\x05scope\"Z\n" +
 	"\x13FinishLoginResponse\x12C\n" +
+	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token\"\x95\x01\n" +
+	"\x17AdminFinishLoginRequest\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
+	"\bresponse\x18\x02 \x01(\fR\bresponse\x12*\n" +
+	"\x11active_account_id\x18\x03 \x01(\tR\x0factiveAccountIDJ\x04\b\x04\x10\x05R\x05scopeR\ttotp_code\"_\n" +
+	"\x18AdminFinishLoginResponse\x12C\n" +
 	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token\"\x1c\n" +
 	"\x13ListPasskeysRequestR\x05scope\"_\n" +
 	"\x14ListPasskeysResponse\x12G\n" +
@@ -806,13 +933,14 @@ const file_primandproper_platform_passkeys_v1_passkeys_proto_rawDesc = "" +
 	"\x15ArchivePasskeyRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02idR\x05scope\"_\n" +
 	"\x16ArchivePasskeyResponse\x12E\n" +
-	"\apasskey\x18\x01 \x01(\v2+.primandproper.platform.passkeys.v1.PasskeyR\apasskey2\xc5\x06\n" +
+	"\apasskey\x18\x01 \x01(\v2+.primandproper.platform.passkeys.v1.PasskeyR\apasskey2\xd5\a\n" +
 	"\x0fPasskeysService\x12\x90\x01\n" +
 	"\x11BeginRegistration\x12<.primandproper.platform.passkeys.v1.BeginRegistrationRequest\x1a=.primandproper.platform.passkeys.v1.BeginRegistrationResponse\x12\x93\x01\n" +
 	"\x12FinishRegistration\x12=.primandproper.platform.passkeys.v1.FinishRegistrationRequest\x1a>.primandproper.platform.passkeys.v1.FinishRegistrationResponse\x12{\n" +
 	"\n" +
 	"BeginLogin\x125.primandproper.platform.passkeys.v1.BeginLoginRequest\x1a6.primandproper.platform.passkeys.v1.BeginLoginResponse\x12~\n" +
-	"\vFinishLogin\x126.primandproper.platform.passkeys.v1.FinishLoginRequest\x1a7.primandproper.platform.passkeys.v1.FinishLoginResponse\x12\x81\x01\n" +
+	"\vFinishLogin\x126.primandproper.platform.passkeys.v1.FinishLoginRequest\x1a7.primandproper.platform.passkeys.v1.FinishLoginResponse\x12\x8d\x01\n" +
+	"\x10AdminFinishLogin\x12;.primandproper.platform.passkeys.v1.AdminFinishLoginRequest\x1a<.primandproper.platform.passkeys.v1.AdminFinishLoginResponse\x12\x81\x01\n" +
 	"\fListPasskeys\x127.primandproper.platform.passkeys.v1.ListPasskeysRequest\x1a8.primandproper.platform.passkeys.v1.ListPasskeysResponse\x12\x87\x01\n" +
 	"\x0eArchivePasskey\x129.primandproper.platform.passkeys.v1.ArchivePasskeyRequest\x1a:.primandproper.platform.passkeys.v1.ArchivePasskeyResponseBXZVgithub.com/primandproper/platform-go/v15/authentication/passkeys/passkeyspb;passkeyspbb\x06proto3"
 
@@ -828,7 +956,7 @@ func file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescGZIP() []byte
 	return file_primandproper_platform_passkeys_v1_passkeys_proto_rawDescData
 }
 
-var file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_primandproper_platform_passkeys_v1_passkeys_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_primandproper_platform_passkeys_v1_passkeys_proto_goTypes = []any{
 	(*Passkey)(nil),                    // 0: primandproper.platform.passkeys.v1.Passkey
 	(*BeginRegistrationRequest)(nil),   // 1: primandproper.platform.passkeys.v1.BeginRegistrationRequest
@@ -839,38 +967,43 @@ var file_primandproper_platform_passkeys_v1_passkeys_proto_goTypes = []any{
 	(*BeginLoginResponse)(nil),         // 6: primandproper.platform.passkeys.v1.BeginLoginResponse
 	(*FinishLoginRequest)(nil),         // 7: primandproper.platform.passkeys.v1.FinishLoginRequest
 	(*FinishLoginResponse)(nil),        // 8: primandproper.platform.passkeys.v1.FinishLoginResponse
-	(*ListPasskeysRequest)(nil),        // 9: primandproper.platform.passkeys.v1.ListPasskeysRequest
-	(*ListPasskeysResponse)(nil),       // 10: primandproper.platform.passkeys.v1.ListPasskeysResponse
-	(*ArchivePasskeyRequest)(nil),      // 11: primandproper.platform.passkeys.v1.ArchivePasskeyRequest
-	(*ArchivePasskeyResponse)(nil),     // 12: primandproper.platform.passkeys.v1.ArchivePasskeyResponse
-	(*timestamppb.Timestamp)(nil),      // 13: google.protobuf.Timestamp
-	(*signinpb.IssuedToken)(nil),       // 14: primandproper.platform.signin.v1.IssuedToken
+	(*AdminFinishLoginRequest)(nil),    // 9: primandproper.platform.passkeys.v1.AdminFinishLoginRequest
+	(*AdminFinishLoginResponse)(nil),   // 10: primandproper.platform.passkeys.v1.AdminFinishLoginResponse
+	(*ListPasskeysRequest)(nil),        // 11: primandproper.platform.passkeys.v1.ListPasskeysRequest
+	(*ListPasskeysResponse)(nil),       // 12: primandproper.platform.passkeys.v1.ListPasskeysResponse
+	(*ArchivePasskeyRequest)(nil),      // 13: primandproper.platform.passkeys.v1.ArchivePasskeyRequest
+	(*ArchivePasskeyResponse)(nil),     // 14: primandproper.platform.passkeys.v1.ArchivePasskeyResponse
+	(*timestamppb.Timestamp)(nil),      // 15: google.protobuf.Timestamp
+	(*signinpb.IssuedToken)(nil),       // 16: primandproper.platform.signin.v1.IssuedToken
 }
 var file_primandproper_platform_passkeys_v1_passkeys_proto_depIdxs = []int32{
-	13, // 0: primandproper.platform.passkeys.v1.Passkey.created_at:type_name -> google.protobuf.Timestamp
-	13, // 1: primandproper.platform.passkeys.v1.Passkey.last_used_at:type_name -> google.protobuf.Timestamp
-	13, // 2: primandproper.platform.passkeys.v1.Passkey.archived_at:type_name -> google.protobuf.Timestamp
+	15, // 0: primandproper.platform.passkeys.v1.Passkey.created_at:type_name -> google.protobuf.Timestamp
+	15, // 1: primandproper.platform.passkeys.v1.Passkey.last_used_at:type_name -> google.protobuf.Timestamp
+	15, // 2: primandproper.platform.passkeys.v1.Passkey.archived_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: primandproper.platform.passkeys.v1.FinishRegistrationResponse.passkey:type_name -> primandproper.platform.passkeys.v1.Passkey
-	14, // 4: primandproper.platform.passkeys.v1.FinishLoginResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
-	0,  // 5: primandproper.platform.passkeys.v1.ListPasskeysResponse.passkeys:type_name -> primandproper.platform.passkeys.v1.Passkey
-	0,  // 6: primandproper.platform.passkeys.v1.ArchivePasskeyResponse.passkey:type_name -> primandproper.platform.passkeys.v1.Passkey
-	1,  // 7: primandproper.platform.passkeys.v1.PasskeysService.BeginRegistration:input_type -> primandproper.platform.passkeys.v1.BeginRegistrationRequest
-	3,  // 8: primandproper.platform.passkeys.v1.PasskeysService.FinishRegistration:input_type -> primandproper.platform.passkeys.v1.FinishRegistrationRequest
-	5,  // 9: primandproper.platform.passkeys.v1.PasskeysService.BeginLogin:input_type -> primandproper.platform.passkeys.v1.BeginLoginRequest
-	7,  // 10: primandproper.platform.passkeys.v1.PasskeysService.FinishLogin:input_type -> primandproper.platform.passkeys.v1.FinishLoginRequest
-	9,  // 11: primandproper.platform.passkeys.v1.PasskeysService.ListPasskeys:input_type -> primandproper.platform.passkeys.v1.ListPasskeysRequest
-	11, // 12: primandproper.platform.passkeys.v1.PasskeysService.ArchivePasskey:input_type -> primandproper.platform.passkeys.v1.ArchivePasskeyRequest
-	2,  // 13: primandproper.platform.passkeys.v1.PasskeysService.BeginRegistration:output_type -> primandproper.platform.passkeys.v1.BeginRegistrationResponse
-	4,  // 14: primandproper.platform.passkeys.v1.PasskeysService.FinishRegistration:output_type -> primandproper.platform.passkeys.v1.FinishRegistrationResponse
-	6,  // 15: primandproper.platform.passkeys.v1.PasskeysService.BeginLogin:output_type -> primandproper.platform.passkeys.v1.BeginLoginResponse
-	8,  // 16: primandproper.platform.passkeys.v1.PasskeysService.FinishLogin:output_type -> primandproper.platform.passkeys.v1.FinishLoginResponse
-	10, // 17: primandproper.platform.passkeys.v1.PasskeysService.ListPasskeys:output_type -> primandproper.platform.passkeys.v1.ListPasskeysResponse
-	12, // 18: primandproper.platform.passkeys.v1.PasskeysService.ArchivePasskey:output_type -> primandproper.platform.passkeys.v1.ArchivePasskeyResponse
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	16, // 4: primandproper.platform.passkeys.v1.FinishLoginResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
+	16, // 5: primandproper.platform.passkeys.v1.AdminFinishLoginResponse.token:type_name -> primandproper.platform.signin.v1.IssuedToken
+	0,  // 6: primandproper.platform.passkeys.v1.ListPasskeysResponse.passkeys:type_name -> primandproper.platform.passkeys.v1.Passkey
+	0,  // 7: primandproper.platform.passkeys.v1.ArchivePasskeyResponse.passkey:type_name -> primandproper.platform.passkeys.v1.Passkey
+	1,  // 8: primandproper.platform.passkeys.v1.PasskeysService.BeginRegistration:input_type -> primandproper.platform.passkeys.v1.BeginRegistrationRequest
+	3,  // 9: primandproper.platform.passkeys.v1.PasskeysService.FinishRegistration:input_type -> primandproper.platform.passkeys.v1.FinishRegistrationRequest
+	5,  // 10: primandproper.platform.passkeys.v1.PasskeysService.BeginLogin:input_type -> primandproper.platform.passkeys.v1.BeginLoginRequest
+	7,  // 11: primandproper.platform.passkeys.v1.PasskeysService.FinishLogin:input_type -> primandproper.platform.passkeys.v1.FinishLoginRequest
+	9,  // 12: primandproper.platform.passkeys.v1.PasskeysService.AdminFinishLogin:input_type -> primandproper.platform.passkeys.v1.AdminFinishLoginRequest
+	11, // 13: primandproper.platform.passkeys.v1.PasskeysService.ListPasskeys:input_type -> primandproper.platform.passkeys.v1.ListPasskeysRequest
+	13, // 14: primandproper.platform.passkeys.v1.PasskeysService.ArchivePasskey:input_type -> primandproper.platform.passkeys.v1.ArchivePasskeyRequest
+	2,  // 15: primandproper.platform.passkeys.v1.PasskeysService.BeginRegistration:output_type -> primandproper.platform.passkeys.v1.BeginRegistrationResponse
+	4,  // 16: primandproper.platform.passkeys.v1.PasskeysService.FinishRegistration:output_type -> primandproper.platform.passkeys.v1.FinishRegistrationResponse
+	6,  // 17: primandproper.platform.passkeys.v1.PasskeysService.BeginLogin:output_type -> primandproper.platform.passkeys.v1.BeginLoginResponse
+	8,  // 18: primandproper.platform.passkeys.v1.PasskeysService.FinishLogin:output_type -> primandproper.platform.passkeys.v1.FinishLoginResponse
+	10, // 19: primandproper.platform.passkeys.v1.PasskeysService.AdminFinishLogin:output_type -> primandproper.platform.passkeys.v1.AdminFinishLoginResponse
+	12, // 20: primandproper.platform.passkeys.v1.PasskeysService.ListPasskeys:output_type -> primandproper.platform.passkeys.v1.ListPasskeysResponse
+	14, // 21: primandproper.platform.passkeys.v1.PasskeysService.ArchivePasskey:output_type -> primandproper.platform.passkeys.v1.ArchivePasskeyResponse
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_passkeys_v1_passkeys_proto_init() }
@@ -884,7 +1017,7 @@ func file_primandproper_platform_passkeys_v1_passkeys_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_passkeys_v1_passkeys_proto_rawDesc), len(file_primandproper_platform_passkeys_v1_passkeys_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
