@@ -42,19 +42,27 @@ func Filter(
 	clearedKey string,
 	description string,
 ) (*filtering.QueryFilter, error) {
-	filter, err := filteringgrpc.FromProto(in)
+	// The grant is read only for a filter that asks for the archive, as Narrow
+	// reads it, so a caller who never asked costs the extractor nothing.
+	decision := filteringgrpc.ArchivedIf(in.GetIncludeArchived() && holds(ctx, grants, archiveGrant))
+
+	filter, cleared, err := filteringgrpc.QueryFilterFromProto(in, decision)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "%s", description)
 	}
 
-	return Narrow(ctx, op, filter, grants, archiveGrant, clearedKey), nil
+	if cleared {
+		op.Set(clearedKey, true)
+	}
+
+	return filter, nil
 }
 
 // Narrow is [Filter] for a filter that did not arrive as a protobuf message —
-// the one an MCP tool call decodes from its arguments — and is the half of
-// Filter that decides: include_archived honored for a caller holding
-// archiveGrant, cleared for everybody else, the clearing recorded under
-// clearedKey. It narrows the filter it is handed and returns it.
+// the one an MCP tool call decodes from its arguments — and makes the decision
+// Filter does: include_archived honored for a caller holding archiveGrant,
+// cleared for everybody else, the clearing recorded under clearedKey. It
+// narrows the filter it is handed and returns it.
 func Narrow(
 	ctx context.Context,
 	op observability.Operation,

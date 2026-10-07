@@ -20,9 +20,11 @@ import (
 // module's source rather than off a list somebody keeps.
 //
 // The first is that Filter is the only door. Every handler that turns a wire
-// filter into a store filter does it through primitives-go's FromProto, so a
-// FromProto called anywhere but here is a read that converted its filter
-// without naming a grant.
+// filter into a store filter does it through one of primitives-go's two
+// converters, so either called anywhere but here is a read that converted its
+// filter without naming a grant: the deprecated FromProto takes
+// include_archived as sent, and QueryFilterFromProto takes whatever archive
+// decision its caller hands it, ArchivedAllowed included.
 //
 // The second is that every door is used. A filtered RPC whose handler never
 // reaches Filter is a read that either passes a filter it did not convert —
@@ -32,19 +34,22 @@ import (
 // serves it, and follows the calls inside that package until it finds Filter.
 
 const (
-	// thisPackage is where FromProto may be called.
+	// thisPackage is where a converter may be called.
 	thisPackage = "internal/archivegate"
 
 	// gatePath is this package's import path, as a handler imports it.
 	gatePath = "github.com/primandproper/platform-go/v15/internal/archivegate"
 
-	// fromProtoPath is the converter's import path.
-	fromProtoPath = "github.com/primandproper/primitives-go/v2/filtering/grpc"
+	// convertersPath is the converters' import path.
+	convertersPath = "github.com/primandproper/primitives-go/v2/filtering/grpc"
 
 	// queryFilterPath is the wire filter's package, which is how a request
 	// carrying one is recognized.
 	queryFilterPath = "github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 )
+
+// converters are filtering/grpc's functions from a wire filter to a store one.
+var converters = []string{"FromProto", "QueryFilterFromProto"}
 
 // TestFilterIsTheOnlyDoor fails a module that converts a wire filter anywhere
 // but Filter.
@@ -55,22 +60,30 @@ func TestFilterIsTheOnlyDoor(T *testing.T) {
 	calls := 0
 
 	for _, file := range sourceFiles(T, root) {
-		name, ok := importName(file.ast, fromProtoPath)
+		name, ok := importName(file.ast, convertersPath)
 		if !ok {
 			continue
 		}
 
 		ast.Inspect(file.ast, func(n ast.Node) bool {
-			if !isCallTo(n, name, "FromProto") {
+			converter := ""
+
+			for _, candidate := range converters {
+				if isCallTo(n, name, candidate) {
+					converter = candidate
+				}
+			}
+
+			if converter == "" {
 				return true
 			}
 
 			calls++
 
 			test.EqOp(T, thisPackage, file.dir, test.Sprintf(
-				"%s converts a wire filter with FromProto, which reads include_archived as an instruction; "+
+				"%s converts a wire filter with %s, which decides include_archived without a grant; "+
 					"call archivegate.Filter instead, naming the grant that archives what the read pages "+
-					"(or archivegate.NothingArchived)", file.fset.Position(n.Pos())))
+					"(or archivegate.NothingArchived)", file.fset.Position(n.Pos()), converter))
 
 			return true
 		})
@@ -78,7 +91,7 @@ func TestFilterIsTheOnlyDoor(T *testing.T) {
 
 	// A walk that found no call at all would pass a module whose import path
 	// for the converter had moved, and would do it quietly.
-	must.Positive(T, calls, must.Sprint("FromProto is called nowhere, not even by Filter"))
+	must.Positive(T, calls, must.Sprint("no converter is called anywhere, not even by Filter"))
 }
 
 // TestEveryFilteredRPCReachesFilter fails a module serving an RPC whose

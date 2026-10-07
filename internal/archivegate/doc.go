@@ -34,13 +34,14 @@
 // two surfaces were missed because nothing made it unavoidable: each converted
 // its filter with primitives-go's filtering/grpc.FromProto, and the narrowing
 // was a second call a handler had to remember. [Filter] is that conversion with
-// the archive decision as a parameter, so a read cannot convert a filter without
-// naming one, and this package's roster test fails a module whose code calls
-// FromProto anywhere but here, or serves a filtered RPC whose handler never
-// reaches [Filter].
+// the archive grant as a parameter, so a read cannot convert a filter without
+// naming one. It decodes through filtering/grpc.QueryFilterFromProto, whose
+// archive decision is the grant's, and this package's roster test fails a
+// module whose code calls either converter anywhere but here, or serves a
+// filtered RPC whose handler never reaches [Filter].
 //
 // An MCP tool's filter arrives decoded rather than as a protobuf message, so it
-// enters at [Narrow], the half of [Filter] that decides, through
+// enters at [Narrow], which makes [Filter]'s decision on it, through
 // internal/mcptool — one door for every transport rather than a second copy of
 // the rule beside the tools.
 //
