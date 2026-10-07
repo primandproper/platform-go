@@ -407,6 +407,55 @@ func TestWithRunners(T *testing.T) {
 	})
 }
 
+func TestWithFlush(T *testing.T) {
+	T.Parallel()
+
+	T.Run("ignores a nil flush", func(t *testing.T) {
+		t.Parallel()
+
+		o := newOptions([]Option{WithFlush("reminder queue", nil)})
+
+		test.SliceEmpty(t, o.flushes)
+	})
+
+	T.Run("keeps the order the flushes were given in", func(t *testing.T) {
+		t.Parallel()
+
+		noop := func(context.Context) error { return nil }
+
+		o := newOptions([]Option{WithFlush("a", noop), WithFlush("b", noop)})
+
+		test.Eq(t, []string{"a", "b"}, names(o.flushes))
+	})
+
+	T.Run("drains after the application's loops and reports under its name", func(t *testing.T) {
+		t.Parallel()
+
+		// The order WithRunners cannot give: a batcher fed by a loop drains
+		// once the loop has closed, not before.
+		cfg := &Config{Name: "example", Database: sqliteConfig(t)}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		j := &journal{}
+		errDrain := platformerrors.New("draining")
+
+		svc, err := New(newInjector(t, cfg),
+			WithFlush("reminder queue", func(context.Context) error {
+				j.record("flush:reminders")
+
+				return errDrain
+			}),
+			WithRunners(newFakeRunner(j, "scheduler")),
+		)
+		must.NoError(t, err)
+
+		err = svc.Shutdown(t.Context())
+		test.ErrorIs(t, err, errDrain)
+		test.StrContains(t, err.Error(), "running the final reminder queue pass")
+		test.Eq(t, []string{"close:scheduler", "flush:reminders"}, j.all())
+	})
+}
+
 // notInvoked returns the names Register registered with i that nothing has
 // built, which after a successful New is what the guarantee says is empty.
 func notInvoked(t *testing.T, i do.Injector) []string {

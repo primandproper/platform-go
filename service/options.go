@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/primandproper/primitives-go/v2/healthcheck"
@@ -10,13 +11,14 @@ import (
 //
 // It exists for the half of a service this package cannot see. Everything the
 // config names, New finds on the injector; everything the application owns — its
-// own loops and its own health checks — arrives here, because no config can name
+// own loops, its own drains and its own health checks — arrives here, because no config can name
 // a type this module does not define.
 type Option func(*options)
 
 // options collects what the options set.
 type options struct {
 	runners      []named[Runner]
+	flushes      []named[func(context.Context) error]
 	healthChecks []healthcheck.Checker
 }
 
@@ -57,6 +59,35 @@ func WithRunners(runners ...Runner) Option {
 
 			o.runners = append(o.runners, named[Runner]{name: fmt.Sprintf("%T", runner), v: runner})
 		}
+	}
+}
+
+// WithFlush joins an application-owned drain to the service's final-flush slot,
+// the one platform's own drains run in: after every background loop — the
+// application's runners among them — has closed, and before the clients are
+// released. A nil flush is ignored.
+//
+// It is for a component that batches on a goroutine of its own and is fed by
+// a loop, which is the one shape WithRunners gets wrong. A runner closes before
+// every loop the config named, so a queue joined that way stops accepting while
+// the scheduler pass that feeds it may still be running, and that pass's
+// remaining writes are refused. Here it drains once nothing above it can hand
+// it more.
+//
+// Application flushes run before platform's, in the order they were given. A
+// drain written by the application may record usage or enqueue an operation,
+// and the platform drains those land in run after it; nothing platform drains
+// feeds an application's.
+//
+// A failure is reported under name, beside platform's own, and does not stop
+// the flushes or the release of the clients after it.
+func WithFlush(name string, flush func(context.Context) error) Option {
+	return func(o *options) {
+		if flush == nil {
+			return
+		}
+
+		o.flushes = append(o.flushes, named[func(context.Context) error]{name: name, v: flush})
 	}
 }
 
