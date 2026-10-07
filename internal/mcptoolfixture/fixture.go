@@ -1,7 +1,7 @@
-// Package fixture holds the documented structs internal/mcptool's suite
+// Package mcptoolfixture holds the documented structs mcptool's suite
 // extracts and reflects. Extract reads source by import path, which a _test.go
 // file does not have.
-package fixture
+package mcptoolfixture
 
 import (
 	"time"

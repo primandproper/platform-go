@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v15/callers"
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/mcptool"
 	"github.com/primandproper/platform-go/v15/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
 	webhooksmcp "github.com/primandproper/platform-go/v15/webhooks/mcp"

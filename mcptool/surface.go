@@ -11,9 +11,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
-	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
-	"github.com/primandproper/primitives-go/v2/observability/tracing"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -93,18 +91,16 @@ type Surface struct {
 // NewSurface builds a tool surface named name — the instrument prefix and the
 // span scope, as a gRPC surface's serverName is.
 //
-// safe are the sentinels whose own text a model may be told: a surface passes
-// its package's ClientSafeSentinels, or the not-found refusal its reads answer
-// with. Anything else a call fails with reaches the model as [ErrToolFailed].
+// The three extractors are required, and there is no default for any of them:
+// see [Authenticator] for why a call's credential is read off its request, and
+// [ErrNilGrantsExtractor] for why no grants extractor is a safe guess. Which
+// failures a model may be told in their own words is [WithClientSafeSentinels].
 func NewSurface(
 	name string,
 	authenticate Authenticator,
 	principals callers.PrincipalExtractor,
 	grants authorization.GrantsExtractor,
-	safe []error,
-	logger logging.Logger,
-	tracerProvider tracing.Provider,
-	metricsProvider metrics.Provider,
+	opts ...Option,
 ) (*Surface, error) {
 	if authenticate == nil {
 		return nil, ErrNilAuthenticator
@@ -118,7 +114,14 @@ func NewSurface(
 		return nil, ErrNilGrantsExtractor
 	}
 
-	instruments, err := metrics.NewOperationSet(metricsProvider, name)
+	var o options
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+
+	instruments, err := metrics.NewOperationSet(o.metricsProvider, name)
 	if err != nil {
 		return nil, platformerrors.Wrapf(err, "creating %s instruments", name)
 	}
@@ -127,9 +130,9 @@ func NewSurface(
 		authenticate: authenticate,
 		principals:   principals,
 		grants:       grants,
-		o11y:         observability.NewObserver(name, logger, tracerProvider),
+		o11y:         observability.NewObserver(name, o.logger, o.tracerProvider),
 		instruments:  instruments,
-		safe:         safe,
+		safe:         o.safe,
 		toolKey:      name + ".tool",
 		scopeKey:     name + ".scope",
 		userIDKey:    name + ".user_id",

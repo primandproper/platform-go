@@ -36,7 +36,7 @@ A console managing its endpoints reads them over gRPC.
 What a model is told about an endpoint and its subscriptions is reflected off
 webhooks.Endpoint and webhooks.Subscription, with each field's own doc comment
 as its description, generated into fielddocs_gen.go by `go generate` and
-checked against the source by this package's tests. internal/mcptool says why.
+checked against the source by this package's tests. mcptool says why.
 
 # Read-only
 
@@ -48,7 +48,7 @@ that is a different authorization conversation from a read.
 
 A refusal is answered in its own words — no principal, no grant, an argument the
 schema refused, or [ErrEndpointNotFound] — and every other failure is
-internal/mcptool's ErrToolFailed, with the cause on the call's log line and span.
+mcptool's ErrToolFailed, with the cause on the call's log line and span.
 */
 package mcp
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v15/callers"
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
-	"github.com/primandproper/platform-go/v15/internal/mcptool/fixture"
+	"github.com/primandproper/platform-go/v15/internal/mcptoolfixture"
+	"github.com/primandproper/platform-go/v15/mcptool"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -20,7 +20,7 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-const thisPackage = "github.com/primandproper/platform-go/v15/internal/mcptool/fixture"
+const thisPackage = "github.com/primandproper/platform-go/v15/internal/mcptoolfixture"
 
 func TestExtract(T *testing.T) {
 	T.Parallel()
@@ -65,7 +65,7 @@ func TestOutput(T *testing.T) {
 		docs, err := mcptool.Extract(thisPackage+".Row", thisPackage+".Child")
 		must.NoError(t, err)
 
-		schema := mcptool.Output[fixture.Row](docs, nil)
+		schema := mcptool.Output[mcptoolfixture.Row](docs, nil)
 
 		test.SliceEmpty(t, mcptool.Undescribed(schema))
 		test.MapNotContainsKey(t, schema.Properties, "Hidden")
@@ -77,7 +77,7 @@ func TestOutput(T *testing.T) {
 	T.Run("reports what it could not describe", func(t *testing.T) {
 		t.Parallel()
 
-		schema := mcptool.Output[fixture.Row](mcptool.Docs{}, nil)
+		schema := mcptool.Output[mcptoolfixture.Row](mcptool.Docs{}, nil)
 
 		test.Eq(t, []string{"children", "children[].name", "createdAt", "id", "note", "scope"}, mcptool.Undescribed(schema))
 	})
@@ -88,7 +88,7 @@ func TestOutput(T *testing.T) {
 		docs, err := mcptool.Extract(thisPackage+".Row", thisPackage+".Child")
 		must.NoError(t, err)
 
-		schema := mcptool.Output[filtering.QueryFilteredResult[fixture.Row]](docs, nil)
+		schema := mcptool.Output[filtering.QueryFilteredResult[mcptoolfixture.Row]](docs, nil)
 
 		test.SliceEmpty(t, mcptool.Undescribed(schema))
 		test.MapContainsKey(t, schema.Properties, "cursor")
@@ -105,7 +105,7 @@ func TestInput(T *testing.T) {
 		docs, err := mcptool.Extract(thisPackage + ".Page")
 		must.NoError(t, err)
 
-		schema := mcptool.Input[fixture.Page](docs, nil)
+		schema := mcptool.Input[mcptoolfixture.Page](docs, nil)
 
 		filter := schema.Properties["filter"]
 		must.NotNil(t, filter)
@@ -126,11 +126,29 @@ func TestDirectiveSpecs(T *testing.T) {
 
 		file := filepath.Join(t.TempDir(), "tools.go")
 		must.NoError(t, os.WriteFile(file, []byte("package mcp\n\n"+
-			"//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go example.com/a.Row example.com/b/c.Other\n"), 0o600))
+			"//go:generate go run ../../mcptool/mcpdocs -pkg mcp -out fielddocs_gen.go example.com/a.Row example.com/b/c.Other\n"), 0o600))
 
 		specs, err := mcptool.DirectiveSpecs(file)
 		must.NoError(t, err)
 		test.Eq(t, []string{"example.com/a.Row", "example.com/b/c.Other"}, specs)
+	})
+
+	T.Run("reads a directive naming the command by its import path, as another module does", func(t *testing.T) {
+		t.Parallel()
+
+		for _, command := range []string{
+			"github.com/primandproper/platform-go/v15/mcptool/mcpdocs",
+			"github.com/primandproper/platform-go/v15/mcptool/mcpdocs@v15.2.0",
+		} {
+			file := filepath.Join(t.TempDir(), "tools.go")
+			must.NoError(t, os.WriteFile(file, []byte("package tools\n\n"+
+				"//go:generate go tool stringer -type Kind\n"+
+				"//go:generate go run "+command+" -pkg tools -out gen/fielddocs_gen.go example.com/app/recipes.Recipe\n"), 0o600))
+
+			specs, err := mcptool.DirectiveSpecs(file)
+			must.NoError(t, err)
+			test.Eq(t, []string{"example.com/app/recipes.Recipe"}, specs, test.Sprint(command))
+		}
 	})
 
 	T.Run("refuses a file with no directive", func(t *testing.T) {
@@ -174,7 +192,7 @@ func newSurface(t *testing.T, principal callers.Principal, grants ...authorizati
 		func(context.Context) (authorization.Grants, bool) {
 			return authorization.NewGrants(authorization.NewPermissionSet(grants...)), true
 		},
-		[]error{errSafe}, nil, nil, nil)
+		mcptool.WithClientSafeSentinels(errSafe))
 	must.NoError(t, err)
 
 	return surface
@@ -222,6 +240,22 @@ func TestSurface(T *testing.T) {
 		test.EqOp(t, errSafe, answered)
 	})
 
+	T.Run("a surface that names no sentinel repeats none", func(t *testing.T) {
+		t.Parallel()
+
+		surface, err := mcptool.NewSurface("mcptool_test",
+			func(ctx context.Context, _ *sdkmcp.CallToolRequest) (context.Context, error) { return ctx, nil },
+			func(context.Context) (callers.Principal, bool) { return testPrincipal{}, true },
+			func(context.Context) (authorization.Grants, bool) { return authorization.Grants{}, true },
+			nil, mcptool.WithPillars(nil),
+		)
+		must.NoError(t, err)
+
+		_, call, err := surface.Begin(t.Context(), nil, "tool", mcptool.NoGrant)
+		must.NoError(t, err)
+		test.EqOp(t, mcptool.ErrToolFailed, call.End(errSafe))
+	})
+
 	T.Run("anything else is ErrToolFailed, and its words are not repeated", func(t *testing.T) {
 		t.Parallel()
 
@@ -241,7 +275,7 @@ func TestSurface(T *testing.T) {
 			},
 			func(context.Context) (callers.Principal, bool) { return testPrincipal{}, true },
 			func(context.Context) (authorization.Grants, bool) { return authorization.Grants{}, true },
-			nil, nil, nil, nil)
+		)
 		must.NoError(t, err)
 
 		_, _, err = surface.Begin(t.Context(), nil, "tool", mcptool.NoGrant)
@@ -271,12 +305,12 @@ func TestNewSurface(T *testing.T) {
 	principals := func(context.Context) (callers.Principal, bool) { return nil, false }
 	grants := func(context.Context) (authorization.Grants, bool) { return authorization.Grants{}, false }
 
-	_, err := mcptool.NewSurface("x", nil, principals, grants, nil, nil, nil, nil)
+	_, err := mcptool.NewSurface("x", nil, principals, grants)
 	test.ErrorIs(T, err, mcptool.ErrNilAuthenticator)
 
-	_, err = mcptool.NewSurface("x", authenticate, nil, grants, nil, nil, nil, nil)
+	_, err = mcptool.NewSurface("x", authenticate, nil, grants)
 	test.ErrorIs(T, err, mcptool.ErrNilPrincipalExtractor)
 
-	_, err = mcptool.NewSurface("x", authenticate, principals, nil, nil, nil, nil, nil)
+	_, err = mcptool.NewSurface("x", authenticate, principals, nil)
 	test.ErrorIs(T, err, mcptool.ErrNilGrantsExtractor)
 }
