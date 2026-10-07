@@ -11,7 +11,8 @@ import (
 )
 
 // Hooks are a sign-in service's hooks with the device recorded beside every
-// token issued. Every method but AfterIssueToken is the wrapped hooks'.
+// token issued and deleted beside every login ended. Every method but
+// AfterIssueToken and AfterRevokeSignIns is the wrapped hooks'.
 type Hooks struct {
 	signin.Hooks
 
@@ -80,6 +81,34 @@ func (h *Hooks) AfterIssueToken(ctx context.Context, tx database.Tx, scope tenan
 		ExpiresAt: expiresAt,
 	}); err != nil {
 		return platformerrors.Wrap(err, "recording a sign-in's device")
+	}
+
+	return nil
+}
+
+// AfterRevokeSignIns implements signin.Hooks.
+//
+// It runs the wrapped hooks first, as AfterIssueToken does, and then deletes the
+// row of every login the revocation ended, on the revocation's own transaction.
+// A login that is over is not one anybody can be shown, and a row kept until
+// the sweep reached it would be an address a subject access request exported
+// from a login that had already ended. A delete that fails fails the
+// revocation, which is signin's bargain for every hook: a service that cannot
+// record ending a login does not end it.
+//
+// Every door that ends a login runs it, impersonated families included; a login
+// that never had a row deletes nothing.
+func (h *Hooks) AfterRevokeSignIns(ctx context.Context, tx database.Tx, scope tenancy.Scope, revocation *signin.Revocation) error {
+	if err := h.Hooks.AfterRevokeSignIns(ctx, tx, scope, revocation); err != nil {
+		return err
+	}
+
+	if revocation == nil || revocation.SubjectID == "" || len(revocation.FamilyIDs) == 0 {
+		return nil
+	}
+
+	if _, err := h.store.DeleteForFamilies(ctx, tx, scope, revocation.SubjectID, revocation.FamilyIDs); err != nil {
+		return platformerrors.Wrap(err, "deleting the devices of ended sign-ins")
 	}
 
 	return nil

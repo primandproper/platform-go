@@ -13,6 +13,11 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const deleteSignInDeviceForFamilySQLite = `DELETE FROM {{prefix}}signin_devices
+WHERE scope = ?1
+	AND user_id = ?2
+	AND family_id = ?3`
+
 const deleteSignInDevicesForUserSQLite = `DELETE FROM {{prefix}}signin_devices
 WHERE scope = ?1
 	AND user_id = ?2`
@@ -82,6 +87,7 @@ ON CONFLICT (scope, family_id) DO UPDATE SET
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
+	deleteSignInDeviceForFamily  string
 	deleteSignInDevicesForUser   string
 	listSignInDevicesForFamilies string
 	listSignInDevicesForUser     string
@@ -93,6 +99,7 @@ type sqliteQueries struct {
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
+		deleteSignInDeviceForFamily:  strings.ReplaceAll(deleteSignInDeviceForFamilySQLite, prefixMarker, prefix),
 		deleteSignInDevicesForUser:   strings.ReplaceAll(deleteSignInDevicesForUserSQLite, prefixMarker, prefix),
 		listSignInDevicesForFamilies: strings.ReplaceAll(listSignInDevicesForFamiliesSQLite, prefixMarker, prefix),
 		listSignInDevicesForUser:     strings.ReplaceAll(listSignInDevicesForUserSQLite, prefixMarker, prefix),
@@ -119,6 +126,20 @@ func newSQLite(prefix string) *sqliteQueries {
 // the second on this engine.
 func timeText(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05")
+}
+
+// DeleteSignInDeviceForFamily runs the :execrows query against sqlite.
+func (q *sqliteQueries) DeleteSignInDeviceForFamily(ctx context.Context, db DBTX, arg DeleteSignInDeviceForFamilyParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteSignInDeviceForFamily,
+		arg.Scope,
+		arg.UserID,
+		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // DeleteSignInDevicesForUser runs the :execrows query against sqlite.
@@ -263,6 +284,11 @@ func (q *sqliteQueries) UpsertSignInDevice(ctx context.Context, db DBTX, arg Ups
 // disagreement between dialects a compile error here rather than a
 // transposition at run time.
 var (
+	_ = struct {
+		Scope    tenancy.Scope
+		UserID   string
+		FamilyID string
+	}(DeleteSignInDeviceForFamilyParams{})
 	_ = struct {
 		Scope  tenancy.Scope
 		UserID string

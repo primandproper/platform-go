@@ -253,6 +253,32 @@ func runStoreSuite(t *testing.T, h *harness) {
 		test.EqOp(t, int64(0), deleted)
 	})
 
+	t.Run("deletes the rows of the logins named, and only that person's", func(t *testing.T) {
+		const (
+			user     = "user_ended"
+			somebody = "user_ended_other"
+		)
+
+		h.mustRecord(t, testScope(), h.sighting("family_ended_a", user, browser))
+		h.mustRecord(t, testScope(), h.sighting("family_ended_b", user, browser))
+		h.mustRecord(t, testScope(), h.sighting("family_ended_kept", user, browser))
+		h.mustRecord(t, testScope(), h.sighting("family_ended_theirs", somebody, browser))
+
+		deleted, err := h.deleteForFamilies(t, testScope(), user,
+			[]string{"family_ended_a", "family_ended_b", "family_ended_theirs", "family_ended_unknown"})
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), deleted)
+
+		remaining := h.listForUser(t, testScope(), user)
+		must.SliceLen(t, 1, remaining)
+		test.EqOp(t, "family_ended_kept", remaining[0].FamilyID)
+		test.SliceLen(t, 1, h.listForUser(t, testScope(), somebody))
+
+		deleted, err = h.deleteForFamilies(t, testScope(), user, nil)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), deleted)
+	})
+
 	// A sighting that rolls back with the sign-in it belongs to records nothing,
 	// which is what writing on the caller's transaction buys.
 	t.Run("records nothing for a transaction that rolls back", func(t *testing.T) {

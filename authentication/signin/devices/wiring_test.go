@@ -65,4 +65,18 @@ func TestWiring(t *testing.T) {
 	test.Eq(t, map[string]map[string]string{
 		"family_wired": {AttributeIPAddress: "198.51.100.4", AttributeUserAgent: "Mozilla/5.0"},
 	}, attributes)
+
+	// Signing out of the login deletes its row on the revocation's transaction,
+	// so nothing reads it again — the export included — before the sweep would
+	// have reached it.
+	must.NoError(t, h.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		return hooks.AfterRevokeSignIns(t.Context(), tx, testScope(), &signin.Revocation{
+			Reason:    signin.RevocationSignOut,
+			SubjectID: testUser,
+			ActorID:   testUser,
+			FamilyIDs: []string{"family_wired"},
+		})
+	}))
+
+	test.SliceEmpty(t, h.listForUser(t, testScope(), testUser))
 }

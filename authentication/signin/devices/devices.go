@@ -196,15 +196,28 @@ type Store interface {
 
 	// ListForUser answers with every row one person has.
 	//
-	// It is unpaged, and the bound is structural: a row is one login, and the
-	// sweep deletes it once the login can no longer be alive, so what one
-	// person has is their live logins rather than their history.
+	// It is unpaged, and the bound is structural: a row is one login, deleted
+	// when the login is ended ([Hooks.AfterRevokeSignIns]) and swept once it
+	// lapses, so what one person has is their live logins rather than their
+	// history.
 	ListForUser(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
 		scope tenancy.Scope,
 		userID string,
 	) ([]*Device, error)
+
+	// DeleteForFamilies removes the rows of one person's logins among
+	// familyIDs, and reports how many it removed. A login with no row, or one
+	// that is not that person's, is left alone and is not an error. An empty
+	// familyIDs removes nothing without a query.
+	DeleteForFamilies(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID string,
+		familyIDs []string,
+	) (int64, error)
 
 	// DeleteForUser removes every row one person has, and reports how many it
 	// removed. Zero is not an error: somebody who never signed in has none.

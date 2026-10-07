@@ -217,6 +217,23 @@ func (h *harness) deleteForUser(tb testing.TB, scope tenancy.Scope, userID strin
 	return deleted, err
 }
 
+// deleteForFamilies removes the rows of some of one person's logins in a
+// transaction of its own.
+func (h *harness) deleteForFamilies(tb testing.TB, scope tenancy.Scope, userID string, familyIDs []string) (int64, error) {
+	tb.Helper()
+
+	var deleted int64
+
+	err := h.client.WithTransaction(tb.Context(), func(tx database.Tx) error {
+		var deleteErr error
+		deleted, deleteErr = h.store.DeleteForFamilies(tb.Context(), tx, scope, userID, familyIDs)
+
+		return deleteErr
+	})
+
+	return deleted, err
+}
+
 // rowsIn counts the rows in one table. It is raw SQL in a test, which is the one
 // place this package has any.
 func rowsIn(tb testing.TB, client database.Client, table string) int {

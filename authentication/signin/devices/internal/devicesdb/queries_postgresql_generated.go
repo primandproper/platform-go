@@ -13,6 +13,11 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const deleteSignInDeviceForFamilyPostgreSQL = `DELETE FROM {{prefix}}signin_devices
+WHERE scope = $1
+	AND user_id = $2
+	AND family_id = $3`
+
 const deleteSignInDevicesForUserPostgreSQL = `DELETE FROM {{prefix}}signin_devices
 WHERE scope = $1
 	AND user_id = $2`
@@ -82,6 +87,7 @@ ON CONFLICT (scope, family_id) DO UPDATE SET
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
+	deleteSignInDeviceForFamily  string
 	deleteSignInDevicesForUser   string
 	listSignInDevicesForFamilies string
 	listSignInDevicesForUser     string
@@ -93,12 +99,27 @@ type postgresqlQueries struct {
 // table name the analyzer identified.
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
+		deleteSignInDeviceForFamily:  strings.ReplaceAll(deleteSignInDeviceForFamilyPostgreSQL, prefixMarker, prefix),
 		deleteSignInDevicesForUser:   strings.ReplaceAll(deleteSignInDevicesForUserPostgreSQL, prefixMarker, prefix),
 		listSignInDevicesForFamilies: strings.ReplaceAll(listSignInDevicesForFamiliesPostgreSQL, prefixMarker, prefix),
 		listSignInDevicesForUser:     strings.ReplaceAll(listSignInDevicesForUserPostgreSQL, prefixMarker, prefix),
 		sweepSignInDevices:           strings.ReplaceAll(sweepSignInDevicesPostgreSQL, prefixMarker, prefix),
 		upsertSignInDevice:           strings.ReplaceAll(upsertSignInDevicePostgreSQL, prefixMarker, prefix),
 	}
+}
+
+// DeleteSignInDeviceForFamily runs the :execrows query against postgresql.
+func (q *postgresqlQueries) DeleteSignInDeviceForFamily(ctx context.Context, db DBTX, arg DeleteSignInDeviceForFamilyParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteSignInDeviceForFamily,
+		arg.Scope,
+		arg.UserID,
+		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // DeleteSignInDevicesForUser runs the :execrows query against postgresql.
@@ -233,6 +254,11 @@ func (q *postgresqlQueries) UpsertSignInDevice(ctx context.Context, db DBTX, arg
 // disagreement between dialects a compile error here rather than a
 // transposition at run time.
 var (
+	_ = struct {
+		Scope    tenancy.Scope
+		UserID   string
+		FamilyID string
+	}(DeleteSignInDeviceForFamilyParams{})
 	_ = struct {
 		Scope  tenancy.Scope
 		UserID string

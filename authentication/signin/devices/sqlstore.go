@@ -322,6 +322,54 @@ func (s *SQLStore) DeleteForUser(
 	return deleted, nil
 }
 
+// DeleteForFamilies removes the rows of one person's logins among familyIDs,
+// and reports how many it removed.
+//
+// It is what ending a login does to its row: without it the row of a login
+// somebody signed out of would stay until the sweep reached its deadline, and a
+// subject access request in between would export an address from a login that
+// was already over. The person is part of the predicate for ListForFamilies'
+// reason.
+//
+// It runs in tx, so the rows go with the revocation that ended their logins. It
+// issues one statement per family; a revocation names one person's live logins,
+// so the set is as small as the screen that lists them.
+func (s *SQLStore) DeleteForFamilies(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+	familyIDs []string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := validateOwner(scope, userID); err != nil {
+		return 0, err
+	}
+
+	op.SetValues(map[string]any{scopeKey: scope.String(), userIDKey: userID})
+
+	var deleted int64
+
+	for _, familyID := range familyIDs {
+		removed, err := s.q.DeleteSignInDeviceForFamily(ctx, tx, devicesdb.DeleteSignInDeviceForFamilyParams{
+			Scope:    scope,
+			UserID:   userID,
+			FamilyID: familyID,
+		})
+		if err != nil {
+			return 0, op.Error(err, "deleting an ended sign-in's device")
+		}
+
+		deleted += removed
+	}
+
+	op.SpanOnly(deletedKey, deleted)
+
+	return deleted, nil
+}
+
 // validateOwner is the argument check every method keyed on a person shares.
 func validateOwner(scope tenancy.Scope, userID string) error {
 	if err := scope.Validate(); err != nil {

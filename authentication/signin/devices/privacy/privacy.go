@@ -44,8 +44,9 @@ vocabulary to bridge.
 # The collector's read is not a page
 
 [devices.Store.ListForUser] answers with a slice, so this collector does not go
-through dataprivacy.CollectAll. The bound is the sweep: a row is one login, and
-it is deleted once the login can no longer be alive.
+through dataprivacy.CollectAll. The bound is structural: a row is one login,
+deleted when the login is ended and swept once it lapses, so an export holds a
+subject's live logins and never one they signed out of.
 
 # Executors
 

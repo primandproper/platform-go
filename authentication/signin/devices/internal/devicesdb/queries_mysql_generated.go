@@ -13,6 +13,11 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const deleteSignInDeviceForFamilyMySQL = `DELETE FROM {{prefix}}signin_devices
+WHERE scope = ?
+	AND user_id = ?
+	AND family_id = ?`
+
 const deleteSignInDevicesForUserMySQL = `DELETE FROM {{prefix}}signin_devices
 WHERE scope = ?
 	AND user_id = ?`
@@ -82,6 +87,7 @@ ON DUPLICATE KEY UPDATE
 
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
+	deleteSignInDeviceForFamily  string
 	deleteSignInDevicesForUser   string
 	listSignInDevicesForFamilies string
 	listSignInDevicesForUser     string
@@ -93,12 +99,27 @@ type mysqlQueries struct {
 // table name the analyzer identified.
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
+		deleteSignInDeviceForFamily:  strings.ReplaceAll(deleteSignInDeviceForFamilyMySQL, prefixMarker, prefix),
 		deleteSignInDevicesForUser:   strings.ReplaceAll(deleteSignInDevicesForUserMySQL, prefixMarker, prefix),
 		listSignInDevicesForFamilies: strings.ReplaceAll(listSignInDevicesForFamiliesMySQL, prefixMarker, prefix),
 		listSignInDevicesForUser:     strings.ReplaceAll(listSignInDevicesForUserMySQL, prefixMarker, prefix),
 		sweepSignInDevices:           strings.ReplaceAll(sweepSignInDevicesMySQL, prefixMarker, prefix),
 		upsertSignInDevice:           strings.ReplaceAll(upsertSignInDeviceMySQL, prefixMarker, prefix),
 	}
+}
+
+// DeleteSignInDeviceForFamily runs the :execrows query against mysql.
+func (q *mysqlQueries) DeleteSignInDeviceForFamily(ctx context.Context, db DBTX, arg DeleteSignInDeviceForFamilyParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteSignInDeviceForFamily,
+		arg.Scope,
+		arg.UserID,
+		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // DeleteSignInDevicesForUser runs the :execrows query against mysql.
@@ -243,6 +264,11 @@ func (q *mysqlQueries) UpsertSignInDevice(ctx context.Context, db DBTX, arg Upse
 // disagreement between dialects a compile error here rather than a
 // transposition at run time.
 var (
+	_ = struct {
+		Scope    tenancy.Scope
+		UserID   string
+		FamilyID string
+	}(DeleteSignInDeviceForFamilyParams{})
 	_ = struct {
 		Scope  tenancy.Scope
 		UserID string

@@ -117,6 +117,7 @@ const (
 	ListDevicesForFamiliesQuery = "ListSignInDevicesForFamilies"
 	ListDevicesForUserQuery     = "ListSignInDevicesForUser"
 	DeleteDevicesForUserQuery   = "DeleteSignInDevicesForUser"
+	DeleteDeviceForFamilyQuery  = "DeleteSignInDeviceForFamily"
 	SweepDevicesQuery           = "SweepSignInDevices"
 )
 
@@ -128,7 +129,7 @@ var UnscopedStatements = map[string]string{
 	SweepDevicesQuery: "the store's own machinery, collecting what has expired in every scope at once",
 }
 
-// Render returns the canonical sqlc input for d: the five statements this store
+// Render returns the canonical sqlc input for d: the six statements this store
 // executes, in one file's worth of text.
 //
 // It is what authentication/signin/devices/internal/queriesgen writes to the
@@ -138,7 +139,8 @@ var UnscopedStatements = map[string]string{
 // dialect, with the consumer's table prefix substituted once at construction.
 //
 // The order is the order a row goes through: written and renewed, read back for
-// a listing, exported, and finally deleted — with its owner, or by the sweep.
+// a listing, exported, and finally deleted — with its owner, with its login, or
+// by the sweep.
 //
 // # Why there is no standard set
 //
@@ -162,6 +164,7 @@ func Render(d dialect.Dialect) string {
 		listForFamilies(g),
 		listForUser(g),
 		deleteForUser(g),
+		deleteForFamily(g),
 		sweep(g),
 	})
 }
@@ -202,9 +205,9 @@ func listForFamilies(g *querygen.Generator) *querygen.Query {
 // listForUser is every row one person has, for the export a subject access
 // request makes.
 //
-// It is unpaged, and the bound is structural: a row is one login, and the sweep
-// deletes it once the login can no longer be alive — so what one person has is
-// their live logins rather than their history. A nil junction on the unpaged
+// It is unpaged, and the bound is structural: a row is one login, deleted when
+// the login is ended and swept once it lapses — so what one person has is their
+// live logins rather than their history. A nil junction on the unpaged
 // list is the construct for a many-row read keyed on something other than an id.
 func listForUser(g *querygen.Generator) *querygen.Query {
 	return g.JunctionListAllQuery(ListDevicesForUserQuery, DevicesTable, Columns, nil,
@@ -220,6 +223,24 @@ func deleteForUser(g *querygen.Generator) *querygen.Query {
 	return g.DeleteQuery(DeleteDevicesForUserQuery, DevicesTable, Columns,
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: UserIDColumn},
+	)
+}
+
+// deleteForFamily removes one login's row, which is what ending the login does
+// to it.
+//
+// It names the person as well as the login, for listForFamilies' reason: a
+// revocation only ever names that person's families, so the predicate changes no
+// answer a correct caller gets, and it keeps a caller that passed somebody
+// else's family from deleting where that somebody signed in from.
+//
+// It is one row a statement rather than a set, because querygen has no set
+// delete and a revocation's families are one person's live logins.
+func deleteForFamily(g *querygen.Generator) *querygen.Query {
+	return g.DeleteQuery(DeleteDeviceForFamilyQuery, DevicesTable, Columns,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: UserIDColumn},
+		querygen.Match{Column: FamilyIDColumn},
 	)
 }
 
