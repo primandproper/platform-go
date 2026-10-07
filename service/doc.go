@@ -36,7 +36,10 @@ builds it in the order it has to come up, and Run serves until the process is
 signaled and then takes it down in the order that makes each drain mean
 something — ingress first, background loops in reverse, the observability
 pillars last. The convention that makes that orderable is Runner, which every
-background loop in this module already satisfied before it had a name.
+background loop in this module already satisfied before it had a name. An
+application's own loops join through WithRunners and close before the
+platform's; its own single-shot drains join through WithFlush and run in the
+final-flush slot beside the platform's, after every loop has stopped.
 
 Health falls out of the same reading. Register wraps the infrastructure it
 registered in the healthcheck adapters that have always existed for it, so a

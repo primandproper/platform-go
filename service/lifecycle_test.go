@@ -96,7 +96,7 @@ func TestNew_ordering(T *testing.T) {
 		do.ProvideValue[httpserver.Server](i, newFakeServer(&journal{}, "http"))
 		do.ProvideValue(i, &grpcserver.Server{})
 
-		svc, err := New(i)
+		svc, err := New(i, WithFlush("reminder queue", func(context.Context) error { return nil }))
 		must.NoError(t, err)
 
 		// Built first, released last: the database is at the head of the list
@@ -125,10 +125,11 @@ func TestNew_ordering(T *testing.T) {
 			"operations watcher",
 		}, names(svc.runners))
 
-		// Both drains with no loop of their own. The operations queue is here
-		// because nothing else closes it: the injector does not, since do
-		// recognizes a Shutdown method and a Queue spells that Close.
-		test.Eq(t, []string{"metering flusher", "operations queue"}, names(svc.flushes))
+		// Both drains with no loop of their own, after the application's. The
+		// operations queue is here because nothing else closes it: the injector
+		// does not, since do recognizes a Shutdown method and a Queue spells
+		// that Close.
+		test.Eq(t, []string{"reminder queue", "metering flusher", "operations queue"}, names(svc.flushes))
 
 		// Ingress last, so nothing can be asked for before it exists.
 		test.Eq(t, []string{"HTTP server", "gRPC server"}, names(svc.servers))

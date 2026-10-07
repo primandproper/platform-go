@@ -147,6 +147,10 @@ func New(i do.Injector, opts ...Option) (*Service, error) {
 	svc.resolveClients(r)
 	svc.resolveHealth(r, o.healthChecks)
 	svc.resolveRunners(r)
+
+	// Application drains go first in their slot: one may write into a drain
+	// platform runs, and none of platform's writes into one of them.
+	svc.flushes = append(svc.flushes, o.flushes...)
 	svc.resolveFlushes(r)
 	svc.resolveServers(r)
 	resolveRegistered(r)
@@ -353,7 +357,9 @@ func (s *Service) resolveRunners(r *resolver) {
 // where a single-shot drain belongs when there is a loop to hang it on, which is
 // why eventcapture.Recorder — the third buffered thing in this module — is not
 // here. It drains and closes its sink inside its own Close and rides along as a
-// Runner. An application's single-shot drain belongs there for the same reason.
+// Runner. An application's single-shot drain belongs there for the same reason
+// when nothing feeds it but its own loop; one a platform loop feeds — a batcher
+// the scheduler enqueues into — joins this slot through WithFlush instead.
 //
 // The search index registry is the third: its stamp buffers belong to no loop,
 // and the pool group whose handlers fill them is a runner, so it has closed by
