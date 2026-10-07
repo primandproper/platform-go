@@ -344,6 +344,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 
 				return err
 			}},
+			{name: "GetAccountByPaymentProcessorCustomerID", run: func() error {
+				_, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), nil, testScope, "cus_1")
+
+				return err
+			}},
 			{name: "ListAccounts", run: func() error {
 				_, err := store.ListAccounts(t.Context(), nil, testScope, nil)
 

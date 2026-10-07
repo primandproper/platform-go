@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/pointer"
@@ -464,6 +465,110 @@ func runDirectoryReaderSuite(t *testing.T, env *storeEnv) {
 
 		_, err := store.GetAccount(t.Context(), env.reader(), otherScope, account.ID)
 		must.ErrorIs(t, err, ErrAccountNotFound)
+	})
+
+	t.Run("reads the account holding a payment processor customer", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+		seedAccountFor(t, env, store, owner, "Bystander")
+
+		_, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), testScope, "cus_123")
+		must.ErrorIs(t, err, ErrAccountNotFound)
+
+		must.NoError(t, env.setAccountPaymentProcessorCustomerID(t, store, testScope, account.ID, "cus_123"))
+
+		found, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), testScope, "cus_123")
+		must.NoError(t, err)
+		test.EqOp(t, account.ID, found.ID)
+		test.EqOp(t, "cus_123", found.PaymentProcessorCustomerID)
+		test.EqOp(t, account.Name, found.Name)
+		test.EqOp(t, account.OwnerUserID, found.OwnerUserID)
+	})
+
+	t.Run("reads a customer the caller's own transaction attached", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+
+		// The shape of a processor delivery landing behind a checkout: the
+		// attachment is uncommitted, and the read is handed the same Tx.
+		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
+			if err := store.SetAccountPaymentProcessorCustomerID(t.Context(), tx, testScope, account.ID, "cus_123"); err != nil {
+				return err
+			}
+
+			found, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), tx, testScope, "cus_123")
+			if err != nil {
+				return err
+			}
+
+			test.EqOp(t, account.ID, found.ID)
+
+			return nil
+		}))
+	})
+
+	t.Run("does not read a customer held in another directory, or by an archived account", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+
+		must.NoError(t, env.setAccountPaymentProcessorCustomerID(t, store, testScope, account.ID, "cus_123"))
+
+		_, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), otherScope, "cus_123")
+		must.ErrorIs(t, err, ErrAccountNotFound)
+
+		_, err = env.archiveAccount(t, store, testScope, account.ID)
+		must.NoError(t, err)
+
+		_, err = store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), testScope, "cus_123")
+		must.ErrorIs(t, err, ErrAccountNotFound)
+	})
+
+	t.Run("answers the lowest id when two accounts hold one customer", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		first := seedAccountFor(t, env, store, owner, "Acme")
+		second := seedAccountFor(t, env, store, owner, "Acme Two")
+
+		must.NoError(t, env.setAccountPaymentProcessorCustomerID(t, store, testScope, first.ID, "cus_123"))
+		must.NoError(t, env.setAccountPaymentProcessorCustomerID(t, store, testScope, second.ID, "cus_123"))
+
+		want := min(first.ID, second.ID)
+
+		for range 3 {
+			found, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), testScope, "cus_123")
+			must.NoError(t, err)
+			test.EqOp(t, want, found.ID)
+		}
+	})
+
+	t.Run("refuses an empty payment processor customer, and an unset scope", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+
+		// An account never created at the processor holds the empty string, so
+		// this one would match it were the read not refused.
+		seedAccountFor(t, env, store, owner, "Acme")
+
+		_, err := store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), testScope, "")
+		must.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+
+		var unset tenancy.Scope
+
+		_, err = store.GetAccountByPaymentProcessorCustomerID(t.Context(), env.reader(), unset, "cus_123")
+		must.Error(t, err)
 	})
 
 	t.Run("pages accounts and a user's own", func(t *testing.T) {

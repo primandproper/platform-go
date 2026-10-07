@@ -213,6 +213,35 @@ type GetAccountRow struct {
 	ArchivedAt                  *time.Time
 }
 
+// GetAccountByPaymentProcessorCustomerIDParams are the arguments to GetAccountByPaymentProcessorCustomerID.
+type GetAccountByPaymentProcessorCustomerIDParams struct {
+	Scope                      tenancy.Scope
+	PaymentProcessorCustomerID string
+}
+
+// GetAccountByPaymentProcessorCustomerIDRow is one row of GetAccountByPaymentProcessorCustomerID's result.
+type GetAccountByPaymentProcessorCustomerIDRow struct {
+	ID                          string
+	Scope                       tenancy.Scope
+	Name                        string
+	OwnerUserID                 string
+	BillingStatus               string
+	SubscriptionPlanID          *string
+	PaymentProcessorCustomerID  string
+	LastPaymentProviderSyncedAt *time.Time
+	AddressLine1                string
+	AddressLine2                string
+	AddressCity                 string
+	AddressState                string
+	AddressPostalCode           string
+	AddressCountry              string
+	AddressPhone                string
+	TimeZone                    string
+	CreatedAt                   time.Time
+	LastUpdatedAt               *time.Time
+	ArchivedAt                  *time.Time
+}
+
 // GetAccountIncludingArchivedParams are the arguments to GetAccountIncludingArchived.
 type GetAccountIncludingArchivedParams struct {
 	ID    string

@@ -241,6 +241,33 @@ WHERE {{prefix}}identity_accounts.archived_at IS NULL
 	AND {{prefix}}identity_accounts.id = ?1
 	AND {{prefix}}identity_accounts.scope = ?2`
 
+const getAccountByPaymentProcessorCustomerIDSQLite = `SELECT
+	{{prefix}}identity_accounts.id,
+	{{prefix}}identity_accounts.scope,
+	{{prefix}}identity_accounts.name,
+	{{prefix}}identity_accounts.owner_user_id,
+	{{prefix}}identity_accounts.billing_status,
+	{{prefix}}identity_accounts.subscription_plan_id,
+	{{prefix}}identity_accounts.payment_processor_customer_id,
+	{{prefix}}identity_accounts.last_payment_provider_synced_at,
+	{{prefix}}identity_accounts.address_line1,
+	{{prefix}}identity_accounts.address_line2,
+	{{prefix}}identity_accounts.address_city,
+	{{prefix}}identity_accounts.address_state,
+	{{prefix}}identity_accounts.address_postal_code,
+	{{prefix}}identity_accounts.address_country,
+	{{prefix}}identity_accounts.address_phone,
+	{{prefix}}identity_accounts.time_zone,
+	{{prefix}}identity_accounts.created_at,
+	{{prefix}}identity_accounts.last_updated_at,
+	{{prefix}}identity_accounts.archived_at
+FROM {{prefix}}identity_accounts
+WHERE {{prefix}}identity_accounts.archived_at IS NULL
+	AND {{prefix}}identity_accounts.scope = ?1
+	AND {{prefix}}identity_accounts.payment_processor_customer_id = ?2
+ORDER BY {{prefix}}identity_accounts.id ASC
+LIMIT 1`
+
 const getAccountIncludingArchivedSQLite = `SELECT
 	{{prefix}}identity_accounts.id,
 	{{prefix}}identity_accounts.scope,
@@ -1829,6 +1856,7 @@ type sqliteQueries struct {
 	eraseInvitationsToUser                   string
 	eraseUser                                string
 	getAccount                               string
+	getAccountByPaymentProcessorCustomerID   string
 	getAccountIncludingArchived              string
 	getArchivedAccount                       string
 	getArchivedUser                          string
@@ -1919,6 +1947,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		eraseInvitationsToUser:                   strings.ReplaceAll(eraseInvitationsToUserSQLite, prefixMarker, prefix),
 		eraseUser:                                strings.ReplaceAll(eraseUserSQLite, prefixMarker, prefix),
 		getAccount:                               strings.ReplaceAll(getAccountSQLite, prefixMarker, prefix),
+		getAccountByPaymentProcessorCustomerID:   strings.ReplaceAll(getAccountByPaymentProcessorCustomerIDSQLite, prefixMarker, prefix),
 		getAccountIncludingArchived:              strings.ReplaceAll(getAccountIncludingArchivedSQLite, prefixMarker, prefix),
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountSQLite, prefixMarker, prefix),
 		getArchivedUser:                          strings.ReplaceAll(getArchivedUserSQLite, prefixMarker, prefix),
@@ -2325,6 +2354,40 @@ func (q *sqliteQueries) GetAccount(ctx context.Context, db DBTX, arg GetAccountP
 	)
 
 	var i GetAccountRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.OwnerUserID,
+		&i.BillingStatus,
+		&i.SubscriptionPlanID,
+		&i.PaymentProcessorCustomerID,
+		&i.LastPaymentProviderSyncedAt,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.AddressPhone,
+		&i.TimeZone,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetAccountByPaymentProcessorCustomerID runs the :one query against sqlite.
+func (q *sqliteQueries) GetAccountByPaymentProcessorCustomerID(ctx context.Context, db DBTX, arg GetAccountByPaymentProcessorCustomerIDParams) (GetAccountByPaymentProcessorCustomerIDRow, error) {
+	row := db.QueryRowContext(ctx, q.getAccountByPaymentProcessorCustomerID,
+		arg.Scope,
+		arg.PaymentProcessorCustomerID,
+	)
+
+	var i GetAccountByPaymentProcessorCustomerIDRow
 
 	err := row.Scan(
 		&i.ID,
@@ -4583,6 +4646,31 @@ var (
 		LastUpdatedAt               *time.Time
 		ArchivedAt                  *time.Time
 	}(GetAccountRow{})
+	_ = struct {
+		Scope                      tenancy.Scope
+		PaymentProcessorCustomerID string
+	}(GetAccountByPaymentProcessorCustomerIDParams{})
+	_ = struct {
+		ID                          string
+		Scope                       tenancy.Scope
+		Name                        string
+		OwnerUserID                 string
+		BillingStatus               string
+		SubscriptionPlanID          *string
+		PaymentProcessorCustomerID  string
+		LastPaymentProviderSyncedAt *time.Time
+		AddressLine1                string
+		AddressLine2                string
+		AddressCity                 string
+		AddressState                string
+		AddressPostalCode           string
+		AddressCountry              string
+		AddressPhone                string
+		TimeZone                    string
+		CreatedAt                   time.Time
+		LastUpdatedAt               *time.Time
+		ArchivedAt                  *time.Time
+	}(GetAccountByPaymentProcessorCustomerIDRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

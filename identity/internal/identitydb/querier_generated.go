@@ -132,6 +132,8 @@ type Querier interface {
 	EraseUser(ctx context.Context, db DBTX, arg EraseUserParams) (int64, error)
 	// GetAccount runs the :one query.
 	GetAccount(ctx context.Context, db DBTX, arg GetAccountParams) (GetAccountRow, error)
+	// GetAccountByPaymentProcessorCustomerID runs the :one query.
+	GetAccountByPaymentProcessorCustomerID(ctx context.Context, db DBTX, arg GetAccountByPaymentProcessorCustomerIDParams) (GetAccountByPaymentProcessorCustomerIDRow, error)
 	// GetAccountIncludingArchived runs the :one query.
 	GetAccountIncludingArchived(ctx context.Context, db DBTX, arg GetAccountIncludingArchivedParams) (GetAccountIncludingArchivedRow, error)
 	// GetArchivedAccount runs the :one query.

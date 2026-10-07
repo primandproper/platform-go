@@ -1147,8 +1147,9 @@ func uniquenessChecks(g *querygen.Generator) []*querygen.Query {
 	return rendered
 }
 
-// keyedAccountReads is the one account read that keys on something other than
-// the id: an account the user owns.
+// keyedAccountReads is the two account reads that key on something other than
+// the id: an account the user owns, and the account holding a processor's
+// customer.
 //
 // It is the guard behind ArchiveUser, and it is a read rather than an existence
 // check because the answer a caller needs is which account blocked. An owner
@@ -1160,6 +1161,11 @@ func uniquenessChecks(g *querygen.Generator) []*querygen.Query {
 // A user may own several; the ordering is what makes "one of them" a row rather
 // than whichever one the planner reached first, so a refusal repeated against
 // an unchanged directory names the same account twice.
+//
+// The customer read is how a processor delivery, which names the customer and
+// not the account, finds the account it is about. Nothing makes the column
+// unique, so it is ordered for the same reason: should two accounts ever hold
+// one customer, every delivery for it lands on the same one.
 func keyedAccountReads(g *querygen.Generator) []*querygen.Query {
 	return []*querygen.Query{
 		g.ReadQuery("GetOwnedAccountIDForUser", AccountsTable, Accounts.KeyedColumns(),
@@ -1169,6 +1175,13 @@ func keyedAccountReads(g *querygen.Generator) []*querygen.Query {
 			},
 			querygen.Match{Column: ScopeColumn},
 			querygen.Match{Column: ownerUserIDColumn}),
+		g.ReadQuery("GetAccountByPaymentProcessorCustomerID", AccountsTable, Accounts.KeyedColumns(),
+			querygen.Read{
+				Projection: Accounts.Columns,
+				Order:      querygen.IDColumn,
+			},
+			querygen.Match{Column: ScopeColumn},
+			querygen.Match{Column: paymentProcessorCustomerIDColumn}),
 	}
 }
 

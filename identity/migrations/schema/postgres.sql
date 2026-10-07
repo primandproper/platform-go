@@ -141,3 +141,7 @@ CREATE TABLE IF NOT EXISTS identity_invitation_roles (
     PRIMARY KEY (invitation_id, role)
 );
 
+CREATE INDEX IF NOT EXISTS identity_accounts_customer_idx
+    ON identity_accounts (scope, payment_processor_customer_id, id)
+    WHERE archived_at IS NULL;
+

@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/querygen"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -431,6 +432,46 @@ func (s *SQLStore) GetAccount(
 	}
 
 	return account, nil
+}
+
+// GetAccountByPaymentProcessorCustomerID reads the scope's live account holding
+// the processor's customer.
+func (s *SQLStore) GetAccountByPaymentProcessorCustomerID(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	customerID string,
+) (*Account, error) {
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
+	defer op.End()
+
+	if err := requireExecutor(q); err != nil {
+		return nil, op.Error(err, "reading identity account by payment processor customer")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "reading identity account by payment processor customer")
+	}
+
+	if customerID == "" {
+		// The empty string is how "not created at the processor" is stored, so
+		// reading by it would answer with whichever such account sorts first.
+		return nil, op.Error(
+			platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty payment processor customer"),
+			"reading identity account by payment processor customer",
+		)
+	}
+
+	row, err := s.q.GetAccountByPaymentProcessorCustomerID(ctx, q,
+		identitydb.GetAccountByPaymentProcessorCustomerIDParams{
+			Scope:                      scope,
+			PaymentProcessorCustomerID: customerID,
+		})
+	if err != nil {
+		return nil, op.Error(notFound(err, ErrAccountNotFound), "reading identity account by payment processor customer")
+	}
+
+	return accountFromCustomerRow(&row), nil
 }
 
 // readAccount is the read by id, through whatever executor the caller is

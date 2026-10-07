@@ -58,6 +58,9 @@ var _ identity.Store = &StoreMock{}
 //			GetAccountFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, accountID string) (*identity.Account, error) {
 //				panic("mock out the GetAccount method")
 //			},
+//			GetAccountByPaymentProcessorCustomerIDFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, customerID string) (*identity.Account, error) {
+//				panic("mock out the GetAccountByPaymentProcessorCustomerID method")
+//			},
 //			GetInvitationFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, invitationID string) (*identity.Invitation, error) {
 //				panic("mock out the GetInvitation method")
 //			},
@@ -226,6 +229,9 @@ type StoreMock struct {
 
 	// GetAccountFunc mocks the GetAccount method.
 	GetAccountFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, accountID string) (*identity.Account, error)
+
+	// GetAccountByPaymentProcessorCustomerIDFunc mocks the GetAccountByPaymentProcessorCustomerID method.
+	GetAccountByPaymentProcessorCustomerIDFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, customerID string) (*identity.Account, error)
 
 	// GetInvitationFunc mocks the GetInvitation method.
 	GetInvitationFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, invitationID string) (*identity.Invitation, error)
@@ -484,6 +490,17 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// AccountID is the accountID argument value.
 			AccountID string
+		}
+		// GetAccountByPaymentProcessorCustomerID holds details about calls to the GetAccountByPaymentProcessorCustomerID method.
+		GetAccountByPaymentProcessorCustomerID []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// CustomerID is the customerID argument value.
+			CustomerID string
 		}
 		// GetInvitation holds details about calls to the GetInvitation method.
 		GetInvitation []struct {
@@ -1021,60 +1038,61 @@ type StoreMock struct {
 			Secret string
 		}
 	}
-	lockAcceptInvitation                     sync.RWMutex
-	lockArchiveAccount                       sync.RWMutex
-	lockArchiveUser                          sync.RWMutex
-	lockCreateAccount                        sync.RWMutex
-	lockCreateInvitation                     sync.RWMutex
-	lockCreateMembership                     sync.RWMutex
-	lockCreateUser                           sync.RWMutex
-	lockDeleteAccount                        sync.RWMutex
-	lockEraseInvitationsForSubject           sync.RWMutex
-	lockEraseUser                            sync.RWMutex
-	lockGetAccount                           sync.RWMutex
-	lockGetInvitation                        sync.RWMutex
-	lockGetInvitationByToken                 sync.RWMutex
-	lockGetMembership                        sync.RWMutex
-	lockGetPrincipal                         sync.RWMutex
-	lockGetUser                              sync.RWMutex
-	lockGetUserByEmailAddress                sync.RWMutex
-	lockGetUserByEmailVerificationToken      sync.RWMutex
-	lockGetUserByUsername                    sync.RWMutex
-	lockGetUserIncludingArchived             sync.RWMutex
-	lockListAccountMembers                   sync.RWMutex
-	lockListAccounts                         sync.RWMutex
-	lockListAccountsForUser                  sync.RWMutex
-	lockListInvitationsForEmailAddress       sync.RWMutex
-	lockListInvitationsFromUser              sync.RWMutex
-	lockListMembershipsForUser               sync.RWMutex
-	lockListUsers                            sync.RWMutex
-	lockListUsersByIDs                       sync.RWMutex
-	lockMarkAccountBillingSynced             sync.RWMutex
-	lockMarkUserEmailAddressProven           sync.RWMutex
-	lockMarkUserEmailAddressUnverified       sync.RWMutex
-	lockMarkUserEmailAddressVerified         sync.RWMutex
-	lockMarkUserTwoFactorSecretVerified      sync.RWMutex
-	lockMarkUsersAsIndexed                   sync.RWMutex
-	lockRecordAccountSubscription            sync.RWMutex
-	lockRecordAccountSubscriptionEnded       sync.RWMutex
-	lockRecordAgreement                      sync.RWMutex
-	lockRemoveMembership                     sync.RWMutex
-	lockScanUsersForReindex                  sync.RWMutex
-	lockSearchUsersByUsername                sync.RWMutex
-	lockSetAccountBillingStatus              sync.RWMutex
-	lockSetAccountPaymentProcessorCustomerID sync.RWMutex
-	lockSetDefaultAccount                    sync.RWMutex
-	lockSetInvitationStatus                  sync.RWMutex
-	lockSetMembershipRoles                   sync.RWMutex
-	lockSetUserEmailAddressVerificationToken sync.RWMutex
-	lockSetUserRequiresPasswordChange        sync.RWMutex
-	lockSetUserServiceRoles                  sync.RWMutex
-	lockTransferAccountOwnership             sync.RWMutex
-	lockUpdateAccount                        sync.RWMutex
-	lockUpdateUser                           sync.RWMutex
-	lockUpdateUserAccountStatus              sync.RWMutex
-	lockUpdateUserPassword                   sync.RWMutex
-	lockUpdateUserTwoFactorSecret            sync.RWMutex
+	lockAcceptInvitation                       sync.RWMutex
+	lockArchiveAccount                         sync.RWMutex
+	lockArchiveUser                            sync.RWMutex
+	lockCreateAccount                          sync.RWMutex
+	lockCreateInvitation                       sync.RWMutex
+	lockCreateMembership                       sync.RWMutex
+	lockCreateUser                             sync.RWMutex
+	lockDeleteAccount                          sync.RWMutex
+	lockEraseInvitationsForSubject             sync.RWMutex
+	lockEraseUser                              sync.RWMutex
+	lockGetAccount                             sync.RWMutex
+	lockGetAccountByPaymentProcessorCustomerID sync.RWMutex
+	lockGetInvitation                          sync.RWMutex
+	lockGetInvitationByToken                   sync.RWMutex
+	lockGetMembership                          sync.RWMutex
+	lockGetPrincipal                           sync.RWMutex
+	lockGetUser                                sync.RWMutex
+	lockGetUserByEmailAddress                  sync.RWMutex
+	lockGetUserByEmailVerificationToken        sync.RWMutex
+	lockGetUserByUsername                      sync.RWMutex
+	lockGetUserIncludingArchived               sync.RWMutex
+	lockListAccountMembers                     sync.RWMutex
+	lockListAccounts                           sync.RWMutex
+	lockListAccountsForUser                    sync.RWMutex
+	lockListInvitationsForEmailAddress         sync.RWMutex
+	lockListInvitationsFromUser                sync.RWMutex
+	lockListMembershipsForUser                 sync.RWMutex
+	lockListUsers                              sync.RWMutex
+	lockListUsersByIDs                         sync.RWMutex
+	lockMarkAccountBillingSynced               sync.RWMutex
+	lockMarkUserEmailAddressProven             sync.RWMutex
+	lockMarkUserEmailAddressUnverified         sync.RWMutex
+	lockMarkUserEmailAddressVerified           sync.RWMutex
+	lockMarkUserTwoFactorSecretVerified        sync.RWMutex
+	lockMarkUsersAsIndexed                     sync.RWMutex
+	lockRecordAccountSubscription              sync.RWMutex
+	lockRecordAccountSubscriptionEnded         sync.RWMutex
+	lockRecordAgreement                        sync.RWMutex
+	lockRemoveMembership                       sync.RWMutex
+	lockScanUsersForReindex                    sync.RWMutex
+	lockSearchUsersByUsername                  sync.RWMutex
+	lockSetAccountBillingStatus                sync.RWMutex
+	lockSetAccountPaymentProcessorCustomerID   sync.RWMutex
+	lockSetDefaultAccount                      sync.RWMutex
+	lockSetInvitationStatus                    sync.RWMutex
+	lockSetMembershipRoles                     sync.RWMutex
+	lockSetUserEmailAddressVerificationToken   sync.RWMutex
+	lockSetUserRequiresPasswordChange          sync.RWMutex
+	lockSetUserServiceRoles                    sync.RWMutex
+	lockTransferAccountOwnership               sync.RWMutex
+	lockUpdateAccount                          sync.RWMutex
+	lockUpdateUser                             sync.RWMutex
+	lockUpdateUserAccountStatus                sync.RWMutex
+	lockUpdateUserPassword                     sync.RWMutex
+	lockUpdateUserTwoFactorSecret              sync.RWMutex
 }
 
 // AcceptInvitation calls AcceptInvitationFunc.
@@ -1570,6 +1588,50 @@ func (mock *StoreMock) GetAccountCalls() []struct {
 	mock.lockGetAccount.RLock()
 	calls = mock.calls.GetAccount
 	mock.lockGetAccount.RUnlock()
+	return calls
+}
+
+// GetAccountByPaymentProcessorCustomerID calls GetAccountByPaymentProcessorCustomerIDFunc.
+func (mock *StoreMock) GetAccountByPaymentProcessorCustomerID(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, customerID string) (*identity.Account, error) {
+	if mock.GetAccountByPaymentProcessorCustomerIDFunc == nil {
+		panic("StoreMock.GetAccountByPaymentProcessorCustomerIDFunc: method is nil but Store.GetAccountByPaymentProcessorCustomerID was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Q          database.SQLQueryExecutor
+		Scope      tenancy.Scope
+		CustomerID string
+	}{
+		Ctx:        ctx,
+		Q:          q,
+		Scope:      scope,
+		CustomerID: customerID,
+	}
+	mock.lockGetAccountByPaymentProcessorCustomerID.Lock()
+	mock.calls.GetAccountByPaymentProcessorCustomerID = append(mock.calls.GetAccountByPaymentProcessorCustomerID, callInfo)
+	mock.lockGetAccountByPaymentProcessorCustomerID.Unlock()
+	return mock.GetAccountByPaymentProcessorCustomerIDFunc(ctx, q, scope, customerID)
+}
+
+// GetAccountByPaymentProcessorCustomerIDCalls gets all the calls that were made to GetAccountByPaymentProcessorCustomerID.
+// Check the length with:
+//
+//	len(mockedStore.GetAccountByPaymentProcessorCustomerIDCalls())
+func (mock *StoreMock) GetAccountByPaymentProcessorCustomerIDCalls() []struct {
+	Ctx        context.Context
+	Q          database.SQLQueryExecutor
+	Scope      tenancy.Scope
+	CustomerID string
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Q          database.SQLQueryExecutor
+		Scope      tenancy.Scope
+		CustomerID string
+	}
+	mock.lockGetAccountByPaymentProcessorCustomerID.RLock()
+	calls = mock.calls.GetAccountByPaymentProcessorCustomerID
+	mock.lockGetAccountByPaymentProcessorCustomerID.RUnlock()
 	return calls
 }
 
