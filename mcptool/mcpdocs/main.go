@@ -2,12 +2,16 @@
 // describe their properties with, as a generated Go file.
 //
 // It is run by a `//go:generate` directive in each MCP tool surface, naming
-// the structs whose properties that surface's tools describe:
+// the structs whose properties that surface's tools describe. A surface in
+// another module names this command by its import path:
 //
-//	//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go example.com/pkg.Report
+//	//go:generate go run github.com/primandproper/platform-go/v15/mcptool/mcpdocs -pkg tools -out fielddocs_gen.go example.com/app/recipes.Recipe
 //
-// The surface's own test re-extracts the same structs and compares, so a doc
-// comment edited without regenerating fails there. See internal/mcptool.
+// The generated file declares fieldDocs, which the surface hands to
+// mcptool.Input and mcptool.Output. The surface's own test re-extracts the
+// same structs — mcptool.DirectiveSpecs reads them back off this directive —
+// and compares, so a doc comment edited without regenerating fails there. See
+// mcptool.
 package main
 
 import (
@@ -16,7 +20,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/mcptool"
 )
 
 func main() {

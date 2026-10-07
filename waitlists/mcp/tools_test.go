@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v15/callers"
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/mcptool"
 	"github.com/primandproper/platform-go/v15/waitlists"
 	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 	waitlistsmcp "github.com/primandproper/platform-go/v15/waitlists/mcp"

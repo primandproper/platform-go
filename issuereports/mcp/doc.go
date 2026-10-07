@@ -35,7 +35,7 @@ property names are its `json` tags, and each description is the field's own doc
 comment, generated into fielddocs_gen.go by `go generate` and checked against
 the source by this package's tests. A field added to Report reaches a model the
 next time the package is built, and a doc comment edited without regenerating
-fails a test. internal/mcptool says why the schema is never written by hand.
+fails a test. mcptool says why the schema is never written by hand.
 
 # Read-only, and why
 
@@ -50,7 +50,7 @@ over the store or the gRPC surface it already has.
 A tool's error text goes to the model verbatim. A refusal is answered in its
 own words — no principal, no grant, an argument the schema refused, a reporter
 the caller may not name, or one of issuereports.ClientSafeSentinels — and every
-other failure is internal/mcptool's ErrToolFailed, with the cause on the call's
+other failure is mcptool's ErrToolFailed, with the cause on the call's
 log line and span.
 */
 package mcp

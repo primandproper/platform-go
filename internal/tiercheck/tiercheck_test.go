@@ -83,6 +83,13 @@ var roster = map[string]entry{
 	// where a top-level package's tier is explained.
 	"callers": {tier: domain},
 
+	// A domain that owns no table: what an MCP tool surface is built on — its
+	// schemas reflected off the Go types it reads and writes, and the grant
+	// gate every call passes. It is a domain because the gate reads a callers
+	// principal, and it is exported because a consumer's own tools are built
+	// on it as this module's are.
+	"mcptool": {tier: domain},
+
 	// A domain that owns no table: the audit entry and the outbox event every
 	// store write here owes, written once, on the write's transaction, over
 	// audit's and webhooks' stores. It is a domain because both halves are
@@ -128,7 +135,7 @@ var roster = map[string]entry{
 	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},
 	"internal/directrequires":   {tier: root, why: "a convention test over go.mod's account of what the module imports"},
 	"internal/hookroster":       {tier: root, why: "a convention test pairing every store write with the hook it owes"},
-	"internal/mcptool":          {tier: domain, why: "the schema and the grant check the domain MCP tool surfaces share"},
+	"internal/mcptoolfixture":   {tier: domain, why: "the documented structs mcptool's suite extracts, at an import path a _test.go file does not have"},
 	"internal/protoconvention":  {tier: root, why: "a convention test over every .proto the module ships"},
 	"internal/routeguard":       {tier: domain, why: "the permission check the domain HTTP surfaces put in front of their guarded routes"},
 	"internal/scheduledjob":     {tier: domain, why: "the defaulting and rendering every self-scheduling store's job config shares"},

@@ -1,6 +1,8 @@
-// Package mcptool is what this module's read-only Model Context Protocol tool
-// surfaces share: the schema a tool's input and output are described with, and
-// the gate every call passes before it reaches a store.
+// Package mcptool is what a Model Context Protocol tool surface is built on:
+// the schema a tool's input and output are described with, and the gate every
+// call passes before it reaches a store. This module's own surfaces —
+// issuereports/mcp, waitlists/mcp and webhooks/mcp — are built on it, and a
+// consumer's tools over its own rows are built on it the same way.
 //
 // # The schema is derived, never written
 //
@@ -39,6 +41,39 @@
 // refusal of the arguments themselves — and replaces every other failure with
 // [ErrToolFailed], logging the cause. A database error's text is the schema of
 // the database.
+//
+// # Building a surface
+//
+// A surface names the structs its tools describe in a go:generate directive,
+// and the generator writes their doc comments into the package:
+//
+//	//go:generate go run github.com/primandproper/platform-go/v15/mcptool/mcpdocs -pkg tools -out fielddocs_gen.go example.com/app/recipes.Recipe example.com/app/tools.GetRecipeInput
+//
+// Its test keeps that file honest by extracting the same structs again, read
+// off the same directive so the list is written once:
+//
+//	specs, err := mcptool.DirectiveSpecs("tools.go")
+//	extracted, err := mcptool.Extract(specs...)
+//	// extracted must equal fieldDocs
+//
+// The tools take their schemas from [Input] and [Output] over that map, and
+// every handler opens with [Surface.Begin] and returns through [Call.End]:
+//
+//	ctx, call, err := surface.Begin(ctx, req, "get_recipe", recipes.PermissionRead)
+//	if err != nil {
+//		return nil, nil, err
+//	}
+//
+//	recipe, err := store.GetRecipe(ctx, db, call.Scope, in.RecipeID)
+//	if err != nil {
+//		return nil, nil, call.End(err)
+//	}
+//
+//	return nil, recipe, call.End(nil)
+//
+// call.Scope is the caller's, off their principal, and is the only scope a
+// handler reads with: a tenant a model could name in its arguments would be a
+// cross-tenant read hiding behind an argument.
 package mcptool
 
-//go:generate go run ../cmd/mcpdocs -pkg mcptool -out fielddocs_gen.go github.com/primandproper/primitives-go/v2/filtering.QueryFilteredResult github.com/primandproper/primitives-go/v2/filtering.Pagination
+//go:generate go run ./mcpdocs -pkg mcptool -out fielddocs_gen.go github.com/primandproper/primitives-go/v2/filtering.QueryFilteredResult github.com/primandproper/primitives-go/v2/filtering.Pagination

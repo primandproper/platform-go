@@ -42,7 +42,7 @@
 //
 // An MCP tool's filter arrives decoded rather than as a protobuf message, so it
 // enters at [Narrow], which makes [Filter]'s decision on it, through
-// internal/mcptool — one door for every transport rather than a second copy of
+// mcptool — one door for every transport rather than a second copy of
 // the rule beside the tools.
 //
 // A read whose rows are never archived names [NothingArchived] rather than

@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	"github.com/primandproper/platform-go/v15/callers"
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/mcptool"
 	"github.com/primandproper/platform-go/v15/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v15/webhooks/grpc"
 
@@ -18,7 +18,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/webhooks.Endpoint github.com/primandproper/platform-go/v15/webhooks.Subscription github.com/primandproper/platform-go/v15/webhooks/mcp.GetEndpointInput github.com/primandproper/platform-go/v15/webhooks/mcp.ListEndpointsInput github.com/primandproper/platform-go/v15/webhooks/mcp.ListEventTypesInput github.com/primandproper/platform-go/v15/webhooks/mcp.EventTypes github.com/primandproper/platform-go/v15/webhooks/mcp.EventTypeDefinition
+//go:generate go run ../../mcptool/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/webhooks.Endpoint github.com/primandproper/platform-go/v15/webhooks.Subscription github.com/primandproper/platform-go/v15/webhooks/mcp.GetEndpointInput github.com/primandproper/platform-go/v15/webhooks/mcp.ListEndpointsInput github.com/primandproper/platform-go/v15/webhooks/mcp.ListEventTypesInput github.com/primandproper/platform-go/v15/webhooks/mcp.EventTypes github.com/primandproper/platform-go/v15/webhooks/mcp.EventTypeDefinition
 
 // surfaceName scopes this surface's spans, logger and instruments.
 const surfaceName = "webhooks_mcp"
@@ -106,7 +106,7 @@ type Tools struct {
 //
 // It takes what webhooks/grpc's server takes, plus the authenticator and the
 // grants extractor a tool needs in place of the interceptor a gRPC method has
-// in front of it. See internal/mcptool.
+// in front of it. See mcptool.
 func NewTools(
 	dispatcher webhooks.Dispatcher,
 	store webhooks.Store,
@@ -135,8 +135,12 @@ func NewTools(
 		}
 	}
 
-	surface, err := mcptool.NewSurface(surfaceName, authenticate, principals, grants, []error{ErrEndpointNotFound},
-		o.logger, o.tracerProvider, o.metricsProvider)
+	surface, err := mcptool.NewSurface(surfaceName, authenticate, principals, grants,
+		mcptool.WithClientSafeSentinels(ErrEndpointNotFound),
+		mcptool.WithLogger(o.logger),
+		mcptool.WithTracerProvider(o.tracerProvider),
+		mcptool.WithMetricsProvider(o.metricsProvider),
+	)
 	if err != nil {
 		return nil, err
 	}

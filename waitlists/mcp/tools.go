@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/primandproper/platform-go/v15/callers"
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
+	"github.com/primandproper/platform-go/v15/mcptool"
 	"github.com/primandproper/platform-go/v15/waitlists"
 	waitlistsgrpc "github.com/primandproper/platform-go/v15/waitlists/grpc"
 
@@ -16,7 +16,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/waitlists.List github.com/primandproper/platform-go/v15/waitlists/mcp.GetListInput github.com/primandproper/platform-go/v15/waitlists/mcp.ListListsInput
+//go:generate go run ../../mcptool/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/waitlists.List github.com/primandproper/platform-go/v15/waitlists/mcp.GetListInput github.com/primandproper/platform-go/v15/waitlists/mcp.ListListsInput
 
 // surfaceName scopes this surface's spans, logger and instruments.
 const surfaceName = "waitlists_mcp"
@@ -77,7 +77,7 @@ type Tools struct {
 // NewTools builds the tool surface over a store.
 //
 // It takes the authenticator and the grants extractor a tool needs in place of
-// the interceptor a gRPC method has in front of it. See internal/mcptool.
+// the interceptor a gRPC method has in front of it. See mcptool.
 func NewTools(
 	store waitlists.Store,
 	client database.Client,
@@ -101,8 +101,12 @@ func NewTools(
 		}
 	}
 
-	surface, err := mcptool.NewSurface(surfaceName, authenticate, principals, grants, []error{waitlists.ErrListNotFound},
-		o.logger, o.tracerProvider, o.metricsProvider)
+	surface, err := mcptool.NewSurface(surfaceName, authenticate, principals, grants,
+		mcptool.WithClientSafeSentinels(waitlists.ErrListNotFound),
+		mcptool.WithLogger(o.logger),
+		mcptool.WithTracerProvider(o.tracerProvider),
+		mcptool.WithMetricsProvider(o.metricsProvider),
+	)
 	if err != nil {
 		return nil, err
 	}

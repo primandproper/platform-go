@@ -110,6 +110,11 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix.
 | `notifications` | The in-app inbox, the device registry, the `notifications/push` fan-out (seam: `Hooks`), and `notifications/mail`, the outbox-queued implementation of every Mailer seam with its drain | postgres, mysql, sqlite (+ grpc) |
 | `searchsync`    | Reindexing worker driven by the outbox                                              | —                                |
 
+### Tool surfaces
+| Package   | Purpose                                                                                                   |
+|-----------|-----------------------------------------------------------------------------------------------------------|
+| `mcptool` | What an MCP tool is built on: input and output schemas reflected off Go types and their doc comments, the `mcptool/mcpdocs` generator that carries those comments into a binary, and a grant gate per call over `callers`. `issuereports/mcp`, `waitlists/mcp` and `webhooks/mcp` are built on it, and so is a consumer's own tool |
+
 ### The composition root
 | Package        | Purpose                                                                       |
 |----------------|---------------------------------------------------------------------------------|
@@ -163,7 +168,7 @@ checking it.
 | a noun with a table, and what it owes          | `audit`, `authentication/grants`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/phonecodes`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `series`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`, `recording`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | this module's promises about its own surfaces  | `conformance`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| the vocabulary a domain transport shares       | `callers`, `mcptool`                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The second row is the one the rule's own wording anticipates when it asks whether
@@ -218,6 +223,16 @@ interface with three methods on it. What makes that stay fixed is a test rather
 than this paragraph: `callers` imports nothing else in this module, and the only
 gRPC surface here that still reaches `identity` is `authentication/signin/grpc`,
 which renders a signed-in user and says so where the test can read it.
+
+`mcptool` is in the same row, one transport over. The protocol is not its own —
+the MCP SDK is — but what it adds is: input and output schemas reflected off a
+domain's Go types and described by their doc comments, and the grant gate a
+tool call passes, reading the same `callers` principal and the same permission
+the gRPC method beside the tool declares. That gate is why it is a domain
+rather than a primitive, and the schemas are why it is exported rather than
+internal: a consumer's own tools describe a consumer's own rows, and a schema
+written out by hand beside a type is a second copy that drifts the day a field
+is added. It was internal until a consumer had tools of its own to build on it.
 
 Eight of the paths above sit under a directory this module does not own the root
 of, and every one of them is under `authentication/`. Seven are a primitive with a

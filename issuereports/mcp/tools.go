@@ -6,9 +6,9 @@ import (
 	"reflect"
 
 	"github.com/primandproper/platform-go/v15/callers"
-	"github.com/primandproper/platform-go/v15/internal/mcptool"
 	"github.com/primandproper/platform-go/v15/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v15/issuereports/grpc"
+	"github.com/primandproper/platform-go/v15/mcptool"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -19,7 +19,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-//go:generate go run ../../internal/cmd/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/issuereports.Report github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByReporterInput
+//go:generate go run ../../mcptool/mcpdocs -pkg mcp -out fielddocs_gen.go github.com/primandproper/platform-go/v15/issuereports.Report github.com/primandproper/platform-go/v15/issuereports/mcp.GetReportInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByStatusInput github.com/primandproper/platform-go/v15/issuereports/mcp.ListReportsByReporterInput
 
 // surfaceName scopes this surface's spans, logger and instruments.
 const surfaceName = "issuereports_mcp"
@@ -108,7 +108,7 @@ type Tools struct {
 // plus the grants extractor that server takes as an option: a gRPC method's
 // grant is checked by an interceptor in front of it, and a tool has nothing in
 // front of it but the bearer check, so the grant is checked here and the
-// extractor is required. See internal/mcptool.
+// extractor is required. See mcptool.
 func NewTools(
 	store issuereports.Store,
 	client database.Client,
@@ -137,8 +137,12 @@ func NewTools(
 		}
 	}
 
-	surface, err := mcptool.NewSurface(surfaceName, authenticate, principals, grants, issuereports.ClientSafeSentinels,
-		o.logger, o.tracerProvider, o.metricsProvider)
+	surface, err := mcptool.NewSurface(surfaceName, authenticate, principals, grants,
+		mcptool.WithClientSafeSentinels(issuereports.ClientSafeSentinels...),
+		mcptool.WithLogger(o.logger),
+		mcptool.WithTracerProvider(o.tracerProvider),
+		mcptool.WithMetricsProvider(o.metricsProvider),
+	)
 	if err != nil {
 		return nil, err
 	}
