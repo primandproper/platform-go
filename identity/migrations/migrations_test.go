@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/primandproper/primitives-go/v2/database/ddl"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -179,16 +181,18 @@ func TestTables(T *testing.T) {
 	})
 }
 
-// indexNames is every index this schema creates, unprefixed. Postgres and
-// SQLite spell them as CREATE INDEX statements and MySQL as inline keys, and
-// the point of the list is that the three still agree: a MySQL-only name would
-// be a name ValidatePrefix stopped measuring on the other two.
+// indexNames is every index any version of this schema creates, unprefixed.
+// Postgres and SQLite spell them as CREATE INDEX statements, and MySQL as inline
+// keys in version 1 and an ALTER TABLE's ADD KEY after it. The point of the list
+// is that the three still agree: a MySQL-only name would be a name
+// ValidatePrefix stopped measuring on the other two.
 var indexNames = []string{
 	"identity_users_scope_idx",
 	"identity_users_email_token_digest_idx",
 	"identity_user_roles_role_idx",
 	"identity_accounts_scope_idx",
 	"identity_accounts_billing_idx",
+	"identity_accounts_customer_idx",
 	"identity_memberships_user_idx",
 	"identity_memberships_account_idx",
 	"identity_membership_roles_role_idx",
@@ -304,4 +308,174 @@ func TestSchemaFiles_MatchTheMigrations(T *testing.T) {
 				test.Sprintf("run `make unison` and commit schema/%s.sql", d))
 		})
 	}
+}
+
+func TestSequence(T *testing.T) {
+	T.Parallel()
+
+	// Pinned here as well as refused at render time, so a malformed sequence
+	// fails this package's build rather than a consumer's migration run.
+	T.Run("validates", func(t *testing.T) {
+		t.Parallel()
+
+		test.NoError(t, sequence.Validate())
+	})
+
+	T.Run("reports the latest version", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, uint64(2), Latest())
+	})
+
+	// Every version carries every dialect. A version missing one would render
+	// as ErrUnsupported only once a consumer on that dialect reached it.
+	T.Run("renders every version in every dialect", func(t *testing.T) {
+		t.Parallel()
+
+		for i := range sequence {
+			for _, d := range allDialects {
+				stmts, err := sequence[i].Schema.Statements(d, "")
+				must.NoError(t, err, must.Sprintf("version %d dialect %q", sequence[i].Version, d))
+				test.SliceNotEmpty(t, stmts, test.Sprintf("version %d dialect %q", sequence[i].Version, d))
+			}
+		}
+	})
+
+	// A fresh install is the versions in order, with nothing dropped or added
+	// between them.
+	T.Run("renders a fresh install as every version in order", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects {
+			var want []string
+
+			for i := range sequence {
+				stmts, err := sequence[i].Schema.Statements(d, "app")
+				must.NoError(t, err)
+
+				want = append(want, stmts...)
+			}
+
+			got, err := Statements(d, "app")
+			must.NoError(t, err)
+			test.Eq(t, want, got, test.Sprintf("dialect %q", d))
+		}
+	})
+}
+
+func TestStatementsSince(T *testing.T) {
+	T.Parallel()
+
+	// A database created from v15.0.0 has version 1's tables: it owes the
+	// customer index and none of the creates it already ran.
+	T.Run("renders only what a database at version 1 owes", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects {
+			stmts, err := StatementsSince(d, "", 1)
+			must.NoError(t, err)
+
+			want, versionErr := sequence[1].Schema.Statements(d, "")
+			must.NoError(t, versionErr)
+			test.Eq(t, want, stmts, test.Sprintf("dialect %q", d))
+
+			must.SliceLen(t, 1, stmts, must.Sprintf("dialect %q", d))
+			test.StrContains(t, stmts[0], "identity_accounts_customer_idx", test.Sprintf("dialect %q", d))
+			test.StrNotContains(t, stmts[0], "CREATE TABLE", test.Sprintf("dialect %q", d))
+		}
+	})
+
+	// The read the index serves carries archived_at IS NULL, scope and the
+	// customer by equality and orders by id; an index that left one out would
+	// leave the read sorting or filtering the scope's accounts again.
+	T.Run("covers the customer read in every dialect", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects {
+			stmts, err := StatementsSince(d, "", 1)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, stmts, must.Sprintf("dialect %q", d))
+
+			for _, column := range []string{"scope", "payment_processor_customer_id", "archived_at", "id)"} {
+				test.StrContains(t, stmts[0], column, test.Sprintf("dialect %q is missing %s", d, column))
+			}
+
+			test.True(t,
+				strings.Index(stmts[0], "scope") < strings.Index(stmts[0], "payment_processor_customer_id"),
+				test.Sprintf("dialect %q does not lead with the scope", d))
+
+			if d != dialect.MySQL {
+				test.StrContains(t, stmts[0], "WHERE archived_at IS NULL", test.Sprintf("dialect %q", d))
+			}
+		}
+	})
+
+	T.Run("owes nothing at the latest version", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects {
+			stmts, err := StatementsSince(d, "", Latest())
+			must.NoError(t, err)
+			test.SliceEmpty(t, stmts, test.Sprintf("dialect %q", d))
+
+			body, sqlErr := SQLSince(d, "", Latest())
+			must.NoError(t, sqlErr)
+			test.EqOp(t, "", body, test.Sprintf("dialect %q", d))
+		}
+	})
+
+	// A database past Latest was migrated by a newer release than this one, and
+	// an empty answer would let this one go on writing tables it does not know.
+	T.Run("refuses a version past the latest", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := StatementsSince(dialect.Postgres, "", Latest()+1)
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+
+		_, err = SQLSince(dialect.Postgres, "", Latest()+1)
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+	})
+
+	// Owing nothing is not a reason to accept a configuration that would fail
+	// the next time this package ships a version.
+	T.Run("vets the dialect and prefix even when nothing is owed", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := StatementsSince(dialect.Dialect("oracle"), "", Latest())
+		test.ErrorIs(t, err, dialect.ErrUnsupported)
+
+		_, err = SQLSince(dialect.Postgres, "app_", Latest())
+		test.ErrorIs(t, err, ddl.ErrPrefixTrailingSeparator)
+	})
+
+	T.Run("substitutes the prefix", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects {
+			stmts, err := StatementsSince(d, "custom", 1)
+			must.NoError(t, err)
+
+			joined := strings.Join(stmts, "\n")
+
+			test.StrContains(t, joined, "custom_identity_accounts", test.Sprintf("dialect %q", d))
+			test.StrContains(t, joined, "custom_identity_accounts_customer_idx", test.Sprintf("dialect %q", d))
+			test.StrNotContains(t, joined, ddl.Placeholder, test.Sprintf("dialect %q", d))
+		}
+	})
+
+	T.Run("SQLSince is the statements rejoined", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects {
+			stmts, err := StatementsSince(d, "app", 1)
+			must.NoError(t, err)
+
+			body, err := SQLSince(d, "app", 1)
+			must.NoError(t, err)
+
+			for _, stmt := range stmts {
+				test.StrContains(t, body, strings.TrimSpace(stmt))
+			}
+		}
+	})
 }

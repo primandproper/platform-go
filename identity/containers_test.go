@@ -85,18 +85,30 @@ func TestMigrations_RealServers(T *testing.T) {
 			stmts, err := migrations.Statements(dialect.MySQL, "ddl_check")
 			must.NoError(t, err)
 
-			// Executed twice, as Postgres is. MySQL has no CREATE INDEX IF NOT
-			// EXISTS, so every key here is declared inline under its CREATE
-			// TABLE IF NOT EXISTS and is skipped along with the table — which
-			// only a real server can confirm, since rendering the same DDL says
-			// nothing about what the server does with it the second time.
+			// What a database created from version 1 still owes is a suffix of
+			// the fresh install, so version 1 is what precedes it.
+			owed, err := migrations.StatementsSince(dialect.MySQL, "ddl_check", 1)
+			must.NoError(t, err)
+			must.SliceNotEmpty(t, owed)
+			must.Eq(t, owed, stmts[len(stmts)-len(owed):])
+
+			versionOne := stmts[:len(stmts)-len(owed)]
+
+			// The whole sequence once, then version 1 again, which is the part
+			// of it that re-runs. MySQL has no CREATE INDEX IF NOT EXISTS, so
+			// version 1 declares every key inline under its CREATE TABLE IF NOT
+			// EXISTS and the key is skipped along with the table — which only a
+			// real server can confirm, since rendering the same DDL says nothing
+			// about what the server does with it the second time. A later
+			// version's key is an ALTER TABLE with no conditional, and runs once
+			// because a consumer's migration tool records that it has.
 			//
 			// The index key lengths are the other thing this is checking: scope
-			// plus a 320-character email address has to stay inside InnoDB's
-			// limit, and it fails here rather than in a consumer's migration if
-			// it does not.
-			for range 2 {
-				for _, stmt := range stmts {
+			// plus a 320-character email address, and scope plus a processor
+			// customer, have to stay inside InnoDB's limit, and they fail here
+			// rather than in a consumer's migration if they do not.
+			for _, run := range [][]string{stmts, versionOne} {
+				for _, stmt := range run {
 					_, execErr := client.Writer().ExecContext(ctx, stmt)
 					must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
 				}

@@ -176,7 +176,10 @@ of thing a side table holds well.
 The DDL lives in [github.com/primandproper/platform-go/v15/identity/migrations],
 rendered per dialect and table prefix, and hands to database/migrate's
 WithGeneratedMigration so nothing is copied into a consumer's repository. See
-that package for why no numbered migration file ships.
+that package for why no numbered migration file ships. The schema is versioned
+there: a database created from an earlier release adds a migration holding what
+SQLSince renders from the version it is at, rather than editing the one that
+created its tables.
 
 That package also answers which tables exist, at your prefix, through its Tables
 function — the list is complete and read from the DDL, so a between-tests

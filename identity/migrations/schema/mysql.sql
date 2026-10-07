@@ -122,3 +122,7 @@ CREATE TABLE IF NOT EXISTS identity_invitation_roles (
         FOREIGN KEY (invitation_id) REFERENCES identity_invitations (id) ON DELETE CASCADE
 );
 
+ALTER TABLE identity_accounts
+    ADD KEY identity_accounts_customer_idx
+        (scope, archived_at, payment_processor_customer_id, id);
+
