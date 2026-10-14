@@ -206,6 +206,27 @@ client by its secret, a person through the authenticator — and declares no
 route permissions. An application that mounted the server itself before this
 surface existed names SurfaceOAuth2Server in Skip rather than mounting it twice.
 
+# gRPC-web
+
+A browser or React Native client cannot speak gRPC, and every identity surface
+— sign-in, registration, passkeys, password reset — is gRPC-only. Config.GRPCWeb
+carries them over the HTTP server instead:
+
+	GRPC_WEB_PATH_PREFIX=/grpc
+
+Naming a prefix is the switch. New mounts primitives-go's grpcweb handler over
+the registered gRPC server at that prefix on the router, stripping the prefix
+before the call is dispatched, so a call to /grpc/<package.Service>/<Method>
+runs through the gRPC server's own interceptors — authentication, tenancy, error
+encoding — exactly as one on the gRPC listener does. Unary calls only: a
+streaming method answers UNIMPLEMENTED.
+
+A prefix with no gRPC server behind it is ErrGRPCWebWithoutGRPCServer, and one
+with no HTTP server to mount it on is ErrGRPCWebWithoutHTTPServer, from
+ValidateWithContext and again from New for a Config that skipped it — never a
+route that answers 404. CORS stays the application's, as middleware on the
+router before New mounts anything.
+
 # The seams
 
 Everything else about a surface is deterministic from the config. These are not,

@@ -182,6 +182,9 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		// MaxReceiveMessageSize is above — a block holding only Port: 0 is
 		// released as unconfigured.
 		HTTPServer: &httpserver.Config{StartupDeadline: bootTimeout},
+		// And the gRPC services carried over it, for a browser: gRPC-web at a
+		// prefix of the HTTP server, which the gRPC-web assertions dial.
+		GRPCWeb: &service.GRPCWebConfig{PathPrefix: grpcWebPrefix},
 		Routing: &routingcfg.Config{
 			Provider: routingcfg.ProviderChi,
 			Chi:      &chi.Config{ServiceName: "conformance", SilenceRouteLogging: true},
@@ -404,6 +407,17 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		SignInAdministration: signinpb.NewSignInAdministrationServiceClient(conn),
 		AuditAdministration:  auditpb.NewAuditAdministrationServiceClient(conn),
 	}
+
+	// The gRPC surfaces as a browser reaches them, through the HTTP server,
+	// held to answering as the gRPC listener does.
+	t.Run("over gRPC-web", func(t *testing.T) {
+		assertGRPCWeb(t, grpcWebSubject{
+			native:   conn,
+			web:      &grpcWebConn{baseURL: baseURL + grpcWebPrefix},
+			identity: identitySvc,
+			signIn:   signIn,
+		})
+	})
 
 	// Every run against this server is one of these, differing only in what
 	// it reserves.

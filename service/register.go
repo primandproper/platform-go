@@ -767,7 +767,8 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 }
 
 // registerServers registers ingress: the encoder/decoder, the router built on
-// it, and the two servers.
+// it, the two servers, and the gRPC-web route that carries the second over the
+// first.
 func registerServers(i do.Injector, cfg *Config) {
 	// The encoder/decoder resolves its config by value, not by pointer.
 	if cfg.Encoding != nil {
@@ -791,5 +792,13 @@ func registerServers(i do.Injector, cfg *Config) {
 	if cfg.GRPCServer != nil {
 		do.ProvideValue(i, cfg.GRPCServer)
 		grpcserver.RegisterGRPCServer(i)
+	}
+
+	// gRPC-web joins the two, so it is registered beside them rather than
+	// inside either: it is built over the gRPC server and mounted on the
+	// HTTP server's router.
+	if cfg.GRPCWeb != nil {
+		do.ProvideValue(i, cfg.GRPCWeb)
+		registerGRPCWeb(i, cfg)
 	}
 }
