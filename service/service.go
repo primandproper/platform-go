@@ -431,8 +431,14 @@ func (s *Service) resolveOperationsQueue(r *resolver) {
 // document rather than for correctness — the HTTP server reads the router's
 // handler when it serves, not when it is built — but a document whose paths
 // depend on resolution order is a document that changes between boots.
+//
+// The gRPC-web route goes on after the surfaces, and so after the gRPC server
+// it serves is built from them. It records no OpenAPI operation, so its place
+// is for the reading rather than the document: every route is on the router
+// before the server that serves it exists.
 func (s *Service) resolveServers(r *resolver) {
 	resolve(r, func(mounted *mountedTransports) { s.surfaces = mounted.names })
+	resolve(r, func(*grpcWebMount) {})
 	resolve(r, func(srv httpserver.Server) { s.addServer("HTTP server", srv) })
 	resolve(r, func(srv *grpcserver.Server) { s.addServer("gRPC server", srv) })
 }

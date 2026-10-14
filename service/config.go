@@ -127,6 +127,7 @@ type Config struct {
 	EventStream          *eventstreamcfg.Config       `env:",init" envPrefix:"EVENT_STREAM_"           json:"eventStream,omitempty"          yaml:"eventStream,omitempty"`
 	FeatureFlags         *featureflagscfg.Config      `env:",init" envPrefix:"FEATURE_FLAGS_"          json:"featureFlags,omitempty"         yaml:"featureFlags,omitempty"`
 	GRPCServer           *grpcserver.Config           `env:",init" envPrefix:"GRPC_SERVER_"            json:"grpcServer,omitempty"           yaml:"grpcServer,omitempty"`
+	GRPCWeb              *GRPCWebConfig               `env:",init" envPrefix:"GRPC_WEB_"               json:"grpcWeb,omitempty"              yaml:"grpcWeb,omitempty"`
 	HTTPClient           *httpclient.Config           `env:",init" envPrefix:"HTTP_CLIENT_"            json:"httpClient,omitempty"           yaml:"httpClient,omitempty"`
 	HTTPServer           *httpserver.Config           `env:",init" envPrefix:"HTTP_SERVER_"            json:"httpServer,omitempty"           yaml:"httpServer,omitempty"`
 	Identity             *identitycfg.Config          `env:",init" envPrefix:"IDENTITY_"               json:"identity,omitempty"             yaml:"identity,omitempty"`
@@ -261,6 +262,16 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		return err
 	}
 
+	// The third cross-subsystem rule, and the same silence the two below
+	// refuse: a gRPC-web prefix with no gRPC server behind it, or no HTTP server
+	// to mount it on, is a route every browser call 404s on. It is checked
+	// ahead of the struct rather than inside it so the sentinel survives —
+	// ozzo's errors do not unwrap — because the mount refuses an unvalidated
+	// Config with the same one.
+	if err := grpcWebRequirement(cfg); err != nil {
+		return err
+	}
+
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.Name, validation.Required),
 		// A negative budget is an operator error worth reporting rather than
@@ -278,7 +289,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.CircuitBreaking),
 		validation.Field(&cfg.Comments),
 		validation.Field(&cfg.Cookies),
-		// The one cross-subsystem rule in this list, and it earns the exception
+		// The first cross-subsystem rule in this list, and it earns the exception
 		// because the alternative is silence. dataprivacy runs its exports and
 		// erasures as operations, so a service configured for privacy requests
 		// and not for operations resolves a Service that accepts a subject's
@@ -303,6 +314,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.EventStream),
 		validation.Field(&cfg.FeatureFlags),
 		validation.Field(&cfg.GRPCServer),
+		validation.Field(&cfg.GRPCWeb),
 		validation.Field(&cfg.HTTPClient),
 		validation.Field(&cfg.HTTPServer),
 		validation.Field(&cfg.Identity),
