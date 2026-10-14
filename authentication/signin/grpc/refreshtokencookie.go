@@ -75,9 +75,10 @@ const (
 //   - A request to a method of signin.v1 whose request message carries a
 //     refresh_token — ExchangeRefreshToken, SwitchAccount, SignOut — that
 //     arrives with the field empty has it filled from the cookie. A request that
-//     carries one in its body uses the body, so a client that keeps its own is
-//     untouched. One with neither, or with a cookie that does not verify, is
-//     answered UNAUTHENTICATED here: it presented no credential.
+//     carries one in its body uses the body, though the token its response
+//     issues is still sealed like any other. One with neither, or with a cookie
+//     that does not verify, is answered UNAUTHENTICATED here: it presented no
+//     credential.
 //   - A successful SignOut or SignOutEverywhere deletes the cookie, since the
 //     refresh token in it no longer mints anything.
 //
