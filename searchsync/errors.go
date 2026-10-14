@@ -98,6 +98,15 @@ var (
 	// wiped, so a request naming one such index empties none of them.
 	ErrTargetCannotWipe = platformerrors.New("search sync target cannot be wiped")
 
+	// ErrNoIndexNamed indicates Registry.Wipe was called with no index names.
+	//
+	// Reindex reads no names as every index, and Wipe deliberately does not:
+	// an operator tool whose index flag parsed to nothing would otherwise
+	// empty every index in production and leave search answering from nothing
+	// until the rebuild finished. Emptying every index is spelled
+	// Wipe(ctx, registry.Names()...), which names them.
+	ErrNoIndexNamed = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "no search sync index named")
+
 	// ErrUnsortedScan indicates a Scanner or Enumerator returned IDs that do
 	// not ascend in byte order.
 	//

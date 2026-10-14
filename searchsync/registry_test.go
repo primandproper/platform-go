@@ -606,7 +606,7 @@ func TestRegistry_Wipe(T *testing.T) {
 		test.EqOp(t, 1, customers.wipes)
 	})
 
-	T.Run("empties every index when none is named", func(t *testing.T) {
+	T.Run("empties every index when every one is named", func(t *testing.T) {
 		t.Parallel()
 
 		reg := NewRegistry()
@@ -615,15 +615,23 @@ func TestRegistry_Wipe(T *testing.T) {
 		registerNamed(t, reg, "orders", &stubSource{}, orders)
 		registerNamed(t, reg, "customers", &stubSource{}, customers)
 
-		must.NoError(t, reg.Wipe(context.Background()))
+		must.NoError(t, reg.Wipe(context.Background(), reg.Names()...))
 		test.EqOp(t, 1, orders.wipes)
 		test.EqOp(t, 1, customers.wipes)
 	})
 
-	T.Run("empties nothing when nothing is registered", func(t *testing.T) {
+	T.Run("refuses no names rather than emptying every index", func(t *testing.T) {
 		t.Parallel()
 
-		must.NoError(t, NewRegistry().Wipe(context.Background()))
+		reg := NewRegistry()
+
+		orders := &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+
+		err := reg.Wipe(context.Background())
+		test.ErrorIs(t, err, ErrNoIndexNamed)
+		test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+		test.EqOp(t, 0, orders.wipes)
 	})
 
 	T.Run("refuses an unknown name before emptying anything", func(t *testing.T) {
@@ -667,7 +675,7 @@ func TestRegistry_Wipe(T *testing.T) {
 		registerNamed(t, reg, "orders", &stubSource{}, orders)
 		registerNamed(t, reg, "customers", &stubSource{}, customers)
 
-		err := reg.Wipe(context.Background())
+		err := reg.Wipe(context.Background(), reg.Names()...)
 		test.ErrorIs(t, err, boom)
 		test.StrContains(t, err.Error(), `wiping "orders"`)
 		test.EqOp(t, 1, customers.wipes)
@@ -685,7 +693,7 @@ func TestRegistry_Wipe(T *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		err := reg.Wipe(ctx)
+		err := reg.Wipe(ctx, reg.Names()...)
 		test.ErrorIs(t, err, context.Canceled)
 		test.EqOp(t, 0, orders.wipes)
 		test.EqOp(t, 0, customers.wipes)

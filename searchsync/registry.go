@@ -502,10 +502,13 @@ func (r *Registry) ReindexAll(ctx context.Context) (map[string]*ReindexResult, e
 	return r.Reindex(ctx)
 }
 
-// Wipe empties the named indexes, in the order named, or every registered
-// index in registration order when none is named — the same reading Reindex
-// takes of no names, so that a rebuild from empty is the two calls with the
-// same arguments. It removes documents only; the index and its mapping stay.
+// Wipe empties the named indexes, in the order named. It removes documents
+// only; the index and its mapping stay.
+//
+// Unlike Reindex, it reads no names as a mistake rather than as every index,
+// and refuses it with ErrNoIndexNamed. A rebuild of everything is harmless to
+// reach by accident and an emptying of everything is not, so the wide call has
+// to name what it empties: Wipe(ctx, registry.Names()...).
 //
 // Every index it is asked to empty must have a Target that is a Wiper.
 // TextTarget and VectorTarget are; a Target written by hand may not be, and one
@@ -516,6 +519,10 @@ func (r *Registry) ReindexAll(ctx context.Context) (map[string]*ReindexResult, e
 // What follows matches Reindex: a failed wipe does not stop the others and
 // every failure comes back joined, and a cancelled context stops the walk.
 func (r *Registry) Wipe(ctx context.Context, names ...string) error {
+	if len(names) == 0 {
+		return ErrNoIndexNamed
+	}
+
 	entries, err := r.resolve(names)
 	if err != nil {
 		return err
