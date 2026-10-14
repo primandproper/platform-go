@@ -84,6 +84,20 @@ var (
 	// topic. See Registry.add for what each of those costs.
 	ErrDuplicateIndex = platformerrors.New("duplicate search sync index")
 
+	// ErrUnknownIndex indicates Registry.Reindex or Registry.Wipe was asked
+	// for an index no RegisterIndex call registered.
+	//
+	// Refused rather than skipped. The caller is an operator naming the indexes
+	// to rebuild, and a misspelled one that was passed over would report success
+	// for a rebuild that never ran. Every unknown name is reported, and before
+	// any index is touched.
+	ErrUnknownIndex = platformerrors.New("unknown search sync index")
+
+	// ErrTargetCannotWipe indicates Registry.Wipe was asked to empty an index
+	// whose Target does not implement Wiper. It is reported before any index is
+	// wiped, so a request naming one such index empties none of them.
+	ErrTargetCannotWipe = platformerrors.New("search sync target cannot be wiped")
+
 	// ErrUnsortedScan indicates a Scanner or Enumerator returned IDs that do
 	// not ascend in byte order.
 	//

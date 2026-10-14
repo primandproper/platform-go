@@ -108,6 +108,78 @@ func TestTextTarget(T *testing.T) {
 	})
 }
 
+func TestTextTarget_Wipe(T *testing.T) {
+	T.Parallel()
+
+	T.Run("empties the index through its own Wipe", func(t *testing.T) {
+		t.Parallel()
+
+		index := &textsearchmock.IndexMock[testDoc]{
+			WipeFunc: func(context.Context) error { return nil },
+		}
+
+		target, err := TextTarget[testDoc](index)
+		must.NoError(t, err)
+
+		wiper, ok := target.(Wiper)
+		must.True(t, ok)
+		must.NoError(t, wiper.Wipe(context.Background()))
+		test.SliceLen(t, 1, index.WipeCalls())
+	})
+
+	T.Run("passes a backend failure through", func(t *testing.T) {
+		t.Parallel()
+
+		expected := platformerrors.New("index is down")
+		index := &textsearchmock.IndexMock[testDoc]{
+			WipeFunc: func(context.Context) error { return expected },
+		}
+
+		target, err := TextTarget[testDoc](index)
+		must.NoError(t, err)
+
+		wiper, ok := target.(Wiper)
+		must.True(t, ok)
+		test.ErrorIs(t, wiper.Wipe(context.Background()), expected)
+	})
+}
+
+func TestVectorTarget_Wipe(T *testing.T) {
+	T.Parallel()
+
+	T.Run("empties the index through its own Wipe", func(t *testing.T) {
+		t.Parallel()
+
+		index := &vectorsearchmock.IndexMock[testDoc]{
+			WipeFunc: func(context.Context) error { return nil },
+		}
+
+		target, err := VectorTarget[testDoc](index)
+		must.NoError(t, err)
+
+		wiper, ok := target.(Wiper)
+		must.True(t, ok)
+		must.NoError(t, wiper.Wipe(context.Background()))
+		test.SliceLen(t, 1, index.WipeCalls())
+	})
+
+	T.Run("passes a backend failure through", func(t *testing.T) {
+		t.Parallel()
+
+		expected := platformerrors.New("index is down")
+		index := &vectorsearchmock.IndexMock[testDoc]{
+			WipeFunc: func(context.Context) error { return expected },
+		}
+
+		target, err := VectorTarget[testDoc](index)
+		must.NoError(t, err)
+
+		wiper, ok := target.(Wiper)
+		must.True(t, ok)
+		test.ErrorIs(t, wiper.Wipe(context.Background()), expected)
+	})
+}
+
 func TestVectorTarget(T *testing.T) {
 	T.Parallel()
 

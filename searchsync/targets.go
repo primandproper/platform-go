@@ -9,6 +9,19 @@ import (
 	vectorsearch "github.com/primandproper/primitives-go/v2/search/vector"
 )
 
+// Wiper is a Target whose index can be emptied, documents only, leaving the
+// index itself and its mapping in place.
+//
+// It is a separate interface rather than a third method on Target because a
+// Target is what a Syncer writes through, and a Syncer has no business emptying
+// anything — two methods is the whole contract an application implementing one
+// by hand owes. Registry.Wipe is what asks for this, and it refuses a Target
+// that does not admit it with ErrTargetCannotWipe rather than passing it over.
+// TextTarget and VectorTarget both implement it, because both backends can.
+type Wiper interface {
+	Wipe(ctx context.Context) error
+}
+
 // TextTarget adapts a textsearch.IndexManager — Algolia, Elasticsearch, or the
 // noop — to a Target.
 //
@@ -29,6 +42,8 @@ func TextTarget[T any](index textsearch.IndexManager) (Target[T], error) {
 type textTarget[T any] struct {
 	index textsearch.IndexManager
 }
+
+var _ Wiper = (*textTarget[any])(nil)
 
 // Upsert indexes each document in turn. textsearch.IndexManager takes one
 // document per call, so a batch is a loop: the backends here index one document
@@ -69,6 +84,11 @@ func (t *textTarget[T]) Delete(ctx context.Context, ids ...string) error {
 	return nil
 }
 
+// Wipe empties the index through the IndexManager's own Wipe.
+func (t *textTarget[T]) Wipe(ctx context.Context) error {
+	return t.index.Wipe(ctx)
+}
+
 // VectorTarget adapts a vectorsearch.IndexWriter — pgvector, Qdrant, or the
 // noop — to a Target.
 //
@@ -88,6 +108,8 @@ func VectorTarget[T any](index vectorsearch.IndexWriter[T]) (Target[T], error) {
 type vectorTarget[T any] struct {
 	index vectorsearch.IndexWriter[T]
 }
+
+var _ Wiper = (*vectorTarget[any])(nil)
 
 // Upsert writes the whole batch in one call, which is what vectorsearch.Upsert
 // is shaped for.
@@ -132,4 +154,9 @@ func (t *vectorTarget[T]) Delete(ctx context.Context, ids ...string) error {
 	}
 
 	return t.index.Delete(ctx, ids...)
+}
+
+// Wipe empties the index through the IndexWriter's own Wipe.
+func (t *vectorTarget[T]) Wipe(ctx context.Context) error {
+	return t.index.Wipe(ctx)
 }

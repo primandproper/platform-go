@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	metricsmock "github.com/primandproper/primitives-go/v2/observability/metrics/mock"
 	noopmetrics "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	textsearchmock "github.com/primandproper/primitives-go/v2/search/text/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -469,6 +470,242 @@ func TestRegistry_ReindexAll(T *testing.T) {
 		// One report of the cancellation rather than one per index, and the
 		// second source was never walked.
 		test.SliceEmpty(t, sources[1].scanned)
+	})
+}
+
+// wipingTarget is a stubTarget that admits Wipe, counting the calls.
+type wipingTarget struct {
+	wipeFunc func() error
+
+	stubTarget
+
+	wipes int
+}
+
+var _ Wiper = (*wipingTarget)(nil)
+
+func (w *wipingTarget) Wipe(context.Context) error {
+	w.wipes++
+
+	if w.wipeFunc != nil {
+		return w.wipeFunc()
+	}
+
+	return nil
+}
+
+// registerNamed registers one index under name, with its topic derived from it.
+func registerNamed(t *testing.T, reg *Registry, name string, source Source[testDoc], target Target[testDoc]) {
+	t.Helper()
+
+	spec := orderSpec(source, target)
+	spec.Name = name
+	spec.Topic = name + "-index"
+
+	_, err := RegisterIndex(reg, spec)
+	must.NoError(t, err)
+}
+
+func TestRegistry_Reindex(T *testing.T) {
+	T.Parallel()
+
+	T.Run("rebuilds only the named index", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders := &stubSource{scanFunc: pagedDocs("order-1")}
+		customers := &stubSource{scanFunc: pagedDocs("customer-1")}
+
+		registerNamed(t, reg, "orders", orders, &stubTarget{})
+		registerNamed(t, reg, "customers", customers, &stubTarget{})
+
+		results, err := reg.Reindex(context.Background(), "customers")
+		must.NoError(t, err)
+		must.MapLen(t, 1, results)
+		test.EqOp(t, int64(1), results["customers"].Upserted)
+		test.SliceEmpty(t, orders.scanned)
+	})
+
+	T.Run("rebuilds every index when none is named", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+		registerNamed(t, reg, "orders", &stubSource{scanFunc: pagedDocs("order-1")}, &stubTarget{})
+		registerNamed(t, reg, "customers", &stubSource{scanFunc: pagedDocs("customer-1")}, &stubTarget{})
+
+		results, err := reg.Reindex(context.Background())
+		must.NoError(t, err)
+		must.MapLen(t, 2, results)
+	})
+
+	T.Run("refuses every unknown name before rebuilding anything", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders := &stubSource{scanFunc: pagedDocs("order-1")}
+		registerNamed(t, reg, "orders", orders, &stubTarget{})
+
+		results, err := reg.Reindex(context.Background(), "orders", "ordres", "custmers")
+		test.ErrorIs(t, err, ErrUnknownIndex)
+		test.StrContains(t, err.Error(), `"ordres"`)
+		test.StrContains(t, err.Error(), `"custmers"`)
+		test.Nil(t, results)
+
+		// The known name listed first was not rebuilt either.
+		test.SliceEmpty(t, orders.scanned)
+	})
+
+	T.Run("rebuilds a name given twice once", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		target := &stubTarget{}
+		registerNamed(t, reg, "orders", &stubSource{scanFunc: pagedDocs("order-1")}, target)
+
+		results, err := reg.Reindex(context.Background(), "orders", "orders")
+		must.NoError(t, err)
+		must.MapLen(t, 1, results)
+		test.Eq(t, []string{"order-1"}, target.upserted)
+	})
+
+	T.Run("carries on past a failed rebuild and joins the failures", func(t *testing.T) {
+		t.Parallel()
+
+		boom := stderrors.New("index unavailable")
+
+		reg := NewRegistry()
+		registerNamed(t, reg, "orders", &stubSource{scanFunc: pagedDocs("order-1")},
+			&stubTarget{upsertFunc: func(...Document[testDoc]) error { return boom }})
+		registerNamed(t, reg, "customers", &stubSource{scanFunc: pagedDocs("customer-1")}, &stubTarget{})
+
+		results, err := reg.Reindex(context.Background(), "orders", "customers")
+		test.ErrorIs(t, err, boom)
+		test.StrContains(t, err.Error(), `reindexing "orders"`)
+		must.MapLen(t, 2, results)
+		test.EqOp(t, int64(1), results["customers"].Upserted)
+	})
+}
+
+func TestRegistry_Wipe(T *testing.T) {
+	T.Parallel()
+
+	T.Run("empties only the named index", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders, customers := &wipingTarget{}, &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+		registerNamed(t, reg, "customers", &stubSource{}, customers)
+
+		must.NoError(t, reg.Wipe(context.Background(), "customers"))
+		test.EqOp(t, 0, orders.wipes)
+		test.EqOp(t, 1, customers.wipes)
+	})
+
+	T.Run("empties every index when none is named", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders, customers := &wipingTarget{}, &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+		registerNamed(t, reg, "customers", &stubSource{}, customers)
+
+		must.NoError(t, reg.Wipe(context.Background()))
+		test.EqOp(t, 1, orders.wipes)
+		test.EqOp(t, 1, customers.wipes)
+	})
+
+	T.Run("empties nothing when nothing is registered", func(t *testing.T) {
+		t.Parallel()
+
+		must.NoError(t, NewRegistry().Wipe(context.Background()))
+	})
+
+	T.Run("refuses an unknown name before emptying anything", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders := &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+
+		err := reg.Wipe(context.Background(), "orders", "ordres")
+		test.ErrorIs(t, err, ErrUnknownIndex)
+		test.StrContains(t, err.Error(), `"ordres"`)
+		test.EqOp(t, 0, orders.wipes)
+	})
+
+	T.Run("refuses a target that cannot be emptied before emptying anything", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders := &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+		registerNamed(t, reg, "customers", &stubSource{}, &stubTarget{})
+
+		err := reg.Wipe(context.Background(), "orders", "customers")
+		test.ErrorIs(t, err, ErrTargetCannotWipe)
+		test.StrContains(t, err.Error(), `"customers"`)
+		test.EqOp(t, 0, orders.wipes)
+	})
+
+	T.Run("carries on past a failed wipe and joins the failures", func(t *testing.T) {
+		t.Parallel()
+
+		boom := stderrors.New("index unavailable")
+
+		reg := NewRegistry()
+
+		orders := &wipingTarget{wipeFunc: func() error { return boom }}
+		customers := &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+		registerNamed(t, reg, "customers", &stubSource{}, customers)
+
+		err := reg.Wipe(context.Background())
+		test.ErrorIs(t, err, boom)
+		test.StrContains(t, err.Error(), `wiping "orders"`)
+		test.EqOp(t, 1, customers.wipes)
+	})
+
+	T.Run("stops on a cancelled context", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+
+		orders, customers := &wipingTarget{}, &wipingTarget{}
+		registerNamed(t, reg, "orders", &stubSource{}, orders)
+		registerNamed(t, reg, "customers", &stubSource{}, customers)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := reg.Wipe(ctx)
+		test.ErrorIs(t, err, context.Canceled)
+		test.EqOp(t, 0, orders.wipes)
+		test.EqOp(t, 0, customers.wipes)
+	})
+
+	T.Run("reaches a text index through the adapter", func(t *testing.T) {
+		t.Parallel()
+
+		index := &textsearchmock.IndexMock[testDoc]{
+			WipeFunc: func(context.Context) error { return nil },
+		}
+
+		target, err := TextTarget[testDoc](index)
+		must.NoError(t, err)
+
+		reg := NewRegistry()
+		registerNamed(t, reg, "orders", &stubSource{}, target)
+
+		must.NoError(t, reg.Wipe(context.Background(), "orders"))
+		test.SliceLen(t, 1, index.WipeCalls())
 	})
 }
 
