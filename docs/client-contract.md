@@ -42,6 +42,19 @@ stealing… it belongs in whatever the client's most protected store is, and it 
 a log, a crash report or a URL can reach."* An implementation that cannot meet that bar should
 not be written.
 
+A browser's store is the server's. Page code cannot set an httpOnly cookie, so from v15.2.0 a
+service mounting gRPC-web (`service.GRPCWebConfig`) does it: every response on that route that
+carries an `IssuedToken` arrives with `refresh_token` empty and a `Set-Cookie` holding it sealed —
+`HttpOnly`, `Secure`, `SameSite=Strict`, scoped to the route's path — and an
+`ExchangeRefreshToken`, `SwitchAccount` or `SignOut` sent with `refresh_token` empty has it
+filled from that cookie. `refresh_token_expires_at` stays in the body, so a browser's
+`CredentialStore` keeps only that: `save` records the expiry, `load` answers whether a cookie
+should still exist, and an RPC that spends the token is sent with the field empty. A request
+that arrives with neither the field nor a cookie that verifies is `UNAUTHENTICATED`, which is
+the same branch as a dead token. A successful `SignOut` or `SignOutEverywhere` deletes the
+cookie, and `clear` has nothing left to do. The access token is unchanged: still in the body,
+still sent as `authorization: Bearer` from page memory.
+
 `Authorizer` is a seam and not a rule because **nothing in this module fixes how an access
 token reaches a server.** A service turns a token back into a caller through a
 `callers.PrincipalExtractor` the consumer writes — the schema's own words are that *"turning

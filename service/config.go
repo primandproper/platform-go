@@ -264,7 +264,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 
 	// The third cross-subsystem rule, and the same silence the two below
 	// refuse: a gRPC-web prefix with no gRPC server behind it, or no HTTP server
-	// to mount it on, is a route every browser call 404s on. It is checked
+	// to mount it on, is a route every browser call 404s on, and one with no
+	// cookie keys hands every browser's refresh token to page JavaScript. It is checked
 	// ahead of the struct rather than inside it so the sentinel survives —
 	// ozzo's errors do not unwrap — because the mount refuses an unvalidated
 	// Config with the same one.
