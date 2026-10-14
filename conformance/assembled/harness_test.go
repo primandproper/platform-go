@@ -101,6 +101,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication/tokens"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
 	authzhttp "github.com/primandproper/primitives-go/v2/authorization/http"
+	"github.com/primandproper/primitives-go/v2/cookies"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -183,8 +184,10 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		// released as unconfigured.
 		HTTPServer: &httpserver.Config{StartupDeadline: bootTimeout},
 		// And the gRPC services carried over it, for a browser: gRPC-web at a
-		// prefix of the HTTP server, which the gRPC-web assertions dial.
+		// prefix of the HTTP server, which the gRPC-web assertions dial, with
+		// the cookie keys its refresh token cookie seals with.
 		GRPCWeb: &service.GRPCWebConfig{PathPrefix: grpcWebPrefix},
+		Cookies: cookieConfig(t),
 		Routing: &routingcfg.Config{
 			Provider: routingcfg.ProviderChi,
 			Chi:      &chi.Config{ServiceName: "conformance", SilenceRouteLogging: true},
@@ -414,6 +417,7 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 		assertGRPCWeb(t, grpcWebSubject{
 			native:   conn,
 			web:      &grpcWebConn{baseURL: baseURL + grpcWebPrefix},
+			webURL:   baseURL + grpcWebPrefix,
 			identity: identitySvc,
 			signIn:   signIn,
 		})
@@ -698,6 +702,21 @@ func assemble(t *testing.T, db *databasecfg.Config, d dialect.Dialect, waitlists
 
 		conformance.Run(t, admitted, conformancesignin.Suite(), conformancepasswordreset.Suite())
 	})
+}
+
+// cookieConfig is a cookie manager's keys, fresh for each run.
+func cookieConfig(t *testing.T) *cookies.Config {
+	t.Helper()
+
+	key := func() string {
+		raw := make([]byte, 32)
+		_, err := rand.Read(raw)
+		must.NoError(t, err)
+
+		return base64.StdEncoding.EncodeToString(raw)
+	}
+
+	return &cookies.Config{Base64EncodedHashKey: key(), Base64EncodedBlockKey: key()}
 }
 
 // tokenConfig is a JWT issuer with a key minted for this run, which is what

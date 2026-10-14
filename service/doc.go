@@ -221,11 +221,27 @@ runs through the gRPC server's own interceptors — authentication, tenancy, err
 encoding — exactly as one on the gRPC listener does. Unary calls only: a
 streaming method answers UNIMPLEMENTED.
 
-A prefix with no gRPC server behind it is ErrGRPCWebWithoutGRPCServer, and one
-with no HTTP server to mount it on is ErrGRPCWebWithoutHTTPServer, from
+A browser cannot keep the refresh token a sign-in returns anywhere page
+JavaScript cannot read, so on this route it is not returned: the mount puts
+signingrpc.RefreshTokenCookie in front of the handler, which seals every
+issued refresh token into an HttpOnly, Secure, SameSite=Strict cookie scoped to
+the prefix, clears it from the body, and fills it back into an
+ExchangeRefreshToken, SwitchAccount or SignOut that arrives without one. It seals
+with the Cookies block's keys:
+
+	COOKIES_HASH_KEY=...
+	COOKIES_BLOCK_KEY=...
+
+GRPC_WEB_REFRESH_TOKEN_COOKIE_DISABLED=true leaves the token in the body, for a
+deployment whose gRPC-web clients all keep their own.
+
+A prefix with no gRPC server behind it is ErrGRPCWebWithoutGRPCServer, one
+with no HTTP server to mount it on is ErrGRPCWebWithoutHTTPServer, and one with
+the cookie on and no Cookies block is ErrGRPCWebWithoutCookies, from
 ValidateWithContext and again from New for a Config that skipped it — never a
-route that answers 404. CORS stays the application's, as middleware on the
-router before New mounts anything.
+route that answers 404, or one that hands a browser its refresh token. CORS
+stays the application's, as middleware on the router before New mounts
+anything.
 
 # The seams
 

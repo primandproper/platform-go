@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/primitives-go/v2/cookies"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
@@ -26,10 +28,15 @@ import (
 )
 
 // grpcWebServersConfig is a Config with both servers and the router between
-// them, and the gRPC-web block given, which a nil leaves out.
+// them, the cookie keys the refresh token cookie seals with, and the gRPC-web
+// block given, which a nil leaves out.
 func grpcWebServersConfig(web *GRPCWebConfig) *Config {
 	return &Config{
-		Name:       "example",
+		Name: "example",
+		Cookies: &cookies.Config{
+			Base64EncodedHashKey:  base64.StdEncoding.EncodeToString([]byte(strings.Repeat("h", 32))),
+			Base64EncodedBlockKey: base64.StdEncoding.EncodeToString([]byte(strings.Repeat("b", 32))),
+		},
 		Encoding:   &encoding.Config{ContentType: string(encoding.ContentTypeJSON)},
 		Routing:    &routingcfg.Config{Provider: routingcfg.ProviderChi, Chi: &chi.Config{ServiceName: "example", SilenceRouteLogging: true}},
 		HTTPServer: &httpserver.Config{Port: 8080, StartupDeadline: time.Second},
@@ -187,6 +194,27 @@ func TestConfig_grpcWeb(T *testing.T) {
 		test.StrContains(t, err.Error(), "httpServer")
 	})
 
+	T.Run("refuses a prefix with no cookie keys to seal refresh tokens with", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := grpcWebServersConfig(&GRPCWebConfig{PathPrefix: "/grpc"})
+		cfg.Cookies = nil
+
+		err := cfg.ValidateWithContext(t.Context())
+		must.ErrorIs(t, err, ErrGRPCWebWithoutCookies)
+		test.StrContains(t, err.Error(), "cookies")
+		test.StrContains(t, err.Error(), "refreshTokenCookieDisabled")
+	})
+
+	T.Run("needs no cookie keys with the refresh token cookie disabled", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := grpcWebServersConfig(&GRPCWebConfig{PathPrefix: "/grpc", RefreshTokenCookieDisabled: true})
+		cfg.Cookies = nil
+
+		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
+
 	T.Run("refuses a malformed prefix", func(t *testing.T) {
 		t.Parallel()
 
@@ -262,5 +290,34 @@ func TestNew_grpcWeb(T *testing.T) {
 
 		_, err := New(i)
 		test.ErrorIs(t, err, ErrGRPCWebWithoutGRPCServer)
+	})
+
+	T.Run("an unvalidated config with no cookie keys fails the boot by name", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := grpcWebServersConfig(&GRPCWebConfig{PathPrefix: "/grpc"})
+		cfg.Cookies = nil
+
+		_, err := newGRPCWebService(t, cfg)
+		test.ErrorIs(t, err, ErrGRPCWebWithoutCookies)
+	})
+
+	T.Run("with the refresh token cookie disabled, serves with no cookie keys", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := grpcWebServersConfig(&GRPCWebConfig{PathPrefix: "/grpc", RefreshTokenCookieDisabled: true})
+		cfg.Cookies = nil
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		router, err := newGRPCWebService(t, cfg)
+		must.NoError(t, err)
+
+		srv := httptest.NewServer(router.Handler())
+		t.Cleanup(srv.Close)
+
+		code, grpcStatus, reply := healthCheckOverGRPCWeb(t, srv.URL+"/grpc/grpc.health.v1.Health/Check")
+		must.EqOp(t, http.StatusOK, code)
+		must.EqOp(t, "0", grpcStatus)
+		must.NotNil(t, reply)
 	})
 }

@@ -113,6 +113,19 @@ lists every login with no attributes, and one whose annotator fails answers the
 RPC with that error rather than with half the screen. authentication/signin/devices
 ships one, over a table it also records into, for a deployment that wants it.
 
+# A browser's refresh token
+
+A browser has no compliant place to keep the refresh token an IssuedToken
+carries: the client contract puts it in an httpOnly cookie, and page code cannot
+set one. [RefreshTokenCookie] is the server's half, as middleware for a gRPC-web
+route. It seals the refresh token of every response that issues one into
+[RefreshTokenCookieName] and clears it from the body, fills it back into a
+request that spends one and arrives without it, and deletes the cookie on a
+sign-out. Which methods issue or spend one is read from the server's
+descriptors rather than listed, so passkeys' doors and a consumer's own are
+covered without naming them. service mounts it on its gRPC-web route unless
+told not to.
+
 # What a consumer still owes
 
 Transport security. Several of these RPCs carry a plaintext password and one
