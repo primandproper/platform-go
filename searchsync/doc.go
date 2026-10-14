@@ -230,11 +230,17 @@ nightly batch job wearing a search index's name, and a Syncer built without the
 stamp buffer leaves last_indexed_at unwritten — which is the column the rebuild's
 own scan reads.
 
-PoolSpecs is the per-index pool wiring, and ReindexAll is the rebuild-everything.
-Neither names an index, so neither changes when one is added. The pillars are the
-Registry's rather than each spec's for the same reason: they are the same three
-values for every index in a process, and the one stanza that was written without
-a metrics provider is an index with no lag histogram and no other symptom.
+PoolSpecs is the per-index pool wiring, and Reindex with no names is the
+rebuild-everything. Neither names an index, so neither changes when one is added.
+The pillars are the Registry's rather than each spec's for the same reason: they
+are the same three values for every index in a process, and the one stanza that
+was written without a metrics provider is an index with no lag histogram and no
+other symptom.
+
+Reindex and Wipe also take index names, for the operator's one-off rebuild of an
+index that drifted. It is reached by the name the index was registered under, so
+a service whose wiring kept no Registration can still rebuild one index, or empty
+it first. An unknown name is an error rather than a skip.
 
 The stamp buffers are the one thing the Registry owns outright, because they own
 goroutines and nothing else here does — hence Close, and hence its ordering: it

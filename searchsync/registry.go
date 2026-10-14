@@ -2,6 +2,7 @@ package searchsync
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/primandproper/primitives-go/v2/batching"
@@ -96,18 +97,23 @@ type Registration[T any] struct {
 	// registry's pool spec for this index carries.
 	Syncer *Syncer[T]
 
-	// Reindexer rebuilds the index. Registry.ReindexAll runs it; Reindexer.Job
+	// Reindexer rebuilds the index. Registry.Reindex runs it; Reindexer.Job
 	// schedules it.
 	Reindexer *Reindexer[T]
 }
 
 // registered is one index, with its type parameter erased. A Registry holds
 // every index a service runs and they do not share a document type, so what it
-// keeps is the three type-free things it does something with: the handler a
-// pool calls, the rebuild ReindexAll runs, and the buffer Close closes.
+// keeps is the type-free things it does something with: the handler a pool
+// calls, the rebuild Reindex runs, the emptying Wipe runs, and the buffer Close
+// closes.
+//
+// wipe is nil when the spec's Target is not a Wiper, which is how Wipe knows to
+// refuse it.
 type registered struct {
 	handler    jobs.Handler
 	reindex    func(context.Context) (*ReindexResult, error)
+	wipe       func(context.Context) error
 	stamps     *batching.Buffer[string]
 	poolConfig *jobs.PoolConfig
 
@@ -125,8 +131,8 @@ type registered struct {
 // whoever remembers. The tenth index is added to two of them and the symptom is
 // that the rebuild quietly covers nine tenths of the data.
 //
-// So there is one list. RegisterIndex writes to it, PoolSpecs and ReindexAll
-// read it, and adding an index touches neither of them.
+// So there is one list. RegisterIndex writes to it, PoolSpecs and Reindex read
+// it, and adding an index touches neither of them.
 //
 //	registry := searchsync.NewRegistry(searchsync.WithRegistryPillars(pillars))
 //	defer func() { _ = registry.Close(shutdownCtx) }()
@@ -143,12 +149,22 @@ type registered struct {
 // PoolGroup's to start and stop, and the rebuilds are a scheduler's or an
 // operator's to run. What it owns is the stamp buffers it built, which is why
 // it has a Close.
+//
+// An operator's one-off rebuild reaches the indexes through it by name, with no
+// Registration in hand — the seam that registered them may well have discarded
+// those:
+//
+//	if err = registry.Wipe(ctx, "recipes"); err != nil {
+//	    return err
+//	}
+//
+//	results, err := registry.Reindex(ctx, "recipes")
 type Registry struct {
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 
-	names   map[string]struct{}
+	names   map[string]*registered
 	topics  map[string]struct{}
 	entries []*registered
 
@@ -205,7 +221,7 @@ func WithRegistryPillars(p *observability.Pillars) RegistryOption {
 // in RegisterIndex, which is where the index being built is known.
 func NewRegistry(opts ...RegistryOption) *Registry {
 	r := &Registry{
-		names:  map[string]struct{}{},
+		names:  map[string]*registered{},
 		topics: map[string]struct{}{},
 	}
 
@@ -301,6 +317,10 @@ func RegisterIndex[T any](reg *Registry, spec IndexSpec[T]) (*Registration[T], e
 	entry.handler = registration.Syncer.Handle
 	entry.reindex = registration.Reindexer.Reindex
 
+	if wiper, ok := spec.Target.(Wiper); ok {
+		entry.wipe = wiper.Wipe
+	}
+
 	if err = reg.add(entry); err != nil {
 		reg.discard(entry)
 
@@ -347,7 +367,7 @@ func (r *Registry) add(entry *registered) error {
 		return platformerrors.Wrapf(ErrDuplicateIndex, "search index topic %q", entry.topic)
 	}
 
-	r.names[entry.name] = struct{}{}
+	r.names[entry.name] = entry
 	r.topics[entry.topic] = struct{}{}
 	r.entries = append(r.entries, entry)
 
@@ -421,52 +441,163 @@ func (r *Registry) PoolSpecs() []jobs.PoolSpec {
 	return specs
 }
 
-// ReindexAll rebuilds every registered index, in registration order, and
-// returns what each rebuild did keyed by index name.
+// Reindex rebuilds the named indexes, in the order named, or every registered
+// index in registration order when none is named, and returns what each rebuild
+// did keyed by index name.
 //
-// It walks the registry rather than naming the indexes, which is the difference
-// that matters: an index added to a service is rebuilt by this call without the
-// call changing, and there is no ninth line for the tenth index to be missing
-// from.
+// Called with no names it walks the registry rather than naming the indexes,
+// which is the difference that matters: an index added to a service is rebuilt
+// by that call without the call changing, and there is no ninth line for the
+// tenth index to be missing from. Called with names it is the operator's
+// rebuild of one index that drifted, reached by the name it was registered
+// under rather than through a Registration the wiring may not have kept.
+//
+// An unknown name is an error rather than a skip, and every one is reported
+// before any index is rebuilt — a misspelled index passed over would read as a
+// rebuild that succeeded. A name given twice is rebuilt once.
 //
 // A failed rebuild does not stop the others. They are independent indexes, the
 // operator running this wants every one of them converged, and a single
 // unreachable backend that aborted the walk would leave the eight indexes after
 // it in the list untouched with nothing said about them. Every failure comes
 // back joined, and the result map still carries what each rebuild landed before
-// it stopped — Reindex reports that even when it fails partway.
+// it stopped — Reindexer.Reindex reports that even when it fails partway.
 //
 // A cancelled context does stop it, because the remaining rebuilds would fail
 // the same way and reporting nine copies of one cancellation says less than
 // reporting the one.
-func (r *Registry) ReindexAll(ctx context.Context) (map[string]*ReindexResult, error) {
-	r.mu.Lock()
-	entries := make([]*registered, len(r.entries))
-	copy(entries, r.entries)
-	r.mu.Unlock()
+func (r *Registry) Reindex(ctx context.Context, names ...string) (map[string]*ReindexResult, error) {
+	entries, err := r.resolve(names)
+	if err != nil {
+		return nil, err
+	}
 
 	results := make(map[string]*ReindexResult, len(entries))
 
 	var errs []error
 
 	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
+		if err = ctx.Err(); err != nil {
 			errs = append(errs, platformerrors.Wrapf(err, "reindexing %q", entry.name))
 
 			break
 		}
 
-		result, err := entry.reindex(ctx)
+		result, reindexErr := entry.reindex(ctx)
 		if result != nil {
 			results[entry.name] = result
 		}
 
-		if err != nil {
-			errs = append(errs, platformerrors.Wrapf(err, "reindexing %q", entry.name))
+		if reindexErr != nil {
+			errs = append(errs, platformerrors.Wrapf(reindexErr, "reindexing %q", entry.name))
 		}
 	}
 
 	return results, platformerrors.Join(errs...)
+}
+
+// ReindexAll rebuilds every registered index. It is Reindex with no names, and
+// everything said there about failures and cancellation holds here.
+func (r *Registry) ReindexAll(ctx context.Context) (map[string]*ReindexResult, error) {
+	return r.Reindex(ctx)
+}
+
+// Wipe empties the named indexes, in the order named. It removes documents
+// only; the index and its mapping stay.
+//
+// Unlike Reindex, it reads no names as a mistake rather than as every index,
+// and refuses it with ErrNoIndexNamed. A rebuild of everything is harmless to
+// reach by accident and an emptying of everything is not, so the wide call has
+// to name what it empties: Wipe(ctx, registry.Names()...).
+//
+// Every index it is asked to empty must have a Target that is a Wiper.
+// TextTarget and VectorTarget are; a Target written by hand may not be, and one
+// that is not is refused with ErrTargetCannotWipe. Both that and an unknown
+// name (ErrUnknownIndex) are reported before any index is emptied, so a request
+// that cannot be carried out in full empties nothing.
+//
+// What follows matches Reindex: a failed wipe does not stop the others and
+// every failure comes back joined, and a cancelled context stops the walk.
+func (r *Registry) Wipe(ctx context.Context, names ...string) error {
+	if len(names) == 0 {
+		return ErrNoIndexNamed
+	}
+
+	entries, err := r.resolve(names)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+
+	for _, entry := range entries {
+		if entry.wipe == nil {
+			errs = append(errs, platformerrors.Wrapf(ErrTargetCannotWipe, "search index %q", entry.name))
+		}
+	}
+
+	if len(errs) > 0 {
+		return platformerrors.Join(errs...)
+	}
+
+	for _, entry := range entries {
+		if err = ctx.Err(); err != nil {
+			errs = append(errs, platformerrors.Wrapf(err, "wiping %q", entry.name))
+
+			break
+		}
+
+		if wipeErr := entry.wipe(ctx); wipeErr != nil {
+			errs = append(errs, platformerrors.Wrapf(wipeErr, "wiping %q", entry.name))
+		}
+	}
+
+	return platformerrors.Join(errs...)
+}
+
+// resolve returns the entries the names select: every one, in registration
+// order, when there are none, and otherwise each named one once, in the order
+// first named. Every name nothing was registered under comes back joined as
+// ErrUnknownIndex, and then no entries do.
+//
+// The slice is a copy, so the caller walks it without holding the lock — a
+// rebuild takes minutes, and a registration arriving meanwhile has no reason to
+// wait for it.
+func (r *Registry) resolve(names []string) ([]*registered, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(names) == 0 {
+		return slices.Clone(r.entries), nil
+	}
+
+	entries := make([]*registered, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+
+	var unknown []error
+
+	for _, name := range names {
+		if _, dup := seen[name]; dup {
+			continue
+		}
+
+		seen[name] = struct{}{}
+
+		entry, ok := r.names[name]
+		if !ok {
+			unknown = append(unknown, platformerrors.Wrapf(ErrUnknownIndex, "search index %q", name))
+
+			continue
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if len(unknown) > 0 {
+		return nil, platformerrors.Join(unknown...)
+	}
+
+	return entries, nil
 }
 
 // Close closes the stamp buffers this Registry built, flushing whatever they
